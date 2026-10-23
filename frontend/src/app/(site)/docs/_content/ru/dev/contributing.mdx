@@ -7,7 +7,7 @@
 | `frontend/` | Next.js-приложение: публичный сайт, админка, инструменты |
 | `gateway/` | Go-шлюз — единственная точка входа HTTP и WebSocket |
 | `backend/shared/` | Общее ядро: ORM-модели, репозитории, RBAC, мультиарендность, messaging, наблюдаемость |
-| `backend/*-service/` | Доменные воркеры без HTTP: app, identity, tournament, parser, balancer, analytics, stream, discord |
+| `backend/*-service/` | Доменные воркеры без HTTP: app, identity, tournament, stats, balancer, analytics, stream, discord |
 | `backend/migrations/` | Один проект Alembic на всю базу |
 | `backend/env/` | Шаблоны переменных окружения (`*.env.example`) для каждого сервиса |
 | `nginx/` | Внутренний HTTP-край перед шлюзом |
@@ -73,7 +73,7 @@ cd gateway && go run ./cmd/gateway
 | ci-gateway | `go mod tidy -diff`, `gofmt -l .`, `go vet ./...`, `go build ./...`, `go test -race ./...` |
 | ci-docs | `python3 scripts/check_doc_links.py` — относительные ссылки в документации должны разрешаться |
 
-Три файла в репозитории закоммичены, но выведены из кода, и CI падает при расхождении: манифест OpenAPI, из которого шлюз строит спецификации; `frontend/src/lib/divisions/ow-ladder.generated.json`; и диаграммы сущностей в `docs/database_erd.md`. После изменения ORM-модели их перегенерируют командами из таблицы выше. Хуки ставятся один раз — `pre-commit install`, они гоняют ruff и гигиену файлов по застейдженному.
+Три файла в репозитории закоммичены, но выведены из кода, и CI падает при расхождении: манифест OpenAPI, из которого шлюз строит спецификации; `frontend/src/disciplines/overwatch/ladder/ow-ladder.generated.json`; и диаграммы сущностей в `docs/database_erd.md`. После изменения ORM-модели их перегенерируют командами из таблицы выше. Хуки ставятся один раз — `pre-commit install`, они гоняют ruff и гигиену файлов по застейдженному.
 
 <Callout type="warning">
 Миграция, которая удаляет колонку или таблицу, не должна приезжать обычным `upgrade head`, пока живой код ещё читает удаляемое. Безопасный порядок описан в [CONTRIBUTING.md](https://github.com/CraazzzyyFoxx/overwatch-tournaments/blob/master/CONTRIBUTING.md#database-changes).

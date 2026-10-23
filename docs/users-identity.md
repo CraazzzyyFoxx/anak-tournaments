@@ -84,11 +84,11 @@ flowchart TB
   end
 
   subgraph domain["Layer 4 — domain"]
-    REG["balancer.registration\nregistration_role.rank_value"]
+    REG["registration.registration\nregistration.role.rank_value"]
     TP["tournament.player"]
     ACH["achievements.*"]
-    DRAFT["balancer.draft_*"]
-    OW["overwatch_rank.rank_snapshot"]
+    DRAFT["draft.*"]
+    OW["rank.rank_snapshot"]
   end
 
   AU -.->|"1:0..1 auth_user_id"| PU
@@ -110,7 +110,7 @@ flowchart TB
 | `identity-service` | `auth.user`, OAuth, RBAC, self-service / admin player link, signup provisioning of `players.user` |
 | `app-service` | CRUD for `players.user` and social accounts, CSV import, user merge, `workspace.add_member` |
 | `tournament-service` | `ensure_player_identity`, `get_or_create_workspace_member` on registration, tournament rank resolution |
-| `parser-service` | Creating / reusing `players.user` from match logs, anchoring the roster through `workspace_member` |
+| `stats-service` | Creating / reusing `players.user` from match logs, anchoring the roster through `workspace_member` |
 | `balancer-service` | Workspace roster, `member_rank`, custom games |
 
 One PostgreSQL, one SQLAlchemy metadata. Schemas: `auth`, `players`, `public` (`workspace` / `workspace_member`), `balancer`.
@@ -188,11 +188,11 @@ There are **no** `auth_user_id` and `role` columns. The role lives in `auth.user
 
 | Table | NULL? | Meaning |
 |---|---|---|
-| `balancer.registration.workspace_member_id` | yes | NULL = sheet/CSV without an identity, or a main+smurf collision |
+| `registration.registration.workspace_member_id` | yes | NULL = sheet/CSV without an identity, or a main+smurf collision |
 | `balancer.member_rank.workspace_member_id` | no | Workspace canon and the host's personal book |
-| `balancer.custom_game_player.workspace_member_id` | no | Mix lineup; carries no rank of its own |
+| `mix.player.workspace_member_id` | no | Mix lineup; carries no rank of its own |
 | `tournament.player.workspace_member_id` | no | A roster slot always belongs to a member |
-| `draft_team` / `draft_player` / `draft_pick` | — | Draft |
+| `draft.team` / `draft.player` / `draft.pick` | — | Draft |
 | `achievements.evaluation_result` / `override` | no | Achievements are scoped to a member, not to a global player |
 
 Created **idempotently** through `get_or_create_workspace_member` (`INSERT … ON CONFLICT DO NOTHING` on `uq_workspace_member_workspace_player`). Concurrent registrations do not catch `IntegrityError`.
@@ -203,15 +203,43 @@ The admin member list (`list_by_workspace`) filters on `auth_user_id IS NOT NULL
 
 ### 3.4. The mix roster is the same `workspace_member`
 
-There is no separate `workspace_player` table any more. The pool the balancer sees is `workspace_roster`: member + BattleTag + `display_name`.
+There is no separate `workspace_player` table. The balancer roster is `workspace_member` + the owner's
+`identity: {provider, handle} | null` + `display_name`; the requested discipline selects its provider.
 
-`ensure_member_for_battle_tag` (`backend/shared/services/workspace_roster.py`):
+`POST /api/v1/balancer/workspaces/{workspace_id}/players` accepts exactly
+`{discipline, identity: {provider, handle}, display_name?}`. Unknown keys (including `battle_tag`) are 422.
+`ensure_member_for_identity` (`backend/balancer-service/src/services/workspace_roster.py`) validates the enabled discipline,
+its declared provider (422 `identity.provider_mismatch`) and provider grammar before any mutation. Matching
+uses the provider-normalized **exact handle**, never the display name or a BattleTag prefix:
 
-1. Find a `players.user` by battlenet handle.
-2. Otherwise create a virtual `players.user(name=tag)` and an unverified battlenet social account.
-3. `get_or_create_workspace_member`. The RBAC role `player` is not granted — the new player has no `auth_user_id`.
+1. No owner creates an unlinked `players.user` and an unverified social account, without an OAuth subject.
+2. One owner reuses that real player, preserving existing verification, subject and auth linkage.
+3. Several distinct owners return 409 `identity_conflict` without changing either person.
+4. `get_or_create_workspace_member` performs real admission: an observation-only anchor becomes a member;
+   roster reads and counts exclude observation-only anchors until that admission.
+5. **Account holders (P8 R5).** When the one owner is an auth-linked player who is not an admitted member (no
+   row, a removed row or an observation-only anchor), admission would hand them the baseline `player` role, so it
+   needs `workspace_member.create` (the RPC passes `admit_account_holders`); otherwise 403 `forbidden` (field
+   `identity.handle`, "This player has an account; only a member manager can add them to the workspace") before
+   any player, social account, member or role row is written. An admitted member is an idempotent hit for anyone;
+   unlinked and new players are unchanged.
 
-`display_name` on `workspace_member` is the workspace-local nickname; otherwise `players.user.name` is used.
+A mix host (`custom_game.create`) may add players (unlinked handles, or account holders already admitted), but
+changing `display_name` still needs `team.create`; an account holder outside the workspace needs a member manager.
+Commits and realtime/outbox writes remain caller-owned. The response is exactly one `players.list` row;
+both rank layers remain separate. Reads select only that provider's primary account (`is_primary DESC, id ASC`)
+and search handles with the same provider normalizer. Missing provider identity stays null.
+
+The handle is the **owner game's** identity: the tournament's or mix's discipline selects the provider (`battlenet`
+for Overwatch; `riot` for League of Legends: `Name#TAG`, internal spaces kept; `steam` for Deadlock: the decimal
+SteamID3 account id). A handle is never an authentication or ownership proof. Identical handle text under two
+providers is two people. Registration identity conflicts are 409 `game_identity_conflict` with the provider's field
+(`identity_riot`, `identity_steam`, section 7.4); roster conflicts are 409
+`identity_conflict` (several owners) or 422 `identity.provider_mismatch` / the provider's handle-format code.
+
+Registration approval/rejection/rank-check events likewise carry `identity` (never `battle_tag`): position zero
+of the owning tournament's provider. The OW collector converts only a `battlenet` identity to its native
+`fallback_battle_tag`. Actual OAuth, OW collection payloads and rank histories retain their native vocabulary.
 
 ### 3.5. Ranks
 
@@ -241,7 +269,7 @@ The fourth layer is **not** in this table:
 | `author` | `member_rank.author_user_id = this account` | Only this host's mixes |
 | `workspace` | `member_rank.author_user_id IS NULL` | Everyone in the workspace |
 | `registration` | `registration_role.rank_value` | This tournament |
-| `ow` | `overwatch_rank.rank_snapshot` on `players.user` | Fallback, normalized into the DivisionGrid |
+| `ow` | `rank.rank_snapshot` (the game's `discipline`) on `players.user`, read through the module's `native_ranks` | Fallback, normalized into the DivisionGrid |
 
 Resolver: `pick_rank(layers)` (`backend/shared/domain/member_rank.py`). The first layer holding a **number** wins. `None` or a missing row falls through to the next layer. That is why "follow the canon" is the **absence** of a row, not a copy of the value. `clear` on a record **deletes** the role, it does not write 0.
 
@@ -307,13 +335,22 @@ OW is pulled in only where the cheaper layers left a hole. Snapshots collapse in
 
 ```
 user_id                 FK players.user CASCADE
-provider                battlenet | discord | twitch | boosty | vk | youtube | …
+provider                battlenet | riot | steam | discord | twitch | boosty | vk | youtube | …
 username / username_normalized
 url
-provider_user_id        NULL until proven by an OAuth subject
+display_name            provider display name where the handle is an opaque id (Steam persona name); NULL until fetched
+provider_user_id        NULL until proven by an OAuth subject (Riot Sign-On: the PUUID; Steam OpenID: the account id)
 is_verified             true after a completed OAuth flow
 is_primary
 ```
+
+A `steam` handle is always stored as the decimal SteamID3 account id (1..4294967295, deadlock-api's `account_id`).
+Input may be that id, a 17-digit SteamID64, `[U:1:N]`, `STEAM_X:Y:Z` (account = Z·2 + Y) or
+`https://steamcommunity.com/profiles/<SteamID64>`; all normalize to the account id. A vanity `/id/<name>` link
+cannot be resolved offline and is refused (`identity.steam.format`). The persona name is kept beside it in
+`display_name` by identity-service (`src/services/steam_profiles.py`): on OAuth sign-in, on `SteamAccountChangedEvent`
+(a Steam account created or re-pointed by any writer; a re-pointed account drops the old name at once) and daily.
+Profiles show `display_name` and fall back to the id.
 
 Uniqueness:
 
@@ -376,7 +413,7 @@ These stay on `auth.user.id` because they belong to a session or an operator, no
 - `favorite_player` — `(auth_user_id, player_id)`: an account bookmarks someone else's game profile
 - `encounter_saved_view`
 
-`overwatch_rank.rank_snapshot` stays on `players.user.id` (it is a fact about a battletag, not about membership). It is the resolver's `ow` layer, not the workspace canon.
+`rank.rank_snapshot` stays on `players.user.id` (it is a fact about a game account — a BattleTag, a Riot ID or a Steam account — not about membership). It is the resolver's `ow` layer, not the workspace canon.
 
 ---
 
@@ -417,8 +454,8 @@ RPC: the user is already signed in and picks an existing `players.user`.
 
 Preconditions:
 
-1. The account has an OAuth Discord **or** Battle.net connection. Otherwise 400: *"Link Discord or Battle.net OAuth account before linking a player"*.
-2. Ownership: a normalized intersection between the OAuth connection's handles and the player's `social_account` handles (discord username/global_name/email **or** battletag). Otherwise 403.
+1. The account has an OAuth Discord, Battle.net, Riot **or** Steam connection. Otherwise 400: *"Link Discord, Battle.net, Riot or Steam OAuth account before linking a player"*.
+2. Ownership: a normalized intersection between the OAuth connection's handles and the player's `social_account` handles (discord username/global_name/email, battletag, Riot ID **or** Steam account id). Otherwise 403: *"Discord, Battle.net, Riot or Steam account does not match selected player"*. A Steam connection offers only its account id: the persona name is display text and never matches a handle.
 3. The player is free or already belongs to this account. Another owner → 409.
 
 After a successful `UPDATE players.user SET auth_user_id = …`:
@@ -497,7 +534,7 @@ flowchart LR
 `RegistrationService.create_registration` (`backend/tournament-service/src/services/registration/service.py`).
 
 1. Capability `registration.self_register` in this workspace. A deny → 403.
-2. Create the `balancer.registration` (the row carries no `auth_user_id` / `workspace_id`).
+2. Create the `registration.registration` (the row carries no `auth_user_id` / `workspace_id`).
 3. `ensure_player_identity(..., auth_user_id, workspace_id)`:
    - resolves the `players.user`;
    - `get_or_create_workspace_member`;
@@ -506,7 +543,7 @@ flowchart LR
 5. The registration is anchored on the `workspace_member`. Registration ranks live in `registration_role.rank_value` (empty = inherit the canon/OW).
 6. Commit. A "this member already has a live registration in this tournament" collision hits the unique index → 409.
 
-Without a battle_tag, `ensure_player_identity` may return `None` (except when anchoring an owned player). In that case the `player` role auto-enroll is skipped.
+Without a handle for the tournament's identity provider, `ensure_player_identity` may return `None` (except when anchoring an owned player). In that case the `player` role auto-enroll is skipped.
 
 ### 7.2. An admin adds a member
 
@@ -526,8 +563,8 @@ The signature still takes an `auth_user_id`. Internally:
 
 There is no player session. `ensure_player_identity` is called with `auth_user_id=None`:
 
-- dedup by normalized battletag;
-- otherwise a new virtual `players.user(name=battle_tag)`;
+- dedup by the normalized handle of the tournament's identity provider;
+- otherwise a new virtual `players.user(name=<primary handle>)`;
 - anchor a `workspace_member`;
 - on a member collision inside the same tournament (main + smurf) the anchor is **skipped** with a warning — one broken row does not fail the whole sync (`defer_member_collision_to_db=False`).
 
@@ -538,18 +575,30 @@ The parser and admin player CRUD use `resolve_workspace_member_id(tournament_id,
 Source: `backend/tournament-service/src/services/registration/service.py`.
 
 ```
+provider = identity_provider(tournament.discipline)   # the OWNING game's provider
 1. registration.workspace_member_id is already set
      → that player_id. Do not replay.
 2. The registering auth_user already has a players.user
      → take it.
-     If ANOTHER virtual player owns this battletag
-       → _move_battle_tag_identity (battlenet social rows only).
-         The virtual player's stats/achievements do NOT move.
-3. Otherwise find a player by battletag (historical dedup).
-4. Otherwise create User(name=battle_tag, auth_user_id=?).
-Then upsert the battlenet social account for the main + smurfs.
+     If ANOTHER player owns one of this registration's `provider` handles
+       → _move_game_identity — only with ownership proof: the shadow has no auth
+         account AND the registering player already holds that very handle
+         verified with a provider subject (OAuth). Then just the shadow's
+         unverified duplicate of that one handle is dropped.
+         Anything else → 409 `game_identity_conflict` and nothing is written
+         (the admin user-merge is the path). Stats/achievements never move.
+3. Otherwise find a player by a `provider` handle (primary first, then extras).
+4. Otherwise create User(name=<primary `provider` handle>, auth_user_id=?).
+Then upsert every handle of the registration: the `provider` ones, and other
+providers' handles only when no OTHER player owns that normalized handle
+(skipped with a warning, never moved).
 Then anchor the workspace_member if it is not the right one yet.
 ```
+
+Another game's handle never finds, creates or names a player: a registration with
+no `provider` handle and no owned player resolves to `None`. `primary_game_identity(provider=...)`
+is likewise the primary of that provider only — a League tournament never names its
+rows after a BattleTag.
 
 `known_handles` is the sheet-sync cache: if the anchor exists and every tag is already known for this player, **zero** queries (`session.get` hits the identity map). Do not replace it with a repository get.
 
@@ -592,7 +641,7 @@ Result: one `auth.user`, one `players.user`, one `workspace_member`, the `player
 
 ```mermaid
 sequenceDiagram
-  participant Parser as parser-svc
+  participant Parser as stats-svc
   participant PU as players.user virtual
   participant SA as social_account
   actor H as Same person
@@ -639,10 +688,12 @@ Two registrations or two tags for the same `player_id` in the same workspace con
 
 `UserMergeService` repoints references from source to target:
 
-- `workspace_member` is repointed per workspace (the target workspace may already have a member, or one may need to be created).
-- `tournament.player`, achievements, and `balancer.registration` move through `workspace_member_id`, not through the old `user_id`.
-- Direct FKs to `players.user` (statistics, kill feed, captain, …) go through `REFERENCE_CONFIG`.
-- Audited in `user_merge_audit`.
+- In each workspace, an existing target member survives; if none exists, the source member keeps its ID and changes `player_id`. A merge does not fabricate a replacement membership.
+- `tournament.player`, achievements, and `registration.registration` move through `workspace_member_id`, not through the old `user_id`.
+- Direct global references are the team captain and `stats.ingest_job.uploader_user_id`. Native observations use workspace-member identities, not legacy statistics/kill-feed user columns.
+- Before mutation, overlapping `stats.match_player` history is reported in preview and refused with HTTP 409 `stats_member_history_conflict`; facts are never summed or deduplicated. Disjoint history inserts target match-player rows, repoints facts and both event endpoints, then removes source match-player rows, preserving historical handles, roles, teams and values.
+- `UserMergeAudit.preview_snapshot_json.stats_evidence` preserves the original source/target global IDs, the complete retain/move member map, and stable stats audit IDs. An uploader-only merge has an empty member map and retains its global identity pair; it creates no membership. Match/member/job evidence is chunked to at most 100 owners and staged before the source-user deletion and transaction commit.
+  Member chunks keep each retain pair together; match chunks include only mappings for their actual workspaces, and job chunks use the global uploader pair. Each chunk bounds both owners and mappings to 100 without truncating the complete original merge map.
 
 Both profiles may have an auth account. The superuser previews an explicit `auth_policy`:
 
@@ -656,6 +707,8 @@ Both profiles may have an auth account. The superuser previews an explicit `auth
 Execute rechecks a fingerprint of the auth/resource state under ordered locks. Player references, auth ownership, resource transfers and `UserMergeAudit` commit in one PostgreSQL transaction. The audit records the reviewed policy, acknowledgements, affected auth IDs and revoked session IDs; secret credentials and session IDs are not returned by the public merge DTO.
 
 Before commit, app-service requires identity-service to blacklist both accounts’ existing session IDs for the access-token lifetime and invalidate their RBAC caches using a strict Redis transaction. An unavailable identity/Redis finalizer rolls back the database merge. A later database commit failure may still leave old sessions revoked; the accounts must sign in again. Refresh tokens and API keys for both accounts are deleted, never transferred. App-service clears RBAC/profile caches again after commit. Authorization propagation remains bounded by the gateway’s existing short credential cache; subsequent Redis outages retain the platform’s existing fail-soft token-validation policy.
+
+The identity threat boundary remains server-side: only a superuser can execute a merge, the preview is revalidated under locks, and every native member rewrite stays within its original workspace. Failure—including history overlap or unavailable identity finalization—rolls back observations and their evidence together. Ordinary user deletion does not bypass the played-member foreign-key guard. Raw downloads resolve the stored ingest job's `raw_ref`, authorize the bound encounter's tournament before accessing storage, and use the sanitized filename only for presentation, never to reconstruct an object key.
 
 This is the only legitimate way to say "these two people turned out to be one". Auto-link and identity collapse on registration **deliberately** do not do this.
 
@@ -675,13 +728,38 @@ The access token still returns `linked_players` as an array of length 0 or 1 (`L
 
 `WorkspaceMemberCreate`: `auth_user_id` plus an optional `role` (`owner|admin|member`) or `role_ids`.
 
-### 9.3. Public player (app-service)
+### 9.3. Public player (app-service identity, stats-service statistics)
 
-`UserRead` = `players.user` plus social accounts (plus visibility in the admin UI). This is the `/users/:id` page, not the account.
+`UserRead` = `players.user` plus social accounts (plus visibility in the admin UI), served by app-service
+(`rpc.app.users.{list,search,by_name}`). This is the `/users/:id` page, not the account.
+
+Profile, hero, map and tournament-stat readers (stats-service, `rpc.stats.users.*` and `rpc.stats.statistics.*`)
+consume native `stats.fact` observations through the match's
+workspace member and bound encounter game. Removed memberships and inactive historical game participants retain
+their observations; no current-roster activation is required to read a recorded fact. OW statistics explicitly
+select the Overwatch discipline, and workspace-scoped aggregates cannot combine another membership's facts.
+Existing endpoint-specific hidden-tournament policies remain unchanged; the overview's has-logs indicator is
+explicitly global over its scoped candidate players.
+
+Hero qualification remains strictly over 60 seconds per match/member/character. Profile and comparison per-10
+rates use match duration, while hero leaderboards use character playtime and require at least 600 seconds.
+MVP placement prefers ImpactRank and falls back to Performance. Global hero records read
+`stats.mv_entity_global_stats`; an unpopulated view is an operational error, not an empty profile.
+
+Public profile and achievement match expansions derive home/away teams and observed scores from the historical
+game's slots 1/2, not today's encounter seats or the log's source order. `map_index` is the bound game's position.
+Match `source`/`code` fields are removed; replay codes remain a separate encounter-game feature.
 
 ### 9.4. Gateway
 
 `gateway/internal/auth` resolves a JWT or an API key into an `AuthUser`. An API key is scoped to `(auth_user_id, workspace_id)`. Domain services receive an already rehydrated auth user with its RBAC cache.
+
+An API key may carry the `stats.ingest` scope (a normal catalog permission, `resource.action` like every other scope).
+It is grantable only while its owner holds `stats.ingest` in that workspace, and an owner deny or role change removes
+it from the key's effective permission on the next validation. `POST /api/v1/stats/matches` and
+`GET /api/v1/stats/ingest-jobs/{id}` require a real key, the literal scope **and** the effective permission, and always
+act in the key's own workspace: sessions, service tokens and a superuser bypass are not enough, and nothing in the
+request body selects a workspace or key.
 
 ---
 
@@ -691,11 +769,12 @@ The access token still returns `linked_players` as an array of length 0 or 1 (`L
 |---|---|
 | Taking over an account through the same email on OAuth | Email is not used for reuse. Only `provider_user_id` or an explicit authenticated link. |
 | Taking over someone's auth-player through a matching discord/battletag | Auto-link on login only for `auth_user_id IS NULL`. Another account's link is never overwritten. |
-| Self-service link to someone else's profile | Requires OAuth Discord/BN **and** an intersection of handles. Otherwise 403. |
+| Self-service link to someone else's profile | Requires OAuth Discord/BN/Riot/Steam **and** an intersection of handles. Otherwise 403. |
 | Two accounts, one Battle.net subject | Unique `(provider, provider_user_id)` on `oauth_connections` and on the verified social subject. |
 | A custom-domain OAuth link binding the apex session | The ticket carries only the provider identity; it is redeemed on the domain from that domain's cookie. |
 | A registration ban | `user_permission_deny` + `can_capability`; a deny beats a grant. |
 | Unlink leaving a "ghost" RBAC member | 409 while `member+` roles are still held. Leave first. |
+| A mix host enrolling an account holder to hand them workspace read access | `ensure_member_for_identity` refuses (403) an auth-linked non-member unless the actor holds `workspace_member.create` |
 | Rewriting someone else's rank book | `players.set_ranks` takes `author_user_id` from the actor only, never from the wire |
 | A superuser bypassing an avatar/social/self_register deny | No: `is_denied` is checked first. |
 
@@ -788,7 +867,7 @@ In code comments and logs a virtual player is often called a `shadow` player. Sa
 | OAuth connection | `backend/shared/models/identity/oauth.py` |
 | `workspace_member` | `backend/shared/models/tenancy/workspace.py` |
 | `get_or_create_workspace_member` | `backend/shared/repository/workspace.py` |
-| Workspace roster | `backend/shared/services/workspace_roster.py` |
+| Workspace roster | `backend/balancer-service/src/services/workspace_roster.py` |
 | Ranks (model) | `backend/shared/models/member_rank/member_rank.py` |
 | Ranks (resolver) | `backend/shared/domain/member_rank.py`, `backend/shared/services/member_rank.py` |
 | Tournament ranks | `backend/shared/services/roster.py` (`RosterEngine`) |

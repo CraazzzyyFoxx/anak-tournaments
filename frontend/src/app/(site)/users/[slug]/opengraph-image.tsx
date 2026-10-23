@@ -1,6 +1,8 @@
 import { ImageResponse } from "next/og";
 import userService from "@/services/user.service";
 import { decodePlayerSlug, getPlayerImage } from "@/lib/player";
+import { roleOf } from "@/lib/roster/role-ref";
+import { resolveServerPageGame } from "@/lib/site/discipline-server";
 import { SITE_NAME, SITE_URL_OBJ } from "@/config/site";
 
 export const size = { width: 1200, height: 630 };
@@ -23,12 +25,20 @@ export default async function Image({ params }: { params: Promise<{ slug: string
 
   try {
     const user = await userService.getUserByName(decodePlayerSlug(slug));
-    const profile = await userService.getUserProfile(user.id);
     name = user.name;
+    // The card has no URL of its own: the scope's game, or the cross-game profile under "all games".
+    const { resolution } = await resolveServerPageGame("multi", undefined);
+    if (resolution === null) throw new Error("the installed games could not be read");
+    const profile = await userService.getUserProfile(
+      user.id,
+      resolution.game.kind === "game" ? resolution.game.code : null
+    );
     const primaryRole = profile.roles.length
       ? profile.roles.reduce((best, current) => (current.tournaments > best.tournaments ? current : best))
       : null;
-    descriptor = primaryRole ? `${primaryRole.role} · Division ${primaryRole.division}` : "";
+    descriptor = primaryRole
+      ? `${roleOf(primaryRole.role) ?? ""}${primaryRole.division != null ? ` · Division ${primaryRole.division}` : ""}`
+      : "";
     tournaments = profile.tournaments_count ?? 0;
     if (profile.maps_total > 0) {
       winrate = `${((profile.maps_won / profile.maps_total) * 100).toFixed(0)}% WR`;

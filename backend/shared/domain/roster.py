@@ -1,20 +1,20 @@
 """The one shape of "what roles does a player have, and at what rank".
 
-Every surface that used to derive this for itself -- the admin registration
-list, the ``ready``/``incomplete`` verdict, the balancer algorithm's input, the
-draft pool, the draft board, feasibility, autopick and the draft's team export
--- now reads these value objects, produced once by
-:mod:`shared.services.roster`. Nothing recomputes them, and nothing stores a
-second copy: the single exception is the frozen ``(role, rank)`` a completed
-draft pick records, which is a historical fact rather than a derivation.
+Every surface -- the admin registration list, the ``ready``/``incomplete``
+verdict, the balancer algorithm's input, the draft pool, the draft board,
+feasibility, autopick and the draft's team export -- reads these value objects,
+produced once by :mod:`shared.services.roster`. Nothing recomputes them, and
+nothing stores a second copy: the single exception is the frozen
+``(role, rank)`` a completed draft pick records, which is a historical fact
+rather than a derivation.
 
-The invariant that replaces five near-identical predicates:
+The invariant:
 
     a role is playable  <=>  the registration marks it active
                              AND the rank resolver found a number for it
 
-``is_active`` alone was never enough (a sheet row whose rank did not parse is
-active with no number) and a raw ``rank_value`` alone was never enough (an
+``is_active`` alone is not enough (a sheet row whose rank did not parse is
+active with no number) and a raw ``rank_value`` alone is not enough (an
 empty one *inherits* from the workspace canon or the latest Overwatch
 snapshot). Both halves live here, together, once.
 """
@@ -25,14 +25,15 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from shared.core.enums import HeroClass
 from shared.domain.forms import RolesParams, schema_from_form
 from shared.domain.member_rank import RankSource
+from shared.domain.roster_shape import FLEX_SLOT_CODE
+from shared.schemas.identity import PlayerIdentityRead
 
 __all__ = (
     "FLEX_ROLE_MODES",
+    "CharacterRef",
     "FlexRoleMode",
-    "HeroRef",
     "PlayerRoster",
     "RosterRole",
     "flex_role_mode",
@@ -65,25 +66,27 @@ def flex_role_mode_from_schema(schema: Any | None) -> str:
 def flex_role_mode(form: Any | None) -> str:
     """The tournament's flex mode, normalized. A form without a schema is ``optional``.
 
-    THE reader of the ``roles`` builtin's ``flex_mode``: tournament-service used to
-    own one copy for the write path and balancer-service another for the draft,
-    synchronized only by parity tests (see the deleted ``rules.all_roles_required``).
+    THE reader of the ``roles`` builtin's ``flex_mode``: the tournament write path
+    and the balancer draft must agree on it, so neither keeps its own copy.
     """
     return flex_role_mode_from_schema(schema_from_form(form))
 
 
 @dataclass(frozen=True, slots=True)
-class HeroRef:
-    """One of a role's "top heroes", ready for both the FK and the wire."""
+class CharacterRef:
+    """One of a role's top characters, ready for both the FK and the wire."""
 
     id: int | None
     slug: str
     image_path: str | None
 
+    def wire(self) -> dict[str, Any]:
+        return {"entity_id": self.id, "slug": self.slug, "image_path": self.image_path}
+
 
 @dataclass(frozen=True, slots=True)
 class RosterRole:
-    role: HeroClass
+    role: str
     #: Resolved rank: the registration's own number, else the workspace canon,
     #: else the latest Overwatch snapshot (``TOURNAMENT_ORDER``). ``None`` means
     #: no layer had one, which is exactly what makes the role unplayable.
@@ -92,7 +95,7 @@ class RosterRole:
     is_primary: bool
     priority: int
     subrole: str | None
-    top_heroes: tuple[HeroRef, ...] = ()
+    top_characters: tuple[CharacterRef, ...] = ()
 
     @property
     def is_playable(self) -> bool:
@@ -112,10 +115,12 @@ class PlayerRoster:
     or balanced go through :attr:`playable_roles` / :meth:`rank_on`.
     """
 
-    registration_id: int
-    #: The registrant's PRIMARY battlenet handle (``registration_identity``
-    #: ``provider='battlenet'``, ``position=0``); ``None`` when they gave none.
-    battle_tag: str | None
+    #: ``None`` for a mix seat (spec §9.1): the member is its anchor.
+    registration_id: int | None
+    #: The registrant's PRIMARY handle of the owning tournament's identity provider
+    #: (``registration_identity`` ``position=0``); ``None`` when they gave none of that
+    #: provider -- never another game's handle.
+    identity: PlayerIdentityRead | None
     display_name: str | None
     #: ``players.user.id`` via ``workspace_member`` -- ``None`` for a registration
     #: with no member (an admin-created row, or a sheet row never provisioned).
@@ -141,19 +146,26 @@ class PlayerRoster:
     exclude_reason: str | None = None
     checked_in: bool = False
     registration_team_id: int | None = None
-    #: Captain-assigned roster slot (``RosterSlotCode``) -- NOT derivable from
+    #: Captain-assigned roster slot code -- NOT derivable from
     #: ``roles``: ``flex`` is a slot, never a rated role.
     team_slot_code: str | None = None
     is_substitute: bool = False
     # ── Contact/private answers ─────────────────────────────────────────────
     #: ``provider -> PRIMARY handle`` from ``registration_identity``; absent
     #: provider = the registrant answered nothing for it. Extra handles of a
-    #: provider (smurfs) are not here; battlenet's are in :attr:`smurf_tags`.
+    #: provider are not here; the owner provider's are in :attr:`additional_handles`.
     identities: Mapping[str, str] = field(default_factory=dict)
     stream_pov: bool = False
-    #: The registrant's battlenet handles beyond the primary one, in the order
-    #: given. :attr:`battle_tag` is the primary.
-    smurf_tags: tuple[str, ...] = ()
+    #: The registrant's owner-provider handles beyond the primary one, in the order
+    #: given. :attr:`identity` is the primary.
+    additional_handles: tuple[str, ...] = ()
+    #: ``players.user.name`` -- the unique canonical name every profile link is built from (never a game handle).
+    player_name: str | None = None
+
+    @property
+    def handle(self) -> str | None:
+        """The primary handle alone, for labels that fall back to a display name."""
+        return self.identity.handle if self.identity is not None else None
 
     # -- roles ---------------------------------------------------------------
 
@@ -162,23 +174,23 @@ class PlayerRoster:
         return tuple(entry for entry in self.roles if entry.is_playable)
 
     @property
-    def playable_roles(self) -> frozenset[HeroClass]:
+    def playable_roles(self) -> frozenset[str]:
         return frozenset(entry.role for entry in self.roles if entry.is_playable)
 
     @property
     def primary(self) -> RosterRole | None:
         """The role this player leads with: their flagged primary, else the first.
 
-        Resolved over playable roles only -- leading with a role nobody can draft
-        them on is how a rankless player used to end up labelled ``damage``.
+        Resolved over playable roles only, so a rankless player is never labelled
+        with a role nobody can draft them on.
         """
         playable = self.playable
         return next((entry for entry in playable if entry.is_primary), playable[0] if playable else None)
 
     @property
-    def secondary_roles(self) -> tuple[HeroClass, ...]:
+    def secondary_roles(self) -> tuple[str, ...]:
         lead = self.primary
-        return tuple(entry.role for entry in self.playable if lead is None or entry.role is not lead.role)
+        return tuple(entry.role for entry in self.playable if lead is None or entry.role != lead.role)
 
     @property
     def sub_role(self) -> str | None:
@@ -187,7 +199,7 @@ class PlayerRoster:
 
     # -- ranks ---------------------------------------------------------------
 
-    def rank_on(self, role: HeroClass | str | None) -> int | None:
+    def rank_on(self, role: str | None) -> int | None:
         """The rank this player carries on ``role``; ``None`` for no role at all.
 
         No fallback to another role's number: a role without a resolved rank is
@@ -198,15 +210,7 @@ class PlayerRoster:
         """
         if role is None:
             return self.best_rank
-        wanted = role if isinstance(role, HeroClass) else HeroClass.parse(role)
-        return next((entry.rank for entry in self.roles if entry.role is wanted and entry.is_playable), None)
-
-    def source_on(self, role: HeroClass | str | None) -> RankSource:
-        if role is None:
-            best = max(self.playable, key=lambda entry: entry.rank or 0, default=None)
-            return best.source if best is not None else "none"
-        wanted = role if isinstance(role, HeroClass) else HeroClass.parse(role)
-        return next((entry.source for entry in self.roles if entry.role is wanted and entry.is_playable), "none")
+        return next((entry.rank for entry in self.roles if entry.role == role and entry.is_playable), None)
 
     @property
     def best_rank(self) -> int | None:
@@ -216,20 +220,18 @@ class PlayerRoster:
     @property
     def role_ranks(self) -> dict[str, int]:
         """``{slot_code: rank}`` over playable roles. Absent key = not playable."""
-        return {entry.role.slot_code: entry.rank for entry in self.playable if entry.rank is not None}
+        return {entry.role: entry.rank for entry in self.playable if entry.rank is not None}
 
     @property
     def role_sources(self) -> dict[str, RankSource]:
-        return {entry.role.slot_code: entry.source for entry in self.playable}
+        return {entry.role: entry.source for entry in self.playable}
 
     @property
-    def role_top_heroes(self) -> dict[str, list[dict[str, Any]]]:
+    def role_top_characters(self) -> dict[str, list[dict[str, Any]]]:
         return {
-            entry.role.slot_code: [
-                {"hero_id": hero.id, "slug": hero.slug, "image_path": hero.image_path} for hero in entry.top_heroes
-            ]
+            entry.role: [character.wire() for character in entry.top_characters]
             for entry in self.playable
-            if entry.top_heroes
+            if entry.top_characters
         }
 
     @property
@@ -240,7 +242,7 @@ class PlayerRoster:
         role: a damage main who flexes support is a hitscan AND a flex support,
         and the draft board renders both.
         """
-        return {entry.role.slot_code: entry.subrole for entry in self.playable if entry.subrole}
+        return {entry.role: entry.subrole for entry in self.playable if entry.subrole}
 
     # -- verdicts ------------------------------------------------------------
 
@@ -254,9 +256,8 @@ class PlayerRoster:
         """At least one playable role: below this a player cannot be picked at all."""
         return bool(self.playable)
 
-    def covers(self, role: HeroClass | str | None) -> bool:
+    def covers(self, role: str | None) -> bool:
         """Whether this player can fill a slot of ``role``; a role-less slot fits anyone."""
-        if role is None or role is HeroClass.flex or role == HeroClass.flex.slot_code:
+        if role is None or role == FLEX_SLOT_CODE:
             return self.is_draftable
-        wanted = role if isinstance(role, HeroClass) else HeroClass.parse(role)
-        return wanted in self.playable_roles
+        return role in self.playable_roles

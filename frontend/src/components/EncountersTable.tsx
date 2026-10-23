@@ -1,304 +1,86 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useSyncExternalStore } from "react";
 import { useTranslations } from "next-intl";
-import { useFormatter } from "@/lib/datetime/client";
-import { usePathname, useRouter } from "next/navigation";
 
-import styles from "./EncountersTable.module.css";
-// The `.aqt-matches` scope, moved out of globals.css and next to its consumer.
-import "./EncountersTable.css";
-import {
-  getPublicPageQueryPresentation,
-  type PublicPageQueryState
-} from "@/lib/public-page-query-presentation";
+import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
+import { acceptedScore } from "@/components/pick-ban/pick-ban-model";
 import TeamName from "@/components/TeamName";
-import {
-  TournamentStatusPill,
-  type TournamentStatusVariant
-} from "@/components/tournaments/StatusPill";
-import { DataPagination } from "@/components/ui/data-pagination";
-import { SearchField } from "@/components/ui/search-field";
+import { Card } from "@/components/ui/card";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/ui/status-dot";
+import { GameMark } from "@/components/workspace/GameMark";
+import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
+import { UNKNOWN_ROUND_SHAPE } from "@/lib/bracket/round-name";
+import { mapWithModeName } from "@/lib/catalog/mode";
+import { useFormatter } from "@/lib/datetime/client";
+import { buildSeriesSlots } from "@/lib/encounter/detail";
+import { duelSeats, seatTeam, type DuelSlot } from "@/lib/encounter/seats";
+import { getEncounterWinner, isEncounterCompleted, isEncounterLive } from "@/lib/encounter/status";
 import { cn } from "@/lib/utils";
-import {
-  getEncounterState,
-  getEncounterWinner,
-  isEncounterLive,
-  type EncounterState
-} from "@/lib/encounter/status";
-import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
-import encounterService from "@/services/encounter.service";
-import { Encounter } from "@/types/encounter.types";
-import { PaginatedResponse } from "@/types/pagination.types";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
+import type { Encounter, EncounterTeam } from "@/types/encounter.types";
 
-const PER_PAGE = 15;
 const SKELETON_ROWS = 8;
 
 // Stable no-op subscriber: hydration never "changes" once it has happened, so
 // the store has nothing to notify. Module scope keeps its identity stable.
 const subscribeNoop = () => () => {};
 
-export const getEncountersQueryPresentation = (state: PublicPageQueryState) =>
-  getPublicPageQueryPresentation(state);
+const FAINT = "text-[color:var(--aqt-fg-faint)]";
 
-type EncounterRowKeyEvent = {
-  key: string;
-  target: unknown;
-  currentTarget: unknown;
-  preventDefault: () => void;
-};
+// The row's one link is stretched over the whole row/card from the matchup
+// cell, so middle-click and "open in new tab" work like any other link.
+const STRETCHED_LINK =
+  "after:absolute after:inset-0 after:content-[''] focus-visible:outline-none " +
+  "focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-[color:var(--aqt-teal)]";
 
-export function activateEncounterRowFromKeyboard(
-  event: EncounterRowKeyEvent,
-  navigate: () => void
-): boolean {
-  if (event.target !== event.currentTarget || !["Enter", " "].includes(event.key)) return false;
-
-  event.preventDefault();
-  navigate();
-  return true;
+/** One encounter as both the row and the card read it. */
+interface RowView {
+  one: EncounterTeam | null;
+  two: EncounterTeam | null;
+  scoreOne: number;
+  scoreTwo: number;
+  /** False before a map is decided: the score reads "vs", not 0–0. */
+  hasScore: boolean;
+  winner: DuelSlot | null;
+  names: { one: string; two: string };
+  /** The row link's accessible name: both teams and the score. */
+  label: string;
+  stage: string;
+  round: string;
+  bestOf: string;
+  /** 0..1 closeness as the bar's width, null when the server has none. */
+  closeness: number | null;
+  /** The same as a locale percent ("60 %" in ru). */
+  closenessText: string | null;
+  when: { day: string; time: string; live: boolean };
 }
 
 /**
- * The one encounters list table for the whole site.
- *
- * The standalone `/encounters` page used to ship a second, independent 10-column
- * table with its own closeness bar, winner resolver and status derivation. This
- * table now covers both: the tournament detail page takes
- * `DEFAULT_ENCOUNTER_COLUMNS`, `/encounters` takes `FULL_ENCOUNTER_COLUMNS`.
- */
-export type EncounterColumnKey =
-  | "matchup"
-  | "tournament"
-  | "score"
-  | "format"
-  | "closeness"
-  | "stage"
-  | "maps"
-  | "state"
-  | "when"
-  | "logs";
-
-const DEFAULT_ENCOUNTER_COLUMNS: readonly EncounterColumnKey[] = [
-  "matchup",
-  "tournament",
-  "score",
-  "format",
-  "closeness",
-  "stage",
-  "when",
-  "logs"
-];
-
-export const FULL_ENCOUNTER_COLUMNS: readonly EncounterColumnKey[] = [
-  "matchup",
-  "tournament",
-  "score",
-  "format",
-  "closeness",
-  "stage",
-  "maps",
-  "state",
-  "when",
-  "logs"
-];
-
-// Message keys are kept as literal unions so the strictly-typed `t()` accepts a
-// table lookup directly.
-type StateLabelKey =
-  | "encounters.state.live"
-  | "encounters.state.upcoming"
-  | "encounters.state.final"
-  | "encounters.state.pending"
-  | "encounters.state.open";
-
-const STATE_LABEL_KEY: Record<EncounterState, StateLabelKey> = {
-  Live: "encounters.state.live",
-  Upcoming: "encounters.state.upcoming",
-  Final: "encounters.state.final",
-  Pending: "encounters.state.pending",
-  Open: "encounters.state.open"
-};
-
-const STATE_PILL_VARIANT: Record<EncounterState, TournamentStatusVariant> = {
-  Live: "live",
-  Upcoming: "upcoming",
-  Final: "finished",
-  Pending: "upcoming",
-  Open: "open"
-};
-
-type ColumnHeaderKey =
-  | "encounters.col.matchup"
-  | "common.tournament"
-  | "encounters.col.score"
-  | "encounters.col.format"
-  | "encounters.col.closeness"
-  | "common.stage"
-  | "encounters.col.maps"
-  | "common.status"
-  | "encounters.col.when"
-  | "encounters.col.logs";
-
-const HEADER: Record<EncounterColumnKey, { key: ColumnHeaderKey; align?: "r" | "c" }> = {
-  matchup: { key: "encounters.col.matchup" },
-  tournament: { key: "common.tournament" },
-  score: { key: "encounters.col.score", align: "r" },
-  format: { key: "encounters.col.format", align: "c" },
-  closeness: { key: "encounters.col.closeness" },
-  stage: { key: "common.stage" },
-  maps: { key: "encounters.col.maps", align: "c" },
-  state: { key: "common.status", align: "c" },
-  when: { key: "encounters.col.when", align: "r" },
-  logs: { key: "encounters.col.logs", align: "c" }
-};
-
-/**
- * An upset is a completed series that was decided by a single map yet scored as
- * very close — worth surfacing over the plain "Final" label.
- */
-function isUpset(encounter: Encounter): boolean {
-  return (
-    getEncounterWinner(encounter) != null &&
-    encounter.closeness != null &&
-    encounter.closeness >= 0.8 &&
-    Math.abs(encounter.score.home - encounter.score.away) === 1
-  );
-}
-
-export function useEncountersTableController({
-  data,
-  initialPage,
-  search,
-  tournamentId,
-  workspaceId,
-  enabled = true
-}: {
-  data?: PaginatedResponse<Encounter>;
-  initialPage: number;
-  search: string;
-  tournamentId: number;
-  workspaceId?: number | null;
-  enabled?: boolean;
-}) {
-  const pathname = usePathname();
-  const [querySearch, setQuerySearch] = useState(search);
-  const [currentPage, setCurrentPage] = useState(initialPage);
-  const previousUrlStateRef = useRef({ page: initialPage, search });
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const encountersQuery = useQuery({
-    queryKey: tournamentQueryKeys.encountersPage(
-      tournamentId,
-      workspaceId,
-      currentPage,
-      querySearch
-    ),
-    queryFn: () =>
-      encounterService.getAll(
-        currentPage,
-        querySearch,
-        tournamentId,
-        PER_PAGE,
-        undefined,
-        undefined,
-        workspaceId
-      ),
-    enabled,
-    placeholderData: (previousData) => previousData,
-    initialData: data && currentPage === initialPage && querySearch === search ? data : undefined
-  });
-
-  useEffect(() => {
-    const handlePopState = () => {
-      const params = new URLSearchParams(window.location.search);
-      const nextPage = Number.parseInt(params.get("page") ?? "1", 10) || 1;
-      const nextSearch = params.get("search") ?? "";
-      clearTimeout(searchTimerRef.current ?? undefined);
-      previousUrlStateRef.current = { page: nextPage, search: nextSearch };
-      setQuerySearch(nextSearch);
-      setCurrentPage(nextPage);
-    };
-
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
-
-  useEffect(
-    () => () => {
-      clearTimeout(searchTimerRef.current ?? undefined);
-    },
-    []
-  );
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const currentSearch = params.get("search") ?? "";
-    const currentPageParam = Number.parseInt(params.get("page") ?? "1", 10) || 1;
-    const previousUrlState = previousUrlStateRef.current;
-    const searchChanged = previousUrlState.search !== querySearch;
-    const pageChanged = previousUrlState.page !== currentPage;
-
-    if (!searchChanged && !pageChanged) return;
-    if (currentSearch === querySearch && currentPageParam === currentPage) {
-      previousUrlStateRef.current = { page: currentPage, search: querySearch };
-      return;
-    }
-
-    if (querySearch) params.set("search", querySearch);
-    else params.delete("search");
-    if (currentPage > 1) params.set("page", String(currentPage));
-    else params.delete("page");
-
-    const query = params.toString();
-    const nextUrl = query ? `${pathname}?${query}` : pathname;
-    if (searchChanged) window.history.replaceState(null, "", nextUrl);
-    else window.history.pushState(null, "", nextUrl);
-    previousUrlStateRef.current = { page: currentPage, search: querySearch };
-  }, [currentPage, pathname, querySearch]);
-
-  const onSearchInput = (nextSearch: string) => {
-    clearTimeout(searchTimerRef.current ?? undefined);
-    searchTimerRef.current = setTimeout(() => {
-      setQuerySearch(nextSearch);
-      setCurrentPage(1);
-    }, 300);
-  };
-
-  return {
-    encountersQuery,
-    currentPage,
-    setCurrentPage,
-    searchInputRef,
-    onSearchInput
-  };
-}
-
-/**
- * Card + scroll container + table. Search and pagination are the caller's, so
- * the standalone `/encounters` page can place its own filter bar, error state
- * and `DataPagination` around exactly this table.
+ * The `/encounters` list: a table from `md` up, a card list below it. Both
+ * render from the same rows; CSS picks one, so there is no viewport read and
+ * nothing to mismatch at hydration. Search, filters and pagination are the
+ * page's.
  */
 export function EncountersDataTable({
   rows,
-  columns = DEFAULT_ENCOUNTER_COLUMNS,
   loading = false,
+  games,
   className
 }: Readonly<{
   rows: Encounter[];
-  columns?: readonly EncounterColumnKey[];
-  /** Renders placeholder rows instead of collapsing the table to a single line. */
+  /** Renders placeholder rows instead of collapsing the list to nothing. */
   loading?: boolean;
+  /** Installed games by code, passed only when the list spans several games: each row shows its game's mark (§6.1). */
+  games?: Map<string, DisciplineDescriptor>;
   className?: string;
 }>) {
-  const router = useRouter();
   const t = useTranslations();
   const format = useFormatter();
+  const roundLabel = useBracketRoundLabel();
   // Relative time ("3h ago") must only be produced after hydration: the server
   // renders at one instant and the client at another, which is a hydration
   // mismatch. `useSyncExternalStore` reads "am I hydrated" as the external fact
@@ -306,313 +88,381 @@ export function EncountersDataTable({
   const isHydrated = useSyncExternalStore(subscribeNoop, () => true, () => false);
   const now = isHydrated ? new Date() : null;
 
-  const isWide = columns.length > DEFAULT_ENCOUNTER_COLUMNS.length;
-
-  const whenParts = (encounter: Encounter) => {
+  const whenParts = (encounter: Encounter): RowView["when"] => {
     if (isEncounterLive(encounter)) {
       return { day: t("common.now"), time: t("encounters.state.live"), live: true };
     }
-    const source =
-      encounter.ended_at ?? encounter.started_at ?? encounter.scheduled_at ?? encounter.created_at;
-    if (!source) return { day: t("common.tbd"), time: "", live: false };
-    const date = new Date(source);
-    if (Number.isNaN(date.getTime())) return { day: t("common.tbd"), time: "", live: false };
+    const toDate = (value: Date | string | null | undefined) => {
+      const date = value == null ? null : new Date(value);
+      return date && !Number.isNaN(date.getTime()) ? date : null;
+    };
+    const completed = isEncounterCompleted(encounter);
+    const at = toDate(completed ? encounter.played_at : encounter.scheduled_at);
+    if (at) {
+      return {
+        day: format.dateTime(at, { month: "short", day: "numeric" }),
+        time:
+          completed && now
+            ? format.relativeTime(at, now)
+            : format.dateTime(at, { timeStyle: "short" }),
+        live: false
+      };
+    }
+    if (!completed) return { day: t("encounters.state.upcoming"), time: "", live: false };
+    // No trusted `played_at` (imported history): the tournament's dates, as a
+    // day with its year, since these run years back.
+    const held = toDate(encounter.tournament?.end_date ?? encounter.tournament?.start_date);
     return {
-      day: format.dateTime(date, { month: "short", day: "numeric" }),
-      time: now ? format.relativeTime(date, now) : format.dateTime(date, { timeStyle: "short" }),
+      day: held
+        ? format.dateTime(held, { day: "numeric", month: "short", year: "numeric" })
+        : t("common.tbd"),
+      time: "",
       live: false
     };
   };
 
-  const renderCell = (column: EncounterColumnKey, encounter: Encounter) => {
-    const winner = getEncounterWinner(encounter);
-
-    switch (column) {
-      case "matchup":
-        return (
-          <td key={column}>
-            <div className="m-up">
-              <div className={cn("row", winner === "home" && "winner", winner === "away" && "loser")}>
-                <TeamName
-                  team={encounter.home_team}
-                  fallback={t("common.tbd")}
-                  size="xs"
-                  nameClassName="nm"
-                />
-              </div>
-              <div className={cn("row", winner === "away" && "winner", winner === "home" && "loser")}>
-                <TeamName
-                  team={encounter.away_team}
-                  fallback={t("common.tbd")}
-                  size="xs"
-                  nameClassName="nm"
-                />
-              </div>
-            </div>
-          </td>
-        );
-
-      case "tournament":
-        return (
-          <td key={column}>
-            <span className="m-round">{encounter.tournament?.name ?? "—"}</span>
-          </td>
-        );
-
-      case "score":
-        return (
-          <td key={column} className="r">
-            <div className="m-score">
-              <span className={winner === "home" ? "w" : "l"}>{encounter.score.home}</span>
-              <span className="sep">–</span>
-              <span className={winner === "away" ? "w" : "l"}>{encounter.score.away}</span>
-            </div>
-          </td>
-        );
-
-      case "format":
-        return (
-          <td
-            key={column}
-            className="c aqt-tnum text-caption tabular-nums text-[color:var(--aqt-fg-dim)]"
-          >
-            {t("encounters.bestOfShort", { count: encounter.best_of })}
-          </td>
-        );
-
-      case "closeness": {
-        const closeness = encounter.closeness;
-        return (
-          <td key={column}>
-            {closeness == null ? (
-              <span className="num text-[color:var(--aqt-fg-faint)]">—</span>
-            ) : (
-              <div className="m-close">
-                <span className="track">
-                  <span
-                    className={cn("fill", closeness >= 0.8 && "hot")}
-                    style={{ width: `${Math.round(closeness * 100)}%` }}
-                  />
-                </span>
-                <span className="num tabular-nums">{Math.round(closeness * 100)}%</span>
-              </div>
-            )}
-          </td>
-        );
-      }
-
-      case "stage":
-        return (
-          <td key={column}>
-            <span className="m-round">
-              {encounter.stage_item?.name ??
-                encounter.stage?.name ??
-                t("common.unassignedStage")}
-              <span className="stage"> · {t("encounters.roundShort", { round: encounter.round })}</span>
-            </span>
-          </td>
-        );
-
-      case "maps": {
-        const played = [...(encounter.matches ?? [])].sort((a, b) => a.id - b.id);
-        return (
-          <td key={column} className="c">
-            {played.length ? (
-              <span
-                role="img"
-                className={styles.pips}
-                aria-label={t("encounters.mapsCount", { count: played.length })}
-              >
-                {played.map((match) => (
-                  <span
-                    key={match.id}
-                    aria-hidden
-                    className={cn(
-                      styles.pip,
-                      match.score.home > match.score.away ? styles.pipHome : styles.pipAway
-                    )}
-                  />
-                ))}
-              </span>
-            ) : (
-              <span className="num text-[color:var(--aqt-fg-faint)]">—</span>
-            )}
-          </td>
-        );
-      }
-
-      case "state": {
-        const state = getEncounterState(encounter);
-        const upset = state === "Final" && isUpset(encounter);
-        return (
-          <td key={column} className="c">
-            <TournamentStatusPill
-              status={upset ? "upset" : STATE_PILL_VARIANT[state]}
-              className="px-[7px] py-0.5"
-            >
-              {upset ? t("encounters.state.upset") : t(STATE_LABEL_KEY[state])}
-            </TournamentStatusPill>
-          </td>
-        );
-      }
-
-      case "when": {
-        const when = whenParts(encounter);
-        return (
-          <td key={column} className="r">
-            <div className="m-when items-end">
-              <span className="day">{when.day}</span>
-              <span className={cn("time tabular-nums", when.live && "live")}>
-                {when.live ? (
-                  <StatusDot className="mr-1 size-[7px] text-[color:var(--aqt-status-live)] shadow-[0_0_0_3px_color-mix(in_srgb,var(--aqt-status-live)_18%,transparent)] [animation:aqtPulse_2s_ease-in-out_infinite] motion-reduce:animate-none" />
-                ) : null}
-                {when.time}
-              </span>
-            </div>
-          </td>
-        );
-      }
-
-      case "logs":
-        return (
-          <td key={column} className="c">
-            {/* Layout box and click shield, not a control: the whole row
-                navigates, so a click landing on the badge must not. There is
-                deliberately no keyboard twin — this only ever catches clicks on
-                the indicator's non-focusable `<span>` variants. Its focusable
-                variants stop propagation themselves, and the row's key handler
-                already ignores events whose target is not the row. */}
-            <div
-              role="presentation"
-              className="m-media justify-center"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <MatchLogIndicator
-                hasLogs={encounter.has_logs}
-                logs={
-                  encounter.has_logs
-                    ? (encounter.matches ?? []).map((match, index) => ({
-                        matchId: match.id,
-                        label: match.map?.name ?? `${index + 1}`
-                      }))
-                    : undefined
-                }
-              />
-            </div>
-          </td>
-        );
-    }
+  const view = (encounter: Encounter): RowView => {
+    const [one, two] = duelSeats(encounter.teams);
+    const scoreOne = one?.score ?? 0;
+    const scoreTwo = two?.score ?? 0;
+    const names = {
+      one: seatTeam(one)?.name ?? t("common.tbd"),
+      two: seatTeam(two)?.name ?? t("common.tbd")
+    };
+    const hasScore = isEncounterCompleted(encounter) || scoreOne !== 0 || scoreTwo !== 0;
+    const closeness =
+      encounter.closeness != null && Number.isFinite(encounter.closeness) ? encounter.closeness : null;
+    return {
+      one,
+      two,
+      scoreOne,
+      scoreTwo,
+      hasScore,
+      winner: getEncounterWinner(encounter),
+      label: hasScore
+        ? t("encounters.table.linkScore", { ...names, scoreOne, scoreTwo })
+        : t("encounters.table.linkVs", names),
+      names,
+      stage: encounter.stage_item?.name ?? encounter.stage?.name ?? t("common.unassignedStage"),
+      round: encounter.is_final ? t("bracket.final") : roundLabel(encounter.round, UNKNOWN_ROUND_SHAPE),
+      bestOf: t("encounters.bestOfShort", { count: encounter.best_of }),
+      closeness,
+      closenessText:
+        closeness == null ? null : format.number(closeness, { style: "percent", maximumFractionDigits: 0 }),
+      when: whenParts(encounter)
+    };
   };
 
-  return (
-    // `.matches-card` / `.m-scroll` / `table.m` are all scoped as DESCENDANTS of
-    // `.aqt-matches` in `EncountersTable.css`, so the scope class must sit on an
-    // ancestor element — not on the card itself.
-    <div className={cn("aqt-matches min-w-0", className)}>
-      <div className="matches-card min-w-0">
-        <section
-          className={cn("m-scroll", styles.tableViewport)}
-          aria-label={t("tournamentDetail.publicPages.matches.tableLabel")}
-          tabIndex={0}
-        >
-          <table className={cn("m", styles.matchesTable, isWide && styles.matchesTableWide)}>
-            <thead>
-              <tr>
-                {columns.map((column) => (
-                  <th key={column} scope="col" className={HEADER[column].align}>
-                    {t(HEADER[column].key)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading
-                ? Array.from({ length: SKELETON_ROWS }).map((_, index) => (
-                    <tr key={`skeleton-${index}`}>
-                      {columns.map((column) => (
-                        <td key={column}>
-                          <Skeleton className="h-6 w-full rounded-md" />
-                        </td>
-                      ))}
-                    </tr>
-                  ))
-                : rows.map((encounter) => {
-                    const openEncounter = () => router.push(`/encounters/${encounter.id}`);
+  const gameMark = (encounter: Encounter) => {
+    if (!games) return null;
+    // An uninstalled game's history is named by its code.
+    const game = games.get(encounter.discipline) ?? {
+      code: encounter.discipline,
+      name: encounter.discipline,
+      short_name: encounter.discipline.slice(0, 2).toUpperCase(),
+      icon: null
+    };
+    return <GameMark discipline={game} size={20} />;
+  };
 
-                    return (
-                      <tr
-                        key={encounter.id}
-                        className={cn(isEncounterLive(encounter) && "live")}
-                        tabIndex={0}
-                        onClick={openEncounter}
-                        onKeyDown={(event) => {
-                          activateEncounterRowFromKeyboard(event, openEncounter);
-                        }}
-                      >
-                        {columns.map((column) => renderCell(column, encounter))}
-                      </tr>
-                    );
-                  })}
-            </tbody>
-          </table>
-        </section>
-      </div>
+  const matchupLink = (encounter: Encounter, row: RowView, linkClassName?: string) => (
+    <HoverPrefetchLink
+      href={`/encounters/${encounter.id}`}
+      aria-label={row.label}
+      className={cn("flex min-w-0 flex-col gap-1", STRETCHED_LINK, linkClassName)}
+    >
+      {([1, 2] as const).map((slot) => (
+        <TeamName
+          key={slot}
+          team={seatTeam(slot === 1 ? row.one : row.two)}
+          fallback={t("common.tbd")}
+          size="xs"
+          nameClassName={cn(
+            "text-caption font-semibold",
+            row.winner === slot
+              ? "font-bold text-[color:var(--aqt-fg)]"
+              : row.winner
+                ? "text-[color:var(--aqt-fg-dim)]"
+                : "text-[color:var(--aqt-fg-muted)]"
+          )}
+        />
+      ))}
+    </HoverPrefetchLink>
+  );
+
+  const score = (row: RowView) => {
+    if (!row.hasScore) {
+      return <span className={cn("text-label uppercase", FAINT)}>{t("common.vs")}</span>;
+    }
+    const tone = (slot: DuelSlot) =>
+      row.winner === slot
+        ? "text-[color:var(--aqt-teal)]"
+        : row.winner
+          ? FAINT
+          : "text-[color:var(--aqt-fg-muted)]";
+    return (
+      <span className="inline-flex items-baseline gap-1 font-display text-title font-bold leading-none tabular-nums">
+        <span className={tone(1)}>{row.scoreOne}</span>
+        <span className={cn("font-medium", FAINT)}>–</span>
+        <span className={tone(2)}>{row.scoreTwo}</span>
+      </span>
+    );
+  };
+
+  // One pip per played map: teal when the left seat took it, neutral when the
+  // right did, hollow while no result decides it. Read off the same series
+  // slots as the encounter page's pips, so the two never disagree.
+  const pips = (encounter: Encounter, row: RowView) => {
+    const played = buildSeriesSlots(encounter).filter(
+      (slot) => slot.match != null || acceptedScore(slot.game, encounter.teams) != null
+    );
+    if (!played.length) return null;
+    const summary = played
+      .map((slot) =>
+        slot.winner === 1 ? row.names.one : slot.winner === 2 ? row.names.two : t("encounters.detail.tie")
+      )
+      .join(", ");
+    return (
+      <span
+        role="img"
+        aria-label={t("encounters.detail.pipsAria", { summary })}
+        className="inline-flex items-center gap-[3px]"
+      >
+        {played.map((slot) => (
+          <span
+            key={slot.index}
+            aria-hidden
+            className={cn(
+              "size-[7px] shrink-0 rounded-[2px]",
+              slot.winner === 1
+                ? "bg-[color:var(--aqt-teal)]"
+                : slot.winner === 2
+                  ? "bg-[color:var(--aqt-fg-dim)]"
+                  : "border border-[color:var(--aqt-fg-faint)]"
+            )}
+          />
+        ))}
+      </span>
+    );
+  };
+
+  const liveDot = (
+    <StatusDot className="size-[7px] text-[color:var(--aqt-status-live)] shadow-[0_0_0_3px_color-mix(in_srgb,var(--aqt-status-live)_18%,transparent)] [animation:aqtPulse_2s_ease-in-out_infinite] motion-reduce:animate-none" />
+  );
+
+  const logs = (encounter: Encounter, className?: string) => (
+    // Lifted above the stretched row link so the download stays its own target.
+    <span className="relative z-10 inline-flex">
+      <MatchLogIndicator
+        hasLogs={encounter.has_logs}
+        className={className}
+        logs={
+          encounter.has_logs
+            ? (encounter.matches ?? []).map((match) => ({
+                matchId: match.id,
+                rawAvailable: match.raw_available,
+                label: `${mapWithModeName(match.map, match.mode) ?? t("encounters.match.mapAlt")} · #${match.id}`
+              }))
+            : undefined
+        }
+      />
+    </span>
+  );
+
+  const header: Array<{ label: string; className?: string }> = [
+    { label: t("encounters.col.matchup") },
+    { label: t("encounters.col.result"), className: "w-32" },
+    { label: t("common.tournament") },
+    { label: t("encounters.col.closeness"), className: "w-20 lg:w-36" },
+    // Fits "6 нояб. 2026 г." and "11 месяцев назад" on one line from 1280px.
+    { label: t("encounters.col.when"), className: "w-36 text-right" },
+    { label: t("encounters.col.logs"), className: "w-16 text-center" }
+  ];
+  const cell = "border-b border-[color:var(--aqt-border)] px-3 py-3 align-middle";
+
+  const tableRow = (encounter: Encounter) => {
+    const row = view(encounter);
+    return (
+      <tr
+        key={encounter.id}
+        className={cn(
+          // Safari does not make a `<tr>` the containing block of the stretched
+          // link (WebKit 240961): the transform does, the clip keeps it in the row.
+          "relative [clip-path:inset(0)] [transform:translate(0)] transition-colors hover:bg-[color:var(--aqt-overlay-2)]",
+          isEncounterLive(encounter) &&
+            "bg-[color:color-mix(in_srgb,var(--aqt-status-live)_5%,transparent)]"
+        )}
+      >
+        <td className={cell}>
+          <div className="flex min-w-0 items-center gap-2.5">
+            {gameMark(encounter)}
+            {matchupLink(encounter, row)}
+          </div>
+        </td>
+        <td className={cell}>
+          <div className="flex flex-col gap-1.5">
+            {score(row)}
+            <span className="flex items-center gap-2">
+              <span className={cn("aqt-tnum text-label tabular-nums", FAINT)}>{row.bestOf}</span>
+              {pips(encounter, row)}
+            </span>
+          </div>
+        </td>
+        <td className={cell}>
+          <span className="block truncate text-caption font-medium text-[color:var(--aqt-fg-muted)]">
+            {encounter.tournament?.name ?? "—"}
+          </span>
+          <span className="block truncate text-label text-[color:var(--aqt-fg-dim)]">
+            {row.stage} · {row.round}
+          </span>
+        </td>
+        <td className={cell}>
+          {row.closeness == null ? (
+            <span className={FAINT}>—</span>
+          ) : (
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="hidden h-1.5 flex-1 overflow-hidden rounded-full bg-[color:var(--aqt-overlay-3)] lg:block">
+                {/* `block`: an inline span ignores its width and the bar renders 0x0. */}
+                <span
+                  data-closeness-fill
+                  className="block h-full rounded-full bg-[color:var(--aqt-teal)]"
+                  style={{ width: `${Math.round(row.closeness * 100)}%` }}
+                />
+              </span>
+              <span className="aqt-tnum whitespace-nowrap text-label font-semibold tabular-nums text-[color:var(--aqt-fg-muted)]">
+                {row.closenessText}
+              </span>
+            </span>
+          )}
+        </td>
+        <td className={cn(cell, "text-right")}>
+          {/* Sentence case: an uppercase, tracked date shouted and wrapped. */}
+          <span className="flex flex-col items-end gap-0.5 whitespace-nowrap leading-tight">
+            <span className="text-caption font-medium tabular-nums text-[color:var(--aqt-fg-muted)]">
+              {row.when.day}
+            </span>
+            {row.when.time ? (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 text-label tabular-nums",
+                  row.when.live
+                    ? "font-semibold text-[color:var(--aqt-status-live)]"
+                    : "text-[color:var(--aqt-fg-dim)]"
+                )}
+              >
+                {row.when.live ? liveDot : null}
+                {row.when.time}
+              </span>
+            ) : null}
+          </span>
+        </td>
+        <td className={cn(cell, "text-center")}>{logs(encounter)}</td>
+      </tr>
+    );
+  };
+
+  const card = (encounter: Encounter) => {
+    const row = view(encounter);
+    const when = [row.when.day, row.when.time].filter(Boolean).join(" · ");
+    return (
+      <Card
+        asChild
+        variant="flat"
+        key={encounter.id}
+        className={cn(
+          "relative flex flex-col gap-2 p-3 transition-colors hover:bg-[color:var(--aqt-overlay-2)]",
+          isEncounterLive(encounter) && "border-[color:color-mix(in_srgb,var(--aqt-status-live)_45%,transparent)]"
+        )}
+      >
+        <li>
+          <div className="flex items-center gap-3">
+            {gameMark(encounter)}
+            {matchupLink(encounter, row, "flex-1 after:rounded-xl")}
+            {score(row)}
+          </div>
+          <p className="truncate text-label text-[color:var(--aqt-fg-dim)]">
+            {[encounter.tournament?.name, row.stage, row.round, row.bestOf].filter(Boolean).join(" · ")}
+          </p>
+          <div className="flex items-center gap-3 text-label">
+            <span
+              className={cn(
+                "inline-flex min-w-0 items-center gap-1.5 font-medium tabular-nums",
+                row.when.live ? "text-[color:var(--aqt-status-live)]" : "text-[color:var(--aqt-fg-muted)]"
+              )}
+            >
+              {row.when.live ? liveDot : null}
+              <span className="truncate">{when}</span>
+            </span>
+            {/* Labelled: on a card there is no column head to name the number. */}
+            {row.closenessText ? (
+              <span className="whitespace-nowrap tabular-nums text-[color:var(--aqt-fg-dim)]">
+                {t("encounters.table.closenessValue", { value: row.closenessText })}
+              </span>
+            ) : null}
+            {/* 40px on a phone: the card is a link, the badge is the one other target. */}
+            <span className="ml-auto">{logs(encounter, "size-10")}</span>
+          </div>
+        </li>
+      </Card>
+    );
+  };
+
+  const skeletonRows = Array.from({ length: SKELETON_ROWS }, (_, index) => index);
+
+  return (
+    <div className={cn("min-w-0", className)}>
+      <ul aria-label={t("encounters.table.label")} aria-busy={loading || undefined} className="flex flex-col gap-2 md:hidden">
+        {loading
+          ? skeletonRows.map((index) => (
+              <Card asChild variant="flat" key={index} className="flex flex-col gap-2 p-3">
+                <li>
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-3 w-3/4" />
+                  <Skeleton className="h-3 w-1/2" />
+                </li>
+              </Card>
+            ))
+          : rows.map(card)}
+      </ul>
+
+      <Card variant="flat" className="hidden overflow-hidden md:block">
+        <table
+          aria-busy={loading || undefined}
+          className="w-full table-fixed border-separate border-spacing-0 [&>tbody>tr:last-child>td]:border-b-0"
+        >
+          <caption className="sr-only">{t("encounters.table.label")}</caption>
+          <thead className="bg-[color:var(--aqt-overlay-1)]">
+            <tr>
+              {header.map((column) => (
+                <th
+                  key={column.label}
+                  scope="col"
+                  className={cn(
+                    eyebrowClass(),
+                    "border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-left font-bold whitespace-nowrap",
+                    column.className
+                  )}
+                >
+                  {column.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading
+              ? skeletonRows.map((index) => (
+                  <tr key={index}>
+                    {header.map((column) => (
+                      <td key={column.label} className={cell}>
+                        <Skeleton className="h-8 w-full" />
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              : rows.map(tableRow)}
+          </tbody>
+        </table>
+      </Card>
     </div>
   );
 }
-
-const EncountersTable = ({
-  encounters,
-  currentPage,
-  onSetPage,
-  search,
-  searchInputRef,
-  onSearchInput,
-  hideTournament = false
-}: {
-  encounters: PaginatedResponse<Encounter>;
-  currentPage: number;
-  onSetPage: (page: number) => void;
-  search: string;
-  searchInputRef: React.RefObject<HTMLInputElement | null>;
-  onSearchInput: (nextSearch: string) => void;
-  hideTournament?: boolean;
-}) => {
-  const t = useTranslations();
-  const [searchValue, setSearchValue] = useState(search);
-  const columns = hideTournament
-    ? DEFAULT_ENCOUNTER_COLUMNS.filter((column) => column !== "tournament")
-    : DEFAULT_ENCOUNTER_COLUMNS;
-  const totalPages = Math.max(1, Math.ceil((encounters.total ?? 0) / PER_PAGE));
-
-  // The controller rewrites the query string, so a back navigation has to put
-  // the field back in step with the URL it just restored.
-  useEffect(() => {
-    const syncFromUrl = () =>
-      setSearchValue(new URLSearchParams(window.location.search).get("search") ?? "");
-    window.addEventListener("popstate", syncFromUrl);
-    return () => window.removeEventListener("popstate", syncFromUrl);
-  }, []);
-
-  return (
-    <div className="aqt-matches flex min-w-0 flex-col gap-4">
-      <SearchField
-        ref={searchInputRef}
-        value={searchValue}
-        onValueChange={(next) => {
-          setSearchValue(next);
-          onSearchInput(next);
-        }}
-        label={t("tournamentDetail.publicPages.matches.searchLabel")}
-        placeholder={t("tournamentDetail.publicPages.matches.searchPlaceholder")}
-        containerClassName="w-[300px] max-w-full"
-      />
-
-      <EncountersDataTable rows={encounters.results ?? []} columns={columns} />
-
-      <DataPagination page={currentPage} totalPages={totalPages} onPageChange={onSetPage} />
-    </div>
-  );
-};
-
-export default EncountersTable;

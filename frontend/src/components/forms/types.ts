@@ -12,9 +12,9 @@
 import type { ComponentType } from "react";
 
 import type { Translate } from "@/lib/forms/form-errors";
-import type { RoleCode } from "@/lib/roster/roles";
 import type { FormField } from "@/types/forms.types";
-import type { Hero } from "@/types/hero.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
+import type { DisciplineMetadata } from "@/types/discipline.types";
 import type { SubroleCatalog, SubscriptionStatus } from "@/types/registration.types";
 import type { SocialAccount } from "@/types/user.types";
 
@@ -29,9 +29,16 @@ export interface FieldRendererContext {
    */
   accounts: SocialAccount[];
   subroleCatalog: SubroleCatalog;
-  /** Roster for the top-heroes pickers; empty until the query resolves. */
-  heroes: Hero[];
-  lockedRole: RoleCode | null;
+  /** The owner game's characters for the top-heroes pickers; empty until the query resolves. */
+  heroes: CatalogEntityRead[];
+  /**
+   * The owner game's scoped metadata: its role ontology (the registration roles and their presentation)
+   * and its native ladder. `null` where a host has none to give; the role blocks then show an error and
+   * synthesize nothing.
+   */
+  metadata: DisciplineMetadata | null;
+  /** The role code the host fixes this registration to (a team invite / captain slot), if any. */
+  lockedRole: string | null;
   /**
    * The roles the `roles` answer declares, injected by `SchemaForm`. Optional:
    * a host builds the rest of this context, and only the per-role rank block
@@ -66,7 +73,7 @@ export interface FieldRendererProps {
   context: FieldRendererContext;
 }
 
-export type FieldRenderer = ComponentType<FieldRendererProps>;
+type FieldRenderer = ComponentType<FieldRendererProps>;
 
 /** Keyed by builtin field key first, then by {@link FormField.kind}. */
 export type RendererRegistry = Partial<Record<string, FieldRenderer>>;

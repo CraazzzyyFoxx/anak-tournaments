@@ -33,6 +33,7 @@ import (
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/cachecontrol"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/config"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/db"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/discord"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/events"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/httplog"
@@ -40,13 +41,13 @@ import (
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/metrics"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/observability"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/openapi"
-	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/parser"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/principal"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/ratelimit"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/replay"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/respcache"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/rpc"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/safego"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/stats"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/stream"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/tournament"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/tracing"
@@ -259,7 +260,6 @@ func run() error {
 	mux.HandleFunc("POST /api/v1/auth/player/link", identityHandler.PlayerLink)
 	mux.HandleFunc("DELETE /api/v1/auth/player/unlink/{player_id}", identityHandler.PlayerUnlink)
 	mux.HandleFunc("GET /api/v1/auth/player/linked", identityHandler.PlayerLinked)
-	mux.HandleFunc("PATCH /api/v1/auth/player/linked/{player_id}/primary", identityHandler.PlayerSetPrimary)
 	// Current-user avatar (multipart -> base64 RPC body; the JSON path can't do it).
 	// The resolver validates the bearer token before the multipart body is parsed.
 	identityBinary := identity.NewBinary(identityHandler, resolver.Resolve)
@@ -274,6 +274,7 @@ func run() error {
 	respcache.RegisterCached(mux, tournamentEdge, tournament.PublicReadRoutes, tournament.PublicCacheableReads, respCache)
 	tournamentEdge.Register(mux, tournament.AdminCrudRoutes)
 	tournamentEdge.Register(mux, tournament.AdminMiscRoutes)
+	tournamentEdge.Register(mux, tournament.DashboardRoutes)
 	tournamentEdge.Register(mux, tournament.RegistrationAdminRoutes)
 	tournamentEdge.Register(mux, tournament.IntegrationsRoutes)
 	// PublicWriteRoutes are mostly writes (never cached), but the public
@@ -300,39 +301,50 @@ func run() error {
 	analyticsEdge := edge.New(rpcClient, logger, resolver.Resolve)
 	analyticsEdge.Register(mux, analytics.ReadRoutes)
 	analyticsEdge.Register(mux, analytics.WriteRoutes)
-	// parser-service domains folded into /api/v1 (match-log, OverFast rank,
-	// achievement engine + rules admin, metadata sync, settings, discord-channel,
-	// bootstrap importers), served as typed RPC.
-	parserEdge := edge.New(rpcClient, logger, resolver.Resolve)
-	parserEdge.Register(mux, parser.Routes)
+	// stats-service domains folded into /api/v1 (match-log, OverFast rank,
+	// achievement engine + rules admin, metadata sync, settings, bootstrap
+	// importers), served as typed RPC.
+	statsEdge := edge.New(rpcClient, logger, resolver.Resolve)
+	statsEdge.Register(mux, stats.Routes)
+	// Public player statistics, /users/[slug] profile and achievement reads.
+	// Home-page aggregates and profile reads go through the same anonymous
+	// response cache as the tournament page (mostly TTL-only — no per-user
+	// realtime signal exists; see stats.PublicCacheableReads).
+	respcache.RegisterCached(mux, statsEdge, stats.PublicReadRoutes, stats.PublicCacheableReads, respCache)
+	// achievements get surface: ambiguous (/{id}/users vs /user/{user_id}) -> subtree.
+	mux.Handle("/api/v1/achievements/", statsEdge.Subtree(stats.AchievementsSubtreeRoutes))
 	// Multipart match-log upload (files[] -> base64 RPC body) the JSON dispatcher
 	// can't handle.
-	parserBinary := parser.NewBinary(rpcClient, resolver.Resolve, logger)
-	mux.HandleFunc("POST /api/v1/admin/logs/upload", parserBinary.AdminLogsUpload)
+	statsBinary := stats.NewBinary(rpcClient, resolver.Resolve, logger)
+	mux.HandleFunc("POST /api/v1/admin/logs/upload", statsBinary.AdminLogsUpload)
+	// Canonical match ingestion (workspace API key): raw-body relay for the document POST so its bytes are hashed
+	// exactly as sent, plus the job read through the generic dispatcher.
+	statsEdge.Register(mux, stats.IngestRoutes)
+	mux.HandleFunc("POST /api/v1/stats/matches", stats.NewIngest(rpcClient, resolver.Resolve, logger).Submit)
 	// Achievement rule/library/override admin: ambiguous patterns under ServeMux
 	// (rules/export vs rules/{rule_id}) -> ordered subtree matcher. Mounted at the
 	// shared /api/v1/admin/ws/ prefix; tournament's balancer-statuses routes there
 	// are more specific and win, so the two coexist.
-	mux.Handle("/api/v1/admin/ws/", parserEdge.Subtree(parser.AchievementAdminRoutes))
-	// app-service: typed RPC public reads.
-	// hero/map/gamemode/achievement get+list use the shared CRUD read engine.
-	// Home-page aggregates and /users/[slug] profile reads go through the same
-	// anonymous response cache as the tournament page (mostly TTL-only — no
-	// per-user realtime signal exists; see app.PublicCacheableReads).
+	mux.Handle("/api/v1/admin/ws/", statsEdge.Subtree(stats.AchievementAdminRoutes))
+	// discord-service (the bot): the workspace Discord pickers and the
+	// per-tournament match-log channel binding. It is the only process holding
+	// the bot token, so guild reads land on it directly.
+	discordEdge := edge.New(rpcClient, logger, resolver.Resolve)
+	discordEdge.Register(mux, discord.Routes)
+	// app-service: typed RPC public reads (catalog, disciplines, workspaces, the
+	// users directory). The workspace directory/staff and /users/{name} slug
+	// resolution ride the anonymous response cache (see app.PublicCacheableReads).
 	appEdge := edge.New(rpcClient, logger, resolver.Resolve)
 	respcache.RegisterCached(mux, appEdge, app.ReadRoutes, app.PublicCacheableReads, respCache)
 	appEdge.Register(mux, app.WorkspaceWriteRoutes)
 	appEdge.Register(mux, app.MetadataAdminRoutes)
 	appEdge.Register(mux, app.UsersAdminRoutes)
-	appEdge.Register(mux, app.TournamentAdminRoutes)
 	appEdge.Register(mux, app.QuotaAdminRoutes)
 	appEdge.Register(mux, app.NotificationRoutes)
 	appEdge.Register(mux, app.AnnouncementPublicRoutes)
 	appEdge.Register(mux, app.AnnouncementAdminRoutes)
 	appEdge.Register(mux, app.NotificationAdminRoutes)
 	appEdge.Register(mux, app.NotificationUserAdminRoutes)
-	// achievements get surface: ambiguous (/{id}/users vs /user/{user_id}) -> subtree.
-	mux.Handle("/api/v1/achievements/", appEdge.Subtree(app.AchievementsSubtreeRoutes))
 	// Binary/multipart endpoints the JSON dispatcher can't handle: icon + asset
 	// uploads (multipart -> base64 RPC) and the match-log download (base64 -> bytes).
 	// The match-log link is browser-navigated, so its credential may arrive in the
@@ -400,16 +412,20 @@ func run() error {
 	// the response cache's invalidator: the worker's tournament_changed
 	// consumer publishes realtime:tournament:{id}:bracket after every
 	// committed tournament write (via the transactional outbox), so cached
-	// public reads drop the moment the backend's own cache does. The chat
-	// leg is the revoker: a chat.visibility_changed frame re-runs the
-	// topic ACL for that room's live subscribers, because the ACL is otherwise
-	// only evaluated at subscribe time and an organizer hiding a chat must cut
-	// off the spectators already in it. safego recovers a panic here
+	// public reads drop the moment the backend's own cache does. The revoker
+	// leg re-runs the topic ACL for live subscribers, because the ACL is
+	// otherwise only evaluated at subscribe time: a chat.visibility_changed
+	// frame re-checks that room (an organizer hiding a chat must cut off the
+	// spectators already in it), realtime:user:{id}:rbac drops that user's
+	// cached memberships and re-checks every topic they hold (a removed member
+	// must stop receiving the workspace). safego recovers a panic here
 	// (unexpected Redis message format, etc.) instead of crashing the whole
-	// process.
+	// process. The resolver leg drops a user's cached principals on the same
+	// realtime:user:{id}:rbac frame.
 	// Invalidate before enqueueing notifications: clients may refetch as soon
 	// as their writer pump delivers the event.
-	legs := make([]events.Broadcaster, 0, 3)
+	legs := make([]events.Broadcaster, 0, 4)
+	legs = append(legs, resolver)
 	if respCache != nil {
 		legs = append(legs, respCache)
 	}

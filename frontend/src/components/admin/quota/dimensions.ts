@@ -35,7 +35,7 @@ export const QUOTA_CAPS = [
  */
 export type QuotaLimitsDraft = Record<QuotaDimension, number | null>;
 
-export const EMPTY_QUOTA_LIMITS: QuotaLimitsDraft = {
+const EMPTY_QUOTA_LIMITS: QuotaLimitsDraft = {
   requests_per_minute: null,
   heavy_per_day: null,
   concurrent_heavy: null,

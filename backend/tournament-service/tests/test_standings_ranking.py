@@ -5,7 +5,6 @@ Pure functions over constructed ``RankedStageTeam``s -- no session, no fixtures.
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,7 +14,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 from src.services.standings import service  # noqa: E402
 from tests._stage_regulation import stage_regulation  # noqa: E402
@@ -260,6 +258,18 @@ class ApplyPinsTests(TestCase):
         ranked = [(1, 1), (2, 2), (3, 0), (4, 0)]
         placed = service.apply_pins(ranked, {4: 3})
         self.assertEqual([(1, 1, False), (2, 2, False), (4, 3, True), (3, 0, False)], placed)
+
+    def test_a_bracket_mid_way_keeps_the_places_above_its_first_ranked_one_for_the_teams_still_alive(self) -> None:
+        # Semis played, final not: the semi losers share 3rd, the finalists have no place yet.
+        ranked = [(1, 3), (2, 3), (3, 0), (4, 0)]
+        self.assertEqual([(t, p, False) for t, p in ranked], service.apply_pins(ranked, {}))
+        self.assertEqual(
+            [(2, 3, False), (1, 4, True), (3, 0, False), (4, 0, False)], service.apply_pins(ranked, {1: 4})
+        )
+        # A finalist pinned last leaves one team alive above the semi losers.
+        self.assertEqual(
+            [(1, 2, False), (2, 2, False), (3, 4, True), (4, 0, False)], service.apply_pins(ranked, {3: 4})
+        )
 
 
 class PinnedTieGroupTests(TestCase):

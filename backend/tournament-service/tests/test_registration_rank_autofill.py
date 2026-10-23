@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import importlib
-import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,16 +13,15 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
-models = importlib.import_module("src.models")
+models = importlib.import_module("shared.models")
 rank_autofill = importlib.import_module("src.services.registration.rank_autofill")
 rank_sources = importlib.import_module("src.services.registration.rank_sources")
 
-from shared.core.enums import HeroClass  # noqa: E402
 from shared.core.social import SocialProvider  # noqa: E402
 from shared.division_grid import DivisionGrid, DivisionTier  # noqa: E402
 from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
+from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from shared.services.division_grid.normalization import DivisionGridNormalizer  # noqa: E402
 from shared.testing.factories import division_tier  # noqa: E402
 
@@ -32,13 +30,10 @@ def test_rank_snapshot_model_is_available_from_service_models() -> None:
     assert hasattr(models, "UserRankSnapshot")
 
 
-def _role(role: str, rank_value: int | None = None, priority: int = 0) -> SimpleNamespace:
-    return SimpleNamespace(
-        role=role,
-        rank_value=rank_value,
-        is_active=True,
-        priority=priority,
-    )
+def _role(role: str, rank_value: int | None = None, priority: int = 0):
+    from shared.testing.roles import registration_role
+
+    return registration_role(role=role, rank_value=rank_value, is_active=True, priority=priority)
 
 
 def _registration(*roles: SimpleNamespace, battle_tag: str | None = "Main#123") -> SimpleNamespace:
@@ -71,14 +66,14 @@ def _roster_for(registration: SimpleNamespace) -> PlayerRoster:
     order, over every role the registration declares."""
     return PlayerRoster(
         registration_id=registration.id,
-        battle_tag=registration.primary_handle(SocialProvider.BATTLENET),
+        identity=PlayerIdentityRead.of(SocialProvider.BATTLENET, registration.primary_handle(SocialProvider.BATTLENET)),
         display_name=registration.display_name,
         player_id=None,
         auth_user_id=None,
         workspace_member_id=None,
         roles=tuple(
             RosterRole(
-                role=HeroClass.from_slot_code(role.role),
+                role=role.role,
                 rank=role.rank_value,
                 source="registration" if role.rank_value is not None else "none",
                 is_primary=priority == 0,
@@ -94,7 +89,7 @@ def _roster_for(registration: SimpleNamespace) -> PlayerRoster:
 
 def _plan(registration: SimpleNamespace, snapshots: dict, **kwargs):
     return rank_autofill.build_registration_rank_autofill_plan(
-        registration, snapshots, roster=_roster_for(registration), **kwargs
+        registration, snapshots, roster=_roster_for(registration), provider="battlenet", **kwargs
     )
 
 
@@ -108,7 +103,7 @@ def test_autofill_keeps_existing_rank_without_overwrite() -> None:
     row, updates = _plan(
         _registration(_role("damage", 2500)),
         {"damage": _snapshot(2700)},
-        battle_tag_linked=True,
+        identity_linked=True,
         overwrite_existing=False,
     )
 
@@ -125,7 +120,7 @@ def test_autofill_overwrites_existing_rank_when_allowed() -> None:
     row, updates = _plan(
         _registration(support),
         {"support": _snapshot(2500, role="support")},
-        battle_tag_linked=True,
+        identity_linked=True,
         overwrite_existing=True,
     )
 
@@ -143,7 +138,7 @@ def test_autofill_sets_missing_ranks_from_active_registered_roles() -> None:
     row, updates = _plan(
         _registration(tank, damage),
         {"tank": _snapshot(3100, role="tank"), "damage": _snapshot(3300)},
-        battle_tag_linked=True,
+        identity_linked=True,
         overwrite_existing=False,
     )
 
@@ -156,7 +151,7 @@ def test_autofill_skips_player_when_registered_role_has_no_parsed_rank() -> None
     row, updates = _plan(
         _registration(_role("damage", priority=0), _role("support", priority=1)),
         {"damage": _snapshot(3300)},
-        battle_tag_linked=True,
+        identity_linked=True,
         overwrite_existing=False,
     )
 
@@ -166,17 +161,17 @@ def test_autofill_skips_player_when_registered_role_has_no_parsed_rank() -> None
     assert [role_row["action"] for role_row in row["roles"]] == ["blocked", "missing_rank"]
 
 
-def test_autofill_skips_unlinked_main_battle_tag() -> None:
+def test_autofill_skips_unlinked_primary_identity() -> None:
     row, updates = _plan(
         _registration(_role("damage")),
         {"damage": _snapshot(3300)},
-        battle_tag_linked=False,
+        identity_linked=False,
         overwrite_existing=False,
     )
 
     assert updates == []
     assert row["status"] == "skipped"
-    assert row["reason"] == "Main BattleTag is not linked to an analytics player account."
+    assert row["reason"] == "Primary game identity is not linked to a player account."
 
 
 def test_autofill_can_add_player_to_balancer_after_rank_update() -> None:
@@ -185,7 +180,7 @@ def test_autofill_can_add_player_to_balancer_after_rank_update() -> None:
     row, updates = _plan(
         registration,
         {"damage": _snapshot(3300)},
-        battle_tag_linked=True,
+        identity_linked=True,
         overwrite_existing=False,
     )
 
@@ -205,7 +200,7 @@ def test_autofill_can_add_unchanged_ranked_player_to_balancer() -> None:
     _row, updates = _plan(
         registration,
         {"support": _snapshot(3600, role="support")},
-        battle_tag_linked=True,
+        identity_linked=True,
         overwrite_existing=False,
     )
 
@@ -239,7 +234,7 @@ def test_autofill_does_not_add_unapproved_player_to_balancer() -> None:
 class _FakeGrid:
     """Identity grid for ranks in [1000, 4900]; everything else is unmapped (None)."""
 
-    def resolve_division_from_ow_rank(self, ow_rank: int | None):
+    def resolve_division_from_native_rank(self, ow_rank: int | None):
         if ow_rank is None or ow_rank < 1000 or ow_rank > 4900:
             return None
         return SimpleNamespace(rank_min=ow_rank)
@@ -440,7 +435,7 @@ def test_partial_applies_found_role_and_leaves_unparsed_role_untouched() -> None
     row, updates = _plan(
         _registration(tank, damage),
         {"damage": _snapshot(3300)},
-        battle_tag_linked=True,
+        identity_linked=True,
         overwrite_existing=False,
         allow_partial=True,
     )
@@ -450,7 +445,7 @@ def test_partial_applies_found_role_and_leaves_unparsed_role_untouched() -> None
     assert len(updates) == 1
     assert updates[0][0] is damage
     assert tank.rank_value is None  # unfilled role left untouched
-    actions = {role_row["role"]: role_row["action"] for role_row in row["roles"]}
+    actions = {role_row["role"]["role"]: role_row["action"] for role_row in row["roles"]}
     assert actions == {"tank": "missing_rank", "damage": "set"}
 
 
@@ -462,7 +457,7 @@ def test_partial_preserves_existing_rank_on_unparsed_role() -> None:
     row, updates = _plan(
         _registration(tank, damage),
         {"damage": _snapshot(3300)},
-        battle_tag_linked=True,
+        identity_linked=True,
         overwrite_existing=False,
         allow_partial=True,
     )
@@ -471,7 +466,7 @@ def test_partial_preserves_existing_rank_on_unparsed_role() -> None:
     assert len(updates) == 1
     assert updates[0][0] is damage
     assert tank.rank_value == 3100  # existing rank untouched, never cleared
-    actions = {role_row["role"]: role_row["action"] for role_row in row["roles"]}
+    actions = {role_row["role"]["role"]: role_row["action"] for role_row in row["roles"]}
     assert actions["tank"] == "unverified"
 
 
@@ -482,7 +477,7 @@ def test_partial_disabled_skips_whole_registration() -> None:
     row, updates = _plan(
         _registration(tank, damage),
         {"damage": _snapshot(3300)},
-        battle_tag_linked=True,
+        identity_linked=True,
         overwrite_existing=False,
         allow_partial=False,
     )
@@ -498,7 +493,7 @@ def test_unverified_action_when_existing_rank_has_no_source_value() -> None:
     row, updates = _plan(
         _registration(_role("support", rank_value=2100)),
         {},
-        battle_tag_linked=True,
+        identity_linked=True,
         overwrite_existing=False,
     )
 
@@ -512,7 +507,7 @@ def test_keep_existing_action_when_source_value_present() -> None:
     row, _updates = _plan(
         _registration(_role("support", rank_value=2100)),
         {"support": _snapshot(2500, role="support")},
-        battle_tag_linked=True,
+        identity_linked=True,
         overwrite_existing=False,
     )
 
@@ -666,7 +661,6 @@ def _make_normalizer() -> tuple[DivisionGridNormalizer, DivisionGrid]:
         target_grid=target_grid,
         source_grids_by_version_id={2: source_grid},
         primary_target_by_source_tier_id={20: target_t1, 21: target_t2},
-        weighted_targets_by_source_tier_id={},
     )
     return normalizer, target_grid
 

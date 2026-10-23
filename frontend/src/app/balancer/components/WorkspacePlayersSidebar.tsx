@@ -1,7 +1,8 @@
 "use client";
 
 import { memo, useDeferredValue, useId, useRef, useState } from "react";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import {
   PanelRightClose,
   PanelRightOpen,
@@ -12,21 +13,19 @@ import {
   X,
 } from "lucide-react";
 
+import { ICON_BUTTON_CLASS } from "@/components/balancer/balancer-page-helpers";
+import { HandleLabel } from "@/components/HandleLabel";
 import {
-  ICON_BUTTON_CLASS,
-  PANEL_CLASS,
-  ROLE_TEXT_ACCENTS,
-  splitBattleTag,
-} from "@/components/balancer/balancer-page-helpers";
-import {
-  BattleTagContextMenuItems,
-  BattleTagCopyButton,
-} from "@/app/balancer/components/BattleTagCopyControls";
+  HandleContextMenuItems,
+  HandleCopyButton,
+} from "@/app/balancer/components/HandleCopyControls";
 import { WorkspacePlayerSheet } from "@/app/balancer/components/WorkspacePlayerSheet";
-import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { RankCrest } from "@/components/RankCrest";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { DataPagination } from "@/components/ui/data-pagination";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -38,46 +37,41 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { notify } from "@/lib/notify";
-import { getDefaultDivisionGrid, resolveDivisionFromRank } from "@/lib/divisions/grid";
-import { ROLE_LABELS, ROLES, type RoleCode } from "@/lib/roster/roles";
+import { registrationRoles, roleTint, type RoleOntology } from "@/lib/roster/ontology";
+import { displaySocialHandle, getSocialProviderConfig } from "@/lib/social/providers";
 import { cn } from "@/lib/utils";
 import {
   workspacePlayerKeys,
   workspacePlayerService,
   type RosterMember,
 } from "@/services/workspace-player.service";
+import type { DivisionGrid } from "@/types/workspace.types";
 import { Spinner } from "@/components/ui/spinner";
 
 const PER_PAGE = 30;
 
-/**
- * The panel is mounted once, by the tournament balancer page, always reading
- * and writing the shared workspace canon -- a mix reads/writes its host's own
- * book through its own dialog (`PickupAddPlayersDialog`) instead.
- */
-const SCOPE_CAPTION =
-  "Shared fallback \u2014 used only where nobody set their own rank for a tournament or mix.";
-
 type WorkspacePlayersSidebarProps = {
   workspaceId: number;
+  discipline: string;
   canEdit: boolean;
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
 };
 
 function memberLabel(member: RosterMember): string {
-  return member.display_name || member.battle_tag || `#${member.member_id}`;
-}
-
-/** `1–30 of 224`, using the real page length so the last page is not overstated. */
-function rangeSummary(page: number, perPage: number, shown: number, total: number): string {
-  const first = (page - 1) * perPage + 1;
-  return `${first}\u2013${first + shown - 1} of ${total}`;
+  return member.display_name || member.identity?.handle || `#${member.member_id}`;
 }
 
 type RosterMemberRowProps = {
   member: RosterMember;
+  /** The owner game's role dictionary (names, glyphs, tints); `null` while it loads. */
+  ontology: RoleOntology | null;
+  /** The grid the member's ranks are on: the owner game's grid in the workspace. */
+  grid: DivisionGrid;
   /** Opens the rank sheet — the row shows ranks, it no longer edits them. */
   onOpen: (member: RosterMember) => void;
 };
@@ -87,7 +81,7 @@ type RosterMemberRowProps = {
  *
  * Same anatomy as `PoolPlayerCompactList`'s row — the ranked-role glyphs
  * beside the name, the division icon and accent-coloured top rank on the
- * right, a BattleTag copy button, and a right-click menu — minus everything
+ * right, a handle copy button, and a right-click menu — minus everything
  * that only exists for a tournament registration: the balancer status menu,
  * the pool include/exclude button, and the Flex / Ready / issue chips.
  *
@@ -105,20 +99,22 @@ type RosterMemberRowProps = {
  * menu root, and the search field is deferred, so an unmemoized list re-rendered
  * every row on every keystroke.
  */
-const RosterMemberRow = memo(function RosterMemberRow({ member, onOpen }: RosterMemberRowProps) {
-  const grid = getDefaultDivisionGrid();
+const RosterMemberRow = memo(function RosterMemberRow({ member, ontology, grid, onOpen }: RosterMemberRowProps) {
+  const t = useTranslations("balancerTool.pool");
+  const slotLabel = useSlotLabel(ontology);
   const label = memberLabel(member);
-  const { name, suffix } = splitBattleTag(label);
   const effective = member.ranks;
 
-  const rankedRoles = ROLES.filter((role) => typeof effective[role.code] === "number");
+  // The owner game's rated roles, in declared order, that the member has a rank for.
+  const rankedRoles = registrationRoles(ontology)
+    .map((role) => role.code)
+    .filter((code) => typeof effective[code] === "number");
   // The strongest role is what a pool decision is made on, and the glyph alone
   // hides the value — same reasoning as the pool row's primary entry.
-  const topRank = rankedRoles.reduce<{ role: RoleCode; rank: number } | null>((best, role) => {
-    const rank = effective[role.code] as number;
-    return best && best.rank >= rank ? best : { role: role.code, rank };
+  const topRank = rankedRoles.reduce<{ role: string; rank: number } | null>((best, role) => {
+    const rank = effective[role] as number;
+    return best && best.rank >= rank ? best : { role, rank };
   }, null);
-  const division = topRank ? resolveDivisionFromRank(grid, topRank.rank) : null;
 
   return (
     <ContextMenu>
@@ -144,63 +140,53 @@ const RosterMemberRow = memo(function RosterMemberRow({ member, onOpen }: Roster
                 {rankedRoles.length > 0 ? (
                   <div className="flex shrink-0 items-center gap-1">
                     {rankedRoles.map((role) => (
-                      <span key={role.code} title={ROLE_LABELS[role.code]}>
-                        <PlayerRoleIcon role={role.icon} size={15} label={ROLE_LABELS[role.code]} />
+                      <span key={role} title={slotLabel(role)}>
+                        <PlayerRoleIcon role={role} ontology={ontology} size={15} label={slotLabel(role)} />
                       </span>
                     ))}
                   </div>
                 ) : (
-                  <span className="shrink-0 text-label text-[color:var(--aqt-fg-dim)]">No roles</span>
+                  <span className="shrink-0 text-label text-[color:var(--aqt-fg-dim)]">{t("noRoles")}</span>
                 )}
-                {/* One truncating line, not a flex pair: with the discriminator as
-                    its own `shrink-0` item, a narrow sidebar clipped the whole name
-                    away and left a row identified only by `#1111`. */}
-                <button
+                <Button
                   type="button"
+                  variant="link"
+                  size="inline"
                   data-card-action
                   onClick={() => onOpen(member)}
-                  title={`Edit ${label}`}
-                  className="flex min-w-0 items-baseline rounded text-left"
+                  title={t("edit", { name: label })}
+                  className="min-w-0 justify-start"
                 >
-                  <span className="min-w-0 truncate text-caption font-medium text-[color:var(--aqt-fg)]">
-                    {name}
-                    {suffix ? <span className="text-[color:var(--aqt-fg-dim)]">{suffix}</span> : null}
-                  </span>
-                </button>
+                  <HandleLabel handle={label} className="text-caption font-medium text-[color:var(--aqt-fg)]" />
+                </Button>
               </div>
 
               <div className="flex shrink-0 items-center gap-1.5" data-card-action>
-                {division == null ? null : (
-                  <span title={`Division ${division}`}>
-                    <DivisionIcon division={division} width={20} height={20} />
-                  </span>
-                )}
+                {topRank ? <RankCrest rank={topRank.rank} grid={grid} size={20} /> : null}
                 {topRank ? (
                   <span
-                    title={`Highest rank: ${ROLE_LABELS[topRank.role]} ${topRank.rank}`}
-                    className={cn(
-                      "min-w-10 text-right text-caption font-semibold tabular-nums",
-                      ROLE_TEXT_ACCENTS[topRank.role],
-                    )}
+                    title={t("roster.highestRank", { role: slotLabel(topRank.role), rank: topRank.rank })}
+                    className="min-w-10 text-right text-caption font-semibold tabular-nums"
+                    style={{ color: roleTint(ontology, topRank.role) }}
                   >
                     {topRank.rank}
                   </span>
                 ) : (
-                  <span className="text-label text-[color:var(--aqt-fg-dim)]">No ranks yet</span>
+                  <span className="text-label text-[color:var(--aqt-fg-dim)]">{t("roster.noRanks")}</span>
                 )}
-                {member.battle_tag ? <BattleTagCopyButton battleTag={member.battle_tag} /> : null}
+                {member.identity?.handle ? <HandleCopyButton handle={member.identity.handle} /> : null}
               </div>
             </div>
           </div>
         </li>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-56">
-        <ContextMenuLabel>Player actions</ContextMenuLabel>
+        <ContextMenuLabel>{t("playerActions")}</ContextMenuLabel>
         <ContextMenuItem onClick={() => onOpen(member)}>
           <Pencil className="h-4 w-4" />
-          Edit ranks
+          {t("roster.editRanks")}
         </ContextMenuItem>
-        {member.battle_tag ? <BattleTagContextMenuItems battleTags={[member.battle_tag]} /> : null}
+        {member.identity?.handle ? <HandleContextMenuItems handles={[member.identity.handle]} /> : null}
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -208,39 +194,45 @@ const RosterMemberRow = memo(function RosterMemberRow({ member, onOpen }: Roster
 
 export function WorkspacePlayersSidebar({
   workspaceId,
+  discipline,
   canEdit,
   collapsed = false,
   onToggleCollapsed,
 }: Readonly<WorkspacePlayersSidebarProps>) {
+  const t = useTranslations("balancerTool.pool.roster");
+  const tCommon = useTranslations("common");
   const queryClient = useQueryClient();
+  const metadata = useDisciplineMetadata(workspaceId, discipline);
+  const ontology = metadata.data ?? null;
+  const grid = useDivisionGrid(discipline);
+  const provider = metadata.data?.discipline.identity_provider;
+  const identityConfig = provider ? getSocialProviderConfig(provider) : null;
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [battleTag, setBattleTag] = useState("");
+  const [handleText, setHandleText] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingMemberId, setEditingMemberId] = useState<number | null>(null);
   const deferredSearch = useDeferredValue(search.trim());
   const searchRef = useRef<HTMLInputElement>(null);
-  const battleTagRef = useRef<HTMLInputElement>(null);
-  const battleTagId = useId();
-  const battleTagHintId = `${battleTagId}-hint`;
+  const handleRef = useRef<HTMLInputElement>(null);
+  const handleId = useId();
+  const handleHintId = `${handleId}-hint`;
 
-  const listParams = { page, perPage: PER_PAGE, query: deferredSearch };
+  const listParams = { page, perPage: PER_PAGE, query: deferredSearch, discipline };
   const membersQuery = useQuery({
     queryKey: workspacePlayerKeys.list(workspaceId, listParams),
-    queryFn: () => workspacePlayerService.list(workspaceId, listParams),
-    // Every keystroke and page click is a new key: without this the rows are
-    // replaced by skeletons mid-typing and the panel flickers per character.
-    placeholderData: keepPreviousData,
+    queryFn: ({ signal }) => workspacePlayerService.list(workspaceId, listParams, { signal }),
   });
 
   const addPlayer = useMutation({
-    mutationFn: (tag: string) => workspacePlayerService.upsert(workspaceId, tag),
-    onSuccess: async (_member, tag) => {
-      setBattleTag("");
+    mutationFn: (input: { workspaceId: number; discipline: string; identity: { provider: string; handle: string } }) =>
+      workspacePlayerService.upsert(input.workspaceId, { discipline: input.discipline, identity: input.identity }),
+    onSuccess: async (_member, input) => {
+      setHandleText("");
       setIsAddOpen(false);
-      notify.success(`${tag} saved to the workspace`);
-      await queryClient.invalidateQueries({ queryKey: workspacePlayerKeys.all(workspaceId) });
+      notify.success(t("added", { handle: input.identity.handle }));
+      await queryClient.invalidateQueries({ queryKey: workspacePlayerKeys.all(input.workspaceId) });
     },
     onError: (error) => notify.apiError(error),
   });
@@ -253,6 +245,7 @@ export function WorkspacePlayersSidebar({
   const saveRank = useMutation({
     mutationFn: ({ memberId, role, rank }: { memberId: number; role: string; rank: number | null }) =>
       workspacePlayerService.setRanks(workspaceId, memberId, {
+        discipline,
         scope: "workspace",
         ranks: rank == null ? {} : { [role]: rank },
         clear: rank == null ? [role] : [],
@@ -270,10 +263,15 @@ export function WorkspacePlayersSidebar({
   // Read back out of the list rather than held as state, so a saved rank lands
   // in the open sheet the way the server normalised it.
   const editingMember = members.find((row) => row.member_id === editingMemberId) ?? null;
+  /** `1–30 of 224`, using the real page length so the last page is not overstated. */
+  const rangeSummary = (perPage: number, shown: number, count: number) => {
+    const first = (page - 1) * perPage + 1;
+    return t("range", { first, last: first + shown - 1, total: count });
+  };
 
   if (collapsed) {
     return (
-      <div className={cn(PANEL_CLASS, "flex min-h-0 min-w-0 flex-col items-center gap-3 p-2")}>
+      <Card variant="flat" className="flex min-h-0 min-w-0 flex-col items-center gap-3 p-2">
         <Button
           type="button"
           variant="ghost"
@@ -283,18 +281,20 @@ export function WorkspacePlayersSidebar({
           onClick={onToggleCollapsed}
         >
           <PanelRightOpen className="h-4 w-4" aria-hidden="true" />
-          <span className="sr-only">Expand workspace players sidebar</span>
+          <span className="sr-only">{t("expand")}</span>
         </Button>
         <div className="flex flex-1 flex-col items-center gap-2 pt-1">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-muted)]">
             <Users className="h-4 w-4" aria-hidden="true" />
           </div>
-          <div
+          <Eyebrow
+            as="div"
             aria-hidden="true"
-            className="text-center text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)] [writing-mode:vertical-rl]"
+            tone="dim"
+            className="text-center [writing-mode:vertical-rl]"
           >
-            Players
-          </div>
+            {t("railLabel")}
+          </Eyebrow>
         </div>
         {/* `?? 0` used to claim an empty workspace for as long as the first page
             was in flight, and a bare dash announces as "em dash". */}
@@ -302,26 +302,28 @@ export function WorkspacePlayersSidebar({
           <Skeleton className="h-6 w-8 rounded-lg" />
         ) : (
           <div
-            title={`${total} workspace players`}
+            title={t("railCount", { count: total })}
             className="rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-2 py-1 text-label tabular-nums text-[color:var(--aqt-fg-muted)]"
           >
             {total}
-            <span className="sr-only"> workspace players</span>
+            <span className="sr-only"> {t("railUnit", { count: total })}</span>
           </div>
         )}
-      </div>
+      </Card>
     );
   }
 
-  const submitBattleTag = () => {
-    const tag = battleTag.trim();
+  const submitHandle = () => {
+    if (!provider) return;
+    const tag = displaySocialHandle(provider, handleText);
     if (!tag) {
-      setAddError("Enter a BattleTag, for example Name#1234.");
-      battleTagRef.current?.focus();
+      const { label, placeholder } = getSocialProviderConfig(provider);
+      setAddError(t("handleRequired", { provider: label, example: placeholder }));
+      handleRef.current?.focus();
       return;
     }
     setAddError(null);
-    addPlayer.mutate(tag);
+    addPlayer.mutate({ workspaceId, discipline, identity: { provider, handle: tag } });
   };
 
   const clearSearch = () => {
@@ -334,22 +336,29 @@ export function WorkspacePlayersSidebar({
     membersQuery.isLoading || total == null
       ? ""
       : total === 0
-        ? "No workspace players shown"
-        : `${rangeSummary(page, PER_PAGE, members.length, total)} workspace players shown`;
+        ? t("listStatusEmpty")
+        : t("listStatus", { range: rangeSummary(PER_PAGE, members.length, total) });
 
   return (
     // `min-w-0`: as a grid item this panel inherits `min-width: auto`, so below
     // roughly 300px it overflowed its own track instead of truncating rows.
-    <div className={cn(PANEL_CLASS, "flex min-h-0 min-w-0 flex-col p-4")}>
+    <Card variant="flat" className="flex min-h-0 min-w-0 flex-col p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="min-w-0">
           {/* Short enough to hold one line at the narrowest sidebar width; the
               workspace is already the tool's context, and the rail says the same. */}
-          <div className="text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-            Players
-          </div>
+          <Eyebrow as="div" tone="dim">
+            {t("railLabel")}
+          </Eyebrow>
           <div className="mt-1 text-sm tabular-nums text-[color:var(--aqt-fg-muted)]">
-            {total == null ? "Loading\u2026" : `${total} ${total === 1 ? "player" : "players"}`}
+            {total == null ? (
+              <div role="status">
+                <span className="sr-only">{t("loading")}</span>
+                <Skeleton aria-hidden className="my-0.5 h-4 w-16" />
+              </div>
+            ) : (
+              t("playerCount", { count: total })
+            )}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -366,7 +375,7 @@ export function WorkspacePlayersSidebar({
               <PopoverTrigger asChild>
                 <Button type="button" variant="ghost" size="icon" className={ICON_BUTTON_CLASS}>
                   <UserPlus className="h-4 w-4" aria-hidden="true" />
-                  <span className="sr-only">Add a workspace player</span>
+                  <span className="sr-only">{t("addTrigger")}</span>
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-64 p-3">
@@ -374,54 +383,49 @@ export function WorkspacePlayersSidebar({
                   className="space-y-1.5"
                   onSubmit={(event) => {
                     event.preventDefault();
-                    submitBattleTag();
+                    submitHandle();
                   }}
                 >
-                  <label
-                    htmlFor={battleTagId}
-                    className="block text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]"
-                  >
-                    Add by BattleTag
-                  </label>
+                  <Eyebrow as="label" htmlFor={handleId} tone="dim" className="block">
+                    {identityConfig ? t("addBy", { provider: identityConfig.label }) : t("addByGame")}
+                  </Eyebrow>
                   <div className="flex gap-1.5">
                     <Input
-                      ref={battleTagRef}
-                      id={battleTagId}
-                      value={battleTag}
+                      ref={handleRef}
+                      id={handleId}
+                      value={handleText}
                       onChange={(event) => {
-                        setBattleTag(event.target.value);
+                        setHandleText(event.target.value);
                         if (addError) setAddError(null);
                       }}
-                      placeholder="Name#1234"
+                      placeholder={identityConfig?.placeholder ?? ""}
                       autoComplete="off"
                       aria-invalid={addError ? true : undefined}
-                      aria-describedby={battleTagHintId}
+                      aria-describedby={handleHintId}
                       // `min-w-0`: an `<input>` carries an intrinsic ~170px width that
                       // `min-width: auto` in a flex row turns into a floor.
-                      className="h-9 min-w-0 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-sm"
+                      className="min-w-0 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)]"
                     />
                     {/* Enabled while empty on purpose: submit validates and points at the field. */}
                     <Button
                       type="submit"
-                      size="sm"
-                      className="h-9 shrink-0 px-3"
-                      disabled={addPlayer.isPending}
+                      className="shrink-0 px-3"
+                      disabled={addPlayer.isPending || !provider || !metadata.data?.discipline.enabled}
                     >
                       {addPlayer.isPending ? (
                         <Spinner className="size-3.5" />
                       ) : null}
-                      Add player
+                      {t("addPlayer")}
                     </Button>
                   </div>
                   <p
-                    id={battleTagHintId}
+                    id={handleHintId}
                     className={cn(
                       "text-label",
                       addError ? "text-rose-200" : "text-[color:var(--aqt-fg-dim)]",
                     )}
                   >
-                    {addError ??
-                      "Joins the workspace roster, so every tournament and mix here can pick them."}
+                    {addError ?? t("addHint")}
                   </p>
                 </form>
               </PopoverContent>
@@ -437,7 +441,7 @@ export function WorkspacePlayersSidebar({
               onClick={onToggleCollapsed}
             >
               <PanelRightClose className="h-4 w-4" aria-hidden="true" />
-              <span className="sr-only">Collapse workspace players sidebar</span>
+              <span className="sr-only">{t("collapse")}</span>
             </Button>
           ) : null}
         </div>
@@ -455,11 +459,11 @@ export function WorkspacePlayersSidebar({
             setSearch(event.target.value);
             setPage(1);
           }}
-          placeholder="Search name or BattleTag"
-          aria-label="Search workspace players"
+          placeholder={t("searchPlaceholder")}
+          aria-label={t("searchLabel")}
           autoComplete="off"
           className={cn(
-            "h-9 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] pl-9 text-sm",
+            "rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] pl-9",
             search && "pr-9",
           )}
         />
@@ -472,13 +476,16 @@ export function WorkspacePlayersSidebar({
             onClick={clearSearch}
           >
             <X className="h-3.5 w-3.5" aria-hidden="true" />
-            <span className="sr-only">Clear the player search</span>
+            <span className="sr-only">{t("clearSearchLabel")}</span>
           </Button>
         ) : null}
       </div>
 
+      {/* The panel is mounted once, by the tournament balancer page, always reading
+          and writing the shared workspace canon -- a mix reads/writes its host's own
+          book through its own dialog (`PickupAddPlayersDialog`) instead. */}
       <p className="mt-2 text-label leading-tight text-[color:var(--aqt-fg-dim)]">
-        {SCOPE_CAPTION}
+        {t("scopeCaption")}
       </p>
 
       <p role="status" aria-live="polite" className="sr-only">
@@ -493,15 +500,15 @@ export function WorkspacePlayersSidebar({
           role="alert"
           className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-rose-400/25 bg-rose-500/10 px-2.5 py-1.5 text-label text-rose-100"
         >
-          <span className="min-w-0">Couldn&rsquo;t refresh &mdash; showing the last loaded page.</span>
+          <span className="min-w-0">{t("refreshFailed")}</span>
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="h-6 shrink-0 rounded border border-rose-300/30 px-1.5 text-label text-rose-100 hover:bg-rose-500/15 hover:text-rose-50"
+            className="h-6 shrink-0 rounded border border-rose-300/30 px-1.5 text-rose-100 hover:bg-rose-500/15 hover:text-rose-50"
             onClick={() => void membersQuery.refetch()}
           >
-            Retry
+            {tCommon("retry")}
           </Button>
         </div>
       ) : null}
@@ -518,9 +525,9 @@ export function WorkspacePlayersSidebar({
         ) : membersQuery.isError && !pageData ? (
           <PageStateCard
             state="error"
-            title="Unable to load workspace players"
-            description="Check your connection and try again."
-            actionLabel="Retry"
+            title={t("loadFailed")}
+            description={t("loadFailedHint")}
+            actionLabel={tCommon("retry")}
             onAction={() => void membersQuery.refetch()}
             className="px-4 py-8"
           />
@@ -528,29 +535,27 @@ export function WorkspacePlayersSidebar({
           deferredSearch ? (
             <PageStateCard
               state="filtered-empty"
-              title={`No players match \u201C${deferredSearch}\u201D`}
-              description="Try a different name or BattleTag."
-              actionLabel="Clear search"
+              title={t("noMatch", { query: deferredSearch })}
+              description={t("noMatchHint")}
+              actionLabel={t("clearSearch")}
               onAction={clearSearch}
               className="px-4 py-8"
             />
           ) : (
             <PageStateCard
               state="empty"
-              title="No workspace players yet"
-              description={
-                canEdit
-                  ? "Add a BattleTag above to start the roster this workspace balances from."
-                  : "Players added to this workspace will appear here."
-              }
+              title={t("empty")}
+              description={canEdit ? t("emptyHintEditor") : t("emptyHintViewer")}
               className="px-4 py-8"
             />
           )
         ) : (
-          <ul className="space-y-1.5" aria-label="Workspace players">
+          <ul className="space-y-1.5" aria-label={t("listLabel")}>
             {members.map((member) => (
               <RosterMemberRow
                 key={member.member_id}
+                ontology={ontology}
+                grid={grid}
                 member={member}
                 onOpen={(row) => setEditingMemberId(row.member_id)}
               />
@@ -564,11 +569,11 @@ export function WorkspacePlayersSidebar({
           page={page}
           totalPages={totalPages}
           onPageChange={setPage}
-          summary={
+          leading={
             pageData
               ? pageData.total === 0
-                ? "0 players"
-                : rangeSummary(page, pageData.per_page, members.length, pageData.total)
+                ? t("playerCount", { count: 0 })
+                : rangeSummary(pageData.per_page, members.length, pageData.total)
               : undefined
           }
         />
@@ -576,6 +581,9 @@ export function WorkspacePlayersSidebar({
 
       <WorkspacePlayerSheet
         member={editingMember}
+        discipline={discipline}
+        ontology={ontology}
+        grid={grid}
         canEdit={canEdit}
         // Scoped to the member being written: the sheet is the only surface that
         // edits, so a save anywhere else has no control to disable.
@@ -587,6 +595,6 @@ export function WorkspacePlayersSidebar({
           if (editingMemberId != null) saveRank.mutate({ memberId: editingMemberId, role, rank });
         }}
       />
-    </div>
+    </Card>
   );
 }

@@ -4,6 +4,8 @@ import React, { useEffect, useState, useTransition } from "react";
 import { Tabs } from "@/components/ui/tabs";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import UserProfileTabList, { type TabBadges } from "@/app/(site)/users/components/tabs/UserProfileTabList";
+import { PROFILE_GAME_BOUND_PARAMS } from "@/app/(site)/users/components/shared/profile-games";
+import { useGameBoundParams } from "@/components/workspace/scope-pill-store";
 
 interface UserTabsClientProps {
   activeTab: string;
@@ -17,6 +19,7 @@ const UserTabsClient = ({ activeTab, children, badges }: UserTabsClientProps) =>
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
   const [value, setValue] = useState(activeTab);
+  useGameBoundParams(PROFILE_GAME_BOUND_PARAMS);
 
   useEffect(() => {
     setValue(activeTab);

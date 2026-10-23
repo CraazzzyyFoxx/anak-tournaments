@@ -3,13 +3,14 @@ import typing
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.repository import (
     AnalyticsAlgorithmRepository,
     AnalyticsPlayerRepository,
     AnalyticsShiftRepository,
 )
-from src import models
-from src.core.workspace import workspace_filter
+from shared.repository.stats_queries import match_context
+from shared.services.workspace_scope import workspace_filter
 
 VISIBLE_SHIFT_ALGORITHM_NAMES = ("Linear", "Points", "OpenSkill + ML")
 
@@ -80,8 +81,8 @@ class AnalyticsReadService:
                 sa.orm.joinedload(models.Team.standings),
                 sa.orm.joinedload(models.Team.standings).joinedload(models.Standing.stage_item),
                 # PlayerRead.user_id (built by _player_to_pydantic) is resolved from
-                # workspace_member.player_id (contract step iwrefac07); eager-load it here
-                # since models.Player is selected as its own entity, not via a relationship.
+                # workspace_member.player_id; eager-load it here since models.Player
+                # is selected as its own entity, not via a relationship.
                 sa.orm.joinedload(models.Player.workspace_member),
             )
             .join(models.Tournament, models.Team.tournament_id == models.Tournament.id)
@@ -116,12 +117,10 @@ class AnalyticsReadService:
         Derived entirely from the v2 ``analytics.standings_distribution`` rows written
         by the ``Standings MC v2`` Monte-Carlo simulator: ``predicted_place`` is the
         team's ``round(mean_position)`` — the mean finishing position across
-        simulations, rounded to the nearest integer place (the same scalar the retired
-        v1 ``analytics.predictions`` table used to mirror). Independent of the v1
-        ``algorithm_id`` selected in the UI for shifts/points, so that selector no
-        longer changes the forecast column.
+        simulations, rounded to the nearest integer place. Independent of the
+        ``algorithm_id`` selected in the UI for shifts/points.
         """
-        del algorithm_id  # v1 ``analytics.predictions`` retired; served from v2.
+        del algorithm_id  # the forecast does not depend on the shift/points algorithm
 
         predictions: dict[int, int] = {}
         standings_v2_id = await self.algorithms.get_id_by_name(session, _STANDINGS_V2_NAME)
@@ -170,35 +169,30 @@ class AnalyticsReadService:
         )
         encounter_for_player: dict[int, int] = {}
         if unresolved_player_ids:
-            home_query = (
+            discipline = await session.scalar(
+                sa.select(models.Tournament.discipline).where(models.Tournament.id == tournament_id)
+            )
+            matches = match_context(discipline=discipline)
+            query = (
                 sa.select(
                     models.Player.id.label("player_id"),
-                    sa.func.min(models.Match.encounter_id).label("encounter_id"),
+                    sa.func.min(matches.c.encounter_id).label("encounter_id"),
                 )
-                .join(models.Match, models.Match.home_team_id == models.Player.team_id)
-                .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
+                .select_from(models.Player)
+                .join(models.EncounterTeam, models.EncounterTeam.team_id == models.Player.team_id)
+                .join(
+                    models.StatsMatchTeam,
+                    models.StatsMatchTeam.encounter_team_id == models.EncounterTeam.id,
+                )
+                .join(matches, matches.c.id == models.StatsMatchTeam.match_id)
                 .where(
-                    models.Encounter.tournament_id == tournament_id,
+                    matches.c.tournament_id == tournament_id,
                     models.Player.id.in_(unresolved_player_ids),
+                    models.StatsMatchTeam.source_position.in_((1, 2)),
                 )
                 .group_by(models.Player.id)
             )
-            away_query = (
-                sa.select(
-                    models.Player.id.label("player_id"),
-                    sa.func.min(models.Match.encounter_id).label("encounter_id"),
-                )
-                .join(models.Match, models.Match.away_team_id == models.Player.team_id)
-                .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-                .where(
-                    models.Encounter.tournament_id == tournament_id,
-                    models.Player.id.in_(unresolved_player_ids),
-                )
-                .group_by(models.Player.id)
-            )
-            for pid, encounter_id in (await session.execute(home_query)).all() + (
-                await session.execute(away_query)
-            ).all():
+            for pid, encounter_id in (await session.execute(query)).all():
                 if pid is None or encounter_id is None:
                     continue
                 previous = encounter_for_player.get(int(pid))
@@ -253,14 +247,17 @@ class AnalyticsReadService:
 
     async def get_streaks(
         self, session: AsyncSession, tournament_id: int
-    ) -> typing.Sequence[tuple[models.User, int, str, int]]:
+    ) -> typing.Sequence[tuple[models.User, str | None, str | None, str, int]]:
         subquery = (
             sa.select(
                 models.WorkspaceMember.player_id.label("user_id"),
                 models.Player.role,
+                models.Player.sub_role,
+                models.Tournament.discipline,
                 models.Standing.overall_position,
             )
             .select_from(models.Player)
+            .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
             .join(
                 models.WorkspaceMember,
                 models.WorkspaceMember.id == models.Player.workspace_member_id,
@@ -278,6 +275,8 @@ class AnalyticsReadService:
             sa.select(
                 models.User,
                 subquery.c.role,
+                subquery.c.sub_role,
+                subquery.c.discipline,
                 subquery.c.overall_position,
             )
             .select_from(models.Player)

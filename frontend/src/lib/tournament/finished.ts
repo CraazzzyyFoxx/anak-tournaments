@@ -2,7 +2,7 @@ import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
 import type { Tournament } from "@/types/tournament.types";
 
-export interface TournamentWinner {
+interface TournamentWinner {
   team: string;
   /** Full BattleTags of the winning roster, substitutes excluded. */
   players: string[];

@@ -9,20 +9,27 @@ proven ``schemas.OAuthUserInfo``; what that identity means for a site account is
 
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import httpx
 from loguru import logger
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.core.social import SocialProvider, steam_account_id
 from src import schemas
 from src.core.config import Settings, settings
+from src.services.steam_profiles import fetch_profiles
 
 _HTTP_LIMITS = httpx.Limits(max_keepalive_connections=20, max_connections=100)
 _HTTP_TIMEOUT = httpx.Timeout(30.0)
+
+
+class OAuthTokenRejected(Exception):
+    """The provider refused a stored user access token (revoked, or expired early): only a re-link fixes it."""
 
 
 def _raise_provider_call_error(exc: BaseException, *, provider_label: str, error_detail: str) -> None:
@@ -73,8 +80,6 @@ class OAuthHttpClient:
 
 
 class OAuthProviderBase(ABC):
-    """Base class for OAuth providers"""
-
     provider_name: str = "generic"
 
     def __init__(self, http: OAuthHttpClient) -> None:
@@ -94,12 +99,9 @@ class OAuthProviderBase(ABC):
 
 
 class DiscordOAuthProvider(OAuthProviderBase):
-    """Discord OAuth provider implementation"""
-
     provider_name = "discord"
 
     def get_authorization_url(self, state: str) -> str:
-        """Get Discord OAuth authorization URL"""
         params = {
             "client_id": settings.DISCORD_CLIENT_ID,
             "redirect_uri": settings.OAUTH_REDIRECT,
@@ -107,11 +109,9 @@ class DiscordOAuthProvider(OAuthProviderBase):
             "scope": "identify email guilds",
             "state": state,
         }
-        # Use urlencode to properly encode all parameters including redirect_uri
         return f"{settings.DISCORD_OAUTH_URL}?{urlencode(params)}"
 
     async def exchange_code(self, code: str) -> dict[str, Any]:
-        """Exchange Discord authorization code for access token"""
         data = {
             "client_id": settings.DISCORD_CLIENT_ID,
             "client_secret": settings.DISCORD_CLIENT_SECRET,
@@ -120,10 +120,8 @@ class DiscordOAuthProvider(OAuthProviderBase):
             "redirect_uri": settings.OAUTH_REDIRECT,
         }
 
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
-
         try:
-            response = await self.http.client().post(settings.DISCORD_TOKEN_URL, data=data, headers=headers)
+            response = await self.http.client().post(settings.DISCORD_TOKEN_URL, data=data)
 
             if response.status_code != 200:
                 logger.warning(
@@ -137,7 +135,6 @@ class DiscordOAuthProvider(OAuthProviderBase):
             _raise_provider_call_error(exc, provider_label="Discord", error_detail="Discord authentication failed")
 
     async def get_user_info(self, access_token: str) -> schemas.OAuthUserInfo:
-        """Get Discord user information"""
         headers = {"Authorization": f"Bearer {access_token}"}
 
         try:
@@ -171,15 +168,18 @@ class DiscordOAuthProvider(OAuthProviderBase):
         belongs to. Requires the ``guilds`` scope. No privileged Discord intent
         needed -- this is the OAuth-user-token endpoint, not the bot-side
         member/role list. Used to prove workspace Discord-guild ownership
-        (``rpc.identity.oauth.discord_guilds``); combine with
+        (``rpc.identity.oauth_discord_guilds``); combine with
         ``has_manage_guild`` below, or the raw ``owner`` flag, to decide
-        administration rights.
+        administration rights. A 401 is ``OAuthTokenRejected``: the stored
+        token is dead and only a re-link revives it.
         """
         headers = {"Authorization": f"Bearer {access_token}"}
 
         try:
             response = await self.http.client().get(f"{settings.DISCORD_API_URL}/users/@me/guilds", headers=headers)
 
+            if response.status_code == status.HTTP_401_UNAUTHORIZED:
+                raise OAuthTokenRejected("Discord rejected the stored access token")
             if response.status_code != 200:
                 logger.warning(
                     "Discord guild list request failed",
@@ -188,6 +188,8 @@ class DiscordOAuthProvider(OAuthProviderBase):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to get Discord guild list")
 
             return response.json()
+        except OAuthTokenRejected:
+            raise
         except Exception as exc:
             _raise_provider_call_error(exc, provider_label="Discord", error_detail="Failed to get Discord guild list")
 
@@ -202,21 +204,17 @@ def has_manage_guild(permissions: str) -> bool:
     """True when the Discord permission bitfield includes ``MANAGE_GUILD``.
 
     A user administers a guild iff Discord's ``owner`` flag is set OR this is
-    true (design: workspace self-service, §4.1) -- the caller combines both,
-    this only decodes the bitfield half.
+    true -- the caller combines both, this only decodes the bitfield half.
     """
     return (int(permissions) & _MANAGE_GUILD_BIT) != 0
 
 
 class TwitchOAuthProvider(OAuthProviderBase):
-    """Twitch OAuth provider implementation"""
-
     provider_name = "twitch"
 
     # ``user:read:subscriptions`` lets the subscription-entitlement module call
-    # Helix ``GET /subscriptions/user`` with this user's own token. Newly added:
-    # connections created before this change carry only ``user:read:email``, so
-    # the Twitch provider resolves them as ``unknown`` (fails open) with
+    # Helix ``GET /subscriptions/user`` with this user's own token. Connections
+    # granted without it resolve as ``unknown`` (fails open) with
     # ``evidence.reason == "missing_scope"`` and the UI offers a reconnect.
     SCOPES = "user:read:email user:read:subscriptions"
 
@@ -238,10 +236,9 @@ class TwitchOAuthProvider(OAuthProviderBase):
             "code": code,
             "redirect_uri": settings.OAUTH_REDIRECT,
         }
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
         try:
-            response = await self.http.client().post(settings.TWITCH_TOKEN_URL, data=data, headers=headers)
+            response = await self.http.client().post(settings.TWITCH_TOKEN_URL, data=data)
             if response.status_code != 200:
                 logger.warning("Twitch token exchange failed", status_code=response.status_code)
                 raise HTTPException(
@@ -298,8 +295,6 @@ class TwitchOAuthProvider(OAuthProviderBase):
 
 
 class BattleNetOAuthProvider(OAuthProviderBase):
-    """Battle.net OAuth provider implementation"""
-
     provider_name = "battlenet"
 
     @staticmethod
@@ -323,13 +318,11 @@ class BattleNetOAuthProvider(OAuthProviderBase):
             "code": code,
             "redirect_uri": settings.OAUTH_REDIRECT,
         }
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
         try:
             response = await self.http.client().post(
                 f"{self._oauth_base_url()}/token",
                 data=data,
-                headers=headers,
                 auth=(settings.BATTLENET_CLIENT_ID, settings.BATTLENET_CLIENT_SECRET),
             )
 
@@ -389,12 +382,154 @@ class BattleNetOAuthProvider(OAuthProviderBase):
             )
 
 
+class RiotOAuthProvider(OAuthProviderBase):
+    """Riot Sign-On: the PUUID is the subject, the Riot ID ``gameName#tagLine`` the handle."""
+
+    provider_name = "riot"
+    AUTH_URL = "https://auth.riotgames.com"
+
+    @staticmethod
+    def _account_url() -> str:
+        cluster = settings.RIOT_ACCOUNT_CLUSTER.strip().lower() or "europe"
+        return f"https://{cluster}.api.riotgames.com/riot/account/v1/accounts/me"
+
+    def get_authorization_url(self, state: str) -> str:
+        params = {
+            "client_id": settings.RIOT_CLIENT_ID,
+            "redirect_uri": settings.OAUTH_REDIRECT,
+            "response_type": "code",
+            "scope": "openid cpid",
+            "state": state,
+        }
+        return f"{self.AUTH_URL}/authorize?{urlencode(params)}"
+
+    async def exchange_code(self, code: str) -> dict[str, Any]:
+        data = {"grant_type": "authorization_code", "code": code, "redirect_uri": settings.OAUTH_REDIRECT}
+        try:
+            response = await self.http.client().post(
+                f"{self.AUTH_URL}/token", data=data, auth=(settings.RIOT_CLIENT_ID, settings.RIOT_CLIENT_SECRET)
+            )
+            if response.status_code != 200:
+                logger.warning("Riot token exchange failed", status_code=response.status_code)
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to exchange Riot code")
+            return response.json()
+        except Exception as exc:
+            _raise_provider_call_error(exc, provider_label="Riot", error_detail="Riot authentication failed")
+
+    async def get_user_info(self, access_token: str) -> schemas.OAuthUserInfo:
+        headers = {"Authorization": f"Bearer {access_token}"}
+        try:
+            response = await self.http.client().get(self._account_url(), headers=headers)
+            if response.status_code != 200:
+                logger.warning("Riot account request failed", status_code=response.status_code)
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to get Riot account")
+            account = response.json()
+            puuid = str(account.get("puuid") or "")
+            if not puuid:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Riot PUUID is missing")
+            name, tag = account.get("gameName"), account.get("tagLine")
+            riot_id = f"{name}#{tag}" if name and tag else puuid
+            return schemas.OAuthUserInfo(
+                provider=schemas.OAuthProvider.RIOT,
+                provider_user_id=puuid,
+                email=None,
+                username=riot_id,
+                display_name=riot_id,
+                avatar_url=None,
+                raw_data={"account": account, "cpid": await self._cpid(headers)},
+            )
+        except Exception as exc:
+            _raise_provider_call_error(exc, provider_label="Riot", error_detail="Failed to get Riot user info")
+
+    async def _cpid(self, headers: dict[str, str]) -> str | None:
+        """The ``cpid`` scope's platform, best effort: any failure leaves it unknown."""
+        try:
+            response = await self.http.client().get(f"{self.AUTH_URL}/userinfo", headers=headers)
+            if response.status_code != 200:
+                return None
+            payload = response.json()
+        except (httpx.HTTPError, ValueError):
+            return None
+        cpid = payload.get("cpid") if isinstance(payload, dict) else None
+        return cpid if isinstance(cpid, str) else None
+
+
+class SteamOpenIDProvider(OAuthProviderBase):
+    """Steam OpenID 2.0: no client credentials, Steam itself vouches for the claimed SteamID64.
+
+    Steam sends back ``openid.*`` parameters and no ``code``; the frontend callback forwards all of them as one query
+    string in its place. The subject is the decimal SteamID3 account id, which is also the stored handle (``username``);
+    the persona name is only a display name.
+    """
+
+    provider_name = SocialProvider.STEAM
+    LOGIN_URL = "https://steamcommunity.com/openid/login"
+    _OPENID_NS = "http://specs.openid.net/auth/2.0"
+    _IDENTIFIER_SELECT = "http://specs.openid.net/auth/2.0/identifier_select"
+    _CLAIMED_ID = re.compile(r"https://steamcommunity\.com/openid/id/(\d{17})")
+    # check_authentication vouches for the signed fields only; an unsigned claimed_id is anyone's to forge.
+    _MUST_BE_SIGNED = frozenset({"op_endpoint", "claimed_id", "identity", "return_to"})
+
+    def get_authorization_url(self, state: str) -> str:
+        redirect = urlsplit(settings.OAUTH_REDIRECT)
+        params = {
+            "openid.ns": self._OPENID_NS,
+            "openid.mode": "checkid_setup",
+            "openid.return_to": f"{settings.OAUTH_REDIRECT}?{urlencode({'state': state})}",
+            "openid.realm": f"{redirect.scheme}://{redirect.netloc}",
+            "openid.identity": self._IDENTIFIER_SELECT,
+            "openid.claimed_id": self._IDENTIFIER_SELECT,
+        }
+        return f"{self.LOGIN_URL}?{urlencode(params)}"
+
+    async def exchange_code(self, code: str) -> dict[str, Any]:
+        params = dict(parse_qsl(code, keep_blank_values=True))
+        claimed = self._CLAIMED_ID.fullmatch(params.get("openid.claimed_id", ""))
+        if (
+            claimed is None
+            or params.get("openid.op_endpoint") != self.LOGIN_URL
+            or not params.get("openid.return_to", "").startswith(f"{settings.OAUTH_REDIRECT}?")
+            or not self._MUST_BE_SIGNED <= set(params.get("openid.signed", "").split(","))
+        ):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Steam sign-in response")
+        try:
+            response = await self.http.client().post(
+                self.LOGIN_URL, data={**params, "openid.mode": "check_authentication"}
+            )
+            if response.status_code != 200 or "is_valid:true" not in response.text.split():
+                logger.warning("Steam OpenID verification failed", status_code=response.status_code)
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to verify Steam sign-in")
+        except Exception as exc:
+            _raise_provider_call_error(exc, provider_label="Steam", error_detail="Steam authentication failed")
+        return {"access_token": claimed.group(1)}
+
+    async def get_user_info(self, access_token: str) -> schemas.OAuthUserInfo:
+        account_id = steam_account_id(access_token)
+        if account_id is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Steam account id is invalid")
+        profile = await self._profile(account_id)
+        avatar = profile.get("avatarfull")
+        return schemas.OAuthUserInfo(
+            provider=schemas.OAuthProvider.STEAM,
+            provider_user_id=account_id,
+            email=None,
+            username=account_id,
+            display_name=str(profile.get("personaname") or "").strip() or account_id,
+            avatar_url=avatar if isinstance(avatar, str) else None,
+            raw_data={"steamid64": access_token},
+        )
+
+    async def _profile(self, account_id: str) -> dict[str, Any]:
+        """The account's Steam summary, best effort: any failure leaves only the account id."""
+        return (await fetch_profiles(self.http.client(), [account_id])).get(account_id, {})
+
+
 class OAuthProviderRegistry:
     """Which providers this deployment offers, and their client instances."""
 
-    # Setting names per provider. A provider is only offered when its enable
-    # flag is on AND all three credentials are present: a half-configured
-    # provider would fail at the redirect, so it must not be advertised.
+    # A provider is only offered when its enable flag is on AND every setting it
+    # names is present (client id/secret, none for Steam OpenID, and the redirect):
+    # a half-configured provider would fail at the redirect, so it must not be advertised.
     PROVIDER_SETTINGS: dict[str, dict[str, str]] = {
         "discord": {
             "enabled": "DISCORD_OAUTH_ENABLED",
@@ -414,6 +549,13 @@ class OAuthProviderRegistry:
             "client_secret": "BATTLENET_CLIENT_SECRET",
             "redirect_uri": "OAUTH_REDIRECT",
         },
+        "riot": {
+            "enabled": "RIOT_OAUTH_ENABLED",
+            "client_id": "RIOT_CLIENT_ID",
+            "client_secret": "RIOT_CLIENT_SECRET",
+            "redirect_uri": "OAUTH_REDIRECT",
+        },
+        SocialProvider.STEAM: {"enabled": "STEAM_OAUTH_ENABLED", "redirect_uri": "OAUTH_REDIRECT"},
     }
 
     def __init__(self, *, http: OAuthHttpClient | None = None, config: Settings = settings) -> None:
@@ -423,6 +565,8 @@ class OAuthProviderRegistry:
             "discord": DiscordOAuthProvider(self.http),
             "twitch": TwitchOAuthProvider(self.http),
             "battlenet": BattleNetOAuthProvider(self.http),
+            "riot": RiotOAuthProvider(self.http),
+            SocialProvider.STEAM: SteamOpenIDProvider(self.http),
         }
 
     def _provider_config(self, provider_name: str) -> dict[str, str]:
@@ -439,11 +583,7 @@ class OAuthProviderRegistry:
         if not enabled:
             return False
 
-        required_settings = (
-            provider_config["client_id"],
-            provider_config["client_secret"],
-            provider_config["redirect_uri"],
-        )
+        required_settings = [setting for key, setting in provider_config.items() if key != "enabled"]
         return all(bool(getattr(self.config, setting_name, None)) for setting_name in required_settings)
 
     def ensure_enabled(self, provider_name: str) -> None:
@@ -460,7 +600,6 @@ class OAuthProviderRegistry:
         ]
 
     def get(self, provider_name: str) -> OAuthProviderBase:
-        """Get OAuth provider by name"""
         self.ensure_enabled(provider_name)
         provider = self.providers.get(provider_name)
         if not provider:

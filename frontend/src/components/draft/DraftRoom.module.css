@@ -20,20 +20,6 @@
 /* ---------------------------------------------------------------------------
    Loading skeleton: header row, clock strip, pool + teams panels. */
 
-.skeletonBlock {
-  display: block;
-  min-width: 0;
-  border: 1px solid color-mix(in srgb, var(--aqt-border-2) 45%, transparent);
-  border-radius: 0.4rem;
-  background:
-    linear-gradient(105deg, transparent 32%, var(--aqt-overlay-3) 48%, transparent 64%),
-    var(--aqt-card-2);
-  background-size:
-    240% 100%,
-    100% 100%;
-  animation: draft-skeleton-sweep 1.8s ease-in-out infinite;
-}
-
 .skeletonRoom {
   width: 100%;
   min-width: 0;
@@ -353,19 +339,6 @@
   height: 30px;
 }
 
-@keyframes draft-skeleton-sweep {
-  from {
-    background-position:
-      125% 0,
-      0 0;
-  }
-  to {
-    background-position:
-      -125% 0,
-      0 0;
-  }
-}
-
 /* Below `xl` the loaded room is two tabs over one panel at natural height. */
 @media (max-width: 79.99rem) {
   .skeletonPanel[data-draft-skeleton="teams"] {
@@ -402,12 +375,5 @@
 
   .skeletonRowCell:nth-child(n + 4) {
     display: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .skeletonBlock {
-    animation: none;
-    background: var(--aqt-card-2);
   }
 }

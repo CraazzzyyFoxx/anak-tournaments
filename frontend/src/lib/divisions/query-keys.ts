@@ -2,8 +2,14 @@ import type { KeyPart } from "@/lib/query-keys";
 
 /**
  * Keys for division grids: the grid list, its versions, the readiness report and
- * the cross-workspace importer. The `*All` entries are the bare prefixes the
- * draft editor drops after a publish, when every scoped variant is stale.
+ * the cross-workspace importer.
+ *
+ * A workspace holds independent grids per discipline, so every key whose payload
+ * depends on one game's active version carries that `discipline` — an activation
+ * in one game then refreshes only that game's `*ByDiscipline` prefixes, never
+ * another game's cached versions or readiness. The grid list itself spans the
+ * workspace's disciplines (each entry names its own), and a version id already
+ * identifies its game, so those keys do not repeat it.
  */
 export const divisionGridQueryKeys = {
   importGrids: (workspaceId: KeyPart, sourceWorkspaceId: KeyPart) =>
@@ -16,17 +22,14 @@ export const divisionGridQueryKeys = {
     ["division-grid-import-workspaces", workspaceId] as const,
   mapping: (sourceVersionId: KeyPart, versionId: KeyPart) =>
     ["division-grid-mapping", sourceVersionId, versionId] as const,
-  mappingAll: () => ["division-grid-mapping"] as const,
-  readiness: (workspaceId: KeyPart, versionId: KeyPart) =>
-    ["division-grid-readiness", workspaceId, versionId] as const,
-  readinessByWorkspace: (workspaceId: KeyPart) =>
-    ["division-grid-readiness", workspaceId] as const,
-  readinessAll: () => ["division-grid-readiness"] as const,
+  readiness: (workspaceId: KeyPart, discipline: KeyPart, versionId: KeyPart) =>
+    ["division-grid-readiness", workspaceId, discipline, versionId] as const,
+  readinessByDiscipline: (workspaceId: KeyPart, discipline: KeyPart) =>
+    ["division-grid-readiness", workspaceId, discipline] as const,
   version: (versionId: KeyPart) => ["division-grid-version", versionId] as const,
-  versions: (workspaceId: KeyPart, gridId: KeyPart) =>
-    ["division-grid-versions", workspaceId, gridId] as const,
-  versionsByWorkspace: (workspaceId: KeyPart) => ["division-grid-versions", workspaceId] as const,
-  versionsAll: () => ["division-grid-versions"] as const,
-  grids: (workspaceId: KeyPart) => ["division-grids", workspaceId] as const,
-  gridsAll: () => ["division-grids"] as const,
+  versions: (workspaceId: KeyPart, discipline: KeyPart, gridId: KeyPart) =>
+    ["division-grid-versions", workspaceId, discipline, gridId] as const,
+  versionsByDiscipline: (workspaceId: KeyPart, discipline: KeyPart) =>
+    ["division-grid-versions", workspaceId, discipline] as const,
+  grids: (workspaceId: KeyPart) => ["division-grids", workspaceId] as const
 };

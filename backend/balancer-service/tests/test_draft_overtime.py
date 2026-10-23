@@ -38,7 +38,7 @@ from shared.core.enums import (  # noqa: E402
     DraftStatus,
 )
 from shared.core.errors import ApiHTTPException  # noqa: E402
-from shared.models.balancer.draft import DraftPick, DraftSession  # noqa: E402
+from shared.models.draft import DraftPick, DraftSession  # noqa: E402
 from src.domain.draft.entities import DraftResult  # noqa: E402
 from src.services.draft import clock as draft_clock  # noqa: E402
 from src.services.draft import realtime as draft_rt  # noqa: E402
@@ -59,6 +59,9 @@ class _FakeSession:
 
     async def __aexit__(self, *_exc: Any) -> bool:
         return False
+
+    def add(self, _instance: Any) -> None:
+        pass
 
     async def flush(self) -> None:
         self.flushes += 1
@@ -214,10 +217,12 @@ def _extend(draft: DraftSession, pick: DraftPick, *, seconds: int, expected_vers
             pick,
             seconds=seconds,
             expected_version=expected_version,
+            actor_auth_user_id=1,
         )
     )
 
 
+@pytest.mark.usefixtures("published")
 def test_extend_pushes_the_live_deadline_and_bumps_the_version() -> None:
     draft = _draft()
     deadline = datetime.now(UTC) + timedelta(seconds=10)
@@ -230,6 +235,7 @@ def test_extend_pushes_the_live_deadline_and_bumps_the_version() -> None:
     assert pick.version == 5
 
 
+@pytest.mark.usefixtures("published")
 def test_extend_while_paused_adds_to_the_frozen_remainder() -> None:
     draft = _draft(status=DraftStatus.PAUSED.value)
     pick = _pick(clock_expires_at=None, clock_remaining_ms=12_000, version=4)
@@ -241,6 +247,7 @@ def test_extend_while_paused_adds_to_the_frozen_remainder() -> None:
     assert pick.version == 5
 
 
+@pytest.mark.usefixtures("published")
 def test_extend_of_a_paused_pick_with_no_recorded_remainder_starts_from_a_full_timer() -> None:
     # ``_advance`` parks a re-seated pick unarmed; resume gives it a full timer,
     # so an extension before that resume has to start from the same number.
@@ -252,14 +259,15 @@ def test_extend_of_a_paused_pick_with_no_recorded_remainder_starts_from_a_full_t
     assert pick.clock_remaining_ms == 60_000
 
 
-def test_extend_rejects_a_stale_version() -> None:
+def test_extend_with_a_stale_version_says_the_board_changed() -> None:
+    """The pick is still on the clock, so it was not "already resolved": only the version moved."""
     draft = _draft()
     pick = _pick(version=5)
 
     with pytest.raises(ApiHTTPException) as exc_info:
         _extend(draft, pick, seconds=30, expected_version=4)
 
-    assert exc_info.value.detail[0]["code"] == "pick_already_resolved"
+    assert exc_info.value.detail[0]["code"] == "draft_pick_stale_version"
     assert exc_info.value.status_code == 409
     assert pick.version == 5
 

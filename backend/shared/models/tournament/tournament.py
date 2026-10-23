@@ -32,9 +32,19 @@ TOURNAMENT_STATUS_ENUM = Enum(
 
 class Tournament(db.TimeStampIntegerMixin):
     __tablename__ = "tournament"
-    __table_args__ = ({"schema": "tournament"},)
+    __table_args__ = (
+        # Target of ``fk_encounter_owner``: a match-layer row copies all three
+        # and the database checks the copy against this key.
+        UniqueConstraint("id", "workspace_id", "discipline", name="uq_tournament_owner_key"),
+        {"schema": "tournament"},
+    )
 
     workspace_id: Mapped[int] = mapped_column(ForeignKey(Workspace.id, ondelete="CASCADE"), index=True)
+    #: Which game this tournament is played in (``catalog.discipline.code``).
+    #: ``overwatch`` everywhere in V1; the registry is a stub until V3.
+    discipline: Mapped[str] = mapped_column(
+        String(32), ForeignKey("catalog.discipline.code"), default="overwatch", server_default="overwatch"
+    )
     name: Mapped[str] = mapped_column(String())
     # Public-URL identity (``/tournaments/{slug}``), globally unique across every
     # workspace -- the public tournament route carries no workspace segment, so a
@@ -76,6 +86,7 @@ class Tournament(db.TimeStampIntegerMixin):
         TOURNAMENT_STATUS_ENUM,
         default=enums.TournamentStatus.ANNOUNCEMENT,
         nullable=False,
+        index=True,
     )
     # Purely informational dates ("when the tournament takes place") — they do
     # NOT drive status transitions; phase timing lives in
@@ -102,6 +113,9 @@ class Tournament(db.TimeStampIntegerMixin):
     # Discord DMs. The in-app inbox row is written either way; checked at
     # delivery (app-service), so a DM still queued when it is switched off stays unsent.
     discord_dms_enabled: Mapped[bool] = mapped_column(Boolean(), default=True, server_default="true", nullable=False)
+    # Owner policy for the canonical match ingest: when true, an unaccepted game's observed placements
+    # may become its official ADMIN_LOG result. Off unless an organizer with ``tournament.update`` turns it on.
+    logs_official: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="false", nullable=False)
     win_points: Mapped[float] = mapped_column(Float(), default=1.0, server_default="1.0", nullable=False)
     draw_points: Mapped[float] = mapped_column(Float(), default=0.5, server_default="0.5", nullable=False)
     loss_points: Mapped[float] = mapped_column(Float(), default=0.0, server_default="0.0", nullable=False)
@@ -110,10 +124,6 @@ class Tournament(db.TimeStampIntegerMixin):
         nullable=True,
         index=True,
     )
-    # Per-team roster shape override, e.g. ``{"tank": 1, "damage": 2, "support": 2}``.
-    # NULL means "inherit from the workspace default", NOT "an empty roster" — the
-    # resolution chain lives in ``shared.domain.roster_shape.resolve_roster_shape``.
-    roster_slots_json: Mapped[dict[str, int] | None] = mapped_column(JSONB, nullable=True)
     # The tournament's draft format: ``{"format": ..., "round_rules": [...],
     # "avg_tie_seed_reverse": bool}`` (see ``shared.schemas.draft_format``). NULL
     # means the snake default; ``session_create`` copies the resolved value onto
@@ -174,7 +184,7 @@ class TournamentPhaseSchedule(db.TimeStampIntegerMixin):
 class TournamentSlugRedirect(db.TimeStampIntegerMixin):
     """``tournament.slug_redirect`` -- old slug -> tournament, for links shared
     before an explicit admin rename. The current slug lives on ``Tournament``
-    itself; a row here only exists for a value that used to be current.
+    itself; a row here only exists for a retired value.
     """
 
     __tablename__ = "slug_redirect"

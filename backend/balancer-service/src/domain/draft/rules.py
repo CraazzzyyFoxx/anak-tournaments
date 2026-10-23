@@ -1,11 +1,8 @@
 """Pure draft business rules: validation, seat ordering, pick-slot resolution,
 role-edit validation. No database access, no async.
 
-What is deliberately NOT here any more: deriving a player's roles or ranks.
-``map_registration`` used to do that from the raw ``registration_role`` rows,
-in parallel with tournament-service's own resolver -- one engine now answers
-it (``shared.services.roster``) and every rule below takes the resolved
-``PlayerRoster`` as an argument.
+Roles and ranks are never derived here: every rule takes the ``PlayerRoster``
+the one engine (``shared.services.roster``) resolved.
 """
 
 from __future__ import annotations
@@ -15,18 +12,16 @@ from datetime import datetime, timedelta
 from typing import Final, Protocol, TypeVar
 
 from shared.core.enums import (
-    HERO_TYPE_CLASSES,
     DraftCaptainOrder,
     DraftFormat,
     DraftPickStatus,
     DraftPlayerStatus,
     DraftStatus,
-    HeroClass,
 )
 from shared.core.errors import ApiHTTPException
 from shared.domain.roster import PlayerRoster
 from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
-from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
+from shared.models.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
 from src.domain.draft.entities import (
     DraftFeasibilityReport,
     DraftFeasibilityState,
@@ -52,6 +47,7 @@ __all__ = (
     "is_on_clock_captain",
     "mark_role_shortage_paused",
     "order_captain_ids",
+    "pick_conflict",
     "preview_role_addition",
     "resolve_pick_slot",
     "role_openings",
@@ -64,6 +60,7 @@ __all__ = (
     "validate_captain_roles",
     "validate_current_pick",
     "validate_draft_rounds",
+    "validate_seat_identities",
     "validate_seed_version",
 )
 
@@ -111,19 +108,35 @@ def role_shortage_error(report: DraftFeasibilityReport) -> ApiHTTPException:
 def unranked_pool_error(rosters: Sequence[PlayerRoster]) -> ApiHTTPException:
     """Refuse to seat a registration the balancer cannot rank on any role.
 
-    The old seeder labelled such a player ``damage`` with a NULL rank and let
-    them into the pool, where autopick scored them 0 and took them last. There
-    is no honest default: the fix is a rank in the balancer, so say so.
+    There is no honest default role or rank: the fix is a rank in the
+    balancer, so say so.
     """
-    names = ", ".join(
-        roster.battle_tag or roster.display_name or f"#{roster.registration_id}" for roster in rosters[:10]
-    )
+    names = ", ".join(roster.handle or roster.display_name or f"#{roster.registration_id}" for roster in rosters[:10])
     more = f" and {len(rosters) - 10} more" if len(rosters) > 10 else ""
     return _err(
         "draft_pool_unranked",
         f"These pool registrations have no ranked role: {names}{more}. Set their ranks in the balancer, then seed.",
         status_code=422,
     )
+
+
+def validate_seat_identities(seats: Sequence[PoolSeat], *, mix: bool) -> None:
+    """A tournament seat names a registration; a mix seat a workspace member and no registration (spec §9.1).
+
+    Enforced here, not in the database: ``ck_draft_player_identity`` only demands one of the two, because a CHECK
+    cannot see the session's owner, and tournament seats from before the mix draft carry no member.
+    """
+    if mix:
+        wrong = [seat for seat in seats if seat.registration_id is not None or seat.workspace_member_id is None]
+    else:
+        wrong = [seat for seat in seats if seat.registration_id is None]
+    if wrong:
+        expected = "a workspace member and no registration" if mix else "a registration"
+        raise _err(
+            "seat_identity_invalid",
+            f"A {'mix' if mix else 'tournament'} draft seat names {expected}; {len(wrong)} seat(s) do not",
+            status_code=422,
+        )
 
 
 def validate_captain_roles(
@@ -138,10 +151,9 @@ def validate_captain_roles(
     for seat in captains:
         if seat.captain_role is None:
             continue
-        roster = rosters[seat.registration_id]
-        role = HeroClass.from_slot_code(seat.captain_role)
-        if shape.role_slots.get(seat.captain_role, 0) < 1 or role not in roster.playable_roles:
-            name = roster.battle_tag or roster.display_name or f"#{roster.registration_id}"
+        roster = rosters[seat.key]
+        if shape.role_slots.get(seat.captain_role, 0) < 1 or seat.captain_role not in roster.playable_roles:
+            name = roster.handle or roster.display_name or f"#{roster.registration_id}"
             raise _err(
                 "captain_role_invalid",
                 f"{name} cannot captain on {seat.captain_role}: the role must be one they play "
@@ -179,9 +191,8 @@ def round_seat_order(
 
     ``seats`` is the seed order (position 1 first) and ``round_idx`` is 0-based.
     The single source of truth for what a rule MEANS, shared by seeding and
-    ``DraftLifecycleService.resync_pick_order`` -- the two used to hold separate
-    copies, which is how a rule changed after seeding could mean one thing in
-    the wizard preview and another on the board.
+    ``DraftLifecycleService.resync_pick_order``, so the wizard preview and the
+    board cannot read one rule two ways.
     """
     if fmt == DraftFormat.SNAKE:
         return list(reversed(seats)) if round_idx % 2 == 1 else list(seats)
@@ -222,11 +233,10 @@ def average_seat_order(
     Equal averages break by captain rank IN THE RULE'S DIRECTION -- under
     ``team_avg_asc`` the weaker captain picks first, exactly as the rule already
     does with the averages themselves, and mirrored under ``team_avg_desc``.
-    Without it a tie fell through to the seed order, which is whatever order the
-    organizer happened to tick the captains in (the pool lists them
-    alphabetically), so an equal-average round was decided by battle tag.
-    An unranked captain sorts as weakest, as in ``weakest_first``. Teams that
-    tie on BOTH fall to the seed, 1 -> N.
+    The seed order alone would decide such a tie by the order the organizer
+    ticked the captains in (the pool lists them alphabetically), i.e. by battle
+    tag. An unranked captain sorts as weakest, as in ``weakest_first``. Teams
+    that tie on BOTH fall to the seed, 1 -> N.
 
     ``tie_reversed`` (the session's ``avg_tie_seed_reverse`` setting) turns the
     whole tie-break around: the captain rank runs AGAINST the rule -- under
@@ -332,11 +342,7 @@ def team_slot_counts(
             continue
         taken += 1
         pk = pick_by_player_id.get(p.id)
-        if pk and pk.target_role:
-            code = pk.target_role
-        else:
-            role = seat_role(rosters.get(p.id), p.captain_role)
-            code = role.slot_code if role is not None else None
+        code = pk.target_role if pk is not None else seat_role(rosters.get(p.id), p.captain_role)
         if code in role_slot_targets and counts[code] < role_slot_targets[code]:
             counts[code] += 1
     if FLEX_SLOT_CODE in counts:
@@ -347,7 +353,7 @@ def team_slot_counts(
     return counts
 
 
-def role_openings(shape: RosterShape, counts: Mapping[str, int]) -> dict[HeroClass, int]:
+def role_openings(shape: RosterShape, counts: Mapping[str, int], roles: Collection[str]) -> dict[str, int]:
     """How many more slots each role can still take on this team.
 
     A role lands either in its own remaining role slot or in any free flex slot,
@@ -357,10 +363,7 @@ def role_openings(shape: RosterShape, counts: Mapping[str, int]) -> dict[HeroCla
     """
     targets = shape.slots
     free_flex = max(0, targets.get(FLEX_SLOT_CODE, 0) - counts.get(FLEX_SLOT_CODE, 0))
-    return {
-        role: max(0, targets.get(role.slot_code, 0) - counts.get(role.slot_code, 0)) + free_flex
-        for role in HERO_TYPE_CLASSES
-    }
+    return {role: max(0, targets.get(role, 0) - counts.get(role, 0)) + free_flex for role in roles}
 
 
 #: Share of a role's impact a team gives up once every seat that role can take
@@ -371,7 +374,7 @@ FILLED_ROLE_DISCOUNT: Final = 0.5
 def team_fit_config(
     shape: RosterShape,
     counts: Mapping[str, int],
-    role_impact: Mapping[HeroClass, float],
+    role_impact: Mapping[str, float],
 ) -> FitConfig:
     """Fit weights for ONE team: a role's impact shrinks as the team fills it.
 
@@ -386,22 +389,36 @@ def team_fit_config(
     balancer config's ``role_settings``), read by the caller -- the draft and the
     solver weigh a role the same or a captain's "best fit" is not the balancer's.
     """
-    openings = role_openings(shape, counts)
+    openings = role_openings(shape, counts, role_impact)
     targets = shape.slots
     flex = targets.get(FLEX_SLOT_CODE, 0)
-    impact: dict[HeroClass, float] = {}
+    impact: dict[str, float] = {}
     for role, weight in role_impact.items():
-        seats = targets.get(role.slot_code, 0) + flex
+        seats = targets.get(role, 0) + flex
         filled = 1.0 - openings[role] / seats if seats else 1.0
         impact[role] = weight * (1.0 - FILLED_ROLE_DISCOUNT * filled)
     return FitConfig(role_impact=impact)
 
 
-def validate_current_pick(draft_session: DraftSession, pick: DraftPick) -> None:
+def validate_current_pick(draft_session: DraftSession, pick: DraftPick, *, expected_version: int) -> None:
     if draft_session.status != DraftStatus.LIVE.value:
         raise _err("draft_not_live", "Draft is not live")
     if pick.id != draft_session.current_pick_id or pick.status != DraftPickStatus.ON_CLOCK.value:
         raise _err("pick_not_on_clock", "This is not the current on-clock pick")
+    if pick.version != expected_version:
+        raise pick_conflict(pick)
+
+
+def pick_conflict(pick: DraftPick) -> ApiHTTPException:
+    """Why a pick's ``(version, on_clock)`` guard failed, read off its CURRENT row.
+
+    Still on the clock means only the version moved (an extension, overtime): the
+    caller acted on a board it has to reload. Anything else means somebody
+    resolved the pick first.
+    """
+    if pick.status == DraftPickStatus.ON_CLOCK.value:
+        return _err("draft_pick_stale_version", "The board changed; reload and try again")
+    return _err("pick_already_resolved", "Pick was already resolved")
 
 
 def available_player_from(snapshot: DraftSnapshot, player_id: int) -> DraftPlayer:
@@ -417,7 +434,7 @@ def resolve_pick_slot(
     shape: RosterShape,
     counts: Mapping[str, int],
     roster: PlayerRoster | None,
-    target_role: HeroClass | None,
+    target_role: str | None,
 ) -> SlotDecision:
     """Validate one pick against the shape and this team's already filled slots.
 
@@ -445,13 +462,13 @@ def resolve_pick_slot(
             status_code=422,
         )
     role = requested or lead.role
-    if role_openings(shape, counts).get(role, 0) <= 0:
+    if role_openings(shape, counts, roster.playable_roles).get(role, 0) <= 0:
         raise _err(
             "slot_filled",
-            f"No roster slot left for {role.slot_code} on this team",
+            f"No roster slot left for {role} on this team",
             status_code=422,
         )
-    return SlotDecision(role=role, recorded_role=role.slot_code if shape.has_role_slots else None)
+    return SlotDecision(role=role, recorded_role=role if shape.has_role_slots else None)
 
 
 def unsafe_pick_error(report: DraftFeasibilityReport) -> ApiHTTPException:
@@ -493,7 +510,7 @@ def is_on_clock_captain(
 
 # --- role edits ---------------------------------------------------------------
 #
-# An emergency role now lands on the REGISTRATION, not on a draft-local copy:
+# An emergency role lands on the REGISTRATION, not on a draft-local copy:
 # the balancer is the only writer of roles and ranks, so the board, the pool
 # verdict and the algorithm all see the edit at once. What is validated here is
 # only whether this draft may accept one.
@@ -510,7 +527,7 @@ def validate_role_edit_request(
     player: DraftPlayer,
     roster: PlayerRoster | None,
     *,
-    role: HeroClass,
+    role: str,
     rank_value: int,
     reason: str,
     expected_version: int,
@@ -530,7 +547,7 @@ def validate_role_edit_request(
     if player.version != expected_version:
         raise _err("draft_player_stale", "Player snapshot changed; reload the role-edit preview", status_code=409)
     if roster is not None and role in roster.playable_roles:
-        raise _err("role_already_exists", f"Player already plays {role.slot_code}", status_code=409)
+        raise _err("role_already_exists", f"Player already plays {role}", status_code=409)
     if rank_value <= 0:
         raise _err("role_rank_required", "An emergency role needs a rank; a rankless role is not playable")
     normalized_reason = reason.strip()
@@ -543,7 +560,7 @@ def preview_role_addition(
     state: DraftFeasibilityState,
     *,
     player_id: int,
-    role: HeroClass,
+    role: str,
 ) -> RoleEditPreview:
     before = analyze_draft_feasibility(
         team_ids=state.team_ids,

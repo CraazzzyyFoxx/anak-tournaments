@@ -16,7 +16,6 @@ Two layers:
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -28,27 +27,25 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
-def _ensure_test_env() -> None:
-    env = {
-        "DEBUG": "true",
-    }
-    for key, value in env.items():
-        os.environ.setdefault(key, value)
-
-
-_ensure_test_env()
-
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-import pytest  # noqa: E402
 import sqlalchemy as sa  # noqa: E402
 
 from shared.core import enums  # noqa: E402
+from shared.models.encounter import ScoringRule  # noqa: E402
+from shared.models.platform.outbox import EventOutbox  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
-from shared.models.tournament import Tournament, TournamentPhaseSchedule  # noqa: E402
-from shared.services.division_grid.access import get_default_division_grid_version_id  # noqa: E402
+from shared.models.tournament import (  # noqa: E402
+    Stage,
+    StageItem,
+    StageItemInput,
+    Team,
+    Tournament,
+    TournamentComputationJob,
+    TournamentPhaseSchedule,
+)
 from shared.testing import real_db_sessionmaker as _db_sessions  # noqa: E402
 from src.services.admin import tournament as admin_tournament_service  # noqa: E402
 from src.services.tournament import auto_transitions  # noqa: E402
@@ -213,13 +210,9 @@ def test_run_due_transitions_opens_registration_once_the_form_exists() -> None:
 
 async def _make_workspace(session) -> Workspace:
     suffix = uuid.uuid4().hex[:12]
-    grid_version_id = await get_default_division_grid_version_id(session)
-    if grid_version_id is None:
-        pytest.skip("no default division grid version configured in dev DB")
     workspace = Workspace(
         slug=f"autotrans-test-{suffix}",
         name=f"Auto-Transitions Test {suffix}",
-        default_division_grid_version_id=grid_version_id,
     )
     session.add(workspace)
     await session.flush()
@@ -395,3 +388,123 @@ def test_manual_transition_pauses_automation() -> None:
     # Paused tournament is ignored by the tick despite the overdue LIVE row.
     assert after_tick == (enums.TournamentStatus.CHECK_IN, False)
     assert tournament_id not in touched
+
+
+# ─── Going LIVE leaves a durable bracket job behind ─────────────────────────
+
+
+async def _seed_unstarted_group_stage(session, *, auto_transitions_enabled: bool) -> tuple[int, int, int]:
+    """CHECK_IN tournament with a seeded, never-generated round-robin stage."""
+    workspace = await _make_workspace(session)
+    tournament = await _make_tournament(
+        session,
+        workspace_id=workspace.id,
+        status=enums.TournamentStatus.CHECK_IN,
+        auto_transitions_enabled=auto_transitions_enabled,
+    )
+    suffix = uuid.uuid4().hex[:12]
+    teams = [Team(tournament_id=tournament.id, name=f"t{i} {suffix}", balancer_name=f"t{i}-{suffix}") for i in range(4)]
+    session.add_all(teams)
+    stage = Stage(
+        tournament_id=tournament.id,
+        name="Groups",
+        stage_type=enums.StageType.ROUND_ROBIN,
+        order=1,
+        scoring_rule=ScoringRule(
+            workspace_id=workspace.id,
+            preset="wins",
+            game_formula="win",
+            end_formula="games >= best_of or max_wins * 2 > best_of",
+        ),
+    )
+    session.add(stage)
+    await session.flush()
+    item = StageItem(stage_id=stage.id, name="A", type=enums.StageItemType.GROUP, order=0)
+    session.add(item)
+    await session.flush()
+    session.add_all(
+        StageItemInput(stage_item_id=item.id, slot=slot, input_type=enums.StageItemInputType.FINAL, team_id=team.id)
+        for slot, team in enumerate(teams, start=1)
+    )
+    await session.flush()
+    return workspace.id, tournament.id, stage.id
+
+
+async def _bracket_jobs(session_maker, tournament_id: int) -> list[tuple[int, str]]:
+    async with session_maker() as session:
+        rows = await session.execute(
+            sa.select(TournamentComputationJob.stage_id, TournamentComputationJob.operation).where(
+                TournamentComputationJob.tournament_id == tournament_id,
+                TournamentComputationJob.kind == "bracket",
+            )
+        )
+        return [tuple(row) for row in rows.all()]
+
+
+async def _cleanup_with_jobs(session_maker, *, workspace_id: int, tournament_id: int) -> None:
+    async with session_maker() as session:
+        job_ids = (
+            await session.scalars(
+                sa.select(TournamentComputationJob.id).where(TournamentComputationJob.tournament_id == tournament_id)
+            )
+        ).all()
+        if job_ids:
+            await session.execute(
+                sa.delete(EventOutbox).where(EventOutbox.payload_json["job_id"].as_integer().in_(job_ids))
+            )
+        await session.commit()
+    await _cleanup(session_maker, workspace_id=workspace_id)
+
+
+def test_manual_live_transition_persists_the_group_stage_job() -> None:
+    """The RPC envelope closes the session without a commit of its own, so the
+    job ``transition_status`` requests has to be committed by it."""
+
+    async def _run():
+        async with _db_sessions() as session_maker:
+            async with session_maker() as session:
+                workspace_id, tournament_id, stage_id = await _seed_unstarted_group_stage(
+                    session, auto_transitions_enabled=False
+                )
+                await session.commit()
+
+            try:
+                async with session_maker() as session:
+                    await admin_tournament_service.tournament_service.transition_status(
+                        session, tournament_id, enums.TournamentStatus.LIVE
+                    )
+                return stage_id, await _bracket_jobs(session_maker, tournament_id)
+            finally:
+                await _cleanup_with_jobs(session_maker, workspace_id=workspace_id, tournament_id=tournament_id)
+
+    stage_id, jobs = asyncio.run(_run())
+
+    assert jobs == [(stage_id, "activate_and_generate")]
+
+
+def test_tick_reaching_live_persists_the_group_stage_job() -> None:
+    async def _run():
+        async with _db_sessions() as session_maker:
+            async with session_maker() as session:
+                workspace_id, tournament_id, stage_id = await _seed_unstarted_group_stage(
+                    session, auto_transitions_enabled=True
+                )
+                await _add_schedule_row(
+                    session,
+                    tournament_id=tournament_id,
+                    status=enums.TournamentStatus.LIVE,
+                    starts_at=datetime.now(UTC) - timedelta(minutes=1),
+                )
+                await session.commit()
+
+            try:
+                await auto_transitions.run_due_transitions(session_maker)
+                state = await _tournament_state(session_maker, tournament_id)
+                return stage_id, state, await _bracket_jobs(session_maker, tournament_id)
+            finally:
+                await _cleanup_with_jobs(session_maker, workspace_id=workspace_id, tournament_id=tournament_id)
+
+    stage_id, (status, _), jobs = asyncio.run(_run())
+
+    assert status == enums.TournamentStatus.LIVE
+    assert jobs == [(stage_id, "activate_and_generate")]

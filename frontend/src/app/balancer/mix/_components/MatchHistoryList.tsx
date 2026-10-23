@@ -2,22 +2,24 @@
 
 import { useState } from "react";
 
-import Image from "next/image";
-
 import { useTranslations } from "next-intl";
 
 import { History, Undo2 } from "lucide-react";
 
-import { EYEBROW_CLASS, lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
+import { CARD_TITLE_CLASS, lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { formatRelative } from "@/components/kit/format-time";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { Spinner } from "@/components/ui/spinner";
 import { StatusDot } from "@/components/ui/status-dot";
+import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 import { useFormatter } from "@/lib/datetime/client";
 import { cn } from "@/lib/utils";
 import type { CustomGameMatch } from "@/services/custom-game.service";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 
 /** Every match this mix has recorded, every lobby, newest first — the permanent record `Record result` writes into. */
 export function MatchHistoryList({
@@ -25,14 +27,30 @@ export function MatchHistoryList({
   lobbyCount,
   canWrite,
   undoingMatchId,
-  onUndoMatch
+  onUndoMatch,
+  discipline,
+  standalone = false,
+  className
 }: Readonly<{
   matches: CustomGameMatch[];
   lobbyCount: number;
   canWrite: boolean;
   undoingMatchId: number | null;
   onUndoMatch?: (matchId: number) => void;
+  /** The mix's game, whose heroes name the bans. */
+  discipline: string | null;
+  /** Its own card (the several-lobby overview): a card title. Default: an eyebrow, a section under the matchup. */
+  standalone?: boolean;
+  /** The caller separates it from what comes before (a hairline), since only the caller knows whether anything does. */
+  className?: string;
 }>) {
+  const t = useTranslations("mixes.matchHistory");
+  // The heroes are read only once a round has bans or picks to show (spec §8.4, §11.6).
+  const heroes = useCatalogEntities(
+    matches.some((match) => match.bans.length > 0 || match.picks.length > 0) ? discipline : null,
+    "character",
+  );
+  const heroById = new Map((heroes.data ?? []).map((hero) => [hero.id, hero]));
   // Newest first, so the first row of each lobby IS that lobby's newest -- the
   // only one the server will undo (`newest_id_for_lobby`).
   const newestPerLobby = new Set<number>();
@@ -48,12 +66,16 @@ export function MatchHistoryList({
   const showLobby = lobbyCount > 1 || [...seenLobbies].some((index) => index > 0);
 
   return (
-    <div className="flex flex-col gap-2 border-t border-[color:var(--aqt-border)] pt-3">
-      <span className={cn(EYEBROW_CLASS, "flex items-center gap-1.5 tracking-label")}>
-        <History className="size-3.5" aria-hidden="true" />
-        Match history
-      </span>
-      <ul className="flex flex-col gap-1.5">
+    <div className={cn("flex flex-col gap-2", className)}>
+      {standalone ? (
+        <h2 className={CARD_TITLE_CLASS}>{t("title")}</h2>
+      ) : (
+        <Eyebrow className="flex items-center gap-1.5">
+          <History className="size-3.5" aria-hidden="true" />
+          {t("title")}
+        </Eyebrow>
+      )}
+      <ul className="flex flex-col divide-y divide-[color:var(--aqt-border)]">
         {matches.map((match) => (
           <MatchHistoryRow
             key={match.id}
@@ -62,6 +84,7 @@ export function MatchHistoryList({
             canUndo={newestPerLobby.has(match.id) && canWrite && onUndoMatch != null}
             undoing={undoingMatchId === match.id}
             onUndoMatch={onUndoMatch}
+            heroById={heroById}
           />
         ))}
       </ul>
@@ -69,22 +92,13 @@ export function MatchHistoryList({
   );
 }
 
-/** Two-letter fallback for a map with no thumbnail yet, same rule `MapRow` uses. */
-function mapInitials(name: string): string {
-  return name
-    .split(/\s+/)
-    .map((word) => word[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-}
-
 function MatchHistoryRow({
   match,
   showLobby,
   canUndo,
   undoing,
-  onUndoMatch
+  onUndoMatch,
+  heroById
 }: Readonly<{
   match: CustomGameMatch;
   /** More than one lobby now, or one past the first somewhere in the log: say which one played it. */
@@ -92,17 +106,21 @@ function MatchHistoryRow({
   canUndo: boolean;
   undoing: boolean;
   onUndoMatch?: (matchId: number) => void;
+  heroById: Map<number, CatalogEntityRead>;
 }>) {
   const t = useTranslations("mixes.lobbies");
+  const tHistory = useTranslations("mixes.matchHistory");
+  const tRoom = useTranslations("mixes.room");
   const format = useFormatter();
-  const homeAccent = teamAccent(0);
-  const awayAccent = teamAccent(1);
+  const [first, second] = match.teams;
+  const firstAccent = teamAccent(0);
+  const secondAccent = teamAccent(1);
   const lobbyAccent = teamAccent(match.lobby_index);
   const letter = lobbyLetter(match.lobby_index);
   const [undoOpen, setUndoOpen] = useState(false);
 
   return (
-    <li className="flex items-center gap-3 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] px-2.5 py-2">
+    <li className="flex items-center gap-3 py-2">
       {showLobby ? (
         <IconTooltip label={t("tab", { letter })} className="shrink-0">
           <span
@@ -118,69 +136,68 @@ function MatchHistoryRow({
           </span>
         </IconTooltip>
       ) : null}
-      <div className="relative h-8 w-14 shrink-0 overflow-hidden rounded-md border border-[color:var(--aqt-border-2)] bg-[linear-gradient(135deg,var(--aqt-card-2),var(--aqt-bg-2))]">
-        {match.map_image_path ? (
-          <Image src={match.map_image_path} alt="" fill sizes="56px" className="object-cover" />
-        ) : (
-          <span className="flex h-full w-full items-center justify-center font-display text-label font-extrabold text-[color:var(--aqt-fg-faint)]">
-            {match.map_name ? mapInitials(match.map_name) : "?"}
-          </span>
-        )}
-      </div>
+      <CatalogEntityImage
+        entity={{ name: match.map_name ?? "", image_path: match.map_image_path ?? null }}
+        size={32}
+        shape="wide"
+        decorative
+      />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-1.5 text-caption font-semibold leading-tight">
-          <StatusDot className={cn("inline-block", homeAccent.bar)} />
+          <StatusDot className={cn("inline-block", firstAccent.bar)} />
           <span
             className={cn(
               "truncate",
-              match.winner === 1 ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-dim)]"
+              match.winner_slot === 1 ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-dim)]"
             )}
           >
-            {match.home_team_name}
+            {first?.name}
           </span>
           <span className="tabular-nums text-[color:var(--aqt-fg-muted)]">
-            {match.home_score} : {match.away_score}
+            {first?.score} : {second?.score}
           </span>
           <span
             className={cn(
               "truncate",
-              match.winner === 2 ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-dim)]"
+              match.winner_slot === 2 ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-dim)]"
             )}
           >
-            {match.away_team_name}
+            {second?.name}
           </span>
-          <StatusDot className={cn("inline-block", awayAccent.bar)} />
+          <StatusDot className={cn("inline-block", secondAccent.bar)} />
         </div>
         <div className="mt-0.5 flex items-center gap-1.5 truncate text-label text-[color:var(--aqt-fg-dim)]">
-          <span className="truncate">{match.map_name ?? "No map"}</span>
+          <span className="truncate">{match.map_name ?? tRoom("noMap")}</span>
           <span aria-hidden="true">&middot;</span>
           <span className="shrink-0">{formatRelative(format, match.recorded_at)}</span>
         </div>
+        {match.bans.length > 0 ? <HeroBanStrip bans={match.bans} heroById={heroById} className="mt-1" /> : null}
+        {match.picks.length > 0 ? <HeroPickList picks={match.picks} heroById={heroById} className="mt-1" /> : null}
       </div>
       {canUndo ? (
         <>
-          <IconTooltip control label="Undo this match" hint="Removes it from the history">
+          <IconTooltip control label={tHistory("undo")} hint={tHistory("undoHint")}>
             <Button
               type="button"
               variant="ghost"
-              size="icon"
-              aria-label="Undo this match"
+              size="icon-sm"
+              aria-label={tHistory("undo")}
               disabled={undoing}
               onClick={() => setUndoOpen(true)}
             >
-              {undoing ? <Spinner /> : <Undo2 className="size-4" aria-hidden="true" />}
+              {undoing ? <Spinner /> : <Undo2 aria-hidden="true" />}
             </Button>
           </IconTooltip>
           <ConfirmDialog
             open={undoOpen}
             onOpenChange={setUndoOpen}
             intent={{
-              title: "Undo this match?",
+              title: tHistory("undoTitle"),
               description:
                 match.points_per_win_applied != null
-                  ? `Removes it from the history and moves every player's rank back by ${match.points_per_win_applied} points. Players pinned as must-play before it were already released to the pool and stay there.`
-                  : "Removes it from the history. No rank points were applied.",
-              confirmLabel: "Undo match",
+                  ? tHistory("undoPoints", { points: match.points_per_win_applied })
+                  : tHistory("undoNoPoints"),
+              confirmLabel: tHistory("undoConfirm"),
               tone: "danger"
             }}
             pending={undoing}
@@ -192,5 +209,64 @@ function MatchHistoryRow({
         </>
       ) : null}
     </li>
+  );
+}
+
+/** Hero bans in the order they were made, each behind its team's dot. */
+function HeroBanStrip({
+  bans,
+  heroById,
+  className
+}: Readonly<{
+  bans: CustomGameMatch["bans"];
+  heroById: Map<number, CatalogEntityRead>;
+  className?: string;
+}>) {
+  const t = useTranslations("mixes.lobbies");
+  return (
+    <div className={cn("flex flex-wrap items-center gap-1", className)} aria-label={t("bans")}>
+      {bans.map((ban, index) => {
+        const hero = heroById.get(ban.item_id);
+        return (
+          <span key={`${ban.item_id}-${index}`} className="flex items-center gap-0.5">
+            <StatusDot className={cn("inline-block", teamAccent(ban.slot - 1).bar)} />
+            <CatalogEntityImage
+              entity={{ name: hero?.name ?? `#${ban.item_id}`, image_path: hero?.image_path ?? null }}
+              size={20}
+            />
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Each player's hero, behind their team's dot (spec §11.6 R4-11). */
+function HeroPickList({
+  picks,
+  heroById,
+  className
+}: Readonly<{
+  picks: { slot: number; name: string; item_id: number }[];
+  heroById: Map<number, CatalogEntityRead>;
+  className?: string;
+}>) {
+  const t = useTranslations("mixes.lobbies");
+  return (
+    <ul className={cn("flex flex-wrap items-center gap-x-3 gap-y-1", className)} aria-label={t("picks")}>
+      {picks.map((pick) => {
+        const hero = heroById.get(pick.item_id);
+        return (
+          <li key={`${pick.item_id}-${pick.name}`} className="flex items-center gap-1 text-label">
+            <StatusDot className={cn("inline-block", teamAccent(pick.slot - 1).bar)} />
+            <CatalogEntityImage
+              entity={{ name: hero?.name ?? `#${pick.item_id}`, image_path: hero?.image_path ?? null }}
+              size={20}
+            />
+            <span className="text-[color:var(--aqt-fg-muted)]">{pick.name}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

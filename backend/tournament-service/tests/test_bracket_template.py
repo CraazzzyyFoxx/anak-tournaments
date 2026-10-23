@@ -1,6 +1,6 @@
 """Tests for custom bracket templates: model, conversions and validator.
 
-Does not touch the database -- purely tests the pure-function shared library.
+Does not touch the database: ``src.domain.bracket`` is pure.
 """
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 from pydantic import ValidationError  # noqa: E402
 
 from shared.core.enums import StageType  # noqa: E402
-from shared.services.bracket.engine import placeholder_bracket  # noqa: E402
-from shared.services.bracket.template import (  # noqa: E402
+from src.domain.bracket.engine import placeholder_bracket  # noqa: E402
+from src.domain.bracket.template import (  # noqa: E402
     BracketTemplate,
     skeleton_to_template,
     template_to_skeleton,
@@ -26,23 +26,46 @@ from shared.services.bracket.template import (  # noqa: E402
 )
 
 
+def _seed(ref: str) -> dict:
+    return {"seed": ref}
+
+
+def _winner(match: int) -> dict:
+    return {"source_match": match, "source_position": 1}
+
+
+def _loser(match: int) -> dict:
+    return {"source_match": match, "source_position": 2}
+
+
+def _match(match_id: int, round_number: int, *origins: dict) -> dict:
+    return {
+        "id": match_id,
+        "round": round_number,
+        "slots": [{"slot": number, **origin} for number, origin in enumerate(origins, start=1)],
+    }
+
+
+def _set_slot(raw: dict, index: int, slot: int, origin: dict) -> None:
+    raw["matches"][index]["slots"][slot - 1] = {"slot": slot, **origin}
+
+
 def _sketch() -> dict:
     """The organizer's 4+4 sketch: UB R1 x2, UB final, LB R1 x2, LB R2 x2 (cross-drop), LB R3, LB R4, GF."""
-    s = lambda **kw: kw  # noqa: E731
     return {
         "upper_seeds": 4,
         "lower_seeds": 4,
         "matches": [
-            {"id": 0, "round": 1, "home": s(seed="U1"), "away": s(seed="U4")},
-            {"id": 1, "round": 1, "home": s(seed="U2"), "away": s(seed="U3")},
-            {"id": 2, "round": 2, "home": s(winner_of=0), "away": s(winner_of=1)},
-            {"id": 3, "round": -1, "home": s(seed="L1"), "away": s(seed="L4")},
-            {"id": 4, "round": -1, "home": s(seed="L2"), "away": s(seed="L3")},
-            {"id": 5, "round": -2, "home": s(winner_of=3), "away": s(loser_of=1)},
-            {"id": 6, "round": -2, "home": s(winner_of=4), "away": s(loser_of=0)},
-            {"id": 7, "round": -3, "home": s(winner_of=5), "away": s(winner_of=6)},
-            {"id": 8, "round": -4, "home": s(winner_of=7), "away": s(loser_of=2)},
-            {"id": 9, "round": 3, "home": s(winner_of=2), "away": s(winner_of=8)},
+            _match(0, 1, _seed("U1"), _seed("U4")),
+            _match(1, 1, _seed("U2"), _seed("U3")),
+            _match(2, 2, _winner(0), _winner(1)),
+            _match(3, -1, _seed("L1"), _seed("L4")),
+            _match(4, -1, _seed("L2"), _seed("L3")),
+            _match(5, -2, _winner(3), _loser(1)),
+            _match(6, -2, _winner(4), _loser(0)),
+            _match(7, -3, _winner(5), _winner(6)),
+            _match(8, -4, _winner(7), _loser(2)),
+            _match(9, 3, _winner(2), _winner(8)),
         ],
     }
 
@@ -51,7 +74,7 @@ def _codes(raw: dict, stage_type=StageType.DOUBLE_ELIMINATION) -> list[tuple[int
     return [(p.match_id, p.code) for p in validate_template(BracketTemplate.model_validate(raw), stage_type)]
 
 
-def _flags(raw: dict, stage_type=StageType.DOUBLE_ELIMINATION) -> list[tuple[int | None, str | None, str]]:
+def _flags(raw: dict, stage_type=StageType.DOUBLE_ELIMINATION) -> list[tuple[int | None, int | None, str]]:
     return [(p.match_id, p.slot, p.code) for p in validate_template(BracketTemplate.model_validate(raw), stage_type)]
 
 
@@ -61,7 +84,13 @@ class TemplateValidationTests(TestCase):
 
     def test_slot_needs_exactly_one_origin(self) -> None:
         raw = _sketch()
-        raw["matches"][0]["home"] = {"seed": "U1", "winner_of": 2}
+        _set_slot(raw, 0, 1, {"seed": "U1", "source_match": 2, "source_position": 1})
+        with self.assertRaises(ValidationError):
+            BracketTemplate.model_validate(raw)
+
+    def test_slots_are_numbered_without_gap(self) -> None:
+        raw = _sketch()
+        raw["matches"][0]["slots"][1]["slot"] = 3
         with self.assertRaises(ValidationError):
             BracketTemplate.model_validate(raw)
 
@@ -77,34 +106,39 @@ class TemplateValidationTests(TestCase):
 
     def test_unknown_match(self) -> None:
         raw = _sketch()
-        raw["matches"][2]["home"] = {"winner_of": 42}
+        _set_slot(raw, 2, 1, _winner(42))
         self.assertIn((2, "unknown_match"), _codes(raw))
+
+    def test_position_out_of_range(self) -> None:
+        raw = _sketch()
+        _set_slot(raw, 2, 1, {"source_match": 0, "source_position": 3})  # a duel has no third place
+        self.assertIn((2, "position_out_of_range"), _codes(raw))
 
     def test_seed_out_of_range_and_unused(self) -> None:
         raw = _sketch()
-        raw["matches"][0]["away"] = {"seed": "U5"}
+        _set_slot(raw, 0, 2, _seed("U5"))
         codes = _codes(raw)
         self.assertIn((0, "seed_out_of_range"), codes)
         self.assertIn((None, "seed_unused"), codes)
 
     def test_seed_duplicate(self) -> None:
         raw = _sketch()
-        raw["matches"][0]["away"] = {"seed": "U2"}
+        _set_slot(raw, 0, 2, _seed("U2"))
         self.assertIn((0, "seed_duplicate"), _codes(raw))
 
     def test_upper_seed_cannot_start_in_the_lower_bracket(self) -> None:
         raw = _sketch()
-        raw["matches"][3]["home"] = {"seed": "U1"}  # an LB round-1 slot, handed an upper seed
-        self.assertIn((3, "home", "seed_bracket"), _flags(raw))
+        _set_slot(raw, 3, 1, _seed("U1"))  # an LB round-1 slot, handed an upper seed
+        self.assertIn((3, 1, "seed_bracket"), _flags(raw))
 
     def test_lower_seed_cannot_start_in_the_upper_bracket(self) -> None:
         raw = _sketch()
-        raw["matches"][0]["away"] = {"seed": "L1"}  # a UB round-1 slot, handed a lower seed
-        self.assertIn((0, "away", "seed_bracket"), _flags(raw))
+        _set_slot(raw, 0, 2, _seed("L1"))  # a UB round-1 slot, handed a lower seed
+        self.assertIn((0, 2, "seed_bracket"), _flags(raw))
 
     def test_result_reused(self) -> None:
         raw = _sketch()
-        raw["matches"][7]["away"] = {"winner_of": 5}
+        _set_slot(raw, 7, 2, _winner(5))
         self.assertIn((7, "result_reused"), _codes(raw))
 
     def test_round_gap(self) -> None:
@@ -124,14 +158,14 @@ class TemplateValidationTests(TestCase):
 
     def test_edge_direction_backwards(self) -> None:
         raw = _sketch()
-        raw["matches"][5]["home"] = {"winner_of": 7}
-        raw["matches"][7]["home"] = {"winner_of": 3}
+        _set_slot(raw, 5, 1, _winner(7))
+        _set_slot(raw, 7, 1, _winner(3))
         self.assertIn((5, "edge_direction"), _codes(raw))
 
     def test_upper_winner_cannot_drop(self) -> None:
         raw = _sketch()
-        raw["matches"][5]["away"] = {"winner_of": 1}
-        raw["matches"][2]["away"] = {"loser_of": 1}
+        _set_slot(raw, 5, 2, _winner(1))
+        _set_slot(raw, 2, 2, _loser(1))
         self.assertIn((5, "edge_direction"), _codes(raw))
 
     def test_two_terminals_means_no_single_final(self) -> None:
@@ -143,23 +177,19 @@ class TemplateValidationTests(TestCase):
 
     def test_de_final_needs_lower_winner(self) -> None:
         # One match, so it is the final; nothing comes up from a lower bracket.
-        raw = {
-            "upper_seeds": 2,
-            "lower_seeds": 0,
-            "matches": [{"id": 0, "round": 1, "home": {"seed": "U1"}, "away": {"seed": "U2"}}],
-        }
+        raw = {"upper_seeds": 2, "lower_seeds": 0, "matches": [_match(0, 1, _seed("U1"), _seed("U2"))]}
         self.assertIn((0, "de_final_needs_lower"), _codes(raw))
 
     def test_de_upper_loser_must_drop(self) -> None:
         # Match 0's loser no longer drops: its LB slot takes a fifth lower seed instead.
         raw = _sketch()
         raw["lower_seeds"] = 5
-        raw["matches"][6]["away"] = {"seed": "L5"}
+        _set_slot(raw, 6, 2, _seed("L5"))
         self.assertEqual([(0, "de_upper_loser")], _codes(raw))
 
     def test_de_lower_loser_is_out(self) -> None:
         raw = _sketch()
-        raw["matches"][8]["away"] = {"loser_of": 7}
+        _set_slot(raw, 8, 2, _loser(7))
         self.assertIn((8, "de_lower_loser"), _codes(raw))
 
     def test_single_elimination_has_no_lower_bracket(self) -> None:
@@ -195,7 +225,7 @@ class TemplateBoundsTests(TestCase):
 
     def test_seed_longer_than_five_characters(self) -> None:
         raw = _sketch()
-        raw["matches"][0]["home"] = {"seed": "U12345"}
+        _set_slot(raw, 0, 1, _seed("U12345"))
         with self.assertRaises(ValidationError):
             BracketTemplate.model_validate(raw)
 
@@ -205,7 +235,7 @@ class TemplateBoundsTests(TestCase):
         raw["lower_seeds"] = 512
         raw["matches"][0]["id"] = 10_000
         raw["matches"][3]["round"] = -256
-        BracketTemplate.model_validate(raw)  # bounds are inclusive; §5.2 problems are the validator's job
+        BracketTemplate.model_validate(raw)  # bounds are inclusive; convention problems are the validator's job
 
 
 class TemplateRoundTripTests(TestCase):
@@ -226,8 +256,8 @@ class TemplateRoundTripTests(TestCase):
                     self.assertEqual([], validate_template(template, stage_type), (stage_type, upper, lower))
                     back = template_to_skeleton(template)
                     self.assertEqual(
-                        [(p.home_team_id, p.away_team_id, p.round_number, p.local_id) for p in skeleton.pairings],
-                        [(p.home_team_id, p.away_team_id, p.round_number, p.local_id) for p in back.pairings],
+                        [(p.team_ids, p.round_number, p.local_id) for p in skeleton.pairings],
+                        [(p.team_ids, p.round_number, p.local_id) for p in back.pairings],
                     )
                     self.assertEqual(
                         sorted(skeleton.advancement_edges, key=repr),

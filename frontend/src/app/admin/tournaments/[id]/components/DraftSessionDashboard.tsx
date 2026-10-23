@@ -7,10 +7,11 @@ import { ChevronDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import draftService from "@/services/draft.service";
 
-import { useHubTournamentQuery } from "../hubQueries";
+import { tabFallback, useHubTournamentQuery } from "../hubQueries";
 
 import { AdminControlRoom } from "./draft/AdminControlRoom";
 import { DraftHistoryPanel } from "./draft/DraftHistoryPanel";
@@ -42,27 +43,19 @@ export function DraftSessionDashboard({
   // wizard reads rounds and roster size off it instead of deriving them.
   const rosterShape = tournamentQuery.data?.roster_shape ?? null;
   if (boardQuery.isLoading || tournamentQuery.isLoading) {
-    return <div className="h-64 animate-pulse rounded-2xl bg-muted/50" />;
+    return tabFallback;
   }
   if (boardQuery.isError || tournamentQuery.isError || rosterShape == null) {
     return (
-      <EmptyNote
-        tone="danger"
-        action={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              void boardQuery.refetch();
-              void tournamentQuery.refetch();
-            }}
-          >
-            {t("retry")}
-          </Button>
-        }
-      >
-        <span className="font-medium text-foreground">{t("loadFailed")}</span> {t("loadFailedHint")}
-      </EmptyNote>
+      <PageStateCard
+        state="error"
+        title={t("loadFailed")}
+        description={t("loadFailedHint")}
+        onAction={() => {
+          void boardQuery.refetch();
+          void tournamentQuery.refetch();
+        }}
+      />
     );
   }
   if (!canManage) {
@@ -85,12 +78,15 @@ export function DraftSessionDashboard({
       board={terminalSession ? null : board}
       rosterShape={rosterShape}
       // Past sessions sit under the step rail (F5 ·4), collapsed: they are
-      // context for the session being set up, not a competing surface.
+      // context for the session being set up, not a competing surface. Open
+      // after a completed draft, whose Export to teams is the next step.
       aside={
-        <Collapsible>
-          <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 rounded-md border border-border/70 px-3 py-2 text-sm">
-            {t("history.title")}
-            <ChevronDown aria-hidden className="size-4 text-muted-foreground" />
+        <Collapsible defaultOpen={session?.status === "completed"}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="w-full justify-between">
+              {t("history.title")}
+              <ChevronDown aria-hidden className="size-4 text-muted-foreground" />
+            </Button>
           </CollapsibleTrigger>
           <CollapsibleContent className="pt-2">
             <DraftHistoryPanel

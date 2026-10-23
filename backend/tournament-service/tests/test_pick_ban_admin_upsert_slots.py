@@ -31,13 +31,14 @@ coincidence.
 from __future__ import annotations
 
 import importlib
-import os
+import re
 import sys
+import uuid
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from tests._rpc_fakes import CapturingBroker, make_identity
 
@@ -45,14 +46,20 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
+import sqlalchemy as sa  # noqa: E402
+
+from shared.core.errors import BaseAPIException  # noqa: E402
+from shared.disciplines import DISCIPLINES, DisciplineSpec  # noqa: E402
 from shared.domain import pick_ban_rules as pbr  # noqa: E402
+from shared.models.tenancy.workspace import Workspace  # noqa: E402
+from shared.services.ontology import project_disciplines  # noqa: E402
+from shared.testing import real_db_sessionmaker  # noqa: E402
 from shared.tests import eager_loading  # noqa: E402
 
 pick_ban_admin = importlib.import_module("src.rpc.pick_ban_admin")
 helpers = importlib.import_module("src.rpc._helpers")
-models = importlib.import_module("src.models")
+models = importlib.import_module("shared.models")
 enums = importlib.import_module("shared.core.enums")
 catalog_models = importlib.import_module("shared.models.catalog")
 pick_ban_config = importlib.import_module("src.services.encounter.pick_ban_config")
@@ -115,6 +122,8 @@ FLAT_TOKENS = ["ban_first", "ban_second", "pick_first", "pick_second", "decider"
 FLAT_RULESET = _v1(mode="pool", sequence=FLAT_TOKENS)
 SLOT_RULESET = _v1(mode="slots", sequence=[], timer=45)
 HERO_RULESET = _v1(kind="hero", mode="pool", sequence=["ban_first", "ban_second"])
+#: Overwatch's own preset: presets live in their discipline module, not in core.
+ANTI_ONE_TRICK = {preset.id: preset for preset in pbr.presets_for("overwatch")}["hero_anti_one_trick"]
 #: Well-formed as a document, but says nothing: the engine's cheapest error.
 _EMPTY_RULESET = {"version": 2, "timer_seconds": 90, "on_timeout": "random_fill", "phases": []}
 
@@ -251,9 +260,13 @@ class _FakeSession:
         stage_tournament_id=TOURNAMENT_ID,
         roster_slots: dict | None = None,
         hero_types: list[str] | None = None,
+        discipline: str = "overwatch",
     ) -> None:
         self._roster_slots = roster_slots
         self._hero_types = hero_types or []
+        self._discipline = discipline
+        #: Catalog ids the fake reports as NOT rows of the tournament's discipline and kind (a pool-membership read).
+        self.missing_ids: set[int] = set()
         self._existing = existing
         # One table described two ways: ``existing`` is the single row already
         # sitting at the scope the upsert targets, ``configs`` the tournament's
@@ -278,7 +291,7 @@ class _FakeSession:
         if entity is models.Stage:
             return self._stage_tournament_id
         if entity is models.Tournament:
-            return self._roster_slots
+            return self._discipline
         if entity is pick_ban_models.PickBanConfig:
             return self._existing
         raise AssertionError(f"the handler queried an unexpected entity: {entity!r}")
@@ -287,10 +300,13 @@ class _FakeSession:
         entity = self._record(query)
         if entity is pick_ban_models.PickBanConfig:
             return _Result(self._configs)
-        if entity is catalog_models.Gamemode:
-            return _Result(list(GAMEMODE_SLUGS))
-        if entity is catalog_models.Hero:
-            return _Result(list(self._hero_types))
+        if entity is catalog_models.CatalogEntity:
+            sql = str(query.compile(compile_kwargs={"literal_binds": True}))
+            if query.column_descriptions[0]["name"] == "id":
+                # `assert_pool_in_discipline`: echo every requested id the test did not declare foreign.
+                wanted = [int(part) for part in re.search(r"\.id IN \(([^)]*)\)", sql).group(1).split(",")]
+                return _Result([item_id for item_id in wanted if item_id not in self.missing_ids])
+            return _Result(list(GAMEMODE_SLUGS) if "'mode'" in sql else list(self._hero_types))
         raise AssertionError(f"the handler queried an unexpected entity: {entity!r}")
 
     async def scalars(self, query):
@@ -575,6 +591,20 @@ class RulesetValidationBlocksTheWrite(_UpsertCase):
         self.assertIs(False, step["blind"])
         # The response carries exactly what was stored, not what was sent.
         self.assertEqual(config.ruleset_json, envelope["data"]["ruleset"])
+
+    async def test_a_mix_only_pick_preset_is_refused_for_a_tournament(self) -> None:
+        # R4-6: member picks and assignments are a mix room's; a tournament hero config holding one is a 422.
+        offered = {row["id"]: row for row in pbr.catalog(discipline="lol")["presets"]}["lol_draft"]
+        body = {"kind": "hero", "mode": "pool", "ruleset": offered["ruleset"], "item_ids": [1, 2, 3]}
+
+        envelope, session = await self.call(
+            UPSERT,
+            {"identity": IDENTITY, "id": TOURNAMENT_ID, "payload": body},
+            session=_FakeSession(discipline="lol"),
+        )
+
+        self.assert_ruleset_issue(envelope, "mix_only")
+        self.assertEqual(0, session.commits)
 
 
 class PoolCapacityGuard(_UpsertCase):
@@ -951,13 +981,15 @@ class RunningSessionsAreUntouched(_UpsertCase):
         # this pins both halves -- the only reads are the config itself and the
         # gamemode vocabulary the ruleset validator needs, and the only row
         # added besides the config (untouched here, this is an update) is the
-        # admin audit entry.
+        # admin audit entry. The tournament row is read for one thing only: its
+        # ``discipline``, which is what decides whether the ruleset may name
+        # sides at all (D25).
         existing = _config(SLOTS, slots=CANDIDATES)
 
         envelope, session = await self.invoke(slot_body(), existing=existing)
 
         self.assertTrue(envelope["ok"], envelope)
-        self.assertEqual(["Gamemode", "PickBanConfig"], sorted(session.statements))
+        self.assertEqual(["CatalogEntity", "PickBanConfig", "Tournament"], sorted(session.statements))
         self.assertEqual(["AuditLog"], [type(obj).__name__ for obj in session.added])
 
 
@@ -1090,6 +1122,89 @@ class RulesValidateOp(_SubjectCase):
         self.assertFalse(data["valid"])
         self.assertIn("unknown_group", [issue["code"] for issue in data["issues"]])
 
+    async def test_hero_groups_are_the_tournaments_own_disciplines_classes(self) -> None:
+        ruleset = deepcopy(HERO_RULESET)
+        ruleset["phases"][0]["pool_filter"] = {"type": "item_group", "params": {"groups": ["mage"]}}
+        body = {"kind": "hero", "mode": "pool", "ruleset": ruleset}
+
+        for discipline, valid in (("lol", True), ("overwatch", False)):
+            envelope, _ = await self.call(
+                VALIDATE,
+                {"identity": IDENTITY, "id": TOURNAMENT_ID, "payload": body},
+                session=_FakeSession(discipline=discipline),
+            )
+            self.assertTrue(envelope["ok"], envelope)
+            self.assertEqual(valid, envelope["data"]["valid"], discipline)
+            if not valid:
+                self.assertIn("unknown_group", [issue["code"] for issue in envelope["data"]["issues"]])
+
+
+class GroupVocabularyScope(IsolatedAsyncioTestCase):
+    async def test_map_groups_are_queried_only_from_the_requested_discipline(self) -> None:
+        session = AsyncMock()
+        session.scalars.return_value = ["control"]
+        assert await pick_ban_config.group_vocabulary(session, enums.PickBanKind.MAP, "overwatch") == ["control"]
+        query = session.scalars.await_args.args[0]
+        sql = str(query.compile(compile_kwargs={"literal_binds": True}))
+        assert "entity.kind = 'mode'" in sql
+        assert "entity.discipline = 'overwatch'" in sql
+
+    async def test_hero_groups_are_the_modules_classes_without_touching_the_database(self) -> None:
+        session = AsyncMock()
+        assert await pick_ban_config.group_vocabulary(session, enums.PickBanKind.HERO, "overwatch") == [
+            "tank",
+            "damage",
+            "support",
+        ]
+        assert "mage" in await pick_ban_config.group_vocabulary(session, enums.PickBanKind.HERO, "lol")
+        session.scalars.assert_not_awaited()
+
+    async def test_a_discipline_without_a_mode_kind_has_no_map_groups_and_no_query(self) -> None:
+        session = AsyncMock()
+        assert await pick_ban_config.group_vocabulary(session, enums.PickBanKind.MAP, "lol") == []
+        session.scalars.assert_not_awaited()
+
+    async def test_an_uninstalled_discipline_is_a_404_not_an_empty_vocabulary(self) -> None:
+        for kind in (enums.PickBanKind.HERO, enums.PickBanKind.MAP):
+            with self.assertRaises(BaseAPIException) as raised:
+                await pick_ban_config.group_vocabulary(AsyncMock(), kind, "starcraft")
+            assert raised.exception.status_code == 404
+
+    async def test_pool_counts_only_count_items_of_the_requested_discipline(self) -> None:
+        session = AsyncMock()
+        session.scalars.return_value = ["Fighter", "fighter", "Mage", None]
+        counts, size = await pick_ban_config.pool_composition(session, enums.PickBanKind.HERO, [1, 2, 3, 4], "lol")
+        assert counts == {"fighter": 2, "mage": 1}
+        assert size == 4  # a champion with no class still belongs to the pool
+        sql = str(session.scalars.await_args.args[0].compile(compile_kwargs={"literal_binds": True}))
+        assert "entity.discipline = 'lol'" in sql
+
+    async def test_a_map_without_a_gamemode_still_counts_toward_the_pool(self) -> None:
+        # League maps have no mode parent: the mode join is optional, never a filter on the pool.
+        session = AsyncMock()
+        session.scalars.return_value = [None, None, None]
+        counts, size = await pick_ban_config.pool_composition(session, enums.PickBanKind.MAP, [1, 2, 3], "lol")
+        assert (counts, size) == ({}, 3)
+        sql = str(session.scalars.await_args.args[0].compile(compile_kwargs={"literal_binds": True}))
+        assert "LEFT OUTER JOIN" in sql
+
+    async def test_pool_membership_is_checked_against_the_discipline_and_kind(self) -> None:
+        session = AsyncMock()
+        session.scalars.return_value = [1, 2]
+        await pick_ban_config.assert_pool_in_discipline(
+            session, kind=enums.PickBanKind.MAP, discipline="lol", item_ids=[1], slots=[([2], None)]
+        )
+        sql = str(session.scalars.await_args.args[0].compile(compile_kwargs={"literal_binds": True}))
+        assert "entity.discipline = 'lol'" in sql
+        assert "entity.kind = 'map'" in sql
+        session.scalars.return_value = [1]
+        with self.assertRaises(BaseAPIException) as raised:
+            await pick_ban_config.assert_pool_in_discipline(
+                session, kind=enums.PickBanKind.HERO, discipline="lol", item_ids=[1], slots=[([2], 3)]
+            )
+        assert raised.exception.status_code == 422
+        assert "2, 3" in str(raised.exception.detail)
+
 
 #: A hero pool big enough that every role survives a Bo5 of the anti-one-trick
 #: rules, and with three different sizes so a role read off the wrong key shows.
@@ -1102,11 +1217,21 @@ ROSTER_SLOTS = {"tank": 1, "damage": 2, "support": 2, "flex": 0}
 
 
 class RulesPreviewOp(_SubjectCase):
+    def setUp(self) -> None:
+        super().setUp()
+        from shared.domain.roster_shape import RosterShape
+
+        async def shape(session, _tournament_id):
+            slots = session._roster_slots or ROSTER_SLOTS
+            return RosterShape(entries=tuple((role, count) for role, count in slots.items() if count))
+
+        self.enterContext(patch.object(pick_ban_config, "tournament_slot_shape", shape))
+
     async def _preview(self, session: _FakeSession, **payload) -> dict:
         body = {
             "kind": "hero",
             "mode": "pool",
-            "ruleset": pbr.PRESETS_BY_ID["hero_anti_one_trick"].ruleset.to_json(),
+            "ruleset": ANTI_ONE_TRICK.ruleset.to_json(),
             "best_of": 5,
             "item_ids": [],
         }
@@ -1144,9 +1269,7 @@ class RulesPreviewOp(_SubjectCase):
             data["maps"][2]["worst_case_remaining"],
         )
 
-    async def test_without_a_roster_shape_the_preview_assumes_the_worst(self) -> None:
-        # The refusal to guess: an organizer who never set a roster shape is
-        # shown the bleakest board the rules permit, not a flattering one.
+    async def test_without_an_own_format_the_preview_uses_the_preset(self) -> None:
         unbounded = await self._preview(
             _FakeSession(hero_types=HERO_TYPES), item_ids=list(range(1, sum(HERO_POOL.values()) + 1))
         )
@@ -1155,10 +1278,7 @@ class RulesPreviewOp(_SubjectCase):
             item_ids=list(range(1, sum(HERO_POOL.values()) + 1)),
         )
 
-        self.assertLess(
-            unbounded["maps"][2]["worst_case_remaining"]["support"],
-            bounded["maps"][2]["worst_case_remaining"]["support"],
-        )
+        self.assertEqual(unbounded["maps"], bounded["maps"])
 
     async def test_a_flex_player_raises_every_roles_ban_ceiling(self) -> None:
         # A role-less player matches EVERY hero under ``target_role_match``, so
@@ -1177,6 +1297,30 @@ class RulesPreviewOp(_SubjectCase):
         )
 
 
+class RulesPreviewPoolSize(_SubjectCase):
+    async def test_a_parentless_map_pool_keeps_its_size_for_the_preview(self) -> None:
+        # League maps have no gamemode: no groups at all, but five maps are still five maps.
+        from shared.domain.roster_shape import RosterShape
+
+        async def shape(session, _tournament_id):
+            return RosterShape(entries=(("top", 1),))
+
+        self.enterContext(patch.object(pick_ban_config, "tournament_slot_shape", shape))
+        # The pool reader reports seven maps and no groups, as it does for a game whose maps have no mode.
+        self.enterContext(patch.object(pick_ban_config, "pool_composition", AsyncMock(return_value=({}, 7))))
+        ruleset = pbr.GENERIC_PRESETS_BY_ID["map_bracket"].ruleset.to_json()
+        body = {"kind": "map", "mode": "pool", "ruleset": ruleset, "best_of": 3, "item_ids": list(range(1, 8))}
+        envelope, _ = await self.call(
+            PREVIEW,
+            {"identity": IDENTITY, "id": TOURNAMENT_ID, "payload": body},
+            session=_FakeSession(discipline="lol"),
+        )
+        self.assertTrue(envelope["ok"], envelope)
+        (row,) = envelope["data"]["maps"]
+        # The bracket sizes itself to a 7-map pool: ban, ban, pick, pick, decider for a Bo3.
+        self.assertEqual(["ban", "ban", "pick", "pick", "decider"], [step["action"] for step in row["steps"]])
+
+
 # ── the public catalog read ──────────────────────────────────────────────────
 
 
@@ -1188,19 +1332,290 @@ class CatalogOp(IsolatedAsyncioTestCase):
     config exists to attach it to.
     """
 
-    async def test_the_catalog_carries_the_leaves_constraints_presets_and_both_group_vocabularies(self) -> None:
+    async def _catalog(self, query: dict | None = None, *, session: _FakeSession | None = None) -> dict:
         reads = importlib.import_module("src.rpc.reads")
         broker = CapturingBroker()
         reads.register(broker, SimpleNamespace(exception=lambda *a, **k: None))
-        session = _FakeSession()
 
-        with patch.object(helpers.db, "async_session_maker", session):
-            envelope = await broker.handlers["rpc.tournament.pick_ban_rules_catalog"]({}, None)
+        with patch.object(helpers.db, "async_session_maker", session or _FakeSession()):
+            return await broker.handlers["rpc.tournament.pick_ban_rules_catalog"]({"query": query or {}}, None)
+
+    async def test_the_catalog_carries_the_leaves_constraints_presets_and_both_group_vocabularies(self) -> None:
+        envelope = await self._catalog({"discipline": ["overwatch"]})
 
         self.assertTrue(envelope["ok"], envelope)
         data = envelope["data"]
         self.assertEqual(sorted(pbr.LEAVES), sorted(leaf["type"] for leaf in data["leaves"]))
         self.assertEqual(sorted(pbr.CONSTRAINTS), sorted(c["type"] for c in data["constraints"]))
-        self.assertEqual([preset.id for preset in pbr.PRESETS], [preset["id"] for preset in data["presets"]])
-        self.assertEqual(list(pbr.HERO_GROUPS), data["groups"]["hero"])
+        self.assertEqual(
+            [preset.id for preset in pbr.presets_for("overwatch")], [preset["id"] for preset in data["presets"]]
+        )
+        self.assertEqual(["tank", "damage", "support"], data["groups"]["hero"])
         self.assertEqual(GAMEMODE_SLUGS, data["groups"]["map"])
+
+    async def test_another_disciplines_catalog_has_its_own_classes_presets_and_no_modes(self) -> None:
+        envelope = await self._catalog({"discipline": ["lol"]})
+
+        self.assertTrue(envelope["ok"], envelope)
+        data = envelope["data"]
+        self.assertEqual(["assassin", "fighter", "mage", "marksman", "support", "tank"], sorted(data["groups"]["hero"]))
+        # League declares no ``mode`` kind: no gamemode query, an empty map vocabulary -- never Overwatch's slugs.
+        self.assertEqual([], data["groups"]["map"])
+        self.assertEqual([preset.id for preset in pbr.presets_for("lol")], [preset["id"] for preset in data["presets"]])
+        self.assertFalse({preset["id"] for preset in data["presets"]} & {"hero_classic", "hero_anti_one_trick"})
+
+    async def test_each_preset_says_whether_a_pickup_mix_may_play_it(self) -> None:
+        """A mix round is map 1 of a Bo1: anti-one-trick bans players only from map 2, so a mix may play it; a preset
+        that bans a player on map 1 it may not, and a map preset never."""
+        targets_on_map_one = pbr.Ruleset(phases=[ANTI_ONE_TRICK.ruleset.phases[1].model_copy(update={"when": {}})])
+        spec = DisciplineSpec(
+            "targeting",
+            "Targeting",
+            (),
+            character_classes=("tank",),
+            pick_ban_presets=lambda: (
+                ANTI_ONE_TRICK,
+                pbr.Preset("per_player_always", "hero", ("pool",), targets_on_map_one),
+            ),
+        )
+        with patch.dict(DISCIPLINES, {spec.code: spec}):
+            envelope = await self._catalog({"discipline": [spec.code]})
+
+        self.assertTrue(envelope["ok"], envelope)
+        self.assertEqual(
+            {"hero_anti_one_trick": True, "per_player_always": False, "map_bracket": False, "map_slot_veto": False},
+            {preset["id"]: preset["mix_eligible"] for preset in envelope["data"]["presets"]},
+        )
+
+    async def test_the_discipline_is_required(self) -> None:
+        envelope = await self._catalog(None)
+
+        self.assertFalse(envelope["ok"], envelope)
+        self.assertEqual("unprocessable", envelope["error"]["code"], envelope)
+
+    async def test_an_uninstalled_discipline_is_not_found_never_overwatch(self) -> None:
+        for code in ("starcraft", "OVERWATCH", ""):
+            envelope = await self._catalog({"discipline": [code]})
+
+            self.assertFalse(envelope["ok"], envelope)
+            self.assertEqual("not_found", envelope["error"]["code"], envelope)
+            self.assertEqual("discipline_not_installed", envelope["error"]["details"]["fields"][0]["code"], envelope)
+
+
+class UpsertRejectsAnotherDisciplinesPool(_SubjectCase):
+    async def _upsert(self, body: dict, missing: set[int]) -> dict:
+        session = _FakeSession()
+        session.missing_ids = missing
+        envelope, _ = await self.call(
+            UPSERT, {"identity": IDENTITY, "id": TOURNAMENT_ID, "payload": body}, session=session
+        )
+        return envelope
+
+    def assert_not_in_catalog(self, envelope: dict, item_id: int) -> None:
+        self.assertFalse(envelope["ok"], envelope)
+        self.assertEqual("unprocessable", envelope["error"]["code"], envelope)
+        self.assertEqual("pool_item_not_in_catalog", envelope["error"]["details"]["fields"][0]["code"], envelope)
+        self.assertIn(str(item_id), envelope["error"]["message"] + str(envelope["error"]["details"]))
+
+    async def test_a_foreign_flat_item_is_rejected(self) -> None:
+        self.assert_not_in_catalog(await self._upsert(flat_body(), {FLAT_ITEM_IDS[2]}), FLAT_ITEM_IDS[2])
+
+    async def test_a_foreign_slot_candidate_and_a_foreign_reserve_are_rejected(self) -> None:
+        self.assert_not_in_catalog(await self._upsert(slot_body(), {CANDIDATES[1][0]}), CANDIDATES[1][0])
+        self.assert_not_in_catalog(await self._upsert(slot_body(), {99}), 99)
+
+    async def test_an_all_native_pool_still_saves(self) -> None:
+        self.assertTrue((await self._upsert(slot_body(), set()))["ok"])
+        self.assertTrue((await self._upsert(flat_body(), set()))["ok"])
+
+    async def test_a_pool_less_template_reads_no_catalog_membership(self) -> None:
+        session = _FakeSession()
+        envelope, _ = await self.call(
+            UPSERT,
+            {"identity": IDENTITY, "id": TOURNAMENT_ID, "payload": flat_body(item_ids=[])},
+            session=session,
+        )
+        self.assertTrue(envelope["ok"], envelope)
+        self.assertFalse(
+            any(
+                "id IN" in str(q.compile(compile_kwargs={"literal_binds": True}))
+                for q in session.statements.get("CatalogEntity", [])
+            )
+        )
+
+
+# ── a preset's rotation reaches the saved config; the discipline reaches validation ──────────────────────────────
+
+
+class PresetRotationRoundTrip(_SubjectCase):
+    async def test_the_rotation_a_catalog_preset_declares_is_saved_and_read_back(self) -> None:
+        preset = pbr.Preset(
+            "rotating_ban",
+            "hero",
+            ("pool",),
+            pbr.parse_ruleset(HERO_RULESET),
+            first_ban_rotation=enums.FirstBanRotation.RESULT_LOSER_FIRST.value,
+        )
+        spec = DisciplineSpec(
+            "rotating", "Rotating", (), character_classes=("bruiser",), pick_ban_presets=lambda: (preset,)
+        )
+        with patch.dict(DISCIPLINES, {spec.code: spec}):
+            offered = {row["id"]: row for row in pbr.catalog(discipline=spec.code)["presets"]}["rotating_ban"]
+            body = {
+                "kind": "hero",
+                "mode": "pool",
+                "ruleset": offered["ruleset"],
+                "first_ban_rotation": offered["first_ban_rotation"],
+                "item_ids": [1, 2, 3],
+            }
+            envelope, session = await self.call(
+                UPSERT,
+                {"identity": IDENTITY, "id": TOURNAMENT_ID, "payload": body},
+                session=_FakeSession(discipline=spec.code),
+            )
+
+        self.assertTrue(envelope["ok"], envelope)
+        (config,) = [obj for obj in session.added if isinstance(obj, pick_ban_models.PickBanConfig)]
+        self.assertEqual(enums.FirstBanRotation.RESULT_LOSER_FIRST, config.first_ban_rotation)
+        self.assertEqual("result_loser_first", envelope["data"]["first_ban_rotation"])
+        # Read back: the stored config serializes the same rotation the draft form re-reads.
+        self.assertEqual("result_loser_first", pick_ban_config.serialize_pick_ban_config(config)["first_ban_rotation"])
+
+
+class PresetLolSideSelectionRoundTrip(_SubjectCase):
+    async def test_leagues_side_selection_preset_saves_with_its_rotation_and_reads_back(self) -> None:
+        offered = {row["id"]: row for row in pbr.catalog(discipline="lol")["presets"]}["lol_side_selection"]
+        body = {
+            "kind": "hero",
+            "mode": "pool",
+            "ruleset": offered["ruleset"],
+            "first_ban_rotation": offered["first_ban_rotation"],
+            "item_ids": [1, 2, 3],
+        }
+        envelope, session = await self.call(
+            UPSERT,
+            {"identity": IDENTITY, "id": TOURNAMENT_ID, "payload": body},
+            session=_FakeSession(discipline="lol"),
+        )
+
+        self.assertTrue(envelope["ok"], envelope)
+        (config,) = [obj for obj in session.added if isinstance(obj, pick_ban_models.PickBanConfig)]
+        self.assertEqual(enums.FirstBanRotation.RESULT_LOSER_FIRST, config.first_ban_rotation)
+        read_back = pick_ban_config.serialize_pick_ban_config(config)
+        self.assertEqual("result_loser_first", read_back["first_ban_rotation"])
+        steps = [step for phase in read_back["ruleset"]["phases"] for step in phase["steps"]]
+        self.assertEqual([("side_pick", "first")], [(step["action"], step["actors"]) for step in steps])
+
+
+class UpsertValidatesInTheTournamentsDiscipline(_SubjectCase):
+    async def _upsert(self, discipline: str, group: str) -> dict:
+        ruleset = deepcopy(HERO_RULESET)
+        ruleset["phases"][0]["pool_filter"] = {"type": "item_group", "params": {"groups": [group]}}
+        body = {"kind": "hero", "mode": "pool", "ruleset": ruleset, "item_ids": [1, 2, 3]}
+        envelope, _ = await self.call(
+            UPSERT,
+            {"identity": IDENTITY, "id": TOURNAMENT_ID, "payload": body},
+            session=_FakeSession(discipline=discipline),
+        )
+        return envelope
+
+    async def test_a_class_of_the_tournaments_game_saves_and_another_games_class_is_rejected(self) -> None:
+        self.assertTrue((await self._upsert("lol", "mage"))["ok"])
+        rejected = await self._upsert("lol", "damage")
+        self.assertFalse(rejected["ok"], rejected)
+        self.assertEqual("unprocessable", rejected["error"]["code"], rejected)
+        entry = rejected["error"]["details"]["fields"][0]
+        self.assertIn("unknown_group", [issue["code"] for issue in entry["issues"]])
+
+
+# ── a hero config that picks sides needs its pool (real database) ─────────────────────────────────────────────────
+
+
+class HeroSidePickNeedsItsPool(IsolatedAsyncioTestCase):
+    """``side_pick_required`` reads a resolved config's side step whether or not its room can open, and a pool-less
+    config never opens one: saved, it would hold every game's result behind a room reporting ``not_configured``. The
+    upsert refuses it (422 ``pool_required``) -- through the real handler, on a real database."""
+
+    async def asyncSetUp(self) -> None:
+        self.Session = await self.enterAsyncContext(real_db_sessionmaker())
+        tag = f"pb-pool-{uuid.uuid4().hex[:12]}"
+        async with self.Session() as session:
+            await project_disciplines(session)
+            workspace = Workspace(slug=tag, name=tag)
+            session.add(workspace)
+            await session.flush()
+            tournament = models.Tournament(workspace_id=workspace.id, name=tag, slug=tag, discipline="lol")
+            champions = [
+                catalog_models.CatalogEntity(discipline="lol", kind="character", slug=f"{tag}-{n}", name=f"{tag} {n}")
+                for n in range(2)
+            ]
+            session.add_all([tournament, *champions])
+            await session.commit()
+            self.workspace_id, self.tournament_id = workspace.id, tournament.id
+            self.champion_ids = [champion.id for champion in champions]
+        self.addAsyncCleanup(self._cleanup)
+
+    async def _cleanup(self) -> None:
+        async with self.Session() as session:
+            await session.execute(sa.delete(Workspace).where(Workspace.id == self.workspace_id))
+            await session.execute(
+                sa.delete(catalog_models.CatalogEntity).where(catalog_models.CatalogEntity.id.in_(self.champion_ids))
+            )
+            await session.commit()
+
+    async def _upsert(self, ruleset: dict, item_ids: list[int]) -> dict:
+        broker = CapturingBroker()
+        pick_ban_admin.register(broker, SimpleNamespace(exception=lambda *a, **k: None))
+        identity = make_identity(
+            workspaces=[
+                {
+                    "workspace_id": self.workspace_id,
+                    "rbac_roles": [],
+                    "rbac_permissions": [{"resource": "match", "action": "update"}],
+                }
+            ]
+        )
+        body = {"kind": "hero", "mode": "pool", "ruleset": ruleset, "item_ids": item_ids}
+        with patch.object(helpers.db, "async_session_maker", self.Session):
+            return await broker.handlers[UPSERT](
+                {"identity": identity, "id": self.tournament_id, "payload": body}, None
+            )
+
+    async def _saved_pool_sizes(self) -> list[int]:
+        config, item = pick_ban_models.PickBanConfig, pick_ban_models.PickBanConfigItem
+        async with self.Session() as session:
+            return list(
+                await session.scalars(
+                    sa.select(sa.func.count(item.id))
+                    .select_from(config)
+                    .outerjoin(item, item.pick_ban_config_id == config.id)
+                    .where(config.tournament_id == self.tournament_id)
+                    .group_by(config.id)
+                )
+            )
+
+    @staticmethod
+    def _side_ruleset() -> dict:
+        return {preset.id: preset for preset in pbr.presets_for("lol")}["lol_side_selection"].ruleset.to_json()
+
+    async def test_an_empty_pool_under_a_side_pick_is_refused_with_pool_required(self) -> None:
+        envelope = await self._upsert(self._side_ruleset(), [])
+
+        self.assertFalse(envelope["ok"], envelope)
+        self.assertEqual("unprocessable", envelope["error"]["code"], envelope)
+        self.assertEqual("pool_required", envelope["error"]["details"]["fields"][0]["code"], envelope)
+        self.assertIn("champion pool has to be saved first", envelope["error"]["message"], envelope)
+        self.assertEqual([], await self._saved_pool_sizes())
+
+    async def test_an_empty_pool_without_a_side_step_still_saves_as_a_template(self) -> None:
+        envelope = await self._upsert(deepcopy(HERO_RULESET), [])
+
+        self.assertTrue(envelope["ok"], envelope)
+        self.assertEqual([0], await self._saved_pool_sizes())
+
+    async def test_a_side_pick_config_with_a_champion_pool_saves(self) -> None:
+        envelope = await self._upsert(self._side_ruleset(), self.champion_ids)
+
+        self.assertTrue(envelope["ok"], envelope)
+        self.assertEqual(self.champion_ids, envelope["data"]["item_ids"])
+        self.assertEqual([2], await self._saved_pool_sizes())

@@ -1,39 +1,60 @@
 "use client";
 
-import { useState } from "react";
-import { Ban, Download, RotateCcw, Sparkles } from "lucide-react";
+import { useId, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { notify } from "@/lib/notify";
+import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
+import draftService from "@/services/draft.service";
 import type { DraftBoard } from "@/types/draft.types";
-import type { DraftLifecycleAction } from "@/hooks/useDraftData";
 import { useDraftMutations } from "@/hooks/useDraftData";
 
 interface LifecycleControlsProps {
   tournamentId: number;
   board: DraftBoard;
+  /** The server refuses to resume while no feasible role assignment remains. */
+  resumeBlocked?: boolean;
 }
 
-type ConfirmedAction = Extract<DraftLifecycleAction, "rollback" | "cancel" | "export"> | "autopick";
+type ConfirmedAction = "rollback" | "cancel" | "export" | "autopick";
 
 /**
- * The lifecycle actions that END or REWIND a session, each behind a confirm.
+ * The control room's lifecycle actions: pause and resume fire at once (both
+ * are reversible); the ones that END or REWIND a session sit behind a confirm.
  *
- * Pause, resume, extra time and override are not here: they steer a pick in
- * flight and belong to the admin dock inside the draft room, where the board
- * they act on is visible.
+ * Extra time and override steer a pick in flight and stay in the draft room's
+ * admin dock, where the board they act on is visible.
  */
-export function LifecycleControls({ tournamentId, board }: Readonly<LifecycleControlsProps>) {
+export function LifecycleControls({ tournamentId, board, resumeBlocked = false }: Readonly<LifecycleControlsProps>) {
   const t = useTranslations("draftAdmin.controlRoom");
-  const mutations = useDraftMutations(tournamentId);
+  const tDraft = useTranslations("draftAdmin");
+  const resumeReasonId = useId();
+  const mutations = useDraftMutations(tournamentQueryKeys.draftBoard(tournamentId));
   const [confirmedAction, setConfirmedAction] = useState<ConfirmedAction | null>(null);
   const session = board.session;
+  const queryClient = useQueryClient();
+  const exportMutation = useMutation({
+    mutationFn: () => draftService.exportDraft(tournamentId, session.id),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: tournamentQueryKeys.draftBoard(tournamentId) }),
+  });
   const currentPick = board.current_pick;
   const resolvedCount = board.picks.filter((pick) =>
     ["completed", "autopicked", "skipped"].includes(pick.status)
   ).length;
+
+  const toggleClock = () => {
+    const action = session.status === "paused" ? "resume" : "pause";
+    mutations.lifecycle.mutate(
+      { sessionId: session.id, action },
+      {
+        onSuccess: () => notify.success(tDraft("lifecycleSuccess", { action: tDraft(`actions.${action}`) })),
+        onError: (error) => notify.apiError(error)
+      }
+    );
+  };
 
   const runConfirmed = () => {
     const action = confirmedAction;
@@ -52,44 +73,68 @@ export function LifecycleControls({ tournamentId, board }: Readonly<LifecycleCon
       );
       return;
     }
+    // Only an export answers with advisories; the other verbs just confirm.
+    const notifyResult = (advisories: string[]) => {
+      const showResult = advisories.length ? notify.warning : notify.success;
+      showResult(t(`actionSuccess.${action}`), {
+        description: advisories.join("\n"),
+        duration: advisories.length ? Infinity : undefined,
+        classNames: { description: "whitespace-pre-line" }
+      });
+      setConfirmedAction(null);
+    };
+    if (action === "export") {
+      exportMutation.mutate(undefined, {
+        onSuccess: (result) => notifyResult(result.advisories),
+        onError: (error) => notify.apiError(error)
+      });
+      return;
+    }
     mutations.lifecycle.mutate(
       { sessionId: session.id, action },
-      {
-        onSuccess: () => {
-          notify.success(t(`actionSuccess.${action}`));
-          setConfirmedAction(null);
-        },
-        onError: (error) => notify.apiError(error)
-      }
+      { onSuccess: () => notifyResult([]), onError: (error) => notify.apiError(error) }
     );
   };
 
   return (
     <>
       <div className="flex flex-wrap gap-2">
+        {session.status === "live" && (
+          <Button variant="outline" disabled={mutations.lifecycle.isPending} onClick={toggleClock}>
+            {tDraft("actions.pause")}
+          </Button>
+        )}
+        {session.status === "paused" && (
+          <Button
+            disabled={resumeBlocked || mutations.lifecycle.isPending}
+            aria-describedby={resumeBlocked ? resumeReasonId : undefined}
+            onClick={toggleClock}
+          >
+            {tDraft("actions.resume")}
+          </Button>
+        )}
         {session.status === "live" && currentPick && (
           <Button variant="outline" onClick={() => setConfirmedAction("autopick")}>
-            <Sparkles className="mr-2 h-4 w-4" aria-hidden />
             {t("actions.autopick")}
           </Button>
         )}
         {resolvedCount > 0 && ["live", "paused", "completed"].includes(session.status) && (
           <Button variant="outline" onClick={() => setConfirmedAction("rollback")}>
-            <RotateCcw className="mr-2 h-4 w-4" aria-hidden />
             {t("actions.rollback")}
           </Button>
         )}
         {["live", "paused", "ready"].includes(session.status) && (
           <Button variant="destructive" onClick={() => setConfirmedAction("cancel")}>
-            <Ban className="mr-2 h-4 w-4" aria-hidden />
             {t("actions.cancel")}
           </Button>
         )}
         {session.status === "completed" && (
-          <Button onClick={() => setConfirmedAction("export")}>
-            <Download className="mr-2 h-4 w-4" aria-hidden />
-            {t("actions.export")}
-          </Button>
+          <Button onClick={() => setConfirmedAction("export")}>{t("actions.export")}</Button>
+        )}
+        {session.status === "paused" && resumeBlocked && (
+          <p id={resumeReasonId} className="basis-full text-caption text-muted-foreground">
+            {t("resumeBlocked")}
+          </p>
         )}
       </div>
 
@@ -102,7 +147,7 @@ export function LifecycleControls({ tournamentId, board }: Readonly<LifecycleCon
           confirmLabel: confirmedAction ? t(`actions.${confirmedAction}`) : "",
           tone: confirmedAction === "cancel" ? "danger" : "warning"
         }}
-        pending={mutations.lifecycle.isPending || mutations.autopick.isPending}
+        pending={mutations.lifecycle.isPending || mutations.autopick.isPending || exportMutation.isPending}
         onConfirm={runConfirmed}
       />
     </>

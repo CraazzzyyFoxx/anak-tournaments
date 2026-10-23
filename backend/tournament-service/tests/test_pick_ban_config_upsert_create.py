@@ -30,6 +30,7 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB  # noqa: E402
 
+from shared import models  # noqa: E402
 from shared.core.enums import (  # noqa: E402
     FirstBanRotation,
     FirstPickRule,
@@ -38,7 +39,6 @@ from shared.core.enums import (  # noqa: E402
 )
 from shared.domain import pick_ban_rules as pbr  # noqa: E402
 from shared.models.tournament.pick_ban import PickBanConfig  # noqa: E402
-from src import models  # noqa: E402
 from src.services.encounter.pick_ban_config import PickBanConfigService, SlotSpec  # noqa: E402
 
 
@@ -120,7 +120,7 @@ class UpsertConfigCreatePathTest(IsolatedAsyncioTestCase):
             "mode": MapVetoMode.SLOTS,
             "first_pick_rule": FirstPickRule.HIGHER_SEED,
             "first_ban_rotation": FirstBanRotation.ALTERNATE,
-            "ruleset": pbr.PRESETS_BY_ID["map_slot_veto"].ruleset.to_json(),
+            "ruleset": pbr.GENERIC_PRESETS_BY_ID["map_slot_veto"].ruleset.to_json(),
             "item_ids": [1, 2, 3],
             "slots": [SlotSpec(candidates=[1, 2], reserve_item_id=3)],
         }

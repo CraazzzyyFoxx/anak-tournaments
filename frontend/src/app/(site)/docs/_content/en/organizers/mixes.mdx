@@ -13,9 +13,9 @@ A mix always belongs to one workspace: players come from its members, and the **
 1. **Name** — required, for example "Evening mix".
 2. **Starting lineup** — **No players** or **From a previous mix**.
 
-Copying a previous mix brings over the lineup, each player's role setup, the team names, the co-hosts, the number of lobbies and the lobby pins. Match history is not copied and every player starts in the pool: last session's **Must play** pins and benchings are not inherited.
+Copying a previous mix brings over the lineup, each player's role setup, the team names, the co-hosts, the number of lobbies, the lobby pins, the hero bans and how it forms teams, pick clock included. Match history is not copied and every player starts in the pool: last session's **Must play** pins and benchings are not inherited.
 
-The mix itself carries no settings. The roster shape, how a lobby is split and what a win is worth belong to your account and are the same for every mix you host. They live in **Account settings → Mixes**.
+The mix itself carries two settings: how its lobbies form teams (see **Captain draft** below) and its hero bans (see **Hero bans** below). The roster shape, how a lobby is split and what a win is worth belong to your account and are the same for every mix you host. They live in **Account settings → Mixes**.
 
 ## Who plays: three columns
 
@@ -31,27 +31,58 @@ The lineup is then arranged by dragging players between three columns:
 
 Each player has an order of roles, the first being the one they most want, plus a **Full flex** switch for "any role is fine". A role with no rank is not usable, so a strip above the columns tells you which role is short before you press Balance.
 
+A game with one role — Deadlock, VALORANT — has nothing to order: the lineup, the player card and the teams show no roles, no **Full flex** and no role strip, and every seat is that one role. Its signup settings have no **Players edit their own roles** switch either.
+
 ## Splitting into teams
 
-**Balance teams** splits the lineup into **two** teams. The team size comes from the roster shape in your account settings, so the number of seats is two rosters. If more people turned up, the extras are moved to **Benched** automatically, and whoever has been sitting out longest is protected first. With two lobbies nobody is benched: whoever does not fit waits for a seat in the other lobby or in the next balance.
+**Balance teams** splits the lineup into **two** teams. The team size comes from the roster shape in your account settings, so the number of seats is two rosters. If more people turned up, the extras are moved to **Benched** automatically, and whoever has been sitting out longest is protected first. With several lobbies nobody is benched: whoever does not fit waits for a seat in another lobby or in the next balance. An away player is never seated (see **Away**).
 
 One run can return several options — how many is up to your settings. The arrows by the heading page through them, and everyone watching sees the option you have open. Each option shows the rank gap between the teams and how many players sit off their first-choice role. Two players can be swapped by hand by dragging one onto the other's seat; only seats of the same role swap. Team names are edited with the pencil next to the name.
 
 How evenly ranks are split versus how carefully preferred roles are honoured is the **Balancing (rank balance vs role comfort)** slider in your account settings: left for even ranks, right for more players on the role they asked for. **Line importance** sits next to it, so a tank mismatch can be made to cost more than a support one.
 
-## Two lobbies
+## Captains
 
-The **Lobbies: 1 / 2** switch in the mix header opens a second lobby. Lobbies run independently: each has its own teams, its own map, its own result and its own pace — the quick one never waits for the slow one. **Lobby A / Lobby B** tabs appear above the matchup; exactly one lobby is on screen, and everything under the tab (the option pager, the map roll, recording a result, dragging players between teams, posting to Discord) belongs to it.
+Every team of a lineup has a captain, marked with a crown. A balance makes each team's strongest player its captain — by the rank the balancer seated them at; on a tie, the one with the lower member number. **Make captain** (the crown button next to a player of a Ready lineup) hands the crown to someone else. A swap involving a captain picks both teams' captains again, and a new balance starts over. A lineup balanced before captains existed shows its captains too, without a new balance. The crown is there whether or not you ban heroes: the captain also creates the in-game lobby.
 
-**Balance teams** under a tab balances that lobby alone. Its candidates exclude anyone already seated in the other lobby and anyone pinned to the other lobby. **Shuffle both lobbies** in the header splits the whole pool into two evenly matched lobbies at once — it only exists with two lobbies, and it needs enough players for both line-ups.
+## Lobbies and rooms
 
-A lobby whose balanced line-up has not been played into the log yet is marked **not recorded** on its tab, and anything that would overwrite that line-up asks first.
+The **Lobbies** slider in the mix header's **⋯** menu runs the mix as one to six lobbies, **A** to **F**. Lobbies run independently: each has its own teams, its own map, its own match and its own pace — the quick one never waits for the slow one.
 
-A player's card (**Advanced settings**) gains **Lobby: Auto / Lobby A / Lobby B** — a pin. It takes effect at the next balance: a player pinned to A is never a candidate for B. Each lineup row shows where that player is right now: **A**, **B**, or **waiting** for a seat. With two lobbies the role-supply strip asks for twice as many people per role.
+Every lobby, a lone one included, plays in its own room, and the mix page is the host's desk: the pool and lineup column, the settings in the header and the lobby's teams card with the options, the swaps, the crown, the map roll, the Discord post and the image copy. With one lobby that card sits right on the page. With several, the page shows one card per lobby with its stage, one line about it (how long its match or draft has run, the rating gap, or how many players it is short), the one button that stage calls for, and **Teams** and **Open room**. **Teams** unfolds that lobby's teams card under the cards (`?lobby=B` in the page's address), and **Open room** is highlighted while the lobby drafts or is in Pre-game. A card's **Balance** (**Draft** in draft mode) is greyed out, with the reason, while the lobby cannot fill its seats. **Shuffle all lobbies** above the cards splits the whole pool into evenly matched lobbies at once; it is greyed out while any match is live. Under the cards, everyone no lobby seats is listed in three groups — **Waiting**, **Away** and **Bench** — followed by the match history and the leaderboard.
 
-In the match history every match carries its lobby letter, and the undo is offered on the newest match of **each** lobby — undoing in A never touches B.
+Each lobby's room has its own address, for example `/balancer/mix/12/lobby/B`. Anyone with the link can watch it, signed out included — send it to that lobby's players and casters. The room is where the lobby plays: the captain draft, the hero bans and picks and the match itself run there, the draft and match chats live there, and a host finds each stage's main button there. The lineup columns, the rotation hints, the options, the swaps and the Discord post stay on the mix page, and the mix page has no chat.
 
-Going back to one lobby drops lobby B's teams and every pin; the matches lobby B already recorded stay in the history and in the leaderboard.
+The room puts the first team on the left, the second on the right, and whatever the lobby is doing in the centre. In **Idle** a host forms the teams there with a draft or the balancer. In **Draft setup** and **Draft** the centre holds the player pool, the pick order and the clock. In **Ready** it shows the map, which a host can roll, and, in a mix with bans, who bans first; a host also gets **Start match** plus **New draft** and **Build with balancer** in draft mode or **Balance again** in balance mode. In **Pre-game** the centre holds the hero grid with its steps, and in **Live** the map, the team voice button for that lobby's players and a host's result buttons. The team columns show the captain's crown, the viewer's own seat marked **You**, away players, picked heroes and bans, and a crossed-out wifi icon by a drafting captain who has the room closed. On a phone both teams sit side by side above the centre and fold into one line. Stage changes are animated: a drafted player flies from the pool into their slot, a banned or picked hero flies to its team's ban row or beside its player, and the centre hands over to the next stage. With reduced motion turned on in the system, everything changes at once.
+
+Every lobby is in one of these stages, shown on its card and at the top of its room; **Draft setup** and **Draft** come only in a mix with a captain draft, **Pre-game** only in a mix with hero bans:
+
+| Stage | What it means | What comes next |
+| --- | --- | --- |
+| **Idle** | No teams yet. | **Balance** or **Draft**, on the mix page or in the room |
+| **Draft setup** | The lobby's draft is prepared: captains and pool are set, the clock is not running. | **Start draft** in the room |
+| **Draft** | The captains are picking in the room. | **Ready** after the last pick, or **Cancel draft** |
+| **Ready** | A lineup is on the mix page: page the options, swap players, make a captain, roll the map. | **Start match**, on the mix page or in the room |
+| **Pre-game** | The match has started and the teams ban heroes in the room; the lineup is frozen. | **Live** once the bans are done, or **Cancel match** |
+| **Live** | The match is being played and its lineup is frozen. | Record the result on the mix page or in the room, or **Cancel match** |
+
+**Balance teams** on a lobby's lineup (**Balance** on its card) balances that lobby alone. Its candidates exclude anyone seated in another lobby, pinned to another lobby or away. A player's card (**Advanced settings**) has a **Lobby** choice — **Auto** or **Lobby A** … **Lobby F** — a pin that takes effect at the next balance. Each lineup row shows where that player is right now: the lobby letter, or **waiting**. With several lobbies the role-supply strip asks for that many times more people per role.
+
+In the match history every match carries its lobby letter, and undo is offered on the newest match of **each** lobby. Lowering the number of lobbies drops the teams and pins of the lobbies that go; their recorded matches stay in the history and the leaderboard. A lobby with a live match cannot be dropped: record or cancel the match first.
+
+## Captain draft
+
+A mix forms its lobbies' teams with the balancer or with a captain draft: pick **Balancer** or **Captain draft** in the **Teams** choice of the mix header. With a captain draft a field next to it sets the pick clock, 10 to 600 seconds (30 unless you set another); a change applies from the next draft. **Account settings → Mixes** holds a default per game (**Teams in new mixes of this game**), and a mix copied from a previous one keeps that mix's choice. In draft mode a lobby's main button is **Draft**; **Build with balancer** stays in its **⋯** menu.
+
+**Draft** takes exactly the players a balance would seat — must-play first, then whoever the rotation owes a seat, never anyone away — and makes the two strongest the captains; the weaker of them picks first. The ranks are the ones a balance uses: your book, or the effective rating when results move ranks with the **Ranker**. The lobby reads **Draft setup**, and pressing **Draft** on the mix page takes you to the lobby's room: check the captains in the **Captain of …** choices above the team columns — either can be swapped for any player of the pool, and the weaker one still picks first — and press **Start draft** in the centre. Captains pick in snake order on the clock: the captain on the clock taps a player in the pool and confirms the pick in the bar at the bottom, and the pool dims the players their team cannot seat, with the reason. When a captain's clock runs out, the first available player of their own list is picked for them, else the best fit for their team. With several lobbies, **Split pool** replaces **Shuffle all lobbies**: it splits the seated players over the lobbies by strength and opens a draft in each; like the shuffle, it waits while any match is live.
+
+The last pick writes the lobby's teams, with the captains crowned and the same rating gap and off-role count as a balance. From there the lobby is **Ready** as always: swap players, hand the crown, start the match. A finished draft is the lineup itself and can no longer be paused or rolled back; to redo it, press **Draft** again.
+
+While a draft runs, the rest of a host's controls sit in the **⋯ Host** menu of the room's header: **Pause** and **Resume**, **Autopick now** for the current turn, **+30 seconds** and **Roll back the last pick**; **Cancel draft** there sends the lobby back to **Idle** with no teams. While the lobby drafts, the mix page shows "Captains are drafting in the room" with **Open room** in place of its teams card. A drafting lobby's card shows its stage, and in **Draft** how long it has run since the first pick.
+
+If a captain steps away mid-draft, the draft pauses: hand the team to one of its picked players in its **Captain of …** choice above its column and resume — the picks made stand, and the crown moves to the new captain at once. Before the start, swap the captain for anyone in the pool. A player who steps away before being picked leaves the pool; if a role can then no longer be filled the draft pauses, and **Add a waiting player** next to the draft heading (there while the draft is in setup or paused) brings in someone no lobby seats. A picked player stepping away pauses the draft: roll back to that pick and resume. An unpicked player who comes back is in the pool again, and a return never pauses the draft. Closing the mix, lowering the number of lobbies past this one, or re-forming the lobby (**Split pool**, a new balance) ends its draft. Handing the mix to another host does not: the draft goes on with the new host's ranks, and the picks made keep theirs.
+
+The draft room has a chat: the captains and the mix's host and co-hosts write there, and everyone else reads it while its spectator reading is on, as it is by default. Switching that off never shuts out the host or a co-host.
 
 ## The sit-out queue
 
@@ -63,9 +94,21 @@ When there are more players than seats, the mix suggests who should sit. The rul
 
 Players in **Must play** are outside the queue; their seat is promised. While the mix has no maps played yet, or the whole lineup fits into two teams, there are no suggestions at all — nothing fair can be invented out of an empty history.
 
-With two lobbies the queue is computed for the lobby whose tab is open: anyone already seated in the other lobby or pinned to it is outside it, and a map somebody spent in the other lobby counts for them as neither a game played nor a game sat out.
+With several lobbies the lineup column on the mix page shows the queue of the lobby whose **Teams** are open, lobby A's when none is: anyone seated in or pinned to another lobby, or away, is outside it, and a map somebody spent in another lobby — or away — counts for them as neither a game played nor a game sat out.
 
 **Apply rotation hints** above the lineup moves everyone into the columns the queue suggests in one press. The decision still stays yours.
+
+## Away
+
+A player who steps out for a break can be marked **Away** — by you on their card (**Advanced settings**, the away switch under **Status**, then **Save**) or by the player in their **Your seat** block. An away player keeps their place, roles and **Must play** mark, but no balance, lobby split or rotation seats them until they are back — the **Must play** mark waits for their return — and **Apply rotation hints** leaves them where they are. A player already in a Ready lineup stays in it with an **Away** badge, and **Start match** asks before it starts with them.
+
+Away time is neutral for the rotation: a match recorded while someone is away counts for them as neither played nor sat out, the same as a match in another lobby — unless they played in it. Away never clears itself.
+
+## Discord
+
+The signup card in your community's Discord channel follows the mix live (the card itself is in Russian): who is in, one per line with the role they come for and their rank (Overwatch roles with their emoji and rank badge, League of Legends positions by name, Deadlock — one role — by rank alone), who is **away** (left out of the role counts), and each lobby's stage — **Idle**, **Draft setup**, **Draft**, **Ready**, **Pre-game** or **Live** — with how long a match or a draft has run. Its buttons are **Join**, **My seat**, **Leave**, **Away** and **Back**, and its footer names the accounts signing up needs: Discord and the game's own — Battle.net, Riot ID or Steam. **My seat** shows a player their seat; with **Players edit their own roles** on, its **Edit roles** asks for their top three roles in order and **Full flex** where the game has it. League of Legends players set all five positions on the site, and Deadlock has nothing to order.
+
+When **Start match** opens a lobby's ban room (any **Hero bans** choice but **No bans**, **Side selection** included) or **Start draft** starts its draft, each of the lobby's two captains gets one notification linking the lobby's room: in the bell and as a Discord direct message. A captain you hand a started draft to, running or paused, gets one too. A start without bans, a pick, a ban, the draft's setup and a resume send nothing, and a captain with no site account gets nothing. The bell always gets it; a player stops the Discord copy with the **Matches** switch of their notification settings.
 
 ## Co-hosts and handing a mix over
 
@@ -82,15 +125,41 @@ Every host keeps their own ranks for players, and a mix balances on those rather
 - Clearing a role's rank hands that role back to the workspace rank.
 - If a role has no number anywhere, it stays unranked — and takes no part in the split.
 
-Your account settings also hold **Points per win**. When it is filled in, recording a result raises every winning player's rank by that many points in your book and lowers every losing player's by the same. Leave it empty to record results without touching ranks.
+Your account settings also hold **Points per win**. When it is filled in, recording a result raises every winning player's rank by that many points in your book and lowers every losing player's by the same. Leave it empty to record results without touching ranks. In Deadlock it moves each player's single rank.
 
-## Map and result
+## A match: start, record, cancel
 
-The **Next map** block rolls a map: **Any** rolls from all competitive maps, or you can limit it to a mode or choose a map by hand. The choice is shared — everyone watching the mix sees the same map. With two lobbies each has its own map: the block belongs to whichever lobby's tab is open, and the roll avoids maps played recently in either lobby.
+The **Next map** block rolls a map: **Any** rolls from all competitive maps, or limit it to a mode or pick a map by hand. Everyone watching sees the same map. Each lobby has its own, and the roll skips the maps already played in this mix, in any lobby, while fresh ones remain.
 
-The result is recorded with three buttons under the rosters: the first team's win, **Draw**, and the second team's win. You can record as many matches in a row as you like; the mix does not close. After a result the map is cleared for a fresh roll, and the **Must play** pins of everyone who played are released: the promise covered one game, not the whole evening.
+When the players are in the game lobby, press **Start match** on the mix page or in the room: you stay where you pressed it. The lineup on screen and the map are fixed for this match and the lobby goes **Live** — or first **Pre-game** if the mix bans heroes (see **Hero bans** below). If the lobby has both team voices picked, its players are moved into them at the same moment — only those already sitting in a voice of the mix's category; **Split** under **Voice channels** stays for a second try. If somebody seated is away, Start says so first and starts anyway once you confirm.
 
-A recorded match can be undone — it leaves the history and the ranks go back exactly where they were. Only the newest match can be undone, and with two lobbies that is the newest match of each lobby; older mistakes are fixed by recording the correct result again.
+From **Start match** until the result the lineup is frozen: no new balance of this lobby or of all lobbies, no paging the options, no swaps, no new captain, no new map, and the lobby cannot be dropped. Team names, roles and the rest of the pool stay editable. The card and the room show how long the match has been running; nothing ends it on its own.
+
+Once a match has started, its room has a chat for the players of both teams and for the mix's host and co-hosts. Nobody else sees it, signed in or not, so the in-game lobby code can go there.
+
+Record the result with the three buttons under the teams, on the mix page or in the room's centre — the first team's win, **Draw**, the second team's win — or from the **Record** menu on the lobby card. The match goes into the history, ranks move as before, the map is cleared for a fresh roll, the **Must play** pins of everyone who played are released — the promise covered one game, not the whole evening — and the lobby is **Ready** for its next start.
+
+**Cancel match** throws a live match away: nothing is recorded, no rank moves, and the lineup is ready to start again. **Close mix** cancels every live match first. A match played without pressing Start is recorded with **Start match**, then the result.
+
+A recorded match can be undone — it leaves the history and the ranks go back exactly where they were. The history lists matches in the order their results were recorded, and only the most recently recorded match of each lobby can be undone; older mistakes are fixed by recording the correct result again.
+
+### Hero bans
+
+Pick **Hero bans** in the mix's header: one of the ban presets of the mix's game — Deadlock has **Two bans each, A-B-A-B**, 30 s a turn — **Side selection** for LoL, or **No bans**. A preset whose later maps ban particular players plays only its first-map bans, since every mix match is a first map. Everyone else sees the choice in the header, read-only. **Account settings → Mixes** holds a default per game (**Hero bans in new mixes of this game**): every new mix of that game starts with it, and a mix copied from a previous one keeps that mix's bans. A change applies from the next **Start match**; a match already started keeps the bans it started with.
+
+With bans, **Start match** first names the team that bans first and lets you swap it (**Swap who bans first**): the team that lost this lobby's last match when the same two teams meet again, otherwise — or after a draw — the team with the lower average rating. The lobby then goes **Pre-game**: the room's centre shows the hero grid and the steps, and each team's captain (the crown) bans on their team's turn, confirming in the bar at the bottom; the ban lands under the team's name. With **Side selection** that team picks its side instead. A turn whose clock runs out is filled at random. A host answers for the team on the clock from the same bar. The **⋯ Host** menu pauses the clock (**Pause**, **Resume**) and adds **+30 seconds**, and **Ban controls** unfolds the rest under the grid: a turn or a blind ban for an absent captain, **Reopen step**, the choice of who bans first, starting the bans over (**Reset session**) and dropping them (**Cancel session**). Meanwhile the mix page shows the frozen lineup with "Hero bans and picks are on in the room" and **Open room**. When the bans are done or dropped, the lobby goes **Live**; **Cancel match** works in Pre-game too.
+
+Bans are informational: players honour them in the game. While the lobby is **Live**, its room shows everyone the finished bans and, with **Side selection**, which team starts on which side, until the result is recorded or the match is cancelled. The match history shows each match's bans, with the team that banned first named first.
+
+### Hero picks
+
+Three presets pick heroes as well as banning them — for a game with no draft of its own, for Fearless, and for a record of who played what. Choose them under **Hero bans** like any other preset; they are for mixes only, and a tournament's rules refuse them. **Draft: bans and picks by position** (LoL): after the side pick, the tournament order of bans and picks, 30 s each, every pick made by the team's next player in position order (top, jungle, mid, bot, support; the lineup's seat order when the format has no positions). **Draft: captains pick, then assign** (LoL): the same order with each captain picking for the team, then 90 s to give every player one of the team's five heroes. **Two bans each, then everyone picks** (Deadlock): the four bans, then every player of both teams picks at once, within 60 s.
+
+A hero is unique in the match: once someone takes it, nobody else can, on either team. Players pick for themselves; a captain may pick for any player of their team, and you for anyone, from the board. A pick whose clock runs out takes a random hero that player may play — when several players run out together, each still gets a different one. The assignment board saves each choice as the captain (or you, for their team) makes it, so a refresh keeps it; a choice that would leave a player with no hero is refused. **Lock assignment** ends the team's turn. If the clock runs out first, the saved choices that still fit stay and the rest are handed out at random.
+
+Turn on **Fearless** next to **Hero bans** in the mix header: from the next **Start match**, a player cannot pick a hero they were recorded on earlier in this mix, in any lobby — teams reshuffle, so it follows the player — and a captain cannot assign them one. With **Draft: captains pick, then assign** a captain picks only heroes the team can still hand out. A room reads Fearless when it opens; undoing a recorded match gives its heroes back from the next start. Fearless counts only picks made on the site, so it does nothing without a pick preset. A copy of this mix keeps the switch; it has no default in account settings. Everyone else sees **Fearless** in the header while it is on.
+
+The room names the player on each pick step and, once the match is **Live**, shows every player's hero; the match history lists them too.
 
 ## Mix statuses
 
@@ -121,8 +190,12 @@ Deleting a mix erases it completely and is available only to a workspace admin. 
 | The split will not run | Someone in the lineup has no ranked role at all. Set a rank on their card or move them to **Benched**. |
 | A role is short | The strip above the columns names the short role. Give someone that role or invite more players. |
 | Too many players end up off-role | Move the **Balancing (rank balance vs role comfort)** slider right in your account settings and balance again. |
-| The wrong result was recorded | Undo the last match (with two lobbies, the last one of its lobby) and record the right one. Earlier matches cannot be undone. |
+| The wrong result was recorded | Undo the last match of its lobby and record the right one. Earlier matches cannot be undone. |
+| There are no result buttons | The match has not been started: press **Start match** first. |
+| A swap, a balance or a new map is refused | The lobby's match is live and its lineup is frozen. Record the result or **Cancel match**. |
+| Somebody went for a break | Mark them **Away** on their card; they are skipped until they come back. |
 | Someone always sits out | Press **Apply rotation hints** — the queue is built from who has waited longest. |
+| The lobby stays in **Pre-game** and the room never shows the hero grid | The ban room did not open. Press **Cancel match** and start again. |
 
 ## See also
 

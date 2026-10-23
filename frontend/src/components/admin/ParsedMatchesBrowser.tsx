@@ -4,47 +4,47 @@ import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
+import { FileQuestion } from "lucide-react";
 
 import { DataTable } from "@/components/data-table";
-import { ParsedMatchDetail } from "@/components/admin/ParsedMatchDetail";
+import { LogStatusPill, ParsedMatchDetail } from "@/components/admin/ParsedMatchDetail";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { Inspector } from "@/components/kit/Inspector";
 import { useFilters, type FilterDef } from "@/components/kit/useFilters";
-import { StatusPill } from "@/components/kit/StatusPill";
-import { type Tone } from "@/components/kit/tone";
+import { gameFilterDefs } from "@/components/admin/game-filter";
 import {
   TOURNAMENT_QUERY_PARAM,
-  parseTournamentQueryParam
+  parseTournamentQueryParam,
+  strandedTournamentParams,
+  tournamentOptions
 } from "@/components/admin/tournament-filter";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { RowGameLabel, gameColumn } from "@/components/workspace/game-column";
 import { useQueryParams } from "@/hooks/useQueryParams";
+import { ALL_DISCIPLINES } from "@/lib/site/discipline-scope";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
-import mapService from "@/services/map.service";
+import { scoreLine } from "@/lib/encounter/detail";
+import { mapWithModeName } from "@/lib/catalog/mode";
 import tournamentService from "@/services/tournament.service";
 import type { AdminMatchRow, LogProcessingStatus } from "@/types/admin.types";
-import { EmptyNote } from "@/components/kit/EmptyNote";
-import { mapQueryKeys } from "@/lib/maps/query-keys";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
+import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 
 const PAGE_SIZE = 25;
 
-const STATUS_TONE: Record<LogProcessingStatus, Tone> = {
-  pending: "neutral",
-  processing: "info",
-  done: "success",
-  failed: "danger"
-};
-
 /**
  * Every ingestion status a provenance cell can print.
  *
- * `unresolved` is deliberately absent. It is not a status but the absence of an
- * ingestion record, and the endpoint selects it with `unlinked_only` — a
- * different query parameter, which is why it is a chip of its own below.
+ * A missing raw log is not an ingestion status. The endpoint selects matches
+ * without a linked job through the separate `unlinked_only` filter.
  */
-const LOG_STATUS_OPTIONS: readonly { value: LogProcessingStatus; label: string }[] = [
+const LOG_STATUS_OPTIONS: readonly { value: LogProcessingStatus; label: LogProcessingStatus }[] = [
   { value: "pending", label: "pending" },
   { value: "processing", label: "processing" },
+  { value: "awaiting_link", label: "awaiting_link" },
   { value: "done", label: "done" },
   { value: "failed", label: "failed" }
 ];
@@ -63,58 +63,68 @@ const LOG_STATUS_OPTIONS: readonly { value: LogProcessingStatus; label: string }
  */
 export function ParsedMatchesBrowser({
   tournamentId,
+  discipline,
   workspaceId,
-  tournamentName
+  games
 }: Readonly<{
   /** `null` = every tournament in the workspace. */
   tournamentId: number | null;
+  /**
+   * The pinned tournament's game, else the workspace view's Game chip (`?discipline=`, spec §6.9): a code filters the
+   * list on the server; `null` = every game, with a "Game" column.
+   */
+  discipline: string | null;
   workspaceId: number | null;
-  /** Names the pinned chip inside a hub; the chip reads `#id` without it. */
-  tournamentName?: string | null;
+  /** The community's games, for the Game chip; absent in a hub. */
+  games?: readonly DisciplineDescriptor[];
 }>) {
   const t = useTranslations("adminMatches.parsed");
+  const tGame = useTranslations("common.discipline");
   // `id` is the inspector, not a filter: opening a map must not drop the page
   // it sits on.
-  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
   const openId = searchParams?.get("id") ?? null;
   const [pageRows, setPageRows] = useState<AdminMatchRow[]>([]);
   const showTournament = tournamentId == null;
 
-  const chipTournamentId = parseTournamentQueryParam(
-    searchParams?.get(TOURNAMENT_QUERY_PARAM) ?? null
-  );
+  // The tournament chip works under every game; a pinned tournament keeps working.
+  const chipTournamentId = parseTournamentQueryParam(searchParams?.get(TOURNAMENT_QUERY_PARAM) ?? null);
   const scopeTournamentId = tournamentId ?? chipTournamentId;
 
-  // Map options come from the global catalogue, not from the page of rows: the
-  // filter has to offer maps that this page happens not to show.
-  const mapsQuery = useQuery({
-    queryKey: mapQueryKeys.lookup(),
-    queryFn: () => mapService.lookup(),
-    staleTime: 5 * 60 * 1000,
-    enabled: workspaceId != null
-  });
-
   const tournamentsQuery = useQuery({
-    queryKey: tournamentQueryKeys.list(),
-    queryFn: () => tournamentService.getAll(null),
+    queryKey: tournamentQueryKeys.adminList(workspaceId, ALL_DISCIPLINES),
+    queryFn: () => tournamentService.getAll(null, workspaceId),
     enabled: workspaceId != null && tournamentId == null
   });
+  const chipTournamentGame = tournamentsQuery.data?.results.find(
+    (entry) => entry.id === chipTournamentId
+  )?.discipline;
+  // Maps are one game's catalogue: the filtered game's, else the chosen tournament's (spec §6.2).
+  const mapGame = discipline ?? chipTournamentGame ?? null;
+
+  // Map options come from the game's catalogue, not from the page of rows: the
+  // filter has to offer maps that this page happens not to show.
+  const mapsQuery = useCatalogEntities(mapGame, "map", { enabled: workspaceId != null });
 
   const defs = useMemo<FilterDef[]>(() => {
-    const list: FilterDef[] = [];
+    // A game pick always drops the map (another game's catalogue), and a tournament of another game.
+    const list = gameFilterDefs(games, tGame("column"), (next) => [
+      "map_id",
+      ...strandedTournamentParams(chipTournamentGame, next)
+    ]);
     if (tournamentId == null) {
       list.push({
         key: TOURNAMENT_QUERY_PARAM,
         label: t("tournament"),
         kind: "single",
-        options: (tournamentsQuery.data?.results ?? []).map((entry) => ({
-          value: String(entry.id),
-          label: entry.name
-        }))
+        options: tournamentOptions(tournamentsQuery.data?.results ?? [], discipline),
+        // With no game filtered the map catalogue is the tournament's, so another tournament strands the map.
+        resets: discipline === null ? () => ["map_id"] : undefined
       });
     }
-    list.push(
-      {
+    // Without a game (filtered or the tournament's) there is no catalogue to pick a map from.
+    if (mapGame !== null) {
+      list.push({
         key: "map_id",
         label: t("map"),
         kind: "single",
@@ -122,25 +132,26 @@ export function ParsedMatchesBrowser({
           value: String(entry.id),
           label: entry.name
         }))
-      },
+      });
+    }
+    list.push(
       {
         key: "log_status",
         label: t("ingestionStatus"),
         kind: "multi",
         options: LOG_STATUS_OPTIONS.map((option) => ({
           ...option,
-          label: t(option.label as "pending" | "processing" | "done" | "failed")
+          label: t(option.label)
         }))
       },
-      // Not a status: this selects maps with no ingestion record at all, which
-      // is most of the archive, while `failed` selects the ones whose ingestion
-      // actually broke. Merging them would drown the real failures.
-      { key: "unlinked_only", label: t("provenanceUnresolved"), kind: "toggle" }
+      // No linked raw log, not an ingestion failure.
+      { key: "unlinked_only", label: t("noRawLog"), kind: "toggle" }
     );
     return list;
-  }, [tournamentId, tournamentsQuery.data, mapsQuery.data, t]);
+  }, [games, chipTournamentGame, tournamentId, discipline, mapGame, tournamentsQuery.data, mapsQuery.data, t, tGame]);
 
   const filters = useFilters(defs);
+  // Read only while the map chip is declared, i.e. while a game is known.
   const mapFilter = String(filters.values.map_id ?? "");
   const statusFilter = Array.isArray(filters.values.log_status)
     ? (filters.values.log_status as LogProcessingStatus[])
@@ -163,8 +174,8 @@ export function ParsedMatchesBrowser({
         enableSorting: false,
         cell: ({ row }) => (
           <div className="min-w-0 max-w-[20rem]">
-            <p className="truncate font-medium text-foreground" title={row.original.map_name}>
-              {row.original.map_name}
+            <p className="truncate font-medium text-foreground" title={mapWithModeName(row.original.map, row.original.mode)}>
+              {mapWithModeName(row.original.map, row.original.mode)}
             </p>
             <p
               className="truncate text-xs text-muted-foreground"
@@ -180,56 +191,48 @@ export function ParsedMatchesBrowser({
           </div>
         )
       },
+      ...(discipline === null
+        ? [gameColumn<AdminMatchRow>(tGame("column"), (row) => row.discipline)]
+        : []),
       {
         id: "score",
         header: t("score"),
         size: 92,
         enableSorting: false,
         cell: ({ row }) => (
-          <span className="font-mono text-sm tabular-nums text-foreground">
-            {row.original.home_score} &ndash; {row.original.away_score}
-          </span>
+          <span className="text-sm tabular-nums text-foreground">{scoreLine(row.original.participants)}</span>
         )
       },
       {
+        // The raw log and where it stands: the file name, plus a pill only
+        // while ingestion still wants something; a map with no linked job says so.
         id: "log",
         header: t("log"),
         enableSorting: false,
-        cell: ({ row }) => (
-          <p
-            className="max-w-[18rem] truncate font-mono text-xs text-muted-foreground"
-            title={row.original.log_name}
-          >
-            {row.original.log_name}
-          </p>
-        )
-      },
-      {
-        id: "provenance",
-        header: t("provenance"),
-        size: 148,
-        enableSorting: false,
-        cell: ({ row }) =>
-          row.original.log_record ? (
-            <StatusPill tone={STATUS_TONE[row.original.log_record.status]}>
-              {row.original.log_record.status}
-            </StatusPill>
-          ) : (
-            // Never "failed": no record is unknown provenance, and the word
-            // carries the whole meaning so the state survives greyscale.
-            <StatusPill tone="neutral">{t("unresolved")}</StatusPill>
-          )
+        cell: ({ row }) => {
+          const record = row.original.log_record;
+          if (!record) return <StatusIcon icon={FileQuestion} label={t("noRawLog")} variant="muted" />;
+          return (
+            <div className="flex min-w-0 items-center gap-2">
+              {row.original.log_name ? (
+                <p
+                  className="max-w-[18rem] truncate font-mono text-xs text-muted-foreground"
+                  title={row.original.log_name}
+                >
+                  {row.original.log_name}
+                </p>
+              ) : null}
+              <LogStatusPill status={record.status} />
+            </div>
+          );
+        }
       }
     ],
-    [showTournament, t]
+    [showTournament, discipline, t, tGame]
   );
 
   if (workspaceId == null) {
-    return (
-      <EmptyNote>
-        {t("scopePrompt")}
-      </EmptyNote>
-    );
+    return <PageStateCard state="empty" description={t("scopePrompt")} />;
   }
 
   return (
@@ -246,39 +249,29 @@ export function ParsedMatchesBrowser({
             inspectorId={openId}
             getRowId={(row) => String(row.id)}
             toolbar={
-              <FilterBar
-                defs={defs}
-                filters={filters}
-                pinned={
-                  tournamentId != null
-                    ? [
-                        {
-                          key: TOURNAMENT_QUERY_PARAM,
-                          label: `Tournament: ${tournamentName ?? `#${tournamentId}`}`
-                        }
-                      ]
-                    : undefined
-                }
-              />
+              <FilterBar defs={defs} filters={filters} />
             }
             emptyMessage={
               unlinkedOnly
-                ? t("emptyUnresolved")
+                ? t("emptyNoRawLog")
                 : t("empty")
             }
             onRowClick={(row) => setParams({ id: String(row.original.id) })}
             renderMobileCard={(row) => (
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{row.original.map_name}</p>
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <p className="truncate text-sm font-medium">{mapWithModeName(row.original.map, row.original.mode)}</p>
+                {discipline === null ? (
+                  <RowGameLabel code={row.original.discipline} className="flex text-xs text-muted-foreground" />
+                ) : null}
                 <p className="truncate text-xs text-muted-foreground">
                   {row.original.encounter_name} ·{" "}
-                  <span className="font-mono tabular-nums">
-                    {row.original.home_score}&ndash;{row.original.away_score}
-                  </span>
+                  <span className="tabular-nums">{scoreLine(row.original.participants)}</span>
                 </p>
-                <p className="truncate font-mono text-xs text-muted-foreground">
-                  {row.original.log_record?.status ?? t("unresolved")}
-                </p>
+                {row.original.log_record ? (
+                  <LogStatusPill status={row.original.log_record.status} />
+                ) : (
+                  <StatusIcon icon={FileQuestion} label={t("noRawLog")} variant="muted" />
+                )}
               </div>
             )}
             queryKey={(page, search, pageSize) => [
@@ -286,36 +279,34 @@ export function ParsedMatchesBrowser({
               {
                 workspaceId,
                 tournamentId: scopeTournamentId,
-                chip: unlinkedOnly ? "unresolved" : "all",
+                chip: unlinkedOnly ? "no-raw-log" : "all",
                 page,
                 search,
                 pageSize,
-                filters: { map_id: mapFilter, log_status: statusFilter }
+                filters: { map_id: mapFilter, log_status: statusFilter, discipline }
               }
             ]}
-            queryFn={async (page, search, pageSize) => {
-              const result = await adminService.listAdminMatches({
+            queryFn={(page, search, pageSize) =>
+              adminService.listAdminMatches({
                 workspace_id: workspaceId,
                 tournament_id: scopeTournamentId ?? undefined,
                 query: search || undefined,
+                discipline: discipline ?? undefined,
                 map_id: mapFilter ? Number(mapFilter) : undefined,
                 log_status: statusFilter.length ? statusFilter : undefined,
                 ...(unlinkedOnly && { unlinked_only: true }),
                 page,
                 per_page: pageSize
-              });
-              // The inspector pages through the rows on screen, and the table
-              // owns the fetch, so this is where that page is observed.
-              setPageRows(result.results);
-              return result;
-            }}
+              })
+            }
+            onPageRowsChange={setPageRows}
           />
         </div>
 
         <Inspector
           openId={openRow ? openId : null}
           onClose={() => setParams({ id: null })}
-          title={openRow?.map_name ?? ""}
+          title={openRow ? mapWithModeName(openRow.map, openRow.mode) : ""}
           subtitle={
             openRow ? `${openRow.encounter_name} · ${openRow.tournament_name}` : undefined
           }

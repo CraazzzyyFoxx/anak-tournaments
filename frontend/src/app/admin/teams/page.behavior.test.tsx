@@ -3,18 +3,21 @@
 // The teams browser after P3-3. What is pinned here:
 //  1. the `team.read` gate — the screen refuses instead of fetching rosters;
 //  2. the tournament scope is a filter-bar chip on the same `?tournament=`
-//     param the sibling browsers use, so a pinned link still opens pinned;
+//     param the sibling browsers use, so a pinned link still opens pinned —
+//     under every game too, where it offers every game's tournaments;
 //  3. `?id=` opens the inspector with the roster summary, and a row click is
 //     what writes it — the row no longer navigates away;
 //  4. "Create team" still reads the same value the list is filtered by;
 //  5. one row action end to end: kebab → confirm → delete request;
-//  6. six columns do not fit a phone, so rows render as cards below `md`.
+//  6. six columns do not fit a phone, so rows render as cards below `md`;
+//  7. the Game chip comes first, and a game pick drops a tournament of another game only.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Player, Team } from "@/types/team.types";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 import TeamsPage from "./page";
 
 declare global {
@@ -35,10 +38,6 @@ vi.mock("@/hooks/usePermissions", () => ({
     isSuperuser: false
   })
 }));
-vi.mock("@/stores/workspace.store", () => ({
-  useWorkspaceStore: (selector: (state: { currentWorkspaceId: number }) => unknown) =>
-    selector({ currentWorkspaceId: 1 })
-}));
 vi.mock("@/services/team.service", () => ({
   default: { getAll: (...args: unknown[]) => getTeams(...args) }
 }));
@@ -51,13 +50,28 @@ vi.mock("@/services/admin.service", () => ({
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() }
 }));
-
-const replace = vi.fn((url: string) => {
-  window.history.replaceState(null, "", url);
-  rerender?.();
+const scopeGame = vi.hoisted(() => ({ value: null as string | null }));
+vi.mock("@/hooks/useGameScope", async () => {
+  const { gameScopeState } = await import("@/test/game-scope");
+  return { useGameScope: () => gameScopeState(scopeGame.value) };
+});
+vi.mock("@/hooks/useGameDescriptors", async () => {
+  const { GAME_DESCRIPTORS } = await import("@/test/game-scope");
+  return { useGameDescriptors: () => GAME_DESCRIPTORS };
 });
 
+// Every URL write re-renders from the new `useSearchParams` in the app — the
+// router's `replace` and, through Next's History patch, the inspector's native
+// `replaceState`. Both land here as "write `window.history`, poke the harness".
+const replace = vi.fn((url: string) => window.history.replaceState(null, "", url));
+
 let rerender: (() => void) | null = null;
+
+const nativeReplaceState = window.history.replaceState.bind(window.history);
+window.history.replaceState = (data, unused, url) => {
+  nativeReplaceState(data, unused, url);
+  rerender?.();
+};
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin/teams",
@@ -66,8 +80,9 @@ vi.mock("next/navigation", () => ({
 }));
 
 const TOURNAMENTS = [
-  { id: 7, name: "MoonRise Mix Vol.4" },
-  { id: 8, name: "MoonRise Draft Vol.2" }
+  { id: 7, name: "MoonRise Mix Vol.4", discipline: "overwatch" },
+  { id: 8, name: "MoonRise Draft Vol.2", discipline: "overwatch" },
+  { id: 9, name: "Rift Cup", discipline: "lol" }
 ];
 
 function player(overrides: Partial<Player> = {}): Player {
@@ -76,10 +91,9 @@ function player(overrides: Partial<Player> = {}): Player {
     created_at: new Date("2026-01-01T00:00:00Z"),
     updated_at: null,
     name: "Nova",
-    sub_role: null,
     rank: 3400,
     division: 4,
-    role: "damage",
+    role: { dimension: "player_role", role: "damage" },
     tournament_id: 7,
     user_id: 91,
     team_id: 42,
@@ -104,7 +118,7 @@ function team(overrides: Partial<Team> = {}): Team {
     captain_id: 91,
     tournament_id: 7,
     players: [player(), player({ id: 502, name: "Echo", user_id: 92, is_substitution: true, user: { id: 92, name: "Echo" } as Player["user"] })],
-    tournament: { id: 7, name: "MoonRise Mix Vol.4" } as Team["tournament"],
+    tournament: { id: 7, name: "MoonRise Mix Vol.4", discipline: "overwatch" } as Team["tournament"],
     placement: 3,
     group: null,
     ...overrides
@@ -182,9 +196,20 @@ function menuItem(text: string) {
 }
 
 function commandItem(label: string) {
-  return Array.from(document.querySelectorAll('[cmdk-item=""]')).find(
-    (item) => item.textContent?.trim().startsWith(label)
+  // An option's label sits beside its game mark; a filter row is its label alone.
+  return Array.from(document.querySelectorAll('[cmdk-item=""]')).find((item) =>
+    (item.querySelector(".truncate") ?? item).textContent?.trim().startsWith(label)
   );
+}
+
+function commandItems() {
+  return Array.from(document.querySelectorAll('[cmdk-item=""]')).map((item) =>
+    (item.querySelector(".truncate") ?? item).textContent?.trim()
+  );
+}
+
+function search() {
+  return new URLSearchParams(window.location.search);
 }
 
 function lastTournamentId(): unknown {
@@ -208,13 +233,15 @@ function setViewportWidth(width: number) {
 }
 
 beforeEach(() => {
+  useWorkspaceStore.setState({ currentWorkspaceId: 1 });
+  scopeGame.value = "overwatch";
   permitted = true;
   replace.mockClear();
   setViewportWidth(1280);
   getTeams.mockReset().mockResolvedValue({ results: [team()], total: 1, page: 1, per_page: 15 });
   getTournaments
     .mockReset()
-    .mockResolvedValue({ results: TOURNAMENTS, total: 2, page: 1, per_page: -1 });
+    .mockResolvedValue({ results: TOURNAMENTS, total: 3, page: 1, per_page: -1 });
   deleteTeam.mockReset().mockResolvedValue(undefined);
   document.body.innerHTML = "";
 });
@@ -234,7 +261,7 @@ describe("/admin/teams", () => {
     permitted = false;
     const container = await mount();
 
-    expect(container.textContent).toContain("Unauthorized");
+    expect(container.textContent).toContain("No access");
     expect(getTeams).not.toHaveBeenCalled();
   });
 
@@ -304,7 +331,11 @@ describe("/admin/teams", () => {
   it("keeps the create gate on the value the list is filtered by", async () => {
     const container = await mount();
     await waitFor(() => container.textContent?.includes("Wombat Warriors"), "the team row");
-    expect(button("Create team")?.hasAttribute("disabled")).toBe(true);
+    // A team belongs to one tournament: until one is chosen the button says why it waits.
+    const blocked = button("Create team");
+    expect(blocked?.hasAttribute("disabled")).toBe(true);
+    const reasonId = blocked?.getAttribute("aria-describedby");
+    expect(reasonId ? document.getElementById(reasonId)?.textContent : null).toBeTruthy();
 
     await click(container.querySelector('button[aria-label="Add filter"]'));
     await click(await waitFor(() => commandItem("Tournament"), "the Tournament filter"));
@@ -338,5 +369,113 @@ describe("/admin/teams", () => {
     // roster size are what a phone needs from a team.
     expect(cards[0].textContent).toContain("MoonRise Mix Vol.4");
     expect(cards[0].textContent).toContain("2 players");
+    // Under a game every card is that game's: no game label.
+    expect(cards[0].textContent).not.toContain("Overwatch");
+  });
+
+  it("names each card's game below md under all games, where the Game column is not shown", async () => {
+    scopeGame.value = null;
+    setViewportWidth(375);
+    const container = await mount();
+    const card = await waitFor(() => container.querySelector("ul[aria-label='Rows'] > li"), "the mobile card");
+
+    expect(card.textContent).toContain("Wombat Warriors");
+    expect(card.textContent).toContain("Overwatch");
+  });
+
+  it("lists every game's teams with a Game column and still applies the tournament chip when no game is chosen", async () => {
+    scopeGame.value = null;
+    const container = await mount("?tournament=7");
+    await waitFor(() => container.textContent?.includes("Wombat Warriors"), "the team row");
+
+    expect(getTeams).toHaveBeenLastCalledWith(expect.objectContaining({ discipline: null, tournamentId: 7 }));
+    expect(Array.from(container.querySelectorAll("th")).map((cell) => cell.textContent?.trim())).toContain("Game");
+    expect(container.querySelector("tbody")?.textContent).toContain("Overwatch");
+    await waitFor(
+      () => document.querySelector('button[aria-label="Remove filter Tournament: MoonRise Mix Vol.4"]'),
+      "the tournament chip"
+    );
+    // The tournament is chosen, so a team can be created in it whatever the game filter.
+    expect(button("Create team")?.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("leads with the Game chip and offers every game's tournaments without a game", async () => {
+    scopeGame.value = null;
+    const container = await mount();
+    await waitFor(() => container.textContent?.includes("Wombat Warriors"), "the team row");
+
+    await click(container.querySelector('button[aria-label="Add filter"]'));
+    // The Game chip leads the filter list.
+    expect(commandItems()[0]).toBe("Game");
+    await click(await waitFor(() => commandItem("Tournament"), "the Tournament filter"));
+    expect(commandItems()).toEqual(["MoonRise Mix Vol.4", "MoonRise Draft Vol.2", "Rift Cup"]);
+  });
+
+  it("hides another game's tournaments from the chip under a game", async () => {
+    const container = await mount();
+    await waitFor(() => container.textContent?.includes("Wombat Warriors"), "the team row");
+
+    await click(container.querySelector('button[aria-label="Add filter"]'));
+    await click(await waitFor(() => commandItem("Tournament"), "the Tournament filter"));
+    expect(commandItems()).toEqual(["MoonRise Mix Vol.4", "MoonRise Draft Vol.2"]);
+  });
+
+  it("drops the tournament when a game pick names another game, and keeps it for its own", async () => {
+    scopeGame.value = null;
+    const container = await mount("?tournament=7");
+    await waitFor(() => lastTournamentId() === 7, "the scoped roster request");
+
+    await click(container.querySelector('button[aria-label="Add filter"]'));
+    await click(await waitFor(() => commandItem("Game"), "the Game filter"));
+    await click(await waitFor(() => commandItem("Overwatch"), "the Overwatch option"));
+    expect(search().get("discipline")).toBe("overwatch");
+    expect(search().get("tournament")).toBe("7");
+
+    await click(container.querySelector('button[aria-label="Add filter"]'));
+    await click(await waitFor(() => commandItem("Game"), "the Game filter"));
+    await click(await waitFor(() => commandItem("League of Legends"), "the League option"));
+    expect(search().get("discipline")).toBe("lol");
+    expect(search().get("tournament")).toBeNull();
+  });
+
+  it("keeps the tournament when the game chip is removed", async () => {
+    scopeGame.value = "lol";
+    await mount("?discipline=lol&tournament=9");
+    await waitFor(() => lastTournamentId() === 9, "the scoped roster request");
+
+    await click(document.querySelector('button[aria-label="Remove filter Game: League of Legends"]'));
+    expect(search().get("discipline")).toBeNull();
+    expect(search().get("tournament")).toBe("9");
+  });
+
+  it("asks the server for one game's teams under a game, without the column", async () => {
+    scopeGame.value = "lol";
+    const container = await mount();
+    await waitFor(() => getTeams.mock.calls.length > 0, "the roster request");
+
+    expect(getTeams).toHaveBeenLastCalledWith(expect.objectContaining({ discipline: "lol" }));
+    expect(Array.from(container.querySelectorAll("th")).map((cell) => cell.textContent?.trim())).not.toContain("Game");
+  });
+
+  it("reads nothing on a first visit until the community is known, then reads that community's teams once", async () => {
+    useWorkspaceStore.setState({ currentWorkspaceId: null });
+    // Without a workspace the server answers with every community's rosters.
+    getTeams.mockImplementation(async ({ workspaceId }: { workspaceId?: number }) => ({
+      results: workspaceId === 1 ? [team()] : [team(), team({ id: 77, name: "Other Community Squad", tournament_id: 9 })],
+      total: workspaceId === 1 ? 1 : 2,
+      page: 1,
+      per_page: 15
+    }));
+    const container = await mount();
+    expect(getTeams).not.toHaveBeenCalled();
+    expect(getTournaments).not.toHaveBeenCalled();
+
+    await act(async () => useWorkspaceStore.setState({ currentWorkspaceId: 1 }));
+    await waitFor(() => container.textContent?.includes("Wombat Warriors"), "the team row");
+
+    expect(getTeams).toHaveBeenCalledTimes(1);
+    expect(getTeams).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 1 }));
+    expect(getTournaments.mock.calls).toEqual([[null, 1]]);
+    expect(container.textContent).not.toContain("Other Community Squad");
   });
 });

@@ -10,10 +10,12 @@ import {
   DivisionGridMarketplaceWorkspace,
   DivisionGridMappingRule,
   DivisionGridPortableDocument,
+  DivisionGridPortableImportDocument,
   DivisionGridSaveResult,
   DivisionGridVersion,
   ManageableDiscordGuild,
   Workspace,
+  WorkspaceListItem,
   WorkspaceListScope,
   WorkspaceMember,
   WorkspaceOwner,
@@ -25,11 +27,7 @@ import type {
   DiscordGuildInfo,
   DiscordRolesResponse
 } from "@/types/discord.types";
-import type {
-  QuotaLimitsPayload,
-  QuotaScope,
-  QuotaUsage
-} from "@/types/auth.types";
+import type { QuotaLimitsPayload, QuotaScope, QuotaUsage } from "@/types/auth.types";
 
 type DivisionGridTierInput = {
   id?: number;
@@ -40,22 +38,28 @@ type DivisionGridTierInput = {
   rank_min: number;
   rank_max: number | null;
   icon_url: string;
-  ow_rank_min: number | null;
-  ow_rank_max: number | null;
+  native_rank_min: number | null;
+  native_rank_max: number | null;
 };
 export default class workspaceService {
   /**
    * `public` (default) is the home-page directory: hidden and `unverified`
    * workspaces are absent for everyone, superusers included. `admin` is the
    * management list (superuser: everything, else own memberships) and `all`
-   * unions that with the directory, for the switcher and slug resolution.
+   * unions that with the directory, for the switcher. Rows carry no grids:
+   * `getById` / `getBySlug` read one workspace with them.
    */
-  static async getAll(scope: WorkspaceListScope = "public"): Promise<Workspace[]> {
+  static async getAll(scope: WorkspaceListScope = "public"): Promise<WorkspaceListItem[]> {
     return apiFetch("/api/v1/workspaces", { query: { scope } }).then((r) => r.json());
   }
 
   static async getById(id: number): Promise<Workspace> {
     return apiFetch(`/api/v1/workspaces/${id}`).then((r) => r.json());
+  }
+
+  /** The community page's workspace: 404 unless `getAll("all")` would list it for the viewer. */
+  static async getBySlug(slug: string): Promise<Workspace> {
+    return apiFetch("/api/v1/workspaces/by-slug", { query: { slug } }).then((r) => r.json());
   }
 
   /**
@@ -141,7 +145,8 @@ export default class workspaceService {
       seo_title?: string | null;
       seo_description?: string | null;
       newcomer_scope?: "global" | "workspace";
-      default_division_grid_version_id?: number | null;
+      /** Priority order; `[0]` is the workspace's default game. At least one, known codes only. */
+      disciplines_enabled?: string[];
     }
   ): Promise<Workspace> {
     return apiFetch(`/api/v1/workspaces/${id}`, {
@@ -325,9 +330,10 @@ export default class workspaceService {
     return apiFetch(`/api/v1/division-grids/by-workspace/${workspaceId}`).then((r) => r.json());
   }
 
+  /** A new grid with a published v1: a copy of `from_version_id`, else the game's built-in ladder. Never activates. */
   static async createDivisionGrid(
     workspaceId: number,
-    data: { slug: string; name: string; description?: string | null }
+    data: { name: string; discipline: string; from_version_id?: number }
   ): Promise<DivisionGridEntity> {
     return apiFetch(`/api/v1/division-grids/by-workspace/${workspaceId}`, {
       method: "POST",
@@ -366,8 +372,8 @@ export default class workspaceService {
         rank_min: number;
         rank_max: number | null;
         icon_url: string;
-        ow_rank_min: number | null;
-        ow_rank_max: number | null;
+        native_rank_min: number | null;
+        native_rank_max: number | null;
       }>;
     }
   ): Promise<DivisionGridSaveResult> {
@@ -561,7 +567,7 @@ export default class workspaceService {
 
   static async importDivisionGridPortable(
     workspaceId: number,
-    document: DivisionGridPortableDocument,
+    document: DivisionGridPortableImportDocument,
     mode: "library" | "sync" | "copy" = "library"
   ): Promise<DivisionGridEntity> {
     return apiFetch(`/api/v1/division-grids/by-workspace/${workspaceId}/portable/import`, {

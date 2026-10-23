@@ -3,13 +3,14 @@ import typing
 import sqlalchemy as sa
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
+from shared import models
 from shared.core import enums
-from shared.division_grid import DivisionGrid, load_runtime_grid
-from shared.models.division_grid import DivisionGridMapping, DivisionGridMappingRule, DivisionGridVersion
 from shared.repository import AnalyticsAlgorithmRepository, AnalyticsPlayerRepository, TeamRepository
-from src import models
-from src.core.workspace import workspace_scope_filter
+from shared.repository.stats_queries import player_facts
+from shared.services.workspace_scope import workspace_scope_filter
+from src.services.analytics.encounter_maps import seat_maps
 
 
 class AnalyticsService:
@@ -29,76 +30,54 @@ class AnalyticsService:
         session: AsyncSession,
         workspace_id: int | None = None,
         workspace_ids: typing.Sequence[int] | None = None,
+        *,
+        discipline: str,
     ) -> typing.Sequence[sa.RowMapping]:
-        points_home = (
+        # A team's maps in a duel come from its confirmed games (see ``seat_maps``); a lobby (more than
+        # two seats) scores points, not maps, so it only counts as played.
+        seat = aliased(models.EncounterTeam, name="seat")
+        maps_won, maps_lost = seat_maps(seat)
+        points = (
             sa.select(
                 models.WorkspaceMember.player_id.label("user_id"),
                 models.Player.role.label("role"),
                 models.Player.team_id.label("team_id"),
-                sa.func.sum(models.Encounter.home_score).label("wins"),
-                sa.func.sum(models.Encounter.away_score).label("losses"),
+                # ``sum`` over the bigint ``count()`` maps is numeric (Decimal); the ratings math divides by floats.
+                sa.cast(sa.func.sum(maps_won), sa.Integer).label("wins"),
+                sa.cast(sa.func.sum(maps_lost), sa.Integer).label("losses"),
             )
             .select_from(models.Player)
             .join(
                 models.WorkspaceMember,
                 models.WorkspaceMember.id == models.Player.workspace_member_id,
             )
-            .join(models.Encounter, models.Player.team_id == models.Encounter.home_team_id)
+            .join(seat, sa.and_(seat.team_id == models.Player.team_id, seat.active.is_(True)))
+            .join(models.Encounter, sa.and_(models.Encounter.id == seat.encounter_id, models.Encounter.slot_count == 2))
             .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
             .where(
                 models.Tournament.id >= 1,
+                models.Tournament.discipline == discipline,
                 *workspace_scope_filter(workspace_id, workspace_ids),
             )
             .group_by(models.WorkspaceMember.player_id, models.Player.role, models.Player.team_id)
-        ).cte("player_points_home")
+        ).cte("player_points")
 
-        points_away = (
+        match_seat = aliased(models.EncounterTeam, name="match_seat")
+        matches = (
             sa.select(
-                models.WorkspaceMember.player_id.label("user_id"),
-                models.Player.role.label("role"),
-                models.Player.team_id.label("team_id"),
-                sa.func.sum(models.Encounter.away_score).label("wins"),
-                sa.func.sum(models.Encounter.home_score).label("losses"),
-            )
-            .select_from(models.Player)
-            .join(
-                models.WorkspaceMember,
-                models.WorkspaceMember.id == models.Player.workspace_member_id,
-            )
-            .join(models.Encounter, models.Player.team_id == models.Encounter.away_team_id)
-            .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
-            .where(
-                models.Tournament.id >= 1,
-                *workspace_scope_filter(workspace_id, workspace_ids),
-            )
-            .group_by(models.WorkspaceMember.player_id, models.Player.role, models.Player.team_id)
-        ).cte("player_points_away")
-
-        matches_home = (
-            sa.select(
-                models.Encounter.home_team_id.label("team_id"),
+                match_seat.team_id.label("team_id"),
                 sa.func.count(models.Encounter.id).label("match_count"),
             )
+            .join(models.Encounter, models.Encounter.id == match_seat.encounter_id)
             .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
             .where(
+                match_seat.active.is_(True),
                 models.Tournament.id >= 1,
+                models.Tournament.discipline == discipline,
                 *workspace_scope_filter(workspace_id, workspace_ids),
             )
-            .group_by(models.Encounter.home_team_id)
-        ).cte("player_matches_home")
-
-        matches_away = (
-            sa.select(
-                models.Encounter.away_team_id.label("team_id"),
-                sa.func.count(models.Encounter.id).label("match_count"),
-            )
-            .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
-            .where(
-                models.Tournament.id >= 1,
-                *workspace_scope_filter(workspace_id, workspace_ids),
-            )
-            .group_by(models.Encounter.away_team_id)
-        ).cte("player_matches_away")
+            .group_by(match_seat.team_id)
+        ).cte("player_matches")
 
         team_counts = (
             sa.select(
@@ -106,7 +85,7 @@ class AnalyticsService:
                 sa.func.count(models.Team.id).label("team_count"),
             )
             .join(models.Tournament, models.Team.tournament_id == models.Tournament.id)
-            .where(*workspace_scope_filter(workspace_id, workspace_ids))
+            .where(models.Tournament.discipline == discipline, *workspace_scope_filter(workspace_id, workspace_ids))
             .group_by(models.Team.tournament_id)
         ).cte("team_counts")
 
@@ -122,7 +101,7 @@ class AnalyticsService:
                 models.Standing.overall_position.label("overall_position"),
             )
             .join(models.Tournament, models.Standing.tournament_id == models.Tournament.id)
-            .where(*workspace_scope_filter(workspace_id, workspace_ids))
+            .where(models.Tournament.discipline == discipline, *workspace_scope_filter(workspace_id, workspace_ids))
             .distinct(models.Standing.team_id, models.Standing.tournament_id)
             .order_by(
                 models.Standing.team_id,
@@ -131,29 +110,21 @@ class AnalyticsService:
             )
         ).cte("team_standings")
 
+        facts = player_facts(discipline=discipline)
         performance_points = (
             sa.select(
                 models.Player.id.label("player_id"),
-                sa.func.avg(models.MatchStatistics.value).label("performance_points"),
+                sa.func.avg(facts.c.value).label("performance_points"),
             )
             .select_from(models.Player)
-            .join(
-                models.WorkspaceMember,
-                models.WorkspaceMember.id == models.Player.workspace_member_id,
-            )
-            .join(
-                models.MatchStatistics,
-                models.MatchStatistics.user_id == models.WorkspaceMember.player_id,
-            )
-            .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-            .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-            .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
+            .join(facts, facts.c.workspace_member_id == models.Player.workspace_member_id)
+            .join(models.Tournament, facts.c.tournament_id == models.Tournament.id)
             .where(
-                models.MatchStatistics.team_id == models.Player.team_id,
-                models.MatchStatistics.round == 0,
-                models.MatchStatistics.hero_id.is_(None),
-                models.MatchStatistics.name == enums.LogStatsName.PerformancePoints,
-                models.Player.tournament_id == models.Encounter.tournament_id,
+                facts.c.tournament_team_id == models.Player.team_id,
+                facts.c.segment == 0,
+                facts.c.entity_id.is_(None),
+                facts.c.stat_code == enums.LogStatsName.PerformancePoints.value,
+                models.Player.tournament_id == facts.c.tournament_id,
                 *workspace_scope_filter(workspace_id, workspace_ids),
             )
             .group_by(models.Player.id)
@@ -170,26 +141,12 @@ class AnalyticsService:
                 models.Player.is_newcomer.label("is_newcomer"),
                 models.Player.is_newcomer_role.label("is_newcomer_role"),
                 models.Tournament.id.label("tournament_id"),
-                (sa.func.coalesce(points_home.c.wins, 0) + sa.func.coalesce(points_away.c.wins, 0)).label("wins"),
-                (sa.func.coalesce(points_home.c.losses, 0) + sa.func.coalesce(points_away.c.losses, 0)).label("losses"),
-                (
-                    sa.func.coalesce(matches_home.c.match_count, 0) + sa.func.coalesce(matches_away.c.match_count, 0)
-                ).label("match_count"),
+                sa.func.coalesce(points.c.wins, 0).label("wins"),
+                sa.func.coalesce(points.c.losses, 0).label("losses"),
+                sa.func.coalesce(matches.c.match_count, 0).label("match_count"),
                 standings.c.overall_position.label("overall_position"),
                 team_counts.c.team_count.label("team_count"),
                 performance_points.c.performance_points.label("performance_points"),
-                sa.func.lag(models.Player.rank, 1)
-                .over(
-                    partition_by=(models.WorkspaceMember.player_id, models.Player.role),
-                    order_by=models.Tournament.id,
-                )
-                .label("previous_cost"),
-                sa.func.lag(models.Player.rank, 2)
-                .over(
-                    partition_by=(models.WorkspaceMember.player_id, models.Player.role),
-                    order_by=models.Tournament.id,
-                )
-                .label("pre_previous_cost"),
             )
             .select_from(models.Team)
             .join(models.Player, models.Team.id == models.Player.team_id)
@@ -199,25 +156,15 @@ class AnalyticsService:
             )
             .join(models.Tournament, models.Player.tournament_id == models.Tournament.id)
             .join(
-                points_home,
+                points,
                 sa.and_(
-                    models.WorkspaceMember.player_id == points_home.c.user_id,
-                    models.Player.role == points_home.c.role,
-                    models.Player.team_id == points_home.c.team_id,
+                    models.WorkspaceMember.player_id == points.c.user_id,
+                    models.Player.role.is_not_distinct_from(points.c.role),
+                    models.Player.team_id == points.c.team_id,
                 ),
                 isouter=True,
             )
-            .join(
-                points_away,
-                sa.and_(
-                    models.WorkspaceMember.player_id == points_away.c.user_id,
-                    models.Player.role == points_away.c.role,
-                    models.Player.team_id == points_away.c.team_id,
-                ),
-                isouter=True,
-            )
-            .join(matches_home, models.Player.team_id == matches_home.c.team_id, isouter=True)
-            .join(matches_away, models.Player.team_id == matches_away.c.team_id, isouter=True)
+            .join(matches, models.Player.team_id == matches.c.team_id, isouter=True)
             .join(
                 standings,
                 sa.and_(
@@ -231,6 +178,7 @@ class AnalyticsService:
             .where(
                 models.Tournament.id >= 1,
                 models.Player.is_substitution.is_(False),
+                models.Tournament.discipline == discipline,
                 *workspace_scope_filter(workspace_id, workspace_ids),
             )
             .order_by(models.WorkspaceMember.player_id, models.Player.role, models.Tournament.id)
@@ -246,33 +194,26 @@ class AnalyticsService:
         end_range: int,
         workspace_id: int | None = None,
         workspace_ids: typing.Sequence[int] | None = None,
+        *,
+        discipline: str,
     ) -> typing.Sequence[models.Encounter]:
         query = (
             sa.select(models.Encounter)
             .options(
-                sa.orm.joinedload(models.Encounter.home_team),
-                sa.orm.joinedload(models.Encounter.away_team),
-                sa.orm.joinedload(models.Encounter.home_team).joinedload(models.Team.players),
-                sa.orm.joinedload(models.Encounter.away_team).joinedload(models.Team.players),
-                sa.orm.joinedload(models.Encounter.home_team)
-                .joinedload(models.Team.players)
-                .joinedload(models.Player.workspace_member),
-                sa.orm.joinedload(models.Encounter.away_team)
-                .joinedload(models.Team.players)
-                .joinedload(models.Player.workspace_member),
+                sa.orm.selectinload(models.Encounter.teams),
                 sa.orm.joinedload(models.Encounter.tournament),
             )
             .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
             .where(
                 models.Encounter.tournament_id.between(start_range, end_range),
                 # NOT inert, unlike the player-scoped CTEs above: this read reaches
-                # the encounters through ``joinedload``, so a scrim encounter
-                # (docs/plans/2026-08-12-scrim-rooms.md) comes back with two real
-                # teams and empty rosters, and ``prepare_openskill_data`` then calls
-                # ``PlackettLuce.rate`` with two empty sides -- a hard ValueError
-                # for every tournament whose lookback window spans the hidden scrim
-                # container. Scope it out at the source.
+                # the encounters through ``joinedload``, so a scrim encounter comes
+                # back with two real teams and empty rosters, and
+                # ``prepare_openskill_data`` then calls ``PlackettLuce.rate`` with two
+                # empty sides -- a hard ValueError for every tournament whose lookback
+                # window spans the hidden scrim container. Scope it out at the source.
                 models.Tournament.is_hidden.is_(False),
+                models.Tournament.discipline == discipline,
                 *workspace_scope_filter(workspace_id, workspace_ids),
             )
             .order_by(models.Encounter.tournament_id, models.Encounter.id)
@@ -287,14 +228,16 @@ class AnalyticsService:
         look_back: int,
         workspace_id: int | None = None,
         workspace_ids: typing.Sequence[int] | None = None,
+        *,
+        discipline: str,
     ) -> int:
         """Chronological start id for an OpenSkill lookback window.
 
         Returns the smallest tournament id among the ``look_back`` most recent
-        tournaments with ``id <= end_tournament_id`` (within scope). Replaces the
-        old ``end_tournament_id - look_back`` arithmetic: tournament ids are sparse
-        (cancelled events, cross-workspace gaps), so a numeric offset silently
-        shrank — or emptied — the history window and biased the OpenSkill ratings.
+        tournaments with ``id <= end_tournament_id`` (within scope). Not
+        ``end_tournament_id - look_back``: tournament ids are sparse (cancelled
+        events, cross-workspace gaps), so a numeric offset would shrink — or empty —
+        the history window and bias the OpenSkill ratings.
         Falls back to ``end_tournament_id`` when no rows match.
         """
         rows = await session.scalars(
@@ -302,10 +245,11 @@ class AnalyticsService:
             .where(
                 models.Tournament.id <= end_tournament_id,
                 # Hidden tournaments are containers, not seasons. The per-workspace
-                # scrim container (docs/plans/2026-08-12-scrim-rooms.md) would occupy
-                # one of the ``look_back`` slots while contributing no encounters to
-                # the replay — the same window shrinkage this helper exists to fix.
+                # scrim container would occupy one of the ``look_back`` slots while
+                # contributing no encounters to the replay — the same window
+                # shrinkage this helper exists to avoid.
                 models.Tournament.is_hidden.is_(False),
+                models.Tournament.discipline == discipline,
                 *workspace_scope_filter(workspace_id, workspace_ids),
             )
             .order_by(models.Tournament.id.desc())
@@ -321,14 +265,16 @@ class AnalyticsService:
         look_back: int,
         workspace_id: int | None = None,
         workspace_ids: typing.Sequence[int] | None = None,
+        *,
+        discipline: str,
     ) -> list[int]:
         """The ``look_back`` most recent tournament ids up to the end tournament, by START DATE.
 
         Chronology is ``(coalesce(start_date, created_at), id)``. Unlike
         :func:`lookback_start_tournament_id` this returns the explicit id list, not
         an id interval: ids are not chronological in this database (tournament 62
-        started 2025-07-19, 61 started 2026-03-14), so an ``id BETWEEN`` window
-        around an out-of-order tournament silently pulls in events played after it.
+        started months before 61), so an ``id BETWEEN`` window around an
+        out-of-order tournament would pull in events played after it.
         Result is ordered oldest → newest and includes ``end_tournament_id`` itself.
         """
         chrono = sa.func.coalesce(models.Tournament.start_date, models.Tournament.created_at)
@@ -346,6 +292,7 @@ class AnalyticsService:
                 # Same exclusion as ``lookback_start_tournament_id``: hidden
                 # containers occupy window slots while contributing no encounters.
                 models.Tournament.is_hidden.is_(False),
+                models.Tournament.discipline == discipline,
                 *workspace_scope_filter(workspace_id, workspace_ids),
             )
             .order_by(chrono.desc(), models.Tournament.id.desc())
@@ -360,6 +307,8 @@ class AnalyticsService:
         tournament_ids: typing.Sequence[int],
         workspace_id: int | None = None,
         workspace_ids: typing.Sequence[int] | None = None,
+        *,
+        discipline: str,
     ) -> typing.Sequence[models.Encounter]:
         """Encounters of the given tournaments in true chronological replay order.
 
@@ -374,16 +323,7 @@ class AnalyticsService:
         query = (
             sa.select(models.Encounter)
             .options(
-                sa.orm.joinedload(models.Encounter.home_team),
-                sa.orm.joinedload(models.Encounter.away_team),
-                sa.orm.joinedload(models.Encounter.home_team).joinedload(models.Team.players),
-                sa.orm.joinedload(models.Encounter.away_team).joinedload(models.Team.players),
-                sa.orm.joinedload(models.Encounter.home_team)
-                .joinedload(models.Team.players)
-                .joinedload(models.Player.workspace_member),
-                sa.orm.joinedload(models.Encounter.away_team)
-                .joinedload(models.Team.players)
-                .joinedload(models.Player.workspace_member),
+                sa.orm.selectinload(models.Encounter.teams),
                 sa.orm.joinedload(models.Encounter.tournament),
             )
             .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
@@ -392,6 +332,7 @@ class AnalyticsService:
                 # See get_matches: scrim containers come back with empty rosters and
                 # crash the OpenSkill replay.
                 models.Tournament.is_hidden.is_(False),
+                models.Tournament.discipline == discipline,
                 *workspace_scope_filter(workspace_id, workspace_ids),
             )
             .order_by(chrono, models.Encounter.tournament_id, models.Encounter.id)
@@ -422,86 +363,44 @@ class AnalyticsService:
         session: AsyncSession,
         workspace_id: int | None = None,
         workspace_ids: typing.Sequence[int] | None = None,
+        *,
+        discipline: str,
     ) -> dict[int, int | None]:
         """Maps tournament_id -> division_grid_version_id for all analytics-relevant tournaments."""
         result = await session.execute(
             sa.select(models.Tournament.id, models.Tournament.division_grid_version_id).where(
                 models.Tournament.id >= 1,
+                models.Tournament.discipline == discipline,
                 *workspace_scope_filter(workspace_id, workspace_ids),
             )
         )
         return {row[0]: row[1] for row in result.all()}
-
-    async def get_grid_versions(
-        self,
-        session: AsyncSession,
-        version_ids: set[int],
-    ) -> dict[int, DivisionGrid]:
-        """Loads DivisionGrid runtime objects keyed by version_id."""
-        if not version_ids:
-            return {}
-        result = await session.execute(
-            sa.select(DivisionGridVersion)
-            .options(sa.orm.selectinload(DivisionGridVersion.tiers))
-            .where(DivisionGridVersion.id.in_(version_ids))
-        )
-        return {v.id: load_runtime_grid(v) for v in result.scalars().unique().all()}
-
-    async def get_primary_division_mappings(
-        self,
-        session: AsyncSession,
-        pairs: list[tuple[int, int]],
-    ) -> dict[tuple[int, int], dict[int, int]]:
-        """
-        For each (source_version_id, target_version_id) pair, returns
-        {source_tier_number -> target_tier_number} using the primary mapping rule.
-        Pairs with no mapping in the DB are silently omitted.
-        """
-        if not pairs:
-            return {}
-
-        source_ids = [p[0] for p in pairs]
-        target_ids = [p[1] for p in pairs]
-
-        mappings_result = await session.execute(
-            sa.select(DivisionGridMapping)
-            .options(
-                sa.orm.selectinload(DivisionGridMapping.rules).selectinload(DivisionGridMappingRule.source_tier),
-                sa.orm.selectinload(DivisionGridMapping.rules).selectinload(DivisionGridMappingRule.target_tier),
-            )
-            .where(
-                DivisionGridMapping.source_version_id.in_(source_ids),
-                DivisionGridMapping.target_version_id.in_(target_ids),
-            )
-        )
-
-        pairs_set = set(pairs)
-        out: dict[tuple[int, int], dict[int, int]] = {}
-        for mapping in mappings_result.scalars().unique().all():
-            key = (mapping.source_version_id, mapping.target_version_id)
-            if key not in pairs_set:
-                continue
-            tier_map: dict[int, int] = {}
-            for rule in mapping.rules:
-                source_num = rule.source_tier.number
-                target_num = rule.target_tier.number
-                if rule.is_primary or source_num not in tier_map:
-                    tier_map[source_num] = target_num
-            out[key] = tier_map
-        return out
 
     async def get_players_by_tournament_id(
         self, session: AsyncSession, tournament_id: int
     ) -> typing.Sequence[models.AnalyticsPlayer]:
         return await self.players.list_by_tournament(session, tournament_id)
 
-    async def get_teams_with_players(self, session: AsyncSession, tournament_id: int) -> typing.Sequence[models.Team]:
-        """Return teams of a tournament with players and player users eagerly loaded.
+    async def get_rosters(
+        self, session: AsyncSession, encounters: typing.Iterable[models.Encounter]
+    ) -> dict[int, models.Team]:
+        """The source teams behind the encounters' live seats, with players and their workspace members.
 
-        Inlined replacement for parser-service ``team_service.get_by_tournament(
-        session, tid, ["players", "players.user"])`` so analytics-service does not
-        depend on parser-service internals.
+        A seat names its team by id only (and the id goes NULL once the team is deleted), so
+        the rosters a replay rates are read here, in one query for the whole window.
         """
+        team_ids = {seat.team_id for encounter in encounters for seat in encounter.teams if seat.team_id is not None}
+        if not team_ids:
+            return {}
+        teams = await session.scalars(
+            sa.select(models.Team)
+            .options(sa.orm.selectinload(models.Team.players).selectinload(models.Player.workspace_member))
+            .where(models.Team.id.in_(team_ids))
+        )
+        return {team.id: team for team in teams.unique()}
+
+    async def get_teams_with_players(self, session: AsyncSession, tournament_id: int) -> typing.Sequence[models.Team]:
+        """Return teams of a tournament with players and player users eagerly loaded."""
         return await self.teams.list_by_tournament(
             session,
             tournament_id,

@@ -1,0 +1,33 @@
+{
+  "purpose": "pre-move P5 analytics evidence; Task 6 conversion fixtures",
+  "source_revision": "c4c7ddf6427a814a1b0dd58ec67f25d9b01bde3d",
+  "python": "3.14.2",
+  "libraries": {
+    "numpy": "2.3.5",
+    "pandas": "2.3.3",
+    "sklearn": "1.8.0",
+    "scipy": "1.17.1",
+    "lightgbm": "4.6.0",
+    "xgboost": "3.2.0",
+    "joblib": "1.5.3",
+    "openskill": "6.1.3"
+  },
+  "golden_sha256": "ed10364755873bd12a50e7002cb6a123d5e95aeb6de5008943aeca0295d8336e",
+  "files_sha256": {
+    "performance_damage.old.joblib": "c52f815ec84d903c84eb846a138cc817e142b980baa00d86b02ad7f7b65053e2",
+    "performance_damage.state.joblib": "9f2da505fcac59f27c19fe77cf0c054e68e855a5e18a868870787c56223dd69b",
+    "performance_support.old.joblib": "2d13324472023329a1b1fd88f0ef6838bbb4140fd3885a4ae8255f43ad1f1a91",
+    "performance_support.state.joblib": "d6dc6c8f194ddad628bc373f7c4f3259d5fc78cbd98b755677d6bd310d0eab43",
+    "performance_tank.old.joblib": "89cff1bf484e98c669eadef12cd4cbbc012611aeda5675c44e87ad9ba31fd92c",
+    "performance_tank.state.joblib": "f56ca55fa584cad0113af4739cdb370a41cdb8b73a34e87748a78c07f6b1bc84",
+    "shift_default.old.joblib": "711a9d3add87e61a1d0717302c7e62ab38648e05e86f78cb2bf5ad3220e7679a",
+    "shift_default.state.joblib": "8e0daf521c6871e032d8297879c4b2a09800f6bc187396f0d6aeb7720f74519d",
+    "shift_old_missing.old.joblib": "fed66956ad4f8a998438a09fa96d1e86f2520eaafd2ff39b5ab6318f434ed349",
+    "shift_old_missing.state.joblib": "156d5accd83a50dc63301c750463eac3f353b59982b699fb50322725a69d8bcd",
+    "shift_tuned.old.joblib": "cedca25434bbf34f763bf979ce9ed5966aec5b05e9ec7404bf690d1a80d2529e",
+    "shift_tuned.state.joblib": "4d57a9646fd60e7699f58e0297b04da98996dd8bc07349c6990392f14e8851df",
+    "standings.old.joblib": "badb74a256c0e22616e9b1386193cb2a4de76d59f31c56b0b73c14ecb65adfc1",
+    "standings.state.joblib": "7b28373d29c99fe368c7fcc7e50153aaba603dad1ba71bfab82c3eaaf4cd9fbd"
+  },
+  "note": "*.state.joblib hold library estimators and plain fields only; *.old.joblib are whole-object pickles of the pre-move class paths."
+}

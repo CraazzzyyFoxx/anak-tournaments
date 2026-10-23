@@ -4,13 +4,14 @@ import type { ReactNode } from "react";
 
 import { useTranslations } from "next-intl";
 import { useDraggable } from "@dnd-kit/core";
-import { Armchair, GripVertical, RotateCw, SlidersHorizontal, X } from "lucide-react";
+import { Armchair, GripVertical, RotateCw, X } from "lucide-react";
 
-import { PANEL_CLASS, splitBattleTag } from "@/components/balancer/balancer-page-helpers";
-import { lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
-import DivisionIcon from "@/components/DivisionIcon";
+import { AWAY_CHIP_CLASS, lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
+import { HandleLabel } from "@/components/HandleLabel";
+import { RankCrest } from "@/components/RankCrest";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
-import { OW_REFERENCE_GRID, getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { cn } from "@/lib/utils";
 import type {
   CustomGamePlayer,
@@ -18,7 +19,7 @@ import type {
   RotationRecommendation
 } from "@/services/custom-game.service";
 
-import { averageRank, getLineupIssue, playerLabel } from "../pickup-lineup";
+import { averageRank, getLineupIssue, playerLabel, type MixOwner } from "../pickup-lineup";
 import { RolePriorityRail } from "./RolePriorityRail";
 
 /**
@@ -44,8 +45,8 @@ function RowAction({ children }: Readonly<{ children: ReactNode }>) {
  * map history yet looks exactly like it did before this existed. `must_play`
  * (owed a seat the longest) and `should_rest` (played the most in a row) are
  * the only two a host acts on, so they are the only two with an icon; the
- * reason string carries the specific streak into the tooltip instead of a
- * wider label competing with the role rail for room. A row the host already
+ * reason code, worded with the streak it names, goes into the tooltip instead
+ * of a wider label competing with the role rail for room. A row the host already
  * pinned (the `must_play` column) never renders one either -- the backend always
  * verdicts a pin `must_play` too (see `mix_rotation.recommend_rotation`), and
  * repeating "owed a seat" next to a seat already guaranteed by the Pin icon
@@ -55,14 +56,29 @@ function RotationHintBadge({
   hint,
   pinned
 }: Readonly<{ hint: RotationRecommendation | undefined; pinned: boolean }>) {
+  const t = useTranslations("mixes.rotation");
   if (!hint || hint.status === "neutral" || pinned) {
     return null;
   }
   const isOwed = hint.status === "must_play";
   const Icon = isOwed ? RotateCw : Armchair;
+  let label: string;
+  switch (hint.reason) {
+    case "owed_seat":
+      label = t("owed_seat", { count: hint.consecutive_sat });
+      break;
+    case "played_streak":
+      label = t("played_streak", { count: hint.consecutive_played });
+      break;
+    case "played_most":
+      label = t("played_most", { count: hint.games_played });
+      break;
+    default:
+      label = t(hint.reason);
+  }
   return (
     <IconTooltip
-      label={hint.reason}
+      label={label}
       className={cn(
         "size-[18px] shrink-0 items-center justify-center",
         isOwed ? "text-[color:var(--aqt-amber)]" : "text-[color:var(--aqt-fg-faint)]"
@@ -77,6 +93,8 @@ type LineupRowProps = {
   row: CustomGamePlayer;
   /** This member's rotation-fairness verdict, if the fetch has one. */
   rotationHint: RotationRecommendation | undefined;
+  /** The mix owner's game: its roles, tints and the grid the row's ranks are on. */
+  owner: MixOwner;
   canWrite: boolean;
   /** More than one lobby: the row says which one seated this player, or that nobody did. */
   lobbyCount: number;
@@ -106,7 +124,7 @@ function LineupLobbyBadge({ currentLobby }: Readonly<{ currentLobby: number | nu
         data-testid="lineup-lobby"
         aria-hidden="true"
         className={cn(
-          "flex h-[18px] items-center justify-center rounded px-1 text-label font-extrabold uppercase tracking-label",
+          "flex items-center justify-center rounded px-1 text-label font-bold uppercase tracking-label",
           seated
             ? cn(teamAccent(currentLobby).bar, "text-[color:var(--aqt-bg)]")
             : "text-[color:var(--aqt-fg-faint)]"
@@ -124,12 +142,15 @@ function LineupLobbyBadge({ currentLobby }: Readonly<{ currentLobby: number | nu
  * The whole row is both the click target that opens the drawer and the drag
  * source that moves it between columns — a `PointerSensor` activation
  * distance (see `useDragSensors`) tells the two apart, the same pattern the
- * matchup board's seat rows already use. A click that started inside a
- * `RowAction` still belongs to that control, never the row's own onOpen.
+ * matchup board's seat rows already use. For a writer the name is also a real
+ * button onto the same drawer, the keyboard's way in. A click that started
+ * inside a `data-card-action` control still belongs to that control, never the
+ * row's own onOpen.
  */
 export function LineupRow({
   row,
   rotationHint,
+  owner,
   canWrite,
   lobbyCount,
   saving,
@@ -138,15 +159,12 @@ export function LineupRow({
   onOpen,
   onRemove
 }: Readonly<LineupRowProps>) {
-  // The global OW grid, not the workspace's: balancer-service resolves a mix's
-  // ranks against the grid with `workspace_id=None`, so these ranks are on the
-  // OW scale. Labelling them with a workspace's tiers renames the same number.
-  const grid = OW_REFERENCE_GRID;
+  const t = useTranslations("mixes.lineup");
+  const tRoom = useTranslations("mixes.room");
+  const { grid } = owner;
   const label = playerLabel(row);
-  const { name, suffix } = splitBattleTag(label);
-  const issue = getLineupIssue(row);
-  const rank = averageRank(row);
-  const division = resolveDivisionFromRank(grid, rank);
+  const issue = getLineupIssue(row, owner.roles);
+  const rank = averageRank(row, owner.roles);
   const canDrag = canWrite && !saving;
   const draggable = useDraggable({
     id: String(row.workspace_member_id),
@@ -159,7 +177,7 @@ export function LineupRow({
       ref={(node) => draggable.setNodeRef(node)}
       {...draggable.listeners}
       {...draggable.attributes}
-      title={canWrite ? `${label} \u2014 roles and ranks` : undefined}
+      title={canWrite ? t("rowTitle", { name: label }) : undefined}
       onClick={(event) => {
         // The sheet is a writer's tool: a read-only viewer opens nothing.
         if (!canWrite) return;
@@ -175,7 +193,7 @@ export function LineupRow({
         "flex items-center gap-2 rounded-lg border border-transparent px-2 py-2 transition-colors",
         "hover:border-[color:var(--aqt-border-2)] hover:bg-[color:var(--aqt-overlay-2)]",
         canDrag && "touch-none active:cursor-grabbing",
-        issue && "border-amber-400/35",
+        issue && "border-[color:color-mix(in_srgb,var(--aqt-amber)_35%,transparent)]",
         draggable.isDragging ? "opacity-30" : dimmed && "opacity-60"
       )}
     >
@@ -187,68 +205,67 @@ export function LineupRow({
         aria-hidden="true"
       />
 
-      <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-        <span className="truncate text-caption font-semibold text-[color:var(--aqt-fg)]">
-          {name}
-        </span>
-        {suffix ? (
-          <span className="shrink-0 text-xs text-[color:var(--aqt-fg-faint)]">{suffix}</span>
-        ) : null}
-      </span>
+      {canWrite ? (
+        <Button
+          type="button"
+          variant="link"
+          size="inline"
+          data-card-action
+          aria-label={t("advancedFor", { name: label })}
+          onClick={onOpen}
+          className="mr-auto min-w-0 justify-start"
+        >
+          <HandleLabel
+            handle={label}
+            className="text-caption font-semibold text-[color:var(--aqt-fg)]"
+            tagClassName="text-label"
+          />
+        </Button>
+      ) : (
+        <HandleLabel
+          handle={label}
+          className="flex-1 text-caption font-semibold text-[color:var(--aqt-fg)]"
+          tagClassName="text-label"
+        />
+      )}
 
+      {row.away ? <span className={AWAY_CHIP_CLASS}>{tRoom("away")}</span> : null}
       {lobbyCount > 1 ? <LineupLobbyBadge currentLobby={row.current_lobby} /> : null}
       <RotationHintBadge hint={rotationHint} pinned={row.participation === "must_play"} />
 
-      <RowAction>
-        <RolePriorityRail
-          row={row}
-          label={label}
-          canWrite={canWrite && !dimmed}
-          saving={saving}
-          onPatch={onPatch}
-        />
-      </RowAction>
+      {owner.showsRoles ? (
+        <RowAction>
+          <RolePriorityRail
+            row={row}
+            owner={owner}
+            label={label}
+            canWrite={canWrite && !dimmed}
+            saving={saving}
+            onPatch={onPatch}
+          />
+        </RowAction>
+      ) : null}
 
       <div className="flex w-[92px] shrink-0 items-center justify-end gap-1.5">
-        {division == null ? null : (
-          <IconTooltip label={getDivisionLabel(grid, division) ?? String(division)}>
-            <DivisionIcon division={division} tournamentGrid={grid} width={22} height={22} />
-          </IconTooltip>
-        )}
+        <RankCrest rank={rank} grid={grid} />
         {/* One number, one meaning: the mean of the effective ranks the balancer
             will use. The `*` that used to mark a per-mix pin is gone with the pin
             itself — which layer each role resolved from is named in the sheet. */}
         <span
-          title="Mean effective rank across this player's roles"
+          title={t("meanRank")}
           className="text-caption font-semibold tabular-nums text-[color:var(--aqt-fg)]"
         >
           {rank ?? "\u2014"}
         </span>
       </div>
 
-      <IconTooltip control label="Advanced settings" className="shrink-0">
-        <button
-          type="button"
-          disabled={!canWrite}
-          onClick={onOpen}
-          className="flex size-6 items-center justify-center rounded-md text-[color:var(--aqt-fg-faint)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg-muted)] disabled:pointer-events-none disabled:opacity-40"
-        >
-          <SlidersHorizontal className="size-[15px]" aria-hidden="true" />
-          <span className="sr-only">{`Advanced settings for ${label}`}</span>
-        </button>
-      </IconTooltip>
-
       {canWrite ? (
         <RowAction>
-          <IconTooltip control label="Remove from this mix">
-            <button
-              type="button"
-              onClick={onRemove}
-              className="flex size-6 shrink-0 items-center justify-center rounded-md text-[color:var(--aqt-fg-faint)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-rose)]"
-            >
-              <X className="size-3.5" aria-hidden="true" />
-              <span className="sr-only">{`Remove ${label} from this mix`}</span>
-            </button>
+          <IconTooltip control label={t("remove")}>
+            <Button type="button" variant="ghost-destructive" size="icon-sm" onClick={onRemove} className="shrink-0">
+              <X aria-hidden="true" />
+              <span className="sr-only">{t("removeNamed", { name: label })}</span>
+            </Button>
           </IconTooltip>
         </RowAction>
       ) : null}
@@ -257,31 +274,27 @@ export function LineupRow({
 }
 
 /** The dragged row's own card, detached from its column, following the pointer. */
-export function LineupDragPreview({ row }: Readonly<{ row: CustomGamePlayer }>) {
+export function LineupDragPreview({ row, owner }: Readonly<{ row: CustomGamePlayer; owner: MixOwner }>) {
   const label = playerLabel(row);
-  const { name, suffix } = splitBattleTag(label);
-  const rank = averageRank(row);
+  const rank = averageRank(row, owner.roles);
 
   return (
-    <div
-      className={cn(
-        PANEL_CLASS,
-        "flex w-[280px] cursor-grabbing items-center gap-2 rounded-lg border-[color:var(--aqt-teal)] px-2.5 py-2 shadow-lg"
-      )}
+    <Card
+      variant="flat"
+      className="flex cursor-grabbing items-center gap-2 rounded-lg border-[color:var(--aqt-teal)] px-2.5 py-2"
     >
       <GripVertical
         className="size-3.5 shrink-0 text-[color:var(--aqt-fg-faint)]"
         aria-hidden="true"
       />
-      <span className="min-w-0 flex-1 truncate text-caption font-semibold text-[color:var(--aqt-fg)]">
-        {name}
-        {suffix ? (
-          <span className="ml-1 text-xs text-[color:var(--aqt-fg-faint)]">{suffix}</span>
-        ) : null}
-      </span>
+      <HandleLabel
+        handle={label}
+        className="flex-1 text-caption font-semibold text-[color:var(--aqt-fg)]"
+        tagClassName="text-label"
+      />
       <span className="shrink-0 text-caption font-semibold tabular-nums text-[color:var(--aqt-fg)]">
         {rank ?? "\u2014"}
       </span>
-    </div>
+    </Card>
   );
 }

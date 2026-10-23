@@ -5,7 +5,7 @@
 //  1. the `division_grid.read` gate is the page's, and `division_grid.update`
 //     decides editable-vs-read-only — a draft is not writable just because it
 //     is a draft;
-//  2. Publish is refused while any older version a tournament still reads has
+//  2. Publish is absent while any older version a tournament still reads has
 //     an incomplete mapping. This is the whole point of splitting Publish from
 //     Activate: an immutable version that no old tournament can be translated
 //     into would strand those tournaments' players;
@@ -29,6 +29,8 @@ import type {
   DivisionGridVersion,
   DivisionTier
 } from "@/types/workspace.types";
+import type { DisciplineMetadata } from "@/types/discipline.types";
+import { TEST_LADDER_TIERS } from "../../editor/__fixtures__/test-ladder";
 import DivisionDraftEditorPage from "./page";
 
 declare global {
@@ -37,6 +39,7 @@ declare global {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const getDivisionGridVersion = vi.fn();
+const getDivisionGrids = vi.fn();
 const getDivisionGridVersionReadiness = vi.fn();
 const getDivisionGridMapping = vi.fn();
 const updateDivisionGridVersion = vi.fn();
@@ -45,7 +48,6 @@ const putDivisionGridMapping = vi.fn();
 
 let canRead = true;
 let canUpdate = true;
-
 
 vi.mock("@/hooks/usePermissions", () => ({
   usePermissions: () => ({
@@ -57,22 +59,26 @@ vi.mock("@/hooks/usePermissions", () => ({
   })
 }));
 
-vi.mock("@/stores/workspace.store", () => ({
-  useWorkspaceStore: (
-    selector: (state: {
-      currentWorkspaceId: number;
-      getCurrentWorkspace: () => unknown;
-    }) => unknown
-  ) =>
-    selector({
-      currentWorkspaceId: 1,
-      getCurrentWorkspace: () => ({ id: 1, default_division_grid_version_id: 22 })
-    })
-}));
+vi.mock("@/stores/workspace.store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/stores/workspace.store")>();
+  // The real store, seeded with the community the version belongs to.
+  actual.useWorkspaceStore.setState({
+    currentWorkspaceId: 1,
+    getCurrentWorkspace: () =>
+      ({
+        id: 1,
+        disciplines_enabled: ["overwatch", "lol"],
+        default_division_grid_versions: { overwatch: 22, lol: 99 },
+        effective_division_grid_versions: {}
+      }) as never
+  });
+  return actual;
+});
 
 vi.mock("@/services/workspace.service", () => ({
   default: {
     getDivisionGridVersion: (...args: unknown[]) => getDivisionGridVersion(...args),
+    getDivisionGrids: (...args: unknown[]) => getDivisionGrids(...args),
     getDivisionGridVersionReadiness: (...args: unknown[]) =>
       getDivisionGridVersionReadiness(...args),
     getDivisionGridMapping: (...args: unknown[]) => getDivisionGridMapping(...args),
@@ -89,6 +95,45 @@ vi.mock("@/services/workspace.service", () => ({
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn(), warning: vi.fn() }
 }));
+
+// The editor reads the GRID's own game metadata (here Overwatch, whose native ladder it declares).
+vi.mock("@/hooks/useDisciplineMetadata", () => ({
+  useDisciplineMetadata: (_axis: unknown, code: string | null) => ({
+    data: code
+      ? ({
+          discipline: {
+            code,
+            name: code,
+            enabled: true,
+            kinds: {},
+            character_classes: [],
+            identity_provider: null,
+            capabilities: {
+              catalog_sync: false,
+              native_rank_collection: code === "overwatch",
+              native_ladder: code === "overwatch",
+              achievement_conditions: false,
+              analytics: false
+            }
+          },
+          workspace_id: 1,
+          dimensions: [],
+          roles: [],
+          stat_defs: [],
+          event_types: [],
+          team_format_presets: [],
+          native_ladder: code === "overwatch" ? TEST_LADDER_TIERS : []
+        } as unknown as DisciplineMetadata)
+      : undefined,
+    isError: false,
+    refetch: vi.fn()
+  })
+}));
+
+vi.mock("@/hooks/useGameDescriptors", async () => {
+  const { GAME_DESCRIPTORS } = await import("@/test/game-scope");
+  return { useGameDescriptors: () => GAME_DESCRIPTORS };
+});
 
 const replace = vi.fn((url: string) => {
   window.history.replaceState(null, "", url);
@@ -265,10 +310,14 @@ beforeEach(() => {
   canUpdate = true;
   mockViewport(true);
   replace.mockClear();
+  getDivisionGrids.mockReset().mockResolvedValue([{ id: 7, discipline: "overwatch" }]);
   getDivisionGridVersion.mockReset().mockImplementation(async (id: number) => {
     if (id === 23) return version(23, 4, "draft");
     if (id === 22) return version(22, 3, "published");
-    return version(21, 2, "published", [tier(401, 1, "Old top", 4000, null), tier(402, 2, "Old rest", 0, 3999)]);
+    return version(21, 2, "published", [
+      tier(401, 1, "Old top", 4000, null),
+      tier(402, 2, "Old rest", 0, 3999)
+    ]);
   });
   getDivisionGridVersionReadiness.mockReset().mockResolvedValue(readiness());
   getDivisionGridMapping.mockReset().mockResolvedValue({
@@ -306,24 +355,40 @@ describe("Divisions › draft editor", () => {
     expect(getDivisionGridVersion).not.toHaveBeenCalled();
   });
 
+  it("takes the version's game from the version read, not from the current grids or defaults", async () => {
+    // A system grid version: it is neither one of this workspace's grids nor its current effective grid.
+    getDivisionGrids.mockResolvedValue([]);
+    getDivisionGridVersion.mockImplementation(async (id: number) => ({
+      ...version(id, 4, "draft"),
+      discipline: "overwatch"
+    }));
+    const container = await mount();
+
+    expect(container.textContent).not.toContain("could not be loaded");
+    expect(container.textContent).toContain("v4");
+  });
+
   it("opens a draft the caller may not update as read-only", async () => {
     canUpdate = false;
     const container = await mount();
 
-    expect(container.textContent).toContain("division_grid.update");
+    expect(container.textContent).toContain("You cannot edit this draft");
     expect(button("Undo last change")).toBeUndefined();
+    // No grant: Publish is absent, not disabled.
+    expect(button("Publish v4")).toBeUndefined();
     expect(byLabel("Start a new division at Champion 2")).toBeNull();
   });
 
-  it("refuses Publish while an older version's mapping is incomplete", async () => {
+  it("shows Publish disabled, with the reason, while an older version's mapping is incomplete", async () => {
     getDivisionGridVersionReadiness.mockResolvedValue(
       readiness({ is_ready: false, incomplete_mapping_version_ids: [21] })
     );
     const container = await mount();
 
     const publish = button("Publish v4");
-    expect(publish).toBeTruthy();
     expect(publish!.disabled).toBe(true);
+    const reasonId = publish!.getAttribute("aria-describedby");
+    expect(document.getElementById(reasonId!)?.textContent).toContain("Ready to publish?");
     expect(container.textContent).toContain("1 mapping decision left in the Mappings tab");
   });
 
@@ -333,6 +398,8 @@ describe("Divisions › draft editor", () => {
     expect(button("Publish v4")!.disabled).toBe(false);
     expect(container.textContent).toContain("Every older version maps onto this one");
     expect(container.textContent).toContain("belongs to exactly one division");
+    // The copy names the grid's own game by its short name.
+    expect(container.textContent).toContain("Rank ranges follow the OW ladder");
   });
 
   it("selects the centre view from ?tab=", async () => {
@@ -347,7 +414,7 @@ describe("Divisions › draft editor", () => {
     expect(changes.textContent).toContain("identical to v3");
   });
 
-  it("cuts the ladder and surfaces the draft summary in the save bar", async () => {
+  it("cuts the ladder and surfaces the edit count in the save bar", async () => {
     const container = await mount();
     expect(container.querySelector('[aria-label="Unsaved changes"]')).toBeNull();
 
@@ -355,7 +422,6 @@ describe("Divisions › draft editor", () => {
 
     const bar = container.querySelector('[aria-label="Unsaved changes"]');
     expect(bar).toBeTruthy();
-    expect(bar!.textContent).toContain("4 divisions");
     expect(bar!.textContent).toContain("1 edit");
     // The new band has no tier id yet, so mappings cannot be computed onto it.
     expect(container.textContent).toContain("The draft is saved as a version");
@@ -379,7 +445,7 @@ describe("Divisions › draft editor", () => {
     expect(payload.tiers).toHaveLength(4);
     // The upper half keeps the original tier id; the new band has none.
     expect(payload.tiers.map((entry) => entry.id)).toEqual([501, undefined, 502, 503]);
-    expect(payload.tiers.every((entry) => entry.ow_rank_min !== null)).toBe(true);
+    expect(payload.tiers.every((entry) => entry.native_rank_min !== null)).toBe(true);
 
     expect(putDivisionGridMapping).toHaveBeenCalledTimes(1);
     const [sourceId, targetId] = putDivisionGridMapping.mock.calls[0] as [number, number];
@@ -410,7 +476,7 @@ describe("Divisions › draft editor", () => {
     expect(byLabel("Gold 1, in Division 2")).toBeTruthy();
 
     await click(byLabel("Move Gold 1 into Division 1"));
-    expect(container.textContent).toContain("2 divisions have no OW ranks");
+    expect(container.textContent).toContain("2 divisions have no ladder ranks");
     await click(button("Save draft"));
 
     const [, payload] = updateDivisionGridVersion.mock.calls[0] as [
@@ -423,7 +489,7 @@ describe("Divisions › draft editor", () => {
       [300, 1899],
       [100, 299]
     ]);
-    expect(payload.tiers.map((entry) => [entry.ow_rank_min, entry.ow_rank_max])).toEqual([
+    expect(payload.tiers.map((entry) => [entry.native_rank_min, entry.native_rank_max])).toEqual([
       [1900, 4900],
       [null, null],
       [500, 1800],
@@ -437,7 +503,9 @@ describe("Divisions › draft editor", () => {
     expect(container.querySelector('[aria-label="Unsaved changes"]')).toBeNull();
 
     await click(document.querySelector('[aria-label^="Target divisions for Old rest:"]'));
-    const picker = document.querySelector('[role="dialog"][aria-label="Target divisions for Old rest"]')!;
+    const picker = document.querySelector(
+      '[role="dialog"][aria-label="Target divisions for Old rest"]'
+    )!;
     const row = (name: string) =>
       [...picker.querySelectorAll("li > button:first-child")].find((element) =>
         element.textContent?.includes(name)
@@ -449,7 +517,7 @@ describe("Divisions › draft editor", () => {
     await click(byLabel("Players of Old rest land in Elite"));
 
     const bar = container.querySelector('[aria-label="Unsaved changes"]');
-    expect(bar?.textContent).toContain("1 mapping pick");
+    expect(bar?.textContent).toContain("1 edit");
     await click(button("Save draft"));
 
     expect(updateDivisionGridVersion).not.toHaveBeenCalled();

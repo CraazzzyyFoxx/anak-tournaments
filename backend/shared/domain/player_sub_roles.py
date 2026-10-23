@@ -2,28 +2,17 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from typing import Any, Protocol
+from typing import Any
 
-from shared.core.enums import HeroClass
+from shared.domain.roles import Ontology
 
-# Registration, the PlayerSubRole catalog and the roster shape all speak one
-# vocabulary: tank/damage/support (``HeroClass.slot_code`` == ``HeroClass.name``).
-# Registration used to spell damage as ``dps``; migration ``roledps01`` retired
-# that. ``REGISTRATION_TO_CANONICAL`` is therefore an identity map now, kept
-# because callers use it as a *validated* lookup -- ``.get()`` answers None for a
-# role that is not one of the three, which a bare string would not.
-_REGISTRATION_ROLES: tuple[HeroClass, ...] = (HeroClass.tank, HeroClass.damage, HeroClass.support)
-REGISTRATION_ROLE_CODES: tuple[str, ...] = tuple(role.slot_code for role in _REGISTRATION_ROLES)
-REGISTRATION_TO_CANONICAL: dict[str, str] = {role.slot_code: role.name for role in _REGISTRATION_ROLES}
+# The role codes a registration names; OW rank and Discord consumers key on them.
+REGISTRATION_ROLE_CODES: tuple[str, ...] = ("tank", "damage", "support")
 
 
 def normalize_role(role: Any) -> str | None:
     if role is None:
         return None
-
-    parsed = HeroClass.parse(role)
-    if parsed is not None:
-        return parsed.name
 
     value = str(role).strip().lower()
     return value or None
@@ -35,6 +24,20 @@ def normalize_sub_role(sub_role: str | None) -> str | None:
 
     normalized = re.sub(r"\s+", "_", sub_role.strip().lower())
     return normalized or None
+
+
+def workspace_sub_role_code(parent: str, slug: str | None) -> str | None:
+    """The catalog code for a normalized parent code and a legacy/form sub-role slug.
+
+    Mirrored by ``discipline01b_roles._workspace_code``; migration tests pin their parity.
+    """
+    normalized = normalize_sub_role(slug)
+    return f"{parent}_{normalized}" if normalized else None
+
+
+def workspace_sub_role_slug(parent: str, code: str) -> str:
+    """Recover the legacy/form slug from a workspace role's parent-qualified catalog code."""
+    return code.removeprefix(f"{parent}_")
 
 
 def catalog_slugs(
@@ -60,18 +63,8 @@ def catalog_slugs(
     return slugs
 
 
-def registration_to_canonical_role(role: Any) -> str | None:
-    """Normalize any role spelling to its canonical code, ``None`` if unrecognised.
-
-    Registration and the catalog share one vocabulary, so this no longer
-    translates; it validates. ``flex`` passes through -- a registration may be
-    role-less even though the sub-role catalog has no flex rows.
-    """
-    return normalize_role(role)
-
-
 def canonical_to_registration_role(role: Any) -> str | None:
-    """Same, narrowed to the three roles a registration can name.
+    """Normalize a role, narrowed to the three roles a registration can name.
 
     ``None`` for ``flex`` and for anything unrecognised, which is what the
     sub-role catalog lookups need: flex has no catalog to index.
@@ -80,31 +73,17 @@ def canonical_to_registration_role(role: Any) -> str | None:
     return canonical if canonical in REGISTRATION_ROLE_CODES else None
 
 
-class SubRoleRow(Protocol):
-    """Duck-typed PlayerSubRole row used to build the catalog."""
+def build_subrole_catalog(ontology: Ontology, workspace_id: int | None) -> dict[str, list[dict[str, str]]]:
+    """``{top-level role code: [{"slug": suffix, "label": name}]}`` of active, selectable workspace sub-roles.
 
-    role: str
-    slug: str
-    label: str
-
-
-def build_subrole_catalog(
-    rows: Iterable[SubRoleRow],
-) -> dict[str, list[dict[str, str]]]:
-    """Group catalog rows by registration role code, preserving input order.
-
-    Returns ``{reg_code: [{"slug": ..., "label": ...}]}`` for every registration
-    role code, so the frontend always receives a stable shape. Callers should
-    pass rows already sorted (role, sort_order, label).
+    Every top-level role of the rated dimension gets a key, so the frontend always receives a stable shape.
     """
-    catalog: dict[str, list[dict[str, str]]] = {code: [] for code in REGISTRATION_ROLE_CODES}
-    for row in rows:
-        reg_code = canonical_to_registration_role(getattr(row, "role", None))
-        if reg_code is None or reg_code not in catalog:
-            continue
-        slug = normalize_sub_role(getattr(row, "slug", None))
-        if slug is None:
-            continue
-        label = getattr(row, "label", None) or slug
-        catalog[reg_code].append({"slug": slug, "label": str(label)})
-    return catalog
+    rated = ontology.rated.code
+    return {
+        root.code: [
+            {"slug": workspace_sub_role_slug(root.code, child.code), "label": child.name}
+            for child in ontology.roles(rated)
+            if child.parent_id == root.id and child.workspace_id == workspace_id and child.active and child.selectable
+        ]
+        for root in ontology.roots(rated)
+    }

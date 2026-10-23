@@ -24,6 +24,10 @@ class BaseRepository[ModelType: Base]:
     def select(self) -> sa.Select[tuple[ModelType]]:
         return sa.select(self.model)
 
+    def count_select(self) -> sa.Select[tuple[int]]:
+        """The row count ``list`` totals over; a repository whose ``select()`` narrows the rows narrows this too."""
+        return sa.select(sa.func.count(self.model.id))
+
     def _apply_options(
         self,
         query: sa.Select[tuple[Any]],
@@ -49,6 +53,7 @@ class BaseRepository[ModelType: Base]:
         *,
         options: Sequence[_AbstractLoad] | None = None,
         populate_existing: bool = False,
+        for_update: bool = False,
     ) -> ModelType | None:
         """Fetch by primary key.
 
@@ -57,9 +62,15 @@ class BaseRepository[ModelType: Base]:
         row exactly as it was first loaded in this session, which can be missing
         the eager-load ``options`` a later caller needs (and would otherwise
         raise ``MissingGreenlet`` on the first async lazy-load of the relationship).
+
+        ``for_update`` locks the row (``SELECT … FOR UPDATE``) and implies
+        ``populate_existing``: a locked row served from the identity map at the
+        state it was first read would defeat the lock.
         """
         query = self._apply_options(self.select().where(self.model.id == id), options)
-        if populate_existing:
+        if for_update:
+            query = query.with_for_update()
+        if populate_existing or for_update:
             query = query.execution_options(populate_existing=True)
         result = await session.execute(query)
         return result.unique().scalars().first()
@@ -85,7 +96,7 @@ class BaseRepository[ModelType: Base]:
         order_by: Sequence[sa.ColumnElement[Any]] | None = None,
     ) -> tuple[Sequence[ModelType], int]:
         query = self._apply_options(self.select(), options)
-        total_query = sa.select(sa.func.count(self.model.id))
+        total_query = self.count_select()
 
         query = self._apply_filters(query, filters)
         total_query = self._apply_filters(total_query, filters)
@@ -127,15 +138,6 @@ class BaseRepository[ModelType: Base]:
         result = await session.execute(query)
         return result.unique().scalars().all()
 
-    async def get_bulk(
-        self,
-        session: AsyncSession,
-        ids: Sequence[int | str],
-        *,
-        options: Sequence[_AbstractLoad] | None = None,
-    ) -> Sequence[ModelType]:
-        return await self.bulk_get(session, ids, options=options)
-
     async def get_many_by(
         self,
         session: AsyncSession,
@@ -149,7 +151,7 @@ class BaseRepository[ModelType: Base]:
         One query instead of a get-then-create/update probe per item — the
         "does this already exist" half of every external-catalog sync
         (OverFast heroes/maps/gamemodes, ...): ``field`` is the mapped column
-        to match on (``models.Hero.slug``, ``models.Map.name``, ...),
+        to match on (``models.CatalogEntity.slug``, ``models.CatalogEntity.name``, ...),
         deduplicated internally since a caller's list commonly isn't.
         """
         if not values:

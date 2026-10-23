@@ -1,31 +1,34 @@
-"""The live pick-ban runtime: the cursor, the two ways a side answers a step
-(``act`` for an open step, ``submit`` for a blind one), the write-side healing
-that keeps the room in step with its own rules, and the state payload the room
-renders.
+"""The live pick-ban runtime: the cursor, the two ways a participation answers
+a step (``act`` for an open step, ``submit`` for a blind one), the write-side
+healing that keeps the room in step with its own rules, and the state payload
+the room renders.
 
-Submissions are the source of truth (design D2/D3): every mutation writes a
+Submissions are the source of truth: every mutation writes a
 ``PickBanSubmission`` and then RE-PROJECTS ``PickBanEntry`` from the whole log,
 so the board can never drift from the actions behind it and a reopened step
 (dispute / admin) simply replaces its rows. The cursor is derived the same way
 -- there is no step counter column to get out of step with the entries.
 
+Everything the room names is a PARTICIPATION: who may act, whose draft
+is private, who a journal row belongs to. ``encounter_team_id IS NULL`` on a
+submission is the engine, and nothing else.
+
 ``_settle`` resolves ``system`` steps, expires a step whose timer ran out under
-its ``on_timeout`` policy, reveals a blind step once every side has locked, and
+its ``on_timeout`` policy, reveals a blind step once every actor has locked, and
 restarts the clock whenever the current step changes. It runs before every
 mutation and inside ``reconcile_room``, under the session lock.
 
 ``get_pick_ban_state`` is a PURE READ -- no row lock, no write, no commit, no
-signal. Healing it would otherwise do lives in :meth:`PickBanActionService.
-reconcile_room`, driven by ``room_reconcile``: a post-commit trigger after
-every room write plus two scheduled sweeps. A viewer's poll taking the
-encounter's row lock put every spectator behind the captains and behind each
-other, which is what this split exists to prevent.
-
-Design: docs/plans/2026-09-28-pick-ban-constructor.md §5, §7, §9.
+signal. Healing lives in :meth:`PickBanActionService.reconcile_room`, driven by
+``room_reconcile``: a post-commit trigger after every room write plus two
+scheduled sweeps. A viewer's poll that took the encounter's row lock would
+queue every spectator behind the captains and behind each other.
 """
 
 from __future__ import annotations
 
+import secrets
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -37,53 +40,63 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.core import http_status as status
 from shared.core.enums import EncounterGameState, EncounterStatus, MapVetoSessionStatus, PickBanKind
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import rated_role_codes
 from shared.division_grid import DivisionGrid
 from shared.domain import pick_ban_engine as engine
 from shared.domain import pick_ban_rules as pbr
-from shared.models.tournament.encounter import Encounter
-from shared.models.tournament.encounter_game import EncounterGame
-from shared.models.tournament.encounter_report import EncounterMapReport
-from shared.models.tournament.pick_ban import PickBanEntry, PickBanSession, PickBanSubmission
+from shared.models.encounter.encounter import Encounter
+from shared.models.encounter.game import EncounterGame, EncounterGameTeam
+from shared.models.encounter.pick_ban import PickBanEntry, PickBanSession, PickBanSubmission
+from shared.models.encounter.team import EncounterTeam
 from shared.models.tournament.team import Player
 from shared.repository import (
-    EncounterRepository,
     PickBanEntryRepository,
     PickBanSubmissionRepository,
 )
-from shared.services.bracket.usability import is_encounter_live
 from shared.services.division_grid.resolution import resolve_tournament_division
 from src.core.workspace import get_division_grid
+from src.services.bracket.usability import is_encounter_live
 from src.services.encounter import pick_ban_undo
-from src.services.encounter.games import EncounterGameService, encounter_game_service
+from src.services.encounter.games import OPEN_STATES, EncounterGameService, encounter_game_service
 from src.services.encounter.pick_ban_session import (
+    MemberSeat,
     PickBanSessionService,
     assert_not_paused,
     load_item_groups,
+    load_member_seats,
+    members_by_team,
     pick_ban_session_service,
     resolved_steps,
     step_clock,
 )
 from src.services.encounter.realtime_commit import emit_pick_ban_update
 from src.services.encounter.room_journal import record_room_event
+from src.services.encounter.veto_session import side_codes
 
-#: ``viewer_side`` default meaning "the side that is acting". A plain ``None``
-#: default could not tell an admin acting FOR a side (who must get the neutral,
-#: privacy-free view) from the captain acting as themselves.
-ACTING_VIEWER = "__acting__"
+#: ``viewer`` default meaning "the participation that is acting". A plain
+#: ``None`` default could not tell an admin acting FOR a participation (who
+#: must get the neutral, privacy-free view) from the captain acting as
+#: themselves.
+ACTING_VIEWER = -1
 
-GameSnapshot = tuple[list[EncounterGame], dict[int, list[EncounterMapReport]]]
+GameSnapshot = tuple[list[EncounterGame], dict[int, list[Any]]]
 
 
-def _source_of(viewer_side: str | None) -> str:
-    """Who is writing, for the journal: the same read of ``viewer_side`` the
+def _source_of(viewer: int | None) -> str:
+    """Who is writing, for the journal: the same read of ``viewer`` the
     captain-only guards run on, so the two can never disagree."""
-    return "captain" if viewer_side == ACTING_VIEWER else "admin"
+    return "captain" if viewer == ACTING_VIEWER else "admin"
 
 
-_CAPTAIN_ACTIONS = ("ban", "pick", "protect")
-#: Roster reading order of a target board: the three roles in team order, mains
-#: before the substitutes that cover them, then by name.
-_ROLE_ORDER = {"tank": 0, "damage": 1, "support": 2}
+_CAPTAIN_ACTIONS = ("ban", "pick", "protect", "side_pick", "assign")
+
+
+def _item(item: Mapping[str, Any]) -> dict[str, Any]:
+    """One answered item as the log stores and serves it: ``member_id`` only on an assignment's items."""
+    stored = {"item_id": int(item["item_id"]), "target_player_id": item.get("target_player_id")}
+    if item.get("member_id") is not None:
+        stored["member_id"] = int(item["member_id"])
+    return stored
 
 
 # ── serialization ────────────────────────────────────────────────────────────
@@ -96,10 +109,15 @@ def serialize_pick_ban_entry(entry: PickBanEntry) -> dict[str, Any]:
         "round": entry.round,
         "order": entry.order,
         "action_index": entry.action_index,
-        "picked_by": entry.picked_by,
-        "protected_by": entry.protected_by,
+        # The pair the board's CHECK keeps in step: ``team`` names a
+        # participation, every other kind is the engine or an organizer.
+        "picked_by_kind": entry.picked_by_kind,
+        "picked_by_team_id": entry.picked_by_team_id,
+        # Whose hero a pick is: a mix member step's member, or whom an assignment gave it to (spec §11.6 R4-11).
+        "picked_for_member_id": entry.picked_for_member_id,
+        "protected_by_kind": entry.protected_by_kind,
+        "protected_by_team_id": entry.protected_by_team_id,
         "status": entry.status,
-        "team_id": entry.team_id,
         # Set only on a ban carried in from an earlier round, which the room
         # badges with its origin map and nothing may act on.
         "carried_from_round": entry.carried_from_round,
@@ -111,15 +129,14 @@ def serialize_pick_ban_session(pick_ban: PickBanSession) -> dict[str, Any]:
         "id": pick_ban.id,
         "kind": pick_ban.kind,
         "status": pick_ban.status,
-        "first_side": pick_ban.first_side,
+        #: The participation that opens the round in play.
+        "first_team_id": pick_ban.first_team_id,
         "awaiting_choice": pick_ban.awaiting_choice,
-        "pending_loser_side": pick_ban.pending_loser_side,
+        "pending_chooser_team_id": pick_ban.pending_chooser_team_id,
         "seed_source": pick_ban.seed_source,
-        "home_seed": pick_ban.home_seed,
-        "away_seed": pick_ban.away_seed,
         # Passthrough of the session's reserve snapshot, string-keyed by slot
         # position, gaps and reserve-less slots omitted -- see
-        # pick_ban_session.ensure_pick_ban_session's slot_reserves comment.
+        # pick_ban_session.creation_plan's slot_reserves comment.
         # Always None for kind=hero (no reserve concept there).
         "slot_reserves": pick_ban.slot_reserves_json,
         "started_at": pick_ban.started_at.isoformat() if pick_ban.started_at else None,
@@ -134,35 +151,24 @@ def serialize_pick_ban_session(pick_ban: PickBanSession) -> dict[str, Any]:
 def serialize_submission(row: pbr.SubmissionLike) -> dict[str, Any]:
     return {
         "step_index": row.step_index,
-        "side": row.side,
+        "encounter_team_id": row.encounter_team_id,
+        #: The member a member step's answer is for; null for a team step.
+        "team_member_id": row.team_member_id,
         "attempt": row.attempt,
         "state": row.state,
-        "items": [
-            {"item_id": int(item["item_id"]), "target_player_id": item.get("target_player_id")}
-            for item in (row.items_json or [])
-        ],
+        "items": [_item(item) for item in (row.items_json or [])],
     }
 
 
 def serialize_target(player: Player, grid: DivisionGrid) -> dict[str, Any]:
-    role = getattr(player.role, "value", player.role)
     return {
         "player_id": player.id,
         "name": player.name,
-        # The TS contract spells roles lowercase; `HeroClass` already does, but
-        # a raw column read can hand back whatever the DB stored.
-        "role": role.lower() if isinstance(role, str) else None,
-        "sub_role": player.sub_role,
+        "role": player.role_ref.model_dump() if player.role_ref is not None else None,
         "is_substitution": bool(player.is_substitution),
         # Against the tournament's own grid, exactly as `PlayerRead.division`.
         "division": resolve_tournament_division(player.rank, tournament_grid=grid),
     }
-
-
-def _target_sort_key(player: Player) -> tuple[int, int, str]:
-    role = getattr(player.role, "value", player.role)
-    rank = _ROLE_ORDER.get(role.lower(), len(_ROLE_ORDER)) if isinstance(role, str) else len(_ROLE_ORDER)
-    return (rank, 1 if player.is_substitution else 0, player.name or "")
 
 
 def build_unavailable_state(reason: str, *, readiness: dict[str, bool]) -> dict[str, Any]:
@@ -173,13 +179,17 @@ def build_unavailable_state(reason: str, *, readiness: dict[str, bool]) -> dict[
         "sequence": [],
         "pool": [],
         "submissions": [],
-        "viewer_side": None,
+        "viewer_team_id": None,
         "viewer_can_act": False,
         "allowed_actions": [],
         "current_step_index": None,
         "current_step": None,
         "expected_action": None,
-        "acting_sides": [],
+        "acting_team_ids": [],
+        "members": [],
+        "acting_member_ids": [],
+        "viewer_member_ids": [],
+        "member_eligible": None,
         "step_progress": None,
         "step_deadline": None,
         "current_round": None,
@@ -187,6 +197,7 @@ def build_unavailable_state(reason: str, *, readiness: dict[str, bool]) -> dict[
         "eligible": None,
         "draft_issues": [],
         "targets": None,
+        "sides": [],
         "dispute": pbr.DisputeState(False, None, 0, 0).to_json(),
         "games": [],
         "series": None,
@@ -205,13 +216,27 @@ class _Runtime:
 
     pick_ban: PickBanSession
     encounter: Encounter
+    #: The live seats, in slot order -- the actor vocabulary of every step.
+    teams: list[EncounterTeam]
     steps: list[pbr.ResolvedStep]
     entries: list[PickBanEntry]
     submissions: list[PickBanSubmission]
     groups: dict[int, str | None] = field(default_factory=dict)
-    #: ``{"home": home roster, "away": away roster}`` -- the STATE payload's
-    #: orientation. ``RuntimeCtx.targets`` flips it (a side names the OPPONENT).
-    rosters: dict[str, list[Player]] = field(default_factory=dict)
+    #: ``{participation: its own roster}``. ``RuntimeCtx.targets`` flips it (a
+    #: participation names the OPPONENT's players).
+    rosters: dict[int, list[Player]] = field(default_factory=dict)
+    #: A mix match's seated members in pick order (``load_member_seats``); empty in a tournament.
+    seats: list[MemberSeat] = field(default_factory=list)
+    #: ``{member: heroes they may not pick}`` -- the session's Fearless snapshot (``pool_json["exclusions"]``).
+    exclusions: dict[int, frozenset[int]] = field(default_factory=dict)
+
+    @property
+    def participants(self) -> list[int]:
+        return [team.id for team in self.teams]
+
+    @property
+    def members(self) -> dict[int, list[int]]:
+        return members_by_team(self.seats)
 
 
 class PickBanActionService:
@@ -220,13 +245,11 @@ class PickBanActionService:
         *,
         entry_repo: PickBanEntryRepository = PickBanEntryRepository(),
         submission_repo: PickBanSubmissionRepository = PickBanSubmissionRepository(),
-        encounter_repo: EncounterRepository = EncounterRepository(),
         games: EncounterGameService = encounter_game_service,
         sessions: PickBanSessionService = pick_ban_session_service,
     ) -> None:
         self.entry_repo = entry_repo
         self.submission_repo = submission_repo
-        self.encounter_repo = encounter_repo
         self.games = games
         self.sessions = sessions
 
@@ -241,55 +264,73 @@ class PickBanActionService:
             await self.entry_repo.list_by_session(session, pick_ban.id, ordered=True, populate_existing=refresh)
         )
         submissions = list(await self.submission_repo.list_by_session(session, pick_ban.id, populate_existing=refresh))
-        steps = resolved_steps(pick_ban)
-        groups = await load_item_groups(session, PickBanKind(pick_ban.kind), [entry.item_id for entry in entries])
-        rosters: dict[str, list[Player]] = {}
+        teams = await self.sessions.teams_of(session, encounter.id)
+        steps = resolved_steps(pick_ban, teams)
+        groups = await load_item_groups(
+            session, PickBanKind(pick_ban.kind), [entry.item_id for entry in entries], encounter.discipline
+        )
+        rosters: dict[int, list[Player]] = {}
         if any(step.target is not None for step in steps):
-            rosters = await self._load_rosters(session, encounter)
+            rosters = await self._load_rosters(session, teams, encounter.discipline)
+        seats = await load_member_seats(session, encounter)
+        snapshot = dict(pick_ban.pool_json or {}).get("exclusions") or {}
+        exclusions = {int(member): frozenset(heroes) for member, heroes in snapshot.items()}
         return _Runtime(
             pick_ban=pick_ban,
             encounter=encounter,
+            teams=teams,
             steps=steps,
             entries=entries,
             submissions=submissions,
             groups=groups,
             rosters=rosters,
+            seats=seats,
+            exclusions=exclusions,
         )
 
-    async def _load_rosters(self, session: AsyncSession, encounter: Encounter) -> dict[str, list[Player]]:
-        """Both teams' roster rows, in the room's reading order. One query: a
-        target step needs both sides at once (each side bans for the other)."""
-        team_ids = [team_id for team_id in (encounter.home_team_id, encounter.away_team_id) if team_id is not None]
-        if not team_ids:
-            return {"home": [], "away": []}
-        rows = (await session.execute(select(Player).where(Player.team_id.in_(team_ids)))).scalars().all()
-        return {
-            "home": sorted((row for row in rows if row.team_id == encounter.home_team_id), key=_target_sort_key),
-            "away": sorted((row for row in rows if row.team_id == encounter.away_team_id), key=_target_sort_key),
-        }
+    async def _load_rosters(
+        self, session: AsyncSession, teams: list[EncounterTeam], discipline: str
+    ) -> dict[int, list[Player]]:
+        """Every seat's roster rows, in the room's reading order: the game's rated roles in declaration order, mains
+        before the substitutes that cover them, then by name. One query: a target step needs them all at once (each
+        seat bans for the others)."""
+        role_order = {code: index for index, code in enumerate(rated_role_codes(discipline))}
+        by_source = {team.team_id: team.id for team in teams if team.team_id is not None}
+        rosters: dict[int, list[Player]] = {team.id: [] for team in teams}
+        if not by_source:
+            return rosters
+        rows = (await session.execute(select(Player).where(Player.team_id.in_(tuple(by_source))))).scalars().all()
+        for row in rows:
+            participation = by_source.get(row.team_id)
+            if participation is not None:
+                rosters[participation].append(row)
+
+        def key(player: Player) -> tuple[int, int, str]:
+            return (role_order.get(player.role, len(role_order)), 1 if player.is_substitution else 0, player.name or "")
+
+        return {team_id: sorted(players, key=key) for team_id, players in rosters.items()}
 
     def _ctx(self, rt: _Runtime, step: pbr.ResolvedStep) -> pbr.RuntimeCtx:
         """The rules' view of the room for ONE step. ``available_item_ids`` is
         the step's own round, carried bans excluded (they are already spent);
-        ``targets`` is flipped, because a side names the OPPONENT's players."""
+        ``targets`` is flipped, because a participation names its OPPONENTS'
+        players."""
         available = tuple(
             entry.item_id
             for entry in rt.entries
             if entry.carried_from_round is None and entry.round == step.round and str(entry.status) == pbr.AVAILABLE
         )
-        targets: dict[str, list[pbr.TargetPlayer]] = {}
+        targets: dict[int, list[pbr.TargetPlayer]] = {}
         if step.target is not None and rt.rosters:
-            for side, opponent in (("home", "away"), ("away", "home")):
-                targets[side] = [
+            for team_id in rt.participants:
+                targets[team_id] = [
                     pbr.TargetPlayer(
                         player_id=player.id,
-                        role=(
-                            role.lower()
-                            if isinstance(role := getattr(player.role, "value", player.role), str)
-                            else None
-                        ),
+                        role=player.role,
                     )
-                    for player in rt.rosters.get(opponent, [])
+                    for opponent, players in rt.rosters.items()
+                    if opponent != team_id
+                    for player in players
                 ]
         return pbr.RuntimeCtx(
             kind=str(rt.pick_ban.kind),
@@ -299,7 +340,134 @@ class PickBanActionService:
             groups=rt.groups,
             history=pbr.history_of(rt.steps, rt.submissions),
             targets=targets,
+            members=rt.members,
+            exclusions=rt.exclusions,
         )
+
+    # -- sides -------------------------------------------------------------
+    async def _apply_side_pick(
+        self, session: AsyncSession, rt: _Runtime, step: pbr.ResolvedStep, actor: int, side: str
+    ) -> None:
+        """Write the chooser's side on the round's game, and the remaining side
+        on the other seat.
+
+        ``uq_game_team_side`` is the backstop: two participations cannot start
+        one game on the same side, so a concurrent writer that got there first
+        makes this transaction fail rather than quietly overwrite it.
+
+        A PLAYED position keeps the sides it was played on: only a round replayed
+        after a reset gets here for one, and a no-op keeps that room's tick from
+        failing on every pass.
+        """
+        sides = side_codes(rt.encounter)
+        if side not in sides:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"{rt.encounter.discipline} has no side {side!r}",
+            )
+        position = step.round or 1
+        if position in await self.games.played_positions(session, rt.encounter.id):
+            return
+        game = next(
+            (game for game in await self.games.list_games(session, rt.encounter.id) if game.position == position),
+            None,
+        )
+        if game is None:
+            game = await self.games.open_game(session, rt.encounter, position=position)
+        rows = {row.encounter_team_id: row for row in (await self.games.lines_by_game(session, [game]))[game.id]}
+        # Cleared and flushed FIRST: a re-pick after an undo swaps the sides
+        # round, and ``uq_game_team_side`` sees the half-applied state of one
+        # statement batch -- the old holder would still own the side the new
+        # one is being given.
+        for row in rows.values():
+            row.starting_side = None
+        await session.flush()
+        remaining = [code for code in sides if code != side]
+        for team_id in rt.participants:
+            row = rows.get(team_id)
+            if row is None:
+                row = EncounterGameTeam(game_id=game.id, encounter_id=rt.encounter.id, encounter_team_id=team_id)
+                self.games.line_repo.add(session, row)
+                rows[team_id] = row
+            row.starting_side = side if team_id == actor else (remaining.pop(0) if remaining else None)
+        await session.flush()
+
+    def _sides_state(
+        self, rt: _Runtime, games: list[EncounterGame], lines: dict[int, list[EncounterGameTeam]]
+    ) -> list[dict[str, Any]]:
+        """What each position's sides stand at, for the rooms that have any."""
+        if not side_codes(rt.encounter):
+            return []
+        positions = {game.id: game.position for game in games}
+        return [
+            {
+                "game_id": game_id,
+                "position": positions[game_id],
+                "sides": {str(row.encounter_team_id): row.starting_side for row in rows},
+            }
+            for game_id, rows in sorted(lines.items())
+            if any(row.starting_side is not None for row in rows)
+        ]
+
+    def _bind_side_actors(self, rt: _Runtime) -> bool:
+        """Give every unbound ``side:<code>`` step its actors, once the
+        ``side_pick`` of its round has handed that side out.
+
+        A round's steps are all resolved when the round OPENS, but a side only
+        exists once the pick is played, so those steps are written with no
+        actors and keep their token (``ResolvedStep.actors_token``). This is the
+        other half: it runs at the top of every ``_settle`` pass and again the
+        moment a side pick reveals, and it writes the bound sequence back to the
+        session so the next request reads actors rather than an empty list. The
+        token STAYS: undoing the pick has to be able to take the binding back.
+        """
+        unbound = [step for step in rt.steps if step.is_unbound]
+        if not unbound:
+            return False
+        sides = side_codes(rt.encounter)
+        participants = rt.participants
+        bound = False
+        for index, step in enumerate(rt.steps):
+            if not step.is_unbound:
+                continue
+            assigned = pbr.assigned_sides(rt.steps, rt.submissions, sides, participants=participants, round=step.round)
+            try:
+                actors = pbr.resolve_actors(
+                    step.actors_token or "",
+                    participants=participants,
+                    opener=rt.pick_ban.first_team_id or participants[0],
+                    sides=assigned,
+                )
+            except pbr.UnassignedSide:
+                continue  # its side pick has not revealed yet
+            rt.steps[index] = step.model_copy(update={"actors": actors})
+            bound = True
+        if bound:
+            # A member step bound to a side owes its members only now (spec §11.6 R4-2: ``lol_draft``'s picks).
+            rt.steps = pbr.bind_members(rt.steps, rt.members)
+            rt.pick_ban.resolved_sequence_json = [step.to_json() for step in rt.steps]
+        return bound
+
+    def side_pick_pending(self, rt: _Runtime, position: int) -> bool:
+        """Whether position ``position`` still owes a ``side_pick`` an answer.
+
+        A game cannot START while the side it is played on is undecided: the
+        position stays ``planned`` -- named, but not open for claims -- until the
+        pick resolves or the clock flips a coin for it.
+        """
+        if not side_codes(rt.encounter):
+            return False
+        return any(
+            step.action == "side_pick"
+            and (step.round or 1) == position
+            and (step.is_unbound or not pbr.ready_to_reveal(step, rt.submissions))
+            for step in rt.steps
+        )
+
+    def _blocked_positions(self, rt: _Runtime) -> frozenset[int]:
+        """Positions no game may leave ``planned`` on yet."""
+        rounds = {step.round or 1 for step in rt.steps if step.action == "side_pick"}
+        return frozenset(position for position in rounds if self.side_pick_pending(rt, position))
 
     # -- settling ----------------------------------------------------------
     @staticmethod
@@ -355,8 +523,8 @@ class PickBanActionService:
 
         Normally the current one. But an undo voids a step's whole attempt
         without opening the next, so re-answering the reopened step has to move
-        on: ``(session, step, side, attempt)`` is unique, and reusing a voided
-        attempt's number would collide with the row it voided.
+        on: ``(session, step, participation, attempt)`` is unique, and reusing a
+        voided attempt's number would collide with the row it voided.
         """
         attempt = pbr.current_attempt(rt.submissions, step_index)
         rows = [row for row in rt.submissions if row.step_index == step_index and row.attempt == attempt]
@@ -367,28 +535,29 @@ class PickBanActionService:
         session: AsyncSession,
         rt: _Runtime,
         step: pbr.ResolvedStep,
-        side: str,
+        actor: int | None,
         items: list[dict[str, Any]],
         *,
         state: str,
+        member: int | None = None,
     ) -> PickBanSubmission:
-        """Create or replace ``side``'s live submission for this step."""
+        """Create or replace ``actor``'s -- on a member step, ``member``'s -- live submission for this step."""
         attempt = self._writable_attempt(rt, step.index)
-        row = pbr.side_submission(rt.submissions, step.index, side)
+        row = pbr.actor_submission(rt.submissions, step.index, actor, member)
         now = datetime.now(UTC)
-        normalized = [
-            {"item_id": int(item["item_id"]), "target_player_id": item.get("target_player_id")} for item in items
-        ]
+        normalized = [_item(item) for item in items]
         if row is None:
             row = PickBanSubmission(
                 session_id=rt.pick_ban.id,
+                encounter_id=rt.encounter.id,
                 step_index=step.index,
-                side=side,
+                encounter_team_id=actor,
+                team_member_id=member,
                 attempt=attempt,
                 state=state,
                 items_json=normalized,
             )
-            session.add(row)
+            self.submission_repo.add(session, row)
             rt.submissions.append(row)
         else:
             row.items_json = normalized
@@ -402,8 +571,8 @@ class PickBanActionService:
     @staticmethod
     def _reveal(rt: _Runtime, step: pbr.ResolvedStep) -> None:
         now = datetime.now(UTC)
-        for side in step.sides:
-            row = pbr.side_submission(rt.submissions, step.index, side)
+        for actor, member in step.answers:
+            row = pbr.actor_submission(rt.submissions, step.index, actor, member)
             if row is None or row.state == pbr.REVEALED:
                 continue
             row.state = pbr.REVEALED
@@ -428,6 +597,7 @@ class PickBanActionService:
         """
         if str(rt.pick_ban.status) == MapVetoSessionStatus.CANCELLED:
             return False
+        self._bind_side_actors(rt)
         opening = pbr.current_step(rt.steps, rt.submissions)
         timed_index = opening.index if opening is not None else None
         changed = False
@@ -437,9 +607,15 @@ class PickBanActionService:
             step = pbr.current_step(rt.steps, rt.submissions)
             if step is None:
                 break
+            if step.is_unbound:
+                # The ``side_pick`` that hands this step's side out has not been
+                # played yet, and the cursor stops here (``current_step``), so
+                # there is nothing this pass can settle. The bind above runs
+                # again on the next one, after that step reveals.
+                break
             if step.is_system:
                 items = pbr.resolve_system_step(step, self._ctx(rt, step))
-                self._write(session, rt, step, "system", items, state=pbr.REVEALED)
+                self._write(session, rt, step, None, items, state=pbr.REVEALED)
                 await record_room_event(
                     session,
                     rt.encounter.id,
@@ -457,6 +633,11 @@ class PickBanActionService:
                 continue
             if pbr.ready_to_reveal(step, rt.submissions):
                 self._reveal(rt, step)
+                if step.action == "side_pick":
+                    await self._settle_side_pick(session, rt, step)
+                    # The side now exists, so every later step of this round
+                    # that names it can finally be bound.
+                    self._bind_side_actors(rt)
                 await record_room_event(
                     session,
                     rt.encounter.id,
@@ -468,32 +649,52 @@ class PickBanActionService:
                 changed = True
                 continue
             if step.index == timed_index and step.on_timeout != "wait" and self._expired(rt.pick_ban, step):
-                stood_in: list[str] = []
-                for side in step.acting_sides:
-                    row = pbr.side_submission(rt.submissions, step.index, side)
-                    if row is not None and row.state in (pbr.LOCKED, pbr.REVEALED):
-                        continue
+                owing: list[tuple[int, int | None]] = []
+                for actor, member in step.answers:
+                    row = pbr.actor_submission(rt.submissions, step.index, actor, member)
+                    if actor is not None and (row is None or row.state not in (pbr.LOCKED, pbr.REVEALED)):
+                        owing.append((actor, member))
+                # A member step's stand-ins are matched jointly, across both teams (spec §11.6 R4-9): a hero is the
+                # match's once, so one member's random hero must never strand another's.
+                joint = (
+                    pbr.fill_member_answers(
+                        step, [(actor, member) for actor, member in owing if member is not None], self._ctx(rt, step)
+                    )
+                    if step.member is not None and step.on_timeout == "random_fill"
+                    else {}
+                )
+                stood_in: list[int] = []
+                for actor, member in owing:
+                    row = pbr.actor_submission(rt.submissions, step.index, actor, member)
                     items = list(row.items_json or []) if row is not None else []
-                    if step.on_timeout == "random_fill":
-                        items = pbr.random_fill(step, side, items, self._ctx(rt, step))
+                    if step.action == "side_pick":
+                        # A side nobody chose is a coin flip, which is what the
+                        # rules call for; ``random_fill`` has no items to draw on.
+                        items = [{"item_id": self._coin_flip_side(rt), "target_player_id": None}]
+                    elif member is not None and step.on_timeout == "random_fill":
+                        items = joint[(actor, member)]
+                    elif step.on_timeout == "random_fill":
+                        # A team's draft topped up at random; an assignment, a random matching (R4-9).
+                        items = pbr.random_fill(step, actor, items, self._ctx(rt, step))
                     # Force-lock ignores `min`: standing in for a captain who
                     # never answered must not be blocked by what they owed.
-                    self._write(session, rt, step, side, items, state=pbr.LOCKED)
+                    self._write(session, rt, step, actor, items, state=pbr.LOCKED, member=member)
                     pbr.project_entries(rt.entries, rt.steps, rt.submissions)
-                    stood_in.append(side)
+                    if actor not in stood_in:
+                        stood_in.append(actor)
                 await record_room_event(
                     session,
                     rt.encounter.id,
                     action="step_timed_out",
                     source="system",
                     kind=str(rt.pick_ban.kind),
-                    # ``sides`` is who the clock answered FOR, not who the step
-                    # belonged to: a side that locked in time was not timed out.
+                    # ``team_ids`` is who the clock answered FOR, not who the step
+                    # belonged to: an actor that locked in time was not timed out.
                     data={
                         "step_index": step.index,
                         "round": step.round,
                         "policy": step.on_timeout,
-                        "sides": stood_in,
+                        "team_ids": stood_in,
                     },
                 )
                 changed = True
@@ -520,6 +721,23 @@ class PickBanActionService:
             changed = True
         return changed
 
+    def _coin_flip_side(self, rt: _Runtime) -> int:
+        """The default a ``side_pick`` nobody answered settles on: a coin flip
+        between the discipline's sides, encoded as the index the item slot
+        carries."""
+        return secrets.randbelow(len(side_codes(rt.encounter)) or 1)
+
+    async def _settle_side_pick(self, session: AsyncSession, rt: _Runtime, step: pbr.ResolvedStep) -> None:
+        """Write the revealed side onto the round's game rows."""
+        sides = side_codes(rt.encounter)
+        for actor in step.acting_actors:
+            row = pbr.actor_submission(rt.submissions, step.index, actor)
+            items = list(row.items_json or []) if row is not None else []
+            if not items or not sides:
+                continue
+            index = int(items[0]["item_id"])
+            await self._apply_side_pick(session, rt, step, actor, sides[index % len(sides)])
+
     # -- committing --------------------------------------------------------
     async def _commit(self, session: AsyncSession, rt: _Runtime, kind: PickBanKind) -> None:
         """Settle whatever this mutation unlocked, re-project, keep the series'
@@ -527,42 +745,62 @@ class PickBanActionService:
         await self._settle(session, rt)
         await session.flush()
         if kind == PickBanKind.MAP:
-            await self.games.sync_games_with_picks(session, rt.encounter, rt.pick_ban)
+            await self.games.sync_games_with_picks(
+                session, rt.encounter, rt.pick_ban, blocked_positions=self._blocked_positions(rt)
+            )
         await emit_pick_ban_update(session, rt.encounter.id, kind=kind.value)
         await session.commit()
 
     async def _blocked_rounds(self, session: AsyncSession, encounter: Encounter) -> frozenset[int]:
         """Series positions that already carry a claim or an accepted result --
         the rounds a dispute may no longer reopen, whichever kind asks."""
-        games = await self.games.list_games(session, encounter.id)
-        reports = await self.games.reports_by_game(session, games)
-        return frozenset(
-            game.position for game in games if game.state == EncounterGameState.CONFIRMED or reports.get(game.id)
-        )
+        return await self.games.played_positions(session, encounter.id)
 
     # -- reopening ---------------------------------------------------------
-    def _reopen(self, session: AsyncSession, rt: _Runtime, step: pbr.ResolvedStep) -> None:
-        """Void the step's current attempt and open the next one, each captain's
-        draft prefilled with what they had. The clock restarts; a session that
-        had run out of sequence comes back to life."""
+    async def _reopen(self, session: AsyncSession, rt: _Runtime, step: pbr.ResolvedStep) -> None:
+        """Void the step's current attempt and open the next one. The clock
+        restarts; a session that had run out of sequence comes back to life.
+
+        Only a BLIND step's new drafts are prefilled with what each actor had:
+        a blind draft stays private until everyone locks, so the prefill is a
+        convenience nobody else sees. An open step's draft IS the board (it is
+        projected as it is written), so a prefilled one would keep the voided
+        item applied and turn the captain's next action into a second item --
+        it starts EMPTY, the voided item available again. That covers a
+        ``side_pick`` (never blind) too; its round's side-bound steps are also
+        unbound and the position's sides taken back, so the re-choice binds
+        everything afresh. Callers refuse a played position first."""
         attempt = pbr.current_attempt(rt.submissions, step.index)
-        previous: dict[str, list[dict[str, Any]]] = {}
+        side_pick = step.action == "side_pick"
+        previous: dict[tuple[int, int | None], list[dict[str, Any]]] = {}
         for row in rt.submissions:
             if row.step_index != step.index or row.attempt != attempt or row.state == pbr.VOIDED:
                 continue
-            previous[row.side] = [dict(item) for item in (row.items_json or [])]
+            if row.encounter_team_id is not None:
+                previous[(row.encounter_team_id, row.team_member_id)] = [dict(item) for item in (row.items_json or [])]
             row.state = pbr.VOIDED
-        for side in step.acting_sides:
+        for actor, member in step.answers:
+            if actor is None:
+                continue
             row = PickBanSubmission(
                 session_id=rt.pick_ban.id,
+                encounter_id=rt.encounter.id,
                 step_index=step.index,
-                side=side,
+                encounter_team_id=actor,
+                team_member_id=member,
                 attempt=attempt + 1,
                 state=pbr.DRAFT,
-                items_json=previous.get(side, []),
+                items_json=previous.get((actor, member), []) if step.blind else [],
             )
-            session.add(row)
+            self.submission_repo.add(session, row)
             rt.submissions.append(row)
+        if side_pick:
+            # The `apply_undo` rule: `_bind_side_actors` rebinds only unbound steps.
+            rt.steps = [
+                other.unbound() if other.round == step.round and other.is_bound_to_side else other for other in rt.steps
+            ]
+            rt.pick_ban.resolved_sequence_json = [other.to_json() for other in rt.steps]
+            await self.games.clear_sides(session, rt.encounter.id, {step.round or 1})
         pbr.project_entries(rt.entries, rt.steps, rt.submissions)
         rt.pick_ban.current_step_started_at = step_clock(rt.pick_ban)
         if str(rt.pick_ban.status) == MapVetoSessionStatus.COMPLETED:
@@ -577,13 +815,16 @@ class PickBanActionService:
         touched = [
             step
             for step in rt.steps
-            if any(pbr.side_submission(rt.submissions, step.index, side) is not None for side in step.sides)
+            if any(
+                pbr.actor_submission(rt.submissions, step.index, actor, member) is not None
+                for actor, member in step.answers
+            )
         ]
         if not touched:
             return None
         latest = touched[-1]
-        for side in latest.sides:
-            row = pbr.side_submission(rt.submissions, latest.index, side)
+        for actor, member in latest.answers:
+            row = pbr.actor_submission(rt.submissions, latest.index, actor, member)
             if row is None or row.state != pbr.REVEALED:
                 return None
         return latest
@@ -621,11 +862,32 @@ class PickBanActionService:
         return step
 
     @staticmethod
-    def _require_turn(rt: _Runtime, step: pbr.ResolvedStep, side: str) -> None:
-        if side not in step.acting_sides:
-            whose = " and ".join(step.acting_sides) or "nobody"
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"It's {whose} team's turn, not {side}")
-        row = pbr.side_submission(rt.submissions, step.index, side)
+    def _require_mix_members(encounter: Encounter, members: Iterable[int | None]) -> None:
+        """Only a mix match seats members (spec §11.6 R4-6): a ``member_id`` on a tournament room is a 422, for its
+        captain and its organizer alike -- act and submit both ask here, before any turn is read."""
+        if encounter.custom_game_id is None and any(member is not None for member in members):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="member_id names a mix match's seat"
+            )
+
+    @staticmethod
+    def _require_turn(rt: _Runtime, step: pbr.ResolvedStep, actor: int, member: int | None = None) -> None:
+        if actor not in step.acting_actors:
+            names = {team.id: team.name for team in rt.teams}
+            whose = " and ".join(names.get(other, str(other)) for other in step.acting_actors) or "nobody"
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"It's {whose}'s turn, not {names.get(actor, actor)}'s",
+            )
+        if step.member is not None and (actor, member) not in step.answers:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Name a member of your team who owes this pick"
+            )
+        if step.member is None and member is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="This step is the team's, not a member's"
+            )
+        row = pbr.actor_submission(rt.submissions, step.index, actor, member)
         if row is not None and row.state in (pbr.LOCKED, pbr.REVEALED):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="Your answer to this step is already locked"
@@ -637,20 +899,25 @@ class PickBanActionService:
         session: AsyncSession,
         encounter_id: int,
         kind: PickBanKind,
-        side: str,
+        encounter_team_id: int,
         *,
         item_id: int,
         action: str,
         target_player_id: int | None = None,
-        viewer_side: str | None = ACTING_VIEWER,
+        member_id: int | None = None,
+        viewer: int | None = ACTING_VIEWER,
+        viewer_member: int | None = None,
         actor_auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         """One item onto an OPEN step's submission. A blind step is answered
         with :meth:`submit_items` instead -- appending one item at a time to a
-        draft nobody may see would leak its size through the progress counter."""
-        # ``viewer_side`` is the admin discriminator this module already runs on
-        # (see ACTING_VIEWER): an organizer acting FOR a side passes it as None.
-        encounter, pick_ban = await self._lock(session, encounter_id, kind, captain=viewer_side == ACTING_VIEWER)
+        draft nobody may see would leak its size through the progress counter.
+        On a mix's member step ``member_id`` names whom the hero is for (spec §11.6 R4-1); ``viewer_member`` is the
+        acting account's own mix seat, which the answer reads the room as (see :meth:`get_pick_ban_state`)."""
+        # ``viewer`` is the admin discriminator this module already runs on
+        # (see ACTING_VIEWER): an organizer acting FOR a seat passes it as None.
+        encounter, pick_ban = await self._lock(session, encounter_id, kind, captain=viewer == ACTING_VIEWER)
+        self._require_mix_members(encounter, [member_id])
         rt = await self._load(session, pick_ban, encounter, refresh=True)
         await self._settle(session, rt)
         step = self._require_step(rt)
@@ -659,20 +926,38 @@ class PickBanActionService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="This step is blind -- submit the whole draft instead",
             )
+        if step.action == "assign":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This step assigns the team's heroes -- submit the whole assignment instead",
+            )
         if action != step.action:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=f"Expected action '{step.action}', got '{action}'"
             )
-        self._require_turn(rt, step, side)
+        self._require_turn(rt, step, encounter_team_id, member_id)
 
-        row = pbr.side_submission(rt.submissions, step.index, side)
+        row = pbr.actor_submission(rt.submissions, step.index, encounter_team_id, member_id)
         items = [dict(item) for item in (row.items_json or [])] if row is not None else []
         items.append({"item_id": item_id, "target_player_id": target_player_id})
-        issues = pbr.validate_items(step, side, items, self._ctx(rt, step), final=False)
-        if issues:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=", ".join(issues))
+        if step.action == "side_pick":
+            self._assert_side_choice(rt, item_id)
+        else:
+            issues = pbr.validate_items(
+                step, encounter_team_id, items, self._ctx(rt, step), final=False, member=member_id
+            )
+            if issues:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=", ".join(issues))
 
-        self._write(session, rt, step, side, items, state=pbr.LOCKED if len(items) >= step.count else pbr.DRAFT)
+        self._write(
+            session,
+            rt,
+            step,
+            encounter_team_id,
+            items,
+            state=pbr.LOCKED if len(items) >= step.count else pbr.DRAFT,
+            member=member_id,
+        )
         await record_room_event(
             session,
             encounter_id,
@@ -680,9 +965,9 @@ class PickBanActionService:
             # Derived from the SAME discriminator the lock above runs on, never a
             # second flag: a journal that can disagree with who was allowed to
             # act is worse than no journal.
-            source=_source_of(viewer_side),
+            source=_source_of(viewer),
             kind=kind.value,
-            side=side,
+            encounter_team_id=encounter_team_id,
             actor_auth_user_id=actor_auth_user_id,
             data={
                 "step_index": step.index,
@@ -690,6 +975,7 @@ class PickBanActionService:
                 "action": action,
                 "item_id": item_id,
                 "target_player_id": target_player_id,
+                **({"member_id": member_id} if member_id is not None else {}),
             },
         )
         # Any open undo consent was given against the action that WAS last; this
@@ -697,41 +983,64 @@ class PickBanActionService:
         pick_ban_undo.clear_undo_request(pick_ban)
         await self._commit(session, rt, kind)
         return await self.get_pick_ban_state(
-            session, encounter_id, kind, viewer_side=side if viewer_side == ACTING_VIEWER else viewer_side
+            session,
+            encounter_id,
+            kind,
+            viewer=encounter_team_id if viewer == ACTING_VIEWER else viewer,
+            viewer_member=viewer_member,
         )
+
+    def _assert_side_choice(self, rt: _Runtime, item_id: int) -> None:
+        """A side pick names an INDEX into the discipline's sides, not a pool
+        item: there is no board entry to validate it against."""
+        sides = side_codes(rt.encounter)
+        if not sides:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"{rt.encounter.discipline} declares no sides to pick",
+            )
+        if not 0 <= item_id < len(sides):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Pick one of: {', '.join(f'{index} ({code})' for index, code in enumerate(sides))}",
+            )
 
     async def submit_items(
         self,
         session: AsyncSession,
         encounter_id: int,
         kind: PickBanKind,
-        side: str,
+        encounter_team_id: int,
         *,
         items: list[dict[str, Any]],
         lock: bool,
-        viewer_side: str | None = ACTING_VIEWER,
+        viewer: int | None = ACTING_VIEWER,
+        viewer_member: int | None = None,
         actor_auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         """Replace a BLIND step's draft, optionally locking it. A locked draft
-        is final: the step reveals the moment every acting side has one."""
-        encounter, pick_ban = await self._lock(session, encounter_id, kind, captain=viewer_side == ACTING_VIEWER)
+        is final: the step reveals the moment every acting participation has one.
+        A mix's assignment step (open, spec §11.6 R4-1) is answered here too, each item naming its ``member_id``;
+        ``viewer_member`` is as for :meth:`perform_pick_ban_action`."""
+        encounter, pick_ban = await self._lock(session, encounter_id, kind, captain=viewer == ACTING_VIEWER)
+        self._require_mix_members(encounter, [item.get("member_id") for item in items])
         rt = await self._load(session, pick_ban, encounter, refresh=True)
         await self._settle(session, rt)
         step = self._require_step(rt)
-        if not step.blind:
+        if not step.blind and step.action != "assign":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="This step is open -- take it one item at a time",
             )
-        self._require_turn(rt, step, side)
+        self._require_turn(rt, step, encounter_team_id)
 
-        draft = [{"item_id": int(item["item_id"]), "target_player_id": item.get("target_player_id")} for item in items]
-        issues = pbr.validate_items(step, side, draft, self._ctx(rt, step), final=lock)
+        draft = [_item(item) for item in items]
+        issues = pbr.validate_items(step, encounter_team_id, draft, self._ctx(rt, step), final=lock)
         if issues:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=", ".join(issues))
 
-        self._write(session, rt, step, side, draft, state=pbr.LOCKED if lock else pbr.DRAFT)
-        source = _source_of(viewer_side)
+        self._write(session, rt, step, encounter_team_id, draft, state=pbr.LOCKED if lock else pbr.DRAFT)
+        source = _source_of(viewer)
         # A captain's unlocked draft is an autosave -- it changes nothing anyone
         # else can see, and journalling every keystroke would bury the room's
         # story. An organizer's is a deliberate write on someone else's behalf.
@@ -742,14 +1051,18 @@ class PickBanActionService:
                 action="draft_locked" if lock else "draft_set",
                 source=source,
                 kind=kind.value,
-                side=side,
+                encounter_team_id=encounter_team_id,
                 actor_auth_user_id=actor_auth_user_id,
                 data={"step_index": step.index, "round": step.round, "items": draft},
             )
         pick_ban_undo.clear_undo_request(pick_ban)
         await self._commit(session, rt, kind)
         return await self.get_pick_ban_state(
-            session, encounter_id, kind, viewer_side=side if viewer_side == ACTING_VIEWER else viewer_side
+            session,
+            encounter_id,
+            kind,
+            viewer=encounter_team_id if viewer == ACTING_VIEWER else viewer,
+            viewer_member=viewer_member,
         )
 
     async def dispute_step(
@@ -757,20 +1070,20 @@ class PickBanActionService:
         session: AsyncSession,
         encounter_id: int,
         kind: PickBanKind,
-        side: str,
+        encounter_team_id: int,
         *,
         actor_auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         """A captain unilaterally reopens the blind step that just revealed --
         the answer to "they banned for the wrong player" that does not need the
-        opponent's agreement, because the step is replayed by BOTH sides."""
+        opponent's agreement, because the step is replayed by EVERY actor."""
         encounter, pick_ban = await self._lock(session, encounter_id, kind)
         rt = await self._load(session, pick_ban, encounter, refresh=True)
         await self._settle(session, rt)
         state = pbr.dispute_target(
             rt.steps,
             rt.submissions,
-            side=side,
+            actor=encounter_team_id,
             blocked_rounds=await self._blocked_rounds(session, encounter),
         )
         if not state.available or state.step_index is None:
@@ -780,28 +1093,28 @@ class PickBanActionService:
             )
         step = next(candidate for candidate in rt.steps if candidate.index == state.step_index)
         attempt = pbr.current_attempt(rt.submissions, step.index)
-        self._reopen(session, rt, step)
+        await self._reopen(session, rt, step)
         await record_room_event(
             session,
             encounter_id,
             action="step_disputed",
             source="captain",
             kind=kind.value,
-            side=side,
+            encounter_team_id=encounter_team_id,
             actor_auth_user_id=actor_auth_user_id,
             # The attempt being thrown away, not the fresh one `_reopen` opened:
             # "they disputed attempt 1" is what the dispute limit counts.
             data={"step_index": step.index, "attempt": attempt},
         )
         await self._commit(session, rt, kind)
-        return await self.get_pick_ban_state(session, encounter_id, kind, viewer_side=side)
+        return await self.get_pick_ban_state(session, encounter_id, kind, viewer=encounter_team_id)
 
     async def admin_reopen_step(
         self, session: AsyncSession, encounter_id: int, kind: PickBanKind, *, actor_auth_user_id: int | None = None
     ) -> dict[str, Any]:
         """The organizer's version of a dispute: the same replay, without the
         per-step attempt limit and without needing the step to allow disputes at
-        all (design §5) -- the escape hatch for a room that revealed something
+        all -- the escape hatch for a room that revealed something
         wrong under a rule nobody anticipated."""
         encounter, pick_ban = await self._lock(session, encounter_id, kind, captain=False)
         rt = await self._load(session, pick_ban, encounter, refresh=True)
@@ -812,7 +1125,9 @@ class PickBanActionService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="There is no settled step to reopen",
             )
-        self._reopen(session, rt, step)
+        if step.action == "side_pick" and (step.round or 1) in await self.games.played_positions(session, encounter.id):
+            raise pick_ban_undo.side_locked()
+        await self._reopen(session, rt, step)
         await record_room_event(
             session,
             encounter_id,
@@ -823,7 +1138,7 @@ class PickBanActionService:
             data={"step_index": step.index},
         )
         await self._commit(session, rt, kind)
-        return await self.get_pick_ban_state(session, encounter_id, kind, viewer_side=None)
+        return await self.get_pick_ban_state(session, encounter_id, kind, viewer=None)
 
     # -- the room's state --------------------------------------------------
     async def _game_snapshot(
@@ -843,7 +1158,7 @@ class PickBanActionService:
             games = list(result.scalars().all())
         else:
             games = await self.games.list_games(session, encounter.id)
-        return games, await self.games.reports_by_game(session, games)
+        return games, await self.games.claims_by_game(session, games)
 
     async def freeplay_owed(self, session: AsyncSession, encounter: Encounter) -> bool:
         """Whether the series owes freeplay its next position.
@@ -855,20 +1170,12 @@ class PickBanActionService:
         if map_session is not None and str(map_session.status) != MapVetoSessionStatus.CANCELLED:
             return False
         games = await self.games.list_games(session, encounter.id)
+        teams = await self.sessions.teams_of(session, encounter.id)
         return (
-            encounter.home_team_id is not None
-            and encounter.away_team_id is not None
+            len(teams) == encounter.slot_count
             and len(games) < encounter.best_of
-            and not engine.series_complete(self.games.live_score(games), encounter.best_of)
-            and not any(
-                game.state
-                in (
-                    EncounterGameState.PLANNED,
-                    EncounterGameState.AWAITING_RESULT,
-                    EncounterGameState.DISPUTED,
-                )
-                for game in games
-            )
+            and not await self.games.series_settled(session, encounter)
+            and not any(game.state in OPEN_STATES for game in games)
             and await is_encounter_live(session, encounter)
         )
 
@@ -882,6 +1189,7 @@ class PickBanActionService:
         :meth:`reconcile_room` would then do; one that did not would make the
         healer take the encounter lock on every tick and change nothing.
         """
+        teams = await self.sessions.teams_of(session, encounter.id)
         for kind in (PickBanKind.MAP, PickBanKind.HERO):
             pick_ban = await self.sessions.get_pick_ban_session(session, encounter.id, kind)
             if pick_ban is None:
@@ -890,18 +1198,18 @@ class PickBanActionService:
                 continue
             if str(pick_ban.status) == MapVetoSessionStatus.CANCELLED:
                 continue
-            rt_steps = resolved_steps(pick_ban)
+            rt_steps = resolved_steps(pick_ban, teams)
             submissions = list(await self.submission_repo.list_by_session(session, pick_ban.id))
             if self.session_pending(pick_ban, rt_steps, submissions):
                 return True
+            if await self.sessions.round_owed(session, encounter, kind):
+                return True
             if kind == PickBanKind.MAP:
                 entries = list(await self.entry_repo.list_by_session(session, pick_ban.id, ordered=True))
-                games, reports = await self._game_snapshot(session, encounter)
-                changes, stale = self.games._pick_game_changes(entries, games, reports)
+                games, claims = await self._game_snapshot(session, encounter)
+                changes, stale = self.games._pick_game_changes(entries, games, claims)
                 if changes or stale:
                     return True
-        if await self.sessions.hero_round_owed(session, encounter):
-            return True
         return await self.freeplay_owed(session, encounter)
 
     async def reconcile_room(self, session: AsyncSession, encounter_id: int, *, skip_locked: bool) -> bool:
@@ -909,17 +1217,19 @@ class PickBanActionService:
         what changed. Returns whether anything did.
 
         This is the ONLY place the room heals itself. The state read is pure
-        (design: a viewer's poll must never queue behind a captain's write), so
-        every "a map just got picked", "the clock ran out", "the series owes a
+        (a viewer's poll must never queue behind a captain's write), so
+        every "a map just got picked", "the clock ran out", "a position was
+        confirmed and the next map's bans are owed", "the series owes a
         position" catches up here -- after every room write (``room_reconcile``'s
-        post-commit trigger) and on its two scheduled sweeps.
+        post-commit trigger, which a game claim's own signal already stages) and
+        on its two scheduled sweeps.
 
         ``skip_locked`` is for those sweeps: both tournament-service replicas run
         them, and a room another writer already holds needs no second healer.
 
         Lock order is the room's everywhere: encounter, then session.
         """
-        encounter = await self.encounter_repo.get(session, encounter_id)
+        encounter = await session.get(Encounter, encounter_id)
         # A finished match's room is history: a session abandoned mid-veto must
         # not be random-filled to completion (and grow games) months later.
         if encounter is None or encounter.status == EncounterStatus.COMPLETED:
@@ -943,7 +1253,7 @@ class PickBanActionService:
             if await self.freeplay_owed(session, encounter):
                 try:
                     async with session.begin_nested():
-                        await self.games.ensure_freeplay_game(session, encounter)
+                        await self.games.ensure_next_game(session, encounter)
                     changed.add(PickBanKind.MAP.value)
                 except IntegrityError:
                     # Another writer opened the same position first; its row is
@@ -965,8 +1275,9 @@ class PickBanActionService:
     async def _reconcile_map(
         self, session: AsyncSession, encounter: Encounter, changed: set[str]
     ) -> PickBanSession | None:
-        """Open the map room if it is owed, settle it, and keep the series' games
-        in step with its picks. Returns the map session, if any."""
+        """Open the map room if it is owed, grow its rounds with the series,
+        settle it, and keep the series' games in step with its picks. Returns
+        the map session, if any."""
         existed = await self.sessions.get_pick_ban_session(session, encounter.id, PickBanKind.MAP) is not None
         map_session = await self.sessions._ensure_pick_ban_session(
             session, encounter, PickBanKind.MAP, commit=False, encounter_locked=True
@@ -977,6 +1288,11 @@ class PickBanActionService:
             changed.add(PickBanKind.MAP.value)
         if str(map_session.status) == MapVetoSessionStatus.CANCELLED:
             return map_session
+        # A confirmed position is what opens the NEXT map's bans; nothing else
+        # calls the append for the map kind, so a progressive veto would stall
+        # on round 1 forever without this.
+        if await self.sessions._sync_rounds(session, encounter, PickBanKind.MAP, commit=False, encounter_locked=True):
+            changed.add(PickBanKind.MAP.value)
         locked = await self.sessions.get_pick_ban_session(session, encounter.id, PickBanKind.MAP, for_update=True)
         if locked is None:
             return None  # a concurrent reset dropped it
@@ -984,10 +1300,12 @@ class PickBanActionService:
         if await self._settle(session, rt):
             changed.add(PickBanKind.MAP.value)
         await session.flush()
-        games, reports = await self._game_snapshot(session, encounter, refresh=True)
-        plan, stale = self.games._pick_game_changes(rt.entries, games, reports)
+        games, claims = await self._game_snapshot(session, encounter, refresh=True)
+        plan, stale = self.games._pick_game_changes(rt.entries, games, claims)
         if plan or stale:
-            await self.games._sync_games_with_snapshot(session, encounter, rt.entries, games, reports)
+            await self.games.sync_games_with_picks(
+                session, encounter, locked, blocked_positions=self._blocked_positions(rt)
+            )
             changed.add(PickBanKind.MAP.value)
         return locked
 
@@ -1002,7 +1320,7 @@ class PickBanActionService:
             return
         if not existed:
             changed.add(PickBanKind.HERO.value)
-        if await self.sessions._sync_hero_rounds(session, encounter, commit=False, encounter_locked=True):
+        if await self.sessions._sync_rounds(session, encounter, PickBanKind.HERO, commit=False, encounter_locked=True):
             changed.add(PickBanKind.HERO.value)
         locked = await self.sessions.get_pick_ban_session(session, encounter.id, PickBanKind.HERO, for_update=True)
         if locked is None or str(locked.status) == MapVetoSessionStatus.CANCELLED:
@@ -1017,18 +1335,19 @@ class PickBanActionService:
         encounter_id: int,
         kind: PickBanKind,
         *,
-        viewer_side: str | None = None,
+        viewer: int | None = None,
+        viewer_member: int | None = None,
     ) -> dict[str, Any]:
         """The room as it stands RIGHT NOW. A pure read: no lock, no write, no
         commit, no signal.
 
-        It used to heal the room it was about to render, which put every viewer's
-        poll behind the encounter's row lock -- and so behind the captains and
-        behind each other. Whatever this read finds un-healed is owed to
-        :meth:`reconcile_room`, which runs after every room write and on a one-
-        second sweep, and which signals the room when it lands.
+        Healing here would put every viewer's poll behind the encounter's row
+        lock -- and so behind the captains and behind each other. Whatever this
+        read finds un-healed is owed to :meth:`reconcile_room`, which runs after
+        every room write and on a one-second sweep, and which signals the room
+        when it lands.
         """
-        encounter = await self.encounter_repo.get(session, encounter_id)
+        encounter = await session.get(Encounter, encounter_id)
         if encounter is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
 
@@ -1042,13 +1361,30 @@ class PickBanActionService:
             reason = await self.sessions.unavailable_reason(session, encounter, kind)
             state = build_unavailable_state(reason, readiness=readiness)
             if kind == PickBanKind.MAP:
-                games, reports = await self._game_snapshot(session, encounter)
-                state["games"] = [self.games.serialize(game, reports.get(game.id, [])) for game in games]
-                state["series"] = self.games.serialize_series(encounter, games)
+                games, _claims = await self._game_snapshot(session, encounter)
+                lines = await self.games.lines_by_game(session, games)
+                payloads = await self.games.claim_payloads(session, games)
+                state["games"] = [
+                    self.games.serialize(game, lines.get(game.id, []), payloads[game.id]) for game in games
+                ]
+                state["series"] = await self._series(session, encounter)
             return state
 
         rt = await self._load(session, pick_ban, encounter)
-        return await self._build_state(session, rt, kind, readiness=readiness, viewer_side=viewer_side)
+        return await self._build_state(
+            session, rt, kind, readiness=readiness, viewer=viewer, viewer_member=viewer_member
+        )
+
+    async def _series(self, session: AsyncSession, encounter: Encounter) -> dict[str, Any]:
+        """What the confirmed games add up to, per participation."""
+        standing = await self.games.standing(session, encounter)
+        return {
+            "ended": standing.ended,
+            "games": standing.games,
+            "totals": {str(team_id): value for team_id, value in standing.totals.items()},
+            "wins": {str(team_id): value for team_id, value in standing.wins.items()},
+            "placements": {str(team_id): value for team_id, value in standing.placements.items()},
+        }
 
     async def _build_state(
         self,
@@ -1057,43 +1393,76 @@ class PickBanActionService:
         kind: PickBanKind,
         *,
         readiness: dict[str, bool],
-        viewer_side: str | None,
+        viewer: int | None,
+        viewer_member: int | None = None,
     ) -> dict[str, Any]:
         """Render ``rt``. Pure: the room is rendered as it is, never as it ought
         to be -- drift is :meth:`reconcile_room`'s to fix."""
-        games, reports = await self._game_snapshot(session, rt.encounter)
+        games, claims = await self._game_snapshot(session, rt.encounter)
+        lines = await self.games.lines_by_game(session, games)
         blocked_rounds = frozenset(
-            game.position for game in games if game.state == EncounterGameState.CONFIRMED or reports.get(game.id)
+            game.position for game in games if game.state == EncounterGameState.CONFIRMED or claims.get(game.id)
         )
         step = pbr.current_step(rt.steps, rt.submissions)
-        acting: list[str] = []
+        acting: list[int] = []
+        acting_members: list[int] = []
         if step is not None:
             progress = pbr.step_progress(step, rt.submissions)
-            acting = [side for side in step.acting_sides if not progress[side]["locked"]]
+            acting = [actor for actor in step.acting_actors if not progress[actor]["locked"]]
+            for actor, member in step.answers:
+                row = pbr.actor_submission(rt.submissions, step.index, actor, member)
+                if member is not None and (row is None or row.state not in (pbr.LOCKED, pbr.REVEALED)):
+                    acting_members.append(member)
+        team_of = {seat.id: seat.team_id for seat in rt.seats}
+        # Whom this viewer may pick for on a member step: themselves first, then -- as captain -- every teammate
+        # still owing (spec §11.3, §11.6 R4-9, R4-11). A host picks for anyone through the organizer route.
+        viewer_members = sorted(
+            (
+                member
+                for member in acting_members
+                if member == viewer_member or (viewer is not None and team_of.get(member) == viewer)
+            ),
+            key=lambda member: member != viewer_member,
+        )
         viewer_can_act = (
             step is not None
-            and viewer_side in acting
             and step.action in _CAPTAIN_ACTIONS
             and str(rt.pick_ban.status) != MapVetoSessionStatus.CANCELLED
             and rt.pick_ban.paused_at is None
+            and (bool(viewer_members) if step.member is not None else viewer in acting)
         )
 
         eligible: dict[str, Any] | None = None
         draft_issues: list[str] = []
-        if viewer_can_act and step is not None and viewer_side is not None:
+        if (
+            viewer_can_act
+            and step is not None
+            and viewer is not None
+            and step.action != "side_pick"
+            and step.member is None
+        ):
             ctx = self._ctx(rt, step)
-            eligible = pbr.eligible_items(step, viewer_side, ctx).to_json()
-            row = pbr.side_submission(rt.submissions, step.index, viewer_side)
+            eligible = pbr.eligible_items(step, viewer, ctx).to_json()
+            row = pbr.actor_submission(rt.submissions, step.index, viewer)
             draft_issues = pbr.validate_items(
-                step, viewer_side, list(row.items_json or []) if row is not None else [], ctx, final=True
+                step, viewer, list(row.items_json or []) if row is not None else [], ctx, final=True
             )
+        member_eligible: dict[str, list[int]] | None = None
+        if step is not None and (step.member is not None or step.action == "assign"):
+            ctx = self._ctx(rt, step)
+            owing = (
+                acting_members if step.member is not None else [seat.id for seat in rt.seats if seat.team_id in acting]
+            )
+            member_eligible = {
+                str(member): list(pbr.eligible_items(step, team_of[member], ctx, member).item_ids) for member in owing
+            }
 
         targets: dict[str, list[dict[str, Any]]] | None = None
         if any(candidate.target is not None for candidate in rt.steps):
             grid = await get_division_grid(session, None, tournament_id=rt.encounter.tournament_id)
             targets = {
-                side: [serialize_target(player, grid) for player in rt.rosters.get(side, [])]
-                for side in ("home", "away")
+                str(team_id): [serialize_target(player, grid) for player in players]
+                for team_id, players in rt.rosters.items()
             }
 
         state: dict[str, Any] = {
@@ -1102,16 +1471,38 @@ class PickBanActionService:
             "sequence": [candidate.to_json() for candidate in rt.steps],
             "pool": [serialize_pick_ban_entry(entry) for entry in rt.entries],
             "submissions": [
-                serialize_submission(row) for row in pbr.visible_submissions(rt.steps, rt.submissions, viewer_side)
+                serialize_submission(row) for row in pbr.visible_submissions(rt.steps, rt.submissions, viewer)
             ],
-            "viewer_side": viewer_side,
+            "viewer_team_id": viewer,
             "viewer_can_act": viewer_can_act,
             "allowed_actions": [step.action] if viewer_can_act and step is not None else [],
             "current_step_index": step.index if step is not None else None,
             "current_step": step.to_json() if step is not None else None,
             "expected_action": step.action if step is not None else None,
-            "acting_sides": acting,
-            "step_progress": pbr.step_progress(step, rt.submissions) if step is not None else None,
+            "acting_team_ids": acting,
+            #: A mix room's seated members in pick order (spec §11.6 R4-11): who member steps and assignments name;
+            #: ``workspace_member_id`` ties each to the lineup seat and the viewer.
+            "members": [
+                {
+                    "id": seat.id,
+                    "encounter_team_id": seat.team_id,
+                    "name": seat.name,
+                    "workspace_member_id": seat.workspace_member_id,
+                }
+                for seat in rt.seats
+            ],
+            #: Members who still owe the current member step a hero.
+            "acting_member_ids": acting_members,
+            #: Of those, whom THIS viewer may pick for: themselves first, then -- as captain -- their teammates.
+            "viewer_member_ids": viewer_members,
+            #: ``{member: heroes they may take}`` on a member step (each member still owing) or an assignment (every
+            #: member of a team still assigning) -- Fearless included; public, like the board.
+            "member_eligible": member_eligible,
+            "step_progress": (
+                {str(team_id): value for team_id, value in pbr.step_progress(step, rt.submissions).items()}
+                if step is not None
+                else None
+            ),
             "step_deadline": (
                 deadline.isoformat()
                 if step is not None and (deadline := self.step_deadline(rt.pick_ban, step)) is not None
@@ -1122,17 +1513,23 @@ class PickBanActionService:
             "eligible": eligible,
             "draft_issues": draft_issues,
             "targets": targets,
+            #: The discipline's side codes, in the order a ``side_pick`` indexes
+            #: them; empty when the game has no sides.
+            "sides": list(side_codes(rt.encounter)),
             "dispute": pbr.dispute_target(
                 rt.steps,
                 rt.submissions,
-                side=viewer_side,
+                actor=viewer,
                 blocked_rounds=blocked_rounds,
             ).to_json(),
             "undo": pick_ban_undo.undo_state(rt.pick_ban, rt.steps, rt.submissions),
+            #: Every kind: a hero-only room (a game with no map veto) picks sides too.
+            "starting_sides": self._sides_state(rt, games, lines),
         }
         if kind == PickBanKind.MAP:
-            state["games"] = [self.games.serialize(game, reports.get(game.id, [])) for game in games]
-            state["series"] = self.games.serialize_series(rt.encounter, games)
+            payloads = await self.games.claim_payloads(session, games)
+            state["games"] = [self.games.serialize(game, lines.get(game.id, []), payloads[game.id]) for game in games]
+            state["series"] = await self._series(session, rt.encounter)
         return state
 
 

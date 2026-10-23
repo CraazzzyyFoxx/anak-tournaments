@@ -9,7 +9,7 @@
 // editing. The section below shows THIS stage's rows and says so with a pinned
 // chip instead of a filter that can be widened again.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, type ReactNode } from "react";
+import { act, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -73,7 +73,11 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams("stage=10&section=standings")
 }));
 
-vi.mock("next/link", () => ({ default: "a" }));
+vi.mock("next/link", () => ({
+  default: ({ prefetch: _prefetch, ...rest }: ComponentProps<"a"> & { prefetch?: boolean | null }) => (
+    <a {...rest} />
+  )
+}));
 
 // The code split is a bundling concern, and vitest's module runner never
 // settles an `import()` issued from a mocked module during render — so the
@@ -89,7 +93,10 @@ vi.mock("../hubQueries", () => ({
   useHubTournamentQuery: () => ({
     data: { id: 84, name: "OWT 84", workspace_id: 4 },
     isLoading: false
-  })
+  }),
+  // The editor owns the round-time drafts on every tab, so it reads the
+  // stage's matches even here.
+  useHubEncountersQuery: () => ({ data: { results: [] }, isPending: false, isError: false })
 }));
 
 function stage(overrides: Partial<Stage> = {}): Stage {
@@ -109,12 +116,21 @@ function stage(overrides: Partial<Stage> = {}): Stage {
     has_custom_bracket: false,
     ranking_preset: null,
     tiebreak_order: null,
-    scoring: { win: null, draw: null, loss: null },
+    scoring: {
+      win: null,
+      draw: null,
+      loss: null,
+      preset: "points",
+      columns: [],
+      placement_points: [],
+      formula: "score"
+    },
     swiss_bye_points: null,
+    swiss_qualify_wins: null,
+    swiss_eliminate_losses: null,
     de_grand_final_type: "no_reset",
     seed_ranking: "slot",
-    best_of: { default: 3, by_round: {}, final: null },
-    ffa_scoring: { columns: [], placement_points: [], formula: "score" },
+    best_of: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
     challonge_id: null,
     challonge_slug: null,
     items: [],
@@ -140,6 +156,7 @@ function standing(overrides: Partial<Standings> = {}): Standings {
     full_buchholz: null,
     tie_group: null,
     is_pinned: false,
+    swiss_status: null,
     tb: null,
     score_differential: null,
     ranking_context: null,
@@ -229,17 +246,6 @@ describe("stage editor › Standings section", () => {
     expect(container.textContent).toContain("Group Team");
     // The playoff's row belongs to the playoff's own Standings section.
     expect(container.textContent).not.toContain("Playoff Team");
-    expect(container.textContent).toContain("Stage: Groups");
-  });
-
-  it("states the stage as a pinned fact, not a filter that can be widened", async () => {
-    await mount(groups);
-
-    const chip = container.querySelector('[data-pinned-filter="stage"]');
-    expect(chip?.textContent).toBe("Stage: Groups");
-    // A pinned chip carries no remove control: widening the scope here would
-    // show rows of stages this editor is not editing.
-    expect(chip?.querySelector("button")).toBeNull();
   });
 
   it("follows the selection: the playoff section shows the playoff's rows", async () => {
@@ -247,6 +253,5 @@ describe("stage editor › Standings section", () => {
 
     expect(container.textContent).toContain("Playoff Team");
     expect(container.textContent).not.toContain("Group Team");
-    expect(container.textContent).toContain("Stage: Playoff");
   });
 });

@@ -1,52 +1,20 @@
-This article walks a tournament all the way through: from the creation wizard to the last match. Admin screens are named exactly as they appear on screen.
+This article walks a tournament all the way through: from the **Create tournament** dialog to the last match. Admin screens are named exactly as they appear on screen.
 
 ## Before you start
 
 Creating a tournament requires the matching permission in the workspace — see [Roles and permissions](/docs/organizers/roles). It also helps to set up the division grid and the workspace status catalog first: see [Workspace settings](/docs/organizers/workspace).
 
-## Step 1. The creation wizard
+## Step 1. Create the tournament
 
-Open **Admin → Tournaments** and press **Create tournament**. The **New tournament** wizard opens with five steps. Only the first one is required — you can skip the rest and configure them later.
+Open **Admin → Tournaments** and press **Create tournament**. The **New tournament** dialog asks only for what a tournament cannot exist without:
 
-The wizard's side column carries a link, **Import from Challonge instead**, which switches the source to a Challonge bracket import. **Enter the details manually instead** switches back. If you started a tournament earlier and never finished it, the wizard offers **Resume draft?** — continue that draft or start fresh.
-
-### Basics
-
-The foundation of the tournament:
-
-- **Name** — required.
-- **Public URL slug** — the address of the public page. Leave it blank and it is generated from the name.
-- **Description**.
-- **Team formation** — how teams are built: **Auto-balance (Balancer)**, **Live draft** or **Team registration**.
-- **Division grid version** — which grid version seeds players; **Workspace default** follows the workspace setting.
-- **Treat as league season**.
+- **Game** — the game the tournament is played in. It defaults to the game the list is filtered by. The game cannot be changed after creation.
+- **Source** — **Manual**, or **Import from Challonge**: a Challonge bracket with group stages enabled, whose stages are all created automatically.
+- **Name** — required. A Challonge import asks for **Challonge URL or slug** instead.
 - **Date range** — start and end date. Required.
+- **Team formation** — how teams are built: **Auto-balance (Balancer)**, **Captain draft**, **Team registration** or **Solo registration**. It decides which phases the tournament has.
 
-A Challonge import asks for **Challonge URL or slug** instead of a name, and the Challonge bracket must have group stages enabled — all stages are then created automatically.
-
-### Schedule
-
-Planned times for the **Registration**, **Check-in**, **Draft** and **Live** phases: **Starts at** and **Ends at (optional)**. The **Draft** phase only appears when teams are formed by **Live draft**. The **Automatic phase transitions** switch makes phases advance on their own along this schedule. How that works is covered in [Phases and schedule](/docs/organizers/schedule).
-
-### Rules
-
-**Team formation**, **Division grid version**, and the points a result is worth under **Scoring points**: **Win**, **Draw**, **Loss**.
-
-### Registration
-
-This step is only offered to organizers who can create teams. Three switches:
-
-- **Auto-approve registrations** — entries are approved instantly, with no manual review.
-- **Require open profile** — players must keep their Overwatch profile public.
-- **Require an active subscription** — which providers and tiers count is configured once for the whole workspace.
-
-The **Open form builder** button opens the questionnaire builder; it becomes available as soon as the tournament draft is saved.
-
-### Review and create
-
-A summary of every choice, plus the **Create tournament** button.
-
-Every step except the last also offers **Save as draft**: the tournament is saved hidden and can be published later. **Continue** moves to the next step.
+**Create tournament** creates it hidden and opens its **Overview**. Everything else — the public URL slug, description, division grid, scoring, schedule and registration — is set in the tournament's settings, and the readiness checklist below points at each of them.
 
 ## Step 2. Tournament settings
 

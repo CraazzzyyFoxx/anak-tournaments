@@ -1,16 +1,9 @@
 """Draft-domain value types: no I/O, no algorithm, no orchestration.
 
-Every dataclass the draft domain passes between its rules/services lives
-here — mirrors ``domain/balancer/entities.py``'s role for the balancing
-engine. Kept out of ``src/schemas/`` deliberately: those are pydantic wire
-contracts for the RPC boundary; several types below (``DraftSnapshot``,
-``DraftResult``) hold live ORM rows and would force pydantic's
-``arbitrary_types_allowed`` (defeating validation) or premature ORM->dict
-flattening before a caller decided which fields the wire response needs.
-
-Producing modules re-import the names they use so every existing
-``<module>.<Type>`` access — from other draft files, ``rpc/draft.py``, and
-tests — keeps resolving unchanged.
+Every dataclass the draft domain passes between its rules and services lives
+here. Kept out of ``src/schemas/`` (the pydantic wire contracts): several types
+below (``DraftSnapshot``, ``DraftResult``) hold live ORM rows, which pydantic
+would only accept with ``arbitrary_types_allowed``.
 """
 
 from __future__ import annotations
@@ -18,10 +11,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from shared.core.enums import HERO_TYPE_CLASSES, HeroClass
 from shared.domain.roster import PlayerRoster
-from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam
-from src.services.balancer.config.defaults import DEFAULT_ROLE_SETTINGS
+from shared.models.draft import DraftPick, DraftPlayer, DraftTeam
 
 __all__ = (
     "AutopickChoice",
@@ -38,7 +29,6 @@ __all__ = (
     "FitResult",
     "PoolSeat",
     "RoleEditPreview",
-    "RoleEditResult",
     "SlotDecision",
     "SlotDeficit",
     "TeamFitScore",
@@ -51,7 +41,7 @@ __all__ = (
 @dataclass(frozen=True)
 class EligiblePlayer:
     player_id: int
-    playable_roles: frozenset[HeroClass]
+    playable_roles: frozenset[str]
 
 
 @dataclass(frozen=True)
@@ -92,7 +82,7 @@ class DraftFeasibilityReport:
 @dataclass(frozen=True)
 class DraftPickOption:
     player_id: int
-    role: HeroClass
+    role: str
     is_safe: bool
     reason_code: str | None
     unmatched_slots: tuple[DraftSlot, ...] = ()
@@ -132,19 +122,23 @@ class DraftSnapshot:
 
 @dataclass(frozen=True)
 class PoolSeat:
-    """One seat a seed creates: a pool registration, and whether it captains.
+    """One seat a seed creates: a pool registration (tournament) or workspace member (mix), and whether it captains.
 
-    All a seed carries. Roles, ranks, sub-role, flex and division are NOT
-    copied: the draft reads them from the registration through the engine, so
-    there is nothing here to go stale. ``captain_role`` is not a copy either: it
-    is the organizer's choice of which of the captain's roles they are seated
-    on (``None`` = their lead role).
+    All a seed carries. Roles, ranks, sub-role, flex and division are NOT copied: the draft reads them from the
+    owner's engine, so there is nothing here to go stale. ``captain_role`` is the organizer's choice of which of the
+    captain's roles they are seated on (``None`` = their lead role).
     """
 
-    registration_id: int
+    registration_id: int | None
     draft_position: int | None = None
     team_name: str | None = None
     captain_role: str | None = None
+    workspace_member_id: int | None = None
+
+    @property
+    def key(self) -> int:
+        """The seat's key in its owner's pool (``DraftRosterService.pool``): registration, else member."""
+        return self.registration_id if self.registration_id is not None else self.workspace_member_id
 
 
 # --- pick selection (domain/draft/rules.py) ----------------------------------
@@ -170,7 +164,7 @@ class AutopickChoice:
     """
 
     player_id: int
-    role: HeroClass
+    role: str
     source: str
 
 
@@ -183,7 +177,7 @@ class SlotDecision:
     where a role would be a value the shape gives no meaning to.
     """
 
-    role: HeroClass
+    role: str
     recorded_role: str | None
 
 
@@ -196,27 +190,7 @@ class RoleEditPreview:
     after: DraftFeasibilityReport
 
 
-@dataclass(frozen=True)
-class RoleEditResult:
-    player_id: int
-    role: HeroClass
-    player_version: int
-    committed: bool
-    preview: RoleEditPreview
-
-
 # --- autopick fit scoring (domain/draft/fit.py) ------------------------------
-
-
-def _default_role_impact() -> dict[HeroClass, float]:
-    """The balancer's own per-role impact, before a team's filled seats discount it.
-
-    Base values only, and only the fallback: the draft reads the tournament's
-    effective config live (``DraftFeasibilityService.resolve_role_impact``) and
-    ``rules.team_fit_config`` scales whatever it gets by how much of each role a
-    team already filled.
-    """
-    return {role: DEFAULT_ROLE_SETTINGS[role.slot_code].impact for role in HERO_TYPE_CLASSES}
 
 
 @dataclass(frozen=True)
@@ -225,16 +199,16 @@ class FitPlayer:
     #: The player's strongest playable role -- what they are worth with no role
     #: context (a role-less roster, or the tie-break in a scarce-role choice).
     rank_value: int
-    playable_roles: frozenset[HeroClass]
-    preference_order: tuple[HeroClass, ...] = ()
+    playable_roles: frozenset[str]
+    preference_order: tuple[str, ...] = ()
     is_flex: bool = False
     user_id: int | None = None
     #: Per-role ranks over PLAYABLE roles only, straight from the engine. No
     #: fallback: a role the player carries no rank on is not playable, so it is
     #: never scored -- ``best`` is only reached for a role-less slot.
-    rank_by_role: Mapping[HeroClass, int] = field(default_factory=dict)
+    rank_by_role: Mapping[str, int] = field(default_factory=dict)
 
-    def rank_for(self, role: HeroClass) -> int:
+    def rank_for(self, role: str) -> int:
         return self.rank_by_role.get(role, self.rank_value)
 
 
@@ -247,13 +221,14 @@ class TeamFitScore:
     """
 
     player_id: int
-    role: HeroClass | None
+    role: str | None
     score: int
 
 
 @dataclass(frozen=True)
 class FitConfig:
-    role_impact: Mapping[HeroClass, float] = field(default_factory=_default_role_impact)
+    #: Per-role impact of the owning game (``DraftFeasibilityService.resolve_role_impact``); a role absent weighs 1.0.
+    role_impact: Mapping[str, float] = field(default_factory=dict)
     discomfort_weight: float = 1.0
     # Large enough that role-need dominates raw fit when filling scarce roles.
     role_need_bonus: float = 1_000_000.0
@@ -262,6 +237,6 @@ class FitConfig:
 @dataclass(frozen=True)
 class FitResult:
     player_id: int
-    role: HeroClass
+    role: str
     fit_score: float
     breakdown: dict[str, float]

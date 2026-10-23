@@ -4,16 +4,10 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_core import PydanticCustomError
 
+from shared.core import enums
+from shared.domain.encounter_scoring import DEFAULT_COLUMN_KEY, FFA_MAX_COLUMNS, FFA_MAX_LOBBY_SIZE
 from shared.domain.ffa_formula import FORMULA_MAX_LENGTH, RESERVED_NAMES, FfaFormulaError, compile_formula
-from shared.domain.ffa_scoring import (
-    DEFAULT_COLUMN_KEY,
-    DEFAULT_COLUMN_LABEL,
-    DEFAULT_FORMULA,
-    FFA_MAX_COLUMNS,
-    FFA_MAX_LOBBY_SIZE,
-)
-from shared.services.bracket.template import BracketTemplate
-from src.core import enums
+from src.domain.bracket import BracketTemplate
 from src.schemas.base import BaseRead
 
 __all__ = (
@@ -24,8 +18,7 @@ __all__ = (
     "StageItemInputRead",
     "StageScoring",
     "StageBestOf",
-    "FfaColumnSettings",
-    "FfaScoring",
+    "ScoringColumnSettings",
     "GrandFinalType",
     "SeedRankingValue",
     "BracketSeedCounts",
@@ -55,42 +48,13 @@ class BracketTemplateRead(BaseModel):
     seeds: BracketSeedCounts
 
 
-class StageScoring(BaseModel):
-    """Points per result on this stage. ``None`` = the tournament's points."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    win: float | None = None
-    draw: float | None = None
-    loss: float | None = None
-
-
-class StageBestOf(BaseModel):
-    """Series length per encounter: ``final`` (an elimination stage's last round),
-    else the round's own ``by_round`` entry, else ``default``."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    default: int = Field(default=3, ge=1)
-    #: Round number (negative in a lower bracket) -> best-of.
-    by_round: dict[int, int] = Field(default_factory=dict)
-    final: int | None = Field(default=None, ge=1)
-
-    @field_validator("by_round")
-    @classmethod
-    def _positive(cls, value: dict[int, int]) -> dict[int, int]:
-        if any(best_of < 1 for best_of in value.values()):
-            raise ValueError("a round's best-of must be at least 1")
-        return value
-
-
 #: A column key is a formula identifier, so it is spelled like one and short
 #: enough to type: a lowercase letter, then letters, digits or underscores.
 COLUMN_KEY_PATTERN = re.compile(r"[a-z][a-z0-9_]{0,23}")
 
 
-class FfaColumnSettings(BaseModel):
-    """One value an ffa_league stage records per team per game."""
+class ScoringColumnSettings(BaseModel):
+    """One value a stage's games record per team."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -98,7 +62,7 @@ class FfaColumnSettings(BaseModel):
     #: The organizer's word for it ("Kills", "Убийства"): each stage has its
     #: own, so it is data, not a translation key.
     label: str = Field(min_length=1, max_length=32)
-    #: False = viewers see neither the column nor its values (plan §2).
+    #: False = viewers see neither the column nor its values.
     public: bool = True
     better: Literal["higher", "lower"] = "higher"
 
@@ -123,30 +87,46 @@ class FfaColumnSettings(BaseModel):
         return value
 
 
-class FfaScoring(BaseModel):
-    """What an ffa_league stage records and what it pays for it (plan §3.1).
+class StageScoring(BaseModel):
+    """How a stage scores, at all three levels.
 
-    Inert on any other stage type. The unset block is the behaviour a stage had
-    before columns existed: one raw score column paid one for one.
+    ``win``/``draw``/``loss`` are level 3: what one encounter's result pays in
+    the stage table; ``None`` = the tournament's points. The rest is the
+    ``encounter.scoring_rule`` every encounter of the stage is played and
+    ranked by -- ``wins`` is a Bo-N series, ``points`` a lobby scored by the
+    organizer's own columns.
+
+    Every rule field is nullable and means "the preset's default", the way
+    ``ranking_preset`` does: the preset itself defaults to the one the stage
+    TYPE implies, which only the service knows.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    columns: list[FfaColumnSettings] = Field(default_factory=lambda: [_default_column()])
+    win: float | None = None
+    draw: float | None = None
+    loss: float | None = None
+    #: ``None`` = ``points`` for an ffa_league stage, ``wins`` everywhere else.
+    preset: Literal["wins", "points"] | None = None
+    #: ``None`` = the preset's columns (none for ``wins``, one raw score for ``points``).
+    columns: list[ScoringColumnSettings] | None = None
     #: Points for 1st, 2nd, ... place, read by the formula as ``place_pts``.
-    placement_points: list[float] = Field(default_factory=list, max_length=FFA_MAX_LOBBY_SIZE)
-    formula: str = Field(default=DEFAULT_FORMULA, min_length=1, max_length=FORMULA_MAX_LENGTH)
+    placement_points: list[float] | None = Field(default=None, max_length=FFA_MAX_LOBBY_SIZE)
+    #: ``None`` = the preset's formula (``win`` / the raw score column).
+    formula: str | None = Field(default=None, min_length=1, max_length=FORMULA_MAX_LENGTH)
 
     @field_validator("placement_points")
     @classmethod
-    def _non_negative(cls, value: list[float]) -> list[float]:
-        if any(points < 0 for points in value):
+    def _non_negative(cls, value: list[float] | None) -> list[float] | None:
+        if value is not None and any(points < 0 for points in value):
             raise ValueError("placement points cannot be negative")
         return value
 
     @field_validator("columns")
     @classmethod
-    def _distinct(cls, value: list[FfaColumnSettings]) -> list[FfaColumnSettings]:
+    def _distinct(cls, value: list[ScoringColumnSettings] | None) -> list[ScoringColumnSettings] | None:
+        if value is None:
+            return value
         if len(value) > FFA_MAX_COLUMNS:
             raise PydanticCustomError(
                 "ffa_columns_too_many", "A stage has at most {limit} columns", {"limit": FFA_MAX_COLUMNS}
@@ -159,22 +139,47 @@ class FfaScoring(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def _formula_compiles(self) -> FfaScoring:
+    def _formula_compiles(self) -> StageScoring:
         """Columns and formula are one rule: neither is valid without the other.
 
         The error the parser raises is re-raised with its own code and its
         position in ``ctx``, so the editor can underline the character instead
-        of showing "invalid".
+        of showing "invalid". An unset formula is the preset's own, which
+        compiles by construction; unset COLUMNS are the preset's own too, so
+        the formula is checked against those rather than against nothing.
         """
+        if self.formula is None:
+            return self
+        keys = [column.key for column in self.columns] if self.columns is not None else [DEFAULT_COLUMN_KEY]
         try:
-            compile_formula(self.formula, [column.key for column in self.columns])
+            compile_formula(self.formula, keys)
         except FfaFormulaError as exc:
             raise PydanticCustomError(exc.code, str(exc), {"offset": exc.offset, "name": exc.name}) from exc
         return self
 
 
-def _default_column() -> FfaColumnSettings:
-    return FfaColumnSettings(key=DEFAULT_COLUMN_KEY, label=DEFAULT_COLUMN_LABEL)
+class StageBestOf(BaseModel):
+    """Series length per encounter: ``final`` (an elimination stage's last round),
+    a Swiss decisive match's ``swiss_qualify`` / ``swiss_eliminate`` (the larger
+    when it is both), else the round's own ``by_round`` entry, else ``default``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    default: int = Field(default=3, ge=1)
+    #: Round number (negative in a lower bracket) -> best-of.
+    by_round: dict[int, int] = Field(default_factory=dict)
+    final: int | None = Field(default=None, ge=1)
+    #: A Swiss match one of whose teams is one win from ``swiss_qualify_wins``.
+    swiss_qualify: int | None = Field(default=None, ge=1)
+    #: A Swiss match one of whose teams is one loss from ``swiss_eliminate_losses``.
+    swiss_eliminate: int | None = Field(default=None, ge=1)
+
+    @field_validator("by_round")
+    @classmethod
+    def _positive(cls, value: dict[int, int]) -> dict[int, int]:
+        if any(best_of < 1 for best_of in value.values()):
+            raise ValueError("a round's best-of must be at least 1")
+        return value
 
 
 class _StageRegulationRead(BaseModel):
@@ -187,10 +192,13 @@ class _StageRegulationRead(BaseModel):
     scoring: StageScoring = Field(default_factory=StageScoring)
     #: ``None`` = a bye pays the win points.
     swiss_bye_points: float | None = None
+    #: Swiss: wins (byes included) that put a team through; ``None`` = never.
+    swiss_qualify_wins: int | None = None
+    #: Swiss: losses that put a team out; ``None`` = never.
+    swiss_eliminate_losses: int | None = None
     de_grand_final_type: GrandFinalType = "no_reset"
     seed_ranking: SeedRankingValue = "slot"
     best_of: StageBestOf = Field(default_factory=StageBestOf)
-    ffa_scoring: FfaScoring = Field(default_factory=FfaScoring)
 
 
 class StageItemInputRead(BaseRead):

@@ -118,11 +118,10 @@ describe("createKebabColumn", () => {
     expect(trigger()?.getAttribute("aria-label")).toBe("Actions for row 8812");
   });
 
-  it("is reachable without hover: revealed on row focus and on touch", async () => {
+  it("is always visible: no hover-only opacity on the trigger", async () => {
     await render(createKebabColumn<Row>(() => [{ label: "Edit", onSelect: onEdit }]));
 
-    expect(trigger()?.className).toContain("group-focus-within:opacity-100");
-    expect(trigger()?.className).toContain("[@media(hover:none)]:opacity-100");
+    expect(trigger()?.className).not.toContain("opacity-0");
   });
 
   it("omits hidden actions instead of disabling them", async () => {

@@ -4,13 +4,13 @@ import { getTranslations } from "next-intl/server";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
 import { TrustedBadge } from "@/components/workspace/TrustedBadge";
 import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
-import { Fact, LoadError, Section, SectionHead } from "@/components/site/open-layout";
+import { Fact, OpenLoadError, Section, SectionHead } from "@/components/site/open-layout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getFormatter } from "@/lib/datetime/server";
 import { getTournamentStatusMeta, isTournamentStatusActive } from "@/lib/tournament/status";
 import statisticsService from "@/services/statistics.service";
 import type { Tournament } from "@/types/tournament.types";
-import type { Workspace } from "@/types/workspace.types";
+import type { WorkspaceListItem } from "@/types/workspace.types";
 
 import { DirectoryRail } from "./DirectoryRail";
 import { getActiveTournaments, getPublicWorkspaces } from "./home-data";
@@ -18,7 +18,7 @@ import { getActiveTournaments, getPublicWorkspaces } from "./home-data";
 const TITLE_ID = "home-directory-title";
 
 interface DirectoryEntry {
-  workspace: Workspace;
+  workspace: WorkspaceListItem;
   /** What this community has running right now, if anything. */
   active: Tournament | null;
   tournaments: number | null;
@@ -79,7 +79,7 @@ export async function Directory() {
     return (
       <Section id="directory" labelledBy={TITLE_ID}>
         <DirectoryHead />
-        <LoadError what={t("error")} dashed />
+        <OpenLoadError what={t("error")} dashed />
       </Section>
     );
   }

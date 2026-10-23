@@ -7,6 +7,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.core import http_status as status
 from shared.core import tournament_state
 from shared.core.enums import StageType, TournamentStatus
@@ -18,20 +19,27 @@ from shared.repository import (
     RegistrationFormRepository,
     StandingRepository,
     TournamentRepository,
+    WorkspaceRepository,
 )
+from shared.schemas.team_format import TeamFormatWrite
 from shared.services.division_grid import cache as division_grid_cache
-from shared.services.division_grid.access import get_workspace_division_grid_version_id
-from shared.services.draft_guards import assert_no_active_draft_session
+from shared.services.division_grid.access import get_workspace_division_grid_version_id, require_event_grid
+from shared.services.ontology import assert_discipline_enabled
 from shared.services.realtime import Resource, Scope, emit
-from shared.services.registration_team_guards import assert_no_registered_teams
-from shared.services.roster_shape_access import invalidate_roster_shape_cache
+from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
+from shared.services.team_format import copy_for_tournament, save_tournament_format
 from shared.services.tournament.computation import request_bracket_job
 from shared.services.tournament.slug import generate_unique_tournament_slug
-from src import models, schemas
+from src import schemas
 from src.clients.challonge import challonge_client
 from src.services.admin.stage import stage_service
-from src.services.challonge.sync import sync_service
+from src.services.draft_guards import assert_no_active_draft_session
+
+# ``src.services.challonge.sync`` is loaded inside ``create_tournament_from_challonge``:
+# importing a remote bracket is one path out of this whole service, and at
+# module scope it would make every tournament write depend on the exporter.
 from src.services.notifications.lifecycle import lifecycle_notifier
+from src.services.registration_team_guards import assert_no_registered_teams
 from src.services.tournament.events import (
     STRUCTURE_RESOURCES,
     enqueue_tournament_state_changed,
@@ -99,9 +107,8 @@ class AdminTournamentService:
     ) -> None:
         """Create/update the tournament-scoped ``challonge_source`` row.
 
-        Replaces the legacy ``tournament.challonge_id`` / ``challonge_slug`` write:
-        the normalized ``challonge_source`` (source_type='tournament') is now the
-        sole persistence target for the tournament↔Challonge link.
+        That row (source_type='tournament') is the sole persistence target for the
+        tournament↔Challonge link.
         """
         source = await self.challonge_source_repo.get_tournament_source(session, tournament.id)
         if source is None:
@@ -126,30 +133,32 @@ class AdminTournamentService:
         session: AsyncSession,
         *,
         workspace_id: int,
+        discipline: str,
         division_grid_version_id: int | None,
     ) -> int:
         resolved_version_id = division_grid_version_id
         if resolved_version_id is None:
-            resolved_version_id = await get_workspace_division_grid_version_id(session, workspace_id)
-
+            resolved_version_id = await get_workspace_division_grid_version_id(
+                session, workspace_id, discipline=discipline
+            )
+        if resolved_version_id is not None:
+            owner = (
+                await session.execute(
+                    sa.select(models.DivisionGrid.workspace_id, models.DivisionGrid.discipline)
+                    .join(models.DivisionGridVersion, models.DivisionGridVersion.grid_id == models.DivisionGrid.id)
+                    .where(models.DivisionGridVersion.id == resolved_version_id)
+                )
+            ).one_or_none()
+            if owner is None or owner[0] not in {None, workspace_id}:
+                raise HTTPException(status_code=400, detail="Division grid version does not belong to this workspace")
+            if owner[1] != discipline:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"division_grid_discipline_mismatch: the grid is {owner[1]!r}, the tournament {discipline!r}",
+                )
+        await require_event_grid(session, version_id=resolved_version_id, discipline=discipline)
         if resolved_version_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Workspace does not have a default division grid version",
-            )
-
-        # Analytical: join + single-column projection across grid/version, not CRUD.
-        version_workspace = await session.scalar(
-            sa.select(models.DivisionGrid.workspace_id)
-            .join(models.DivisionGridVersion, models.DivisionGridVersion.grid_id == models.DivisionGrid.id)
-            .where(models.DivisionGridVersion.id == resolved_version_id)
-        )
-        if version_workspace not in {None, workspace_id}:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Division grid version does not belong to this workspace",
-            )
-
+            raise HTTPException(status_code=400, detail="Workspace does not have a default division grid version")
         return int(resolved_version_id)
 
     async def get_tournament(self, session: AsyncSession, tournament_id: int) -> models.Tournament:
@@ -248,6 +257,11 @@ class AdminTournamentService:
                 detail="Tournament with this name already exists in this workspace",
             )
 
+        workspace = await WorkspaceRepository().get(session, data.workspace_id)
+        if workspace is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+        assert_discipline_enabled(workspace, data.discipline)
+
         payload = data.model_dump()
         if data.slug:
             requested_slug = slugify(data.slug)
@@ -268,20 +282,35 @@ class AdminTournamentService:
         payload["division_grid_version_id"] = await self._resolve_division_grid_version_id(
             session,
             workspace_id=data.workspace_id,
+            discipline=data.discipline,
             division_grid_version_id=data.division_grid_version_id,
         )
 
         tournament = await self.tournament_repo.create(session, models.Tournament(**payload))
+        await copy_for_tournament(session, tournament)
         await publish_tournament_invalidation(session, tournament.id, STRUCTURE_RESOURCES)
         await session.commit()
         await division_grid_cache.invalidate_tournament(tournament.id)
         await division_grid_cache.invalidate_workspace(tournament.workspace_id)
         return await self.get_tournament(session, tournament.id)
 
+    async def replace_team_format(
+        self, session: AsyncSession, tournament_id: int, body: TeamFormatWrite
+    ) -> models.Tournament:
+        """Replace the tournament copy only before drafts or registered teams hold slots."""
+        tournament = await self.tournament_repo.get(session, tournament_id)
+        if tournament is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+        await assert_no_active_draft_session(session, tournament_id, change="the team format")
+        await assert_no_registered_teams(session, tournament_id, change="the team format")
+        await save_tournament_format(session, tournament, body.to_domain(tournament.discipline))
+        await publish_tournament_invalidation(session, tournament_id, STRUCTURE_RESOURCES)
+        await session.commit()
+        return tournament
+
     async def update_tournament(
         self, session: AsyncSession, tournament_id: int, data: schemas.TournamentUpdate
     ) -> models.Tournament:
-        """Update tournament fields"""
         tournament = await self.tournament_repo.get(
             session,
             tournament_id,
@@ -295,24 +324,9 @@ class AdminTournamentService:
         if not tournament:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
-        # Update fields
         update_data = data.model_dump(exclude_unset=True)
         if "team_formation" in update_data and update_data["team_formation"] != tournament.team_formation:
             await assert_no_active_draft_session(session, tournament_id)
-
-        # Both maps are normalized (RosterSlotsField on the way in, this same path on
-        # the way out), and dict equality ignores key order -- so a Settings-tab save
-        # that resends the current shape is not a change and must not block an
-        # unrelated rename mid-draft.
-        roster_slots_changed = "roster_slots_json" in update_data and (
-            update_data["roster_slots_json"] != tournament.roster_slots_json
-        )
-        if roster_slots_changed:
-            await assert_no_active_draft_session(session, tournament_id, change="roster shape")
-            # Registered teams hold slots assigned from the shape in force when their
-            # members accepted; changing it afterwards silently invalidates every one
-            # of those rosters. Same protection a live draft already gets.
-            await assert_no_registered_teams(session, tournament_id, change="the roster shape")
 
         # Same lock, one level down: the session snapshots the format at create
         # time, so an edit mid-draft would promise a change the running board
@@ -354,6 +368,7 @@ class AdminTournamentService:
             update_data["division_grid_version_id"] = await self._resolve_division_grid_version_id(
                 session,
                 workspace_id=tournament.workspace_id,
+                discipline=tournament.discipline,
                 division_grid_version_id=update_data["division_grid_version_id"],
             )
 
@@ -369,8 +384,6 @@ class AdminTournamentService:
         if should_invalidate_grid:
             await division_grid_cache.invalidate_tournament(tournament_id)
             await division_grid_cache.invalidate_workspace(tournament.workspace_id)
-        if roster_slots_changed:
-            await invalidate_roster_shape_cache(tournament_id=tournament_id)
         return await self.get_tournament(session, tournament_id)
 
     async def create_tournament_from_challonge(
@@ -378,6 +391,7 @@ class AdminTournamentService:
         session: AsyncSession,
         *,
         workspace_id: int,
+        discipline: str,
         is_league: bool,
         start_date: date,
         end_date: date,
@@ -387,13 +401,8 @@ class AdminTournamentService:
         """Bootstrap a new tournament from an existing Challonge bracket: fetch it
         (its name/description become the tournament's), create the tournament, link
         the bracket the same way ``update_tournament(challonge_slug=...)`` does, then
-        pull its current structure and results in one shot.
-
-        Supersedes parser-service's old ``tournament.create_with_groups`` (which only
-        parsed empty ``TournamentGroup`` rows out of the bracket's matches without
-        persisting them) -- ``sync_service.import_tournament`` builds the full
-        stage/group/stage-item structure AND imports any already-recorded results,
-        exactly like a manual "Sync from Challonge" run would.
+        pull its current structure and results in one shot, exactly like a manual
+        "Sync from Challonge" run would.
         """
         challonge_tournament = await challonge_client.fetch_tournament(_normalize_challonge_slug(challonge_slug))
 
@@ -401,11 +410,13 @@ class AdminTournamentService:
             session,
             schemas.TournamentCreate(
                 workspace_id=workspace_id,
+                discipline=discipline,
                 name=challonge_tournament.name,
                 description=challonge_tournament.description,
                 is_league=is_league,
                 start_date=start_date,
                 end_date=end_date,
+                logs_official=False,  # an imported bracket never starts accepting ingest evidence
                 division_grid_version_id=division_grid_version_id,
             ),
         )
@@ -413,6 +424,8 @@ class AdminTournamentService:
             session, tournament, challonge_id=challonge_tournament.id, slug=challonge_tournament.url
         )
         await session.commit()
+        from src.services.challonge.sync import sync_service  # noqa: PLC0415
+
         await sync_service.import_tournament(session, tournament.id)
         return await self.get_tournament(session, tournament.id)
 
@@ -424,17 +437,28 @@ class AdminTournamentService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
         workspace_id = tournament.workspace_id
+        evidence = await capture_owner_delete(session, tournament_id=tournament_id)
         await self.standing_repo.delete_for_tournament(session, tournament_id)
         await publish_tournament_invalidation(session, tournament_id, STRUCTURE_RESOURCES)
         await self.tournament_repo.delete(session, tournament)
+        await stage_owner_delete(
+            session,
+            evidence,
+            workspace_id=workspace_id,
+            entity_type="tournament",
+            entity_id=tournament_id,
+        )
         await session.commit()
         await division_grid_cache.invalidate_tournament(tournament_id)
         await division_grid_cache.invalidate_workspace(workspace_id)
 
     async def _stage_has_encounters(self, session: AsyncSession, stage_id: int) -> bool:
-        # Analytical: grouped count, not a CRUD row read.
+        # Analytical: grouped count, not a CRUD row read. An encounter's stage is
+        # its bracket POSITION, so the count is over that table.
         count = await session.scalar(
-            sa.select(sa.func.count(models.Encounter.id)).where(models.Encounter.stage_id == stage_id)
+            sa.select(sa.func.count(models.BracketEncounter.encounter_id)).where(
+                models.BracketEncounter.stage_id == stage_id
+            )
         )
         return bool(count)
 
@@ -476,7 +500,7 @@ class AdminTournamentService:
             if not has_encounters and not _stage_has_ready_inputs(stage):
                 return
             if has_encounters:
-                await stage_service.activate_stage(session, stage.id)
+                await stage_service.activate_stage(session, stage.id, commit=False)
             else:
                 await request_bracket_job(
                     session,
@@ -497,11 +521,8 @@ class AdminTournamentService:
     async def toggle_finished(self, session: AsyncSession, tournament_id: int) -> models.Tournament:
         """The hub's "mark finished / reopen" button, as a two-way COMPLETED move.
 
-        It used to write ``status``, ``is_finished`` and ``auto_transitions_enabled``
-        by hand, which made it a second writer of the lifecycle beside
-        ``transition_status`` — same three fields, same two events, no matrix
-        validation, and free to drift. It now delegates, so the state machine has
-        exactly one entry point.
+        Delegates to ``transition_status`` so the lifecycle state machine has
+        exactly one writer.
 
         ``force=True`` because reopening walks COMPLETED -> LIVE, an edge the matrix
         deliberately omits: this button is the only sanctioned way back, and the
@@ -544,12 +565,11 @@ class AdminTournamentService:
 
         REGISTRATION additionally requires a saved registration form. The status
         is what the public page announces and what the register button reads, so
-        entering it without a form advertises a sign-up that cannot be completed
-        — the exact mismatch ANNOUNCEMENT was added to end. ``force`` bypasses
-        this the same way it bypasses the transition matrix: it is the
-        superuser-only "I know what I am doing" switch, and a Challonge-sourced
-        tournament that never takes its own registrations is the case that needs
-        it.
+        entering it without a form advertises a sign-up that cannot be completed.
+        ``force`` bypasses this the same way it bypasses the transition matrix: it
+        is the superuser-only "I know what I am doing" switch, and a
+        Challonge-sourced tournament that never takes its own registrations is the
+        case that needs it.
         """
         tournament = await self.tournament_repo.get(
             session,
@@ -599,12 +619,15 @@ class AdminTournamentService:
         )
         await lifecycle_notifier.on_status_entered(session, tournament)
         await publish_tournament_invalidation(session, tournament_id, STRUCTURE_RESOURCES)
-        await session.commit()
+        # Before the commit: the bracket job it requests is a row in this
+        # session, and neither caller (the RPC envelope, the worker tick)
+        # commits after us.
         await self._maybe_auto_start_group_stage(
             session,
             tournament,
             target_status=target_status,
         )
+        await session.commit()
         return await self.get_tournament(session, tournament_id)
 
 

@@ -4,8 +4,6 @@ from shared.core.config import BaseServiceSettings
 
 
 class Settings(BaseServiceSettings):
-    project_name: str = "OWT Stream Service"
-
     redis_url: RedisDsn
     rabbitmq_url: str = "amqp://guest:guest@rabbitmq:5672"
 

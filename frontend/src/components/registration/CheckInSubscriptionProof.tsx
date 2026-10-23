@@ -61,7 +61,7 @@ export default function CheckInSubscriptionProof({
 
   return (
     <div className="grid gap-3 text-left">
-      <SubscriptionRuleNotice subscription={status} />
+      <SubscriptionRuleNotice subscription={status} requirement={requirement} />
       {providers.map((provider) => (
         <SubscriptionRow
           key={provider}

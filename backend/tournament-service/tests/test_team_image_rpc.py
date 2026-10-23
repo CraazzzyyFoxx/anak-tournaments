@@ -21,7 +21,6 @@ from __future__ import annotations
 import base64
 import importlib
 import json
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -34,7 +33,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 team_binary = importlib.import_module("src.rpc.team_binary")
 helpers = importlib.import_module("src.rpc._helpers")

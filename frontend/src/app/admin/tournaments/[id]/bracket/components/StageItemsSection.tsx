@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type ReactNode } from "react";
+import { useId, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
@@ -8,26 +8,17 @@ import {
   closestCenter,
   DndContext,
   DragOverlay,
-  useDroppable,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent
 } from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { ArrowUpRight, CheckCircle2, GripVertical, Pencil, Plus, Trash2, X } from "lucide-react";
+import { arrayMove } from "@dnd-kit/sortable";
+import { ArrowUpRight, CheckCircle2, Pencil, Plus, Trash2, X } from "lucide-react";
 
 import { TeamCombobox } from "@/components/admin/TeamCombobox";
 import { InlineEditText } from "@/components/kit/InlineEditText";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Card } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -37,151 +28,22 @@ import {
 } from "@/components/ui/select";
 import { notify } from "@/lib/notify";
 import { useDragSensors } from "@/hooks/useDragSensors";
-import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import type { Stage, StageItem, StageItemInput, StageItemType } from "@/types/tournament.types";
 import type { Team } from "@/types/team.types";
 
 import {
   getAssignedTeamIds,
-  getDefaultStageItemType,
   getInputDisplayLabelInfo,
   STAGE_ITEM_TYPE_LABELS,
-  type InputDisplayLabelInfo,
   type StageProgress
 } from "@/lib/bracket/projection";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 
-/** What a seed slot shows: the team, the group placement feeding it, or nothing yet. */
-function inputLabel(
-  info: InputDisplayLabelInfo,
-  t: ReturnType<typeof useTranslations<"adminBracket">>
-): string {
-  if (info.key === "team") return info.label;
-  if (info.key === "winnerOf") {
-    return t("labels.winnerOf", { groupName: info.groupName, position: info.position });
-  }
-  return t("labels.emptySlot");
-}
-
-/** One item's inputs in seed order. */
-function seedOrder(item: StageItem): StageItemInput[] {
-  return [...item.inputs].sort((left, right) => left.slot - right.slot);
-}
-
-/** Every item's inputs in seed order, keyed by item id: what a drag rearranges. */
-type SeedLists = Record<number, StageItemInput[]>;
-
-function listOf(lists: SeedLists, inputId: number): number | undefined {
-  const entry = Object.entries(lists).find(([, inputs]) =>
-    inputs.some((input) => input.id === inputId)
-  );
-  return entry ? Number(entry[0]) : undefined;
-}
-
-/**
- * One team slot: a sortable row that shifts aside as a team is dragged past it,
- * and a drag source once it holds a team. The grip is the only handle, so the
- * row's buttons stay clickable.
- */
-function SeedSlotRow({
-  input,
-  label,
-  dragDisabled,
-  children
-}: Readonly<{
-  input: StageItemInput;
-  label: string;
-  dragDisabled: boolean;
-  children: ReactNode;
-}>) {
-  const t = useTranslations("adminBracket.items");
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    setActivatorNodeRef,
-    transform,
-    transition,
-    isDragging,
-    index,
-    activeIndex,
-    overIndex
-  } = useSortable({
-    id: `input-${input.id}`,
-    data: { input },
-    disabled: { draggable: dragDisabled || input.team_id == null, droppable: false }
-  });
-  // The seed the row will hold if the drag drops now: the position it is drawn
-  // at, which `arrayMove(activeIndex → overIndex)` is about to make real.
-  const position =
-    activeIndex < 0 || overIndex < 0
-      ? index
-      : index === activeIndex
-        ? overIndex
-        : activeIndex < index && index <= overIndex
-          ? index - 1
-          : overIndex <= index && index < activeIndex
-            ? index + 1
-            : index;
-
-  return (
-    <li
-      ref={setNodeRef}
-      style={{ transform: CSS.Translate.toString(transform), transition }}
-      className={cn(
-        "flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs",
-        isDragging && "opacity-50"
-      )}
-    >
-      {input.team_id != null ? (
-        <button
-          type="button"
-          ref={setActivatorNodeRef}
-          {...attributes}
-          {...listeners}
-          disabled={dragDisabled}
-          aria-label={t("drag", { label })}
-          className="shrink-0 cursor-grab rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 active:cursor-grabbing"
-        >
-          <GripVertical className="size-3.5" aria-hidden />
-        </button>
-      ) : null}
-      <span className="min-w-0 flex-1 truncate">
-        #{position + 1} {label}
-      </span>
-      {children}
-    </li>
-  );
-}
-
-/**
- * One item's slot list. While it holds no slots the list itself is the drop
- * target, so a team can be dragged into an empty group; after that its rows are.
- */
-function SeedList({
-  itemId,
-  inputs,
-  children
-}: Readonly<{ itemId: number; inputs: StageItemInput[]; children: ReactNode }>) {
-  const { setNodeRef, isOver } = useDroppable({
-    id: `item-${itemId}`,
-    data: { itemId },
-    disabled: inputs.length > 0
-  });
-
-  return (
-    <SortableContext
-      items={inputs.map((input) => `input-${input.id}`)}
-      strategy={verticalListSortingStrategy}
-    >
-      <div ref={setNodeRef} className={cn("rounded-md", isOver && "ring-2 ring-ring")}>
-        {children}
-      </div>
-    </SortableContext>
-  );
-}
+import { AddStageItemForm } from "./stage-items/AddStageItemForm";
+import { inputLabel, listOf, seedOrder, SeedList, SeedSlotRow, type SeedLists } from "./stage-items/SeedSlots";
 
 interface StageItemsSectionProps {
   stage: Stage;
@@ -217,12 +79,7 @@ export function StageItemsSection({
 }: Readonly<StageItemsSectionProps>) {
   const t = useTranslations("adminBracket.items");
   const tRoot = useTranslations("adminBracket");
-  const [draftName, setDraftName] = useState("");
-  const [draftType, setDraftType] = useState<StageItemType>(
-    getDefaultStageItemType(stage.stage_type)
-  );
   const [teamDrafts, setTeamDrafts] = useState<Record<number, string>>({});
-  const [editingItemTypeId, setEditingItemTypeId] = useState<number | null>(null);
   const [editingInputId, setEditingInputId] = useState<number | null>(null);
   const [editingInputTeamDraft, setEditingInputTeamDraft] = useState("");
   const [activeDragInput, setActiveDragInput] = useState<StageItemInput | null>(null);
@@ -238,29 +95,11 @@ export function StageItemsSection({
 
   const teamById = new Map(teams.map((team) => [team.id, team]));
   const assignedTeamIds = getAssignedTeamIds(stage);
-  const nextItemName =
-    draftType === "group" ? t("group", { number: stage.items.length + 1 }) : t("bracket");
-
-  const createItemMutation = useMutation({
-    mutationFn: () =>
-      adminService.createStageItem(stage.id, {
-        name: draftName.trim() || nextItemName,
-        type: draftType,
-        order: stage.items.length
-      }),
-    onSuccess: () => {
-      setDraftName("");
-      onChanged();
-    }
-  });
 
   const updateItemTypeMutation = useMutation({
     mutationFn: ({ stageItemId, type }: { stageItemId: number; type: StageItemType }) =>
       adminService.updateStageItem(stageItemId, { type }),
-    onSuccess: () => {
-      setEditingItemTypeId(null);
-      onChanged();
-    }
+    onSuccess: () => onChanged()
   });
 
   const updateItemNameMutation = useMutation({
@@ -394,10 +233,7 @@ export function StageItemsSection({
 
   return (
     <section className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          {t("description")}
-        </p>
+      <div className="flex justify-end">
         <Button asChild variant="outline" size="sm">
           <Link href={encountersHref}>
             {t("encounters")}
@@ -405,21 +241,6 @@ export function StageItemsSection({
           </Link>
         </Button>
       </div>
-
-      {progress && progress.items.length > 1 ? (
-        <ul className="flex flex-wrap gap-1.5">
-          {progress.items.map((itemProgress) => (
-            <li key={itemProgress.stage_item_id}>
-              <Badge
-                tone={itemProgress.is_completed ? "success" : "neutral"}
-                className="tabular-nums"
-              >
-                {itemProgress.name}: {itemProgress.completed}/{itemProgress.total}
-              </Badge>
-            </li>
-          ))}
-        </ul>
-      ) : null}
 
       {stage.items.length > 0 ? (
         <DndContext
@@ -440,78 +261,68 @@ export function StageItemsSection({
           <div className="grid gap-3 2xl:grid-cols-2">
             {stage.items.map((item) => {
               const inputs = listFor(item);
+              const itemProgress = progress?.items.find(
+                (entry) => entry.stage_item_id === item.id
+              );
               return (
-                <div
-                  key={item.id}
-                  className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3"
-                >
+                <Card key={item.id} variant="flat" className="flex flex-col gap-3 p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <InlineEditText
                         value={item.name}
-                        label={t("name")}
+                        label={t("itemName")}
                         textClassName="text-sm font-medium"
                         onSave={(name) =>
                           updateItemNameMutation.mutateAsync({ stageItemId: item.id, name })
                         }
                       />
-                      <p className="text-xs tabular-nums text-muted-foreground">
-                        {t("slotCount", { count: inputs.length })}
+                      <p className="flex flex-wrap gap-x-1.5 text-xs tabular-nums text-muted-foreground">
+                        <span>{t("slotCount", { count: inputs.length })}</span>
+                        {itemProgress && itemProgress.total > 0 ? (
+                          <>
+                            <span aria-hidden>·</span>
+                            <span>
+                              {tRoot("extra.matchesSummary", {
+                                completed: itemProgress.completed,
+                                total: itemProgress.total
+                              })}
+                            </span>
+                          </>
+                        ) : null}
                       </p>
                     </div>
 
-                    {editingItemTypeId === item.id ? (
-                      <div className="flex shrink-0 items-center gap-1">
-                        <Select
-                          defaultValue={item.type}
-                          onValueChange={(value) =>
-                            updateItemTypeMutation.mutate({
-                              stageItemId: item.id,
-                              type: value as StageItemType
-                            })
-                          }
-                        >
-                          <SelectTrigger
-                            aria-label={t("type", { name: item.name })}
-                            className="h-8 w-36 text-xs"
-                          >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {Object.entries(STAGE_ITEM_TYPE_LABELS).map(([value]) => (
-                              <SelectItem key={value} value={value} className="text-xs">
-                                {tRoot(`labels.itemTypes.${value}` as never)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="size-8"
-                          aria-label={t("cancelType")}
-                          onClick={() => setEditingItemTypeId(null)}
-                        >
-                          <X className="size-4" aria-hidden />
-                        </Button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        className="flex shrink-0 items-center gap-1 rounded-md border border-transparent px-1.5 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:border-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        onClick={() => setEditingItemTypeId(item.id)}
-                        aria-label={t("changeType", { name: item.name })}
+                    <Select
+                      defaultValue={item.type}
+                      onValueChange={(value) =>
+                        updateItemTypeMutation.mutate({
+                          stageItemId: item.id,
+                          type: value as StageItemType
+                        })
+                      }
+                    >
+                      <SelectTrigger
+                        aria-label={t("type", { name: item.name })}
+                        size="sm"
+                        className="ms-auto w-40 shrink-0"
                       >
-                        {tRoot(`labels.itemTypes.${item.type}` as never)}
-                        <Pencil className="size-3.5" aria-hidden />
-                      </button>
-                    )}
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.keys(STAGE_ITEM_TYPE_LABELS).map((value) => (
+                          <SelectItem key={value} value={value} className="text-xs">
+                            {tRoot(`labels.itemTypes.${value}` as never)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
 
                     <Button
                       size="icon"
                       variant="ghost"
                       className="size-8 shrink-0 text-danger hover:text-danger"
                       aria-label={t("delete", { name: item.name })}
+                      title={t("delete", { name: item.name })}
                       onClick={() => onRequestDeleteItem(item)}
                     >
                       <Trash2 className="size-4" aria-hidden />
@@ -520,7 +331,7 @@ export function StageItemsSection({
 
                   <SeedList itemId={item.id} inputs={inputs}>
                     {inputs.length > 0 ? (
-                      <ul className="flex flex-col gap-1">
+                      <ul className="flex flex-col divide-y divide-border">
                         {inputs.map((input, index) => {
                           // The position, not the stored slot: it is what the team is
                           // seeded as, gaps an older delete left included.
@@ -531,6 +342,10 @@ export function StageItemsSection({
                           );
                           const isEditing = editingInputId === input.id;
                           const canSwapAssignedTeams = input.team_id != null;
+                          const changeTeamLabel = t(
+                            input.input_type === "tentative" ? "overrideTeam" : "changeTeam",
+                            { seed, name: item.name }
+                          );
 
                           return (
                             <SeedSlotRow
@@ -557,13 +372,15 @@ export function StageItemsSection({
                                       !canSwapAssignedTeams
                                     }
                                     triggerAriaLabel={t("teamForSlot", { seed, name: item.name })}
-                                    triggerClassName="h-7 w-48 text-xs"
+                                    size="sm"
+                                    triggerClassName="h-7 w-48"
                                   />
                                   <Button
                                     size="icon"
                                     variant="ghost"
                                     className="size-8 shrink-0"
                                     aria-label={t("saveTeam")}
+                                    title={t("saveTeam")}
                                     disabled={
                                       !editingInputTeamDraft ||
                                       (updateInputMutation.isPending &&
@@ -588,6 +405,7 @@ export function StageItemsSection({
                                     variant="ghost"
                                     className="size-8 shrink-0"
                                     aria-label={t("cancelTeam")}
+                                    title={t("cancelTeam")}
                                     onClick={() => {
                                       setEditingInputId(null);
                                       setEditingInputTeamDraft("");
@@ -596,47 +414,40 @@ export function StageItemsSection({
                                     <X className="size-4" aria-hidden />
                                   </Button>
                                 </>
-                              ) : (
+                              ) : input.input_type !== "empty" ? (
                                 <>
-                                  <Badge
-                                    tone={input.input_type === "tentative" ? "warning" : "neutral"}
-                                    className="shrink-0 text-xs"
-                                  >
-                                    {input.input_type}
-                                  </Badge>
-                                  {input.input_type !== "empty" ? (
-                                    <>
-                                      <button
-                                        type="button"
-                                        className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                        aria-label={t(
-                                          input.input_type === "tentative"
-                                            ? "overrideTeam"
-                                            : "changeTeam",
-                                          { seed, name: item.name }
-                                        )}
-                                        onClick={() => {
-                                          setEditingInputId(input.id);
-                                          setEditingInputTeamDraft(input.team_id?.toString() ?? "");
-                                        }}
-                                      >
-                                        <Pencil className="size-3.5" aria-hidden />
-                                      </button>
-                                      <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        className="size-8 shrink-0 text-danger hover:text-danger"
-                                        aria-label={t("removeSlot", { seed, name: item.name })}
-                                        onClick={() =>
-                                          onRequestRemoveInput(input, `${label} (#${seed})`)
-                                        }
-                                      >
-                                        <Trash2 className="size-3.5" aria-hidden />
-                                      </Button>
-                                    </>
+                                  {input.input_type === "tentative" ? (
+                                    <span className="shrink-0 text-muted-foreground">
+                                      {t("tentative")}
+                                    </span>
                                   ) : null}
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="size-8 shrink-0"
+                                    aria-label={changeTeamLabel}
+                                    title={changeTeamLabel}
+                                    onClick={() => {
+                                      setEditingInputId(input.id);
+                                      setEditingInputTeamDraft(input.team_id?.toString() ?? "");
+                                    }}
+                                  >
+                                    <Pencil className="size-3.5" aria-hidden />
+                                  </Button>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="size-8 shrink-0 text-danger hover:text-danger"
+                                    aria-label={t("removeSlot", { seed, name: item.name })}
+                                    title={t("removeSlot", { seed, name: item.name })}
+                                    onClick={() =>
+                                      onRequestRemoveInput(input, `${label} (#${seed})`)
+                                    }
+                                  >
+                                    <Trash2 className="size-3.5" aria-hidden />
+                                  </Button>
                                 </>
-                              )}
+                              ) : null}
                             </SeedSlotRow>
                           );
                         })}
@@ -649,22 +460,29 @@ export function StageItemsSection({
                   </SeedList>
 
                   <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                    <TeamCombobox
-                      teams={teams}
-                      value={teamDrafts[item.id] ? Number(teamDrafts[item.id]) : null}
-                      onSelect={(team) =>
-                        setTeamDrafts((current) => ({
-                          ...current,
-                          [item.id]: team ? String(team.id) : ""
-                        }))
-                      }
-                                      placeholder={isTeamsLoading ? t("loadingTeams") : t("selectTeam")}
-                      allowClear={false}
-                      disabled={isTeamsLoading || teams.length === 0}
-                      isTeamDisabled={(team) => assignedTeamIds.has(team.id)}
-                      triggerAriaLabel={t("teamToAdd", { name: item.name })}
-                      triggerClassName="h-9"
-                    />
+                    {isTeamsLoading ? (
+                      <div role="status">
+                        <span className="sr-only">{t("loadingTeams")}</span>
+                        <Skeleton aria-hidden className="h-9 w-full" />
+                      </div>
+                    ) : (
+                      <TeamCombobox
+                        teams={teams}
+                        value={teamDrafts[item.id] ? Number(teamDrafts[item.id]) : null}
+                        onSelect={(team) =>
+                          setTeamDrafts((current) => ({
+                            ...current,
+                            [item.id]: team ? String(team.id) : ""
+                          }))
+                        }
+                        placeholder={t("selectTeam")}
+                        allowClear={false}
+                        disabled={teams.length === 0}
+                        isTeamDisabled={(team) => assignedTeamIds.has(team.id)}
+                        triggerAriaLabel={t("teamToAdd", { name: item.name })}
+                        triggerClassName="h-9"
+                      />
+                    )}
                     <Button
                       size="sm"
                       variant="outline"
@@ -691,14 +509,14 @@ export function StageItemsSection({
                       {t("addTeam")}
                     </Button>
                   </div>
-                </div>
+                </Card>
               );
             })}
           </div>
 
           <DragOverlay>
             {activeDragInput ? (
-              <span className="rounded-md border border-border bg-card px-2.5 py-1.5 text-xs shadow-lg">
+              <span className="rounded-md border border-border bg-card px-2.5 py-1.5 text-xs">
                 {inputLabel(getInputDisplayLabelInfo(activeDragInput, stages, teamById), tRoot)}
               </span>
             ) : null}
@@ -710,52 +528,7 @@ export function StageItemsSection({
         </EmptyNote>
       )}
 
-      <div className="grid gap-2 border-t border-border pt-3 lg:grid-cols-[minmax(0,1fr)_200px_auto] lg:items-end">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="stage-item-name" className="text-xs">
-            {t("itemName")}
-          </Label>
-          <Input
-            id="stage-item-name"
-            className="h-9"
-            placeholder={nextItemName}
-            value={draftName}
-            onChange={(event) => setDraftName(event.target.value)}
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="stage-item-type" className="text-xs">
-            {t("typeLabel")}
-          </Label>
-          <Select value={draftType} onValueChange={(value) => setDraftType(value as StageItemType)}>
-            <SelectTrigger id="stage-item-type" className="h-9">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(STAGE_ITEM_TYPE_LABELS).map(([value]) => (
-                <SelectItem key={value} value={value}>
-                  {tRoot(`labels.itemTypes.${value}` as never)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={createItemMutation.isPending}
-          onClick={() => createItemMutation.mutate()}
-        >
-          {createItemMutation.isPending ? (
-            <Spinner />
-          ) : (
-            <Plus className="size-4" aria-hidden />
-          )}
-          {createItemMutation.isPending ? t("adding") : t("addStructure")}
-        </Button>
-      </div>
+      <AddStageItemForm stage={stage} onChanged={onChanged} />
     </section>
   );
 }

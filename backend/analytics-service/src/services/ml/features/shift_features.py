@@ -1,18 +1,10 @@
-"""Shift v2 feature frame builder.
+"""Shift v2 feature frame builder: service-side loading and dispatch.
 
-Joins:
+The cache, the v1 linear history, the v1 OpenSkill shift map and the per-tournament feature frames are loaded here;
+the module-owned SQL (rank chronology on the canonical scale, materialised Performance rows, MVP dominance) and the
+column construction come from the discipline's analytics module.
 
-- per-(player, tournament) tournament features (rates, mu features)
-- v1 OpenSkill shift map (``os_shift``) from ``compute_openskill_shift_map``
-- v1 linear metrics as the conservative baseline
-- per-player tournament chronology to derive ``prior_div``,
-  ``tournaments_played``, ``tournaments_at_current_div``,
-  ``next_tournament_div``
-- per-player Performance v2 row (``raw_value``, ``confidence``) if already
-  materialised
-
-The result is the input to :func:`train_shift_v2` and
-:meth:`ShiftModelV2.predict`.
+The result is the input to :func:`train_shift_v2` and :meth:`ShiftModelV2.predict`.
 """
 
 from __future__ import annotations
@@ -20,138 +12,26 @@ from __future__ import annotations
 import logging
 import typing
 
-import numpy as np
 import pandas as pd
-import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.division_grid import DEFAULT_GRID
-from src import models
+from src.core.analytics_exports import analytics_exports
 from src.core.config import settings
-from src.core.workspace import workspace_scope_filter
 from src.domain.ratings import compute_linear_metrics
-from src.services.analytics.canonical_division import (
-    assign_canonical_division,
-    load_source_grids,
-)
 from src.services.analytics.flows import flows_service
 
 from .aggregations import build_tournament_feature_frame
 from .cache import get_or_build_dataframe, scope_cache_params
-from .mvp_dominance import compute_mvp_dominance
 
 __all__ = ("build_shift_feature_frame",)
 
 logger = logging.getLogger(__name__)
 
 
-async def _player_rank_history(
-    session: AsyncSession,
-    tournament_ids: typing.Sequence[int],
-    *,
-    history_through_tournament_id: int | None = None,
-    workspace_id: int | None = None,
-    workspace_ids: typing.Sequence[int] | None = None,
-) -> pd.DataFrame:
-    """Return ``(user_id, role, tournament_id, rank, div, prior_*, next_*)`` rows.
-
-    ``history_through_tournament_id`` lets training include the known future
-    rows needed to label the last tournament in ``tournament_ids``. This must be
-    an actual tournament horizon, not a numeric-id lookahead, because tournament
-    IDs can be sparse.
-    """
-    if not tournament_ids:
-        return pd.DataFrame()
-
-    history_max_tid = max(
-        max(tournament_ids),
-        history_through_tournament_id or max(tournament_ids),
-    )
-
-    query = (
-        sa.select(
-            models.Player.id.label("player_id"),
-            models.WorkspaceMember.player_id.label("user_id"),
-            models.Player.role.label("role"),
-            models.Player.tournament_id.label("tournament_id"),
-            models.Player.rank.label("rank"),
-            models.Player.is_newcomer.label("is_newcomer"),
-            models.Tournament.division_grid_version_id.label("version_id"),
-        )
-        .join(
-            models.WorkspaceMember,
-            models.WorkspaceMember.id == models.Player.workspace_member_id,
-        )
-        .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-        .where(
-            models.Player.tournament_id <= history_max_tid,
-            models.Player.is_substitution.is_(False),
-            *workspace_scope_filter(workspace_id, workspace_ids),
-        )
-        .order_by(models.WorkspaceMember.player_id, models.Player.role, models.Tournament.id)
-    )
-    result = await session.execute(query)
-    df = pd.DataFrame(result.mappings().all())
-    if df.empty:
-        return df
-
-    df["tournament_id"] = df["tournament_id"].astype(int)
-    df = df.sort_values(["user_id", "role", "tournament_id"]).reset_index(drop=True)
-
-    # Resolve every player's division on the canonical OW grid so
-    # div/prior_div/next_tournament_div are comparable across workspaces.
-    grids = await load_source_grids(session, df["version_id"].dropna().unique())
-    assign_canonical_division(df, grids, rank_col="rank")
-
-    # Workspace grid size (division count) per row — shift v2 scales the
-    # top-of-ladder output clamp by it so the same cap means the same real rank
-    # distance regardless of granularity. Missing grid → the canonical grid's size.
-    def _grid_div_count(version_id: object) -> int:
-        if pd.isna(version_id):
-            return DEFAULT_GRID.max_division
-        grid = grids.get(int(version_id))
-        return grid.max_division if grid is not None else DEFAULT_GRID.max_division
-
-    df["grid_n_div"] = [_grid_div_count(v) for v in df["version_id"]]
-
-    grouped = df.groupby(["user_id", "role"], sort=False)
-    df["prior_div"] = grouped["div"].shift(1)
-    df["next_tournament_div"] = grouped["div"].shift(-1)
-    df["tournaments_played"] = grouped.cumcount() + 1
-
-    # tournaments_at_current_div: streak of consecutive tournaments with same div.
-    same_as_prior = df["div"] == df["prior_div"]
-    streak_id = (~same_as_prior.fillna(False)).cumsum()
-    df["tournaments_at_current_div"] = df.groupby(["user_id", "role", streak_id]).cumcount() + 1
-
-    return df
-
-
-async def _performance_features(
-    session: AsyncSession,
-    tournament_ids: typing.Sequence[int],
-) -> pd.DataFrame:
-    """Return already-materialised Performance v2 rows for shift enrichment."""
-    if not tournament_ids:
-        return pd.DataFrame()
-
-    query = sa.select(
-        models.AnalyticsPerformance.player_id.label("player_id"),
-        models.AnalyticsPerformance.tournament_id.label("tournament_id"),
-        models.AnalyticsPerformance.raw_value.label("performance_v2_raw"),
-        models.AnalyticsPerformance.confidence.label("performance_v2_confidence"),
-        models.AnalyticsPerformance.local_residual.label("performance_v2_local_residual"),
-        models.AnalyticsPerformance.local_zscore.label("performance_v2_local_zscore"),
-        models.AnalyticsPerformance.local_percentile.label("performance_v2_local_percentile"),
-        models.AnalyticsPerformance.local_reference_n.label("performance_v2_local_reference_n"),
-    ).where(models.AnalyticsPerformance.tournament_id.in_(tournament_ids))
-    result = await session.execute(query)
-    return pd.DataFrame(result.mappings().all())
-
-
 async def _linear_history_frame(
     session: AsyncSession,
     *,
+    discipline: str,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
 ) -> pd.DataFrame:
@@ -162,10 +42,11 @@ async def _linear_history_frame(
             session,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
+            discipline=discipline,
         )
         return compute_linear_metrics(df, shift_scale=settings.linear_shift_scale) if not df.empty else df
 
-    return await get_or_build_dataframe("shift_linear_history", params, _build)
+    return await get_or_build_dataframe("shift_linear_history", params, _build, discipline=discipline)
 
 
 async def _openskill_shift_frame(
@@ -173,6 +54,7 @@ async def _openskill_shift_frame(
     tournament_id: int,
     df_history: pd.DataFrame,
     *,
+    discipline: str,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
 ) -> pd.DataFrame:
@@ -188,19 +70,21 @@ async def _openskill_shift_frame(
             df_history,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
+            discipline=discipline,
         )
         return pd.DataFrame(
             [{"player_id": int(player_id), "os_shift": float(shift)} for player_id, shift in shift_map.items()],
             columns=["player_id", "os_shift"],
         )
 
-    return await get_or_build_dataframe("shift_openskill_map", params, _build)
+    return await get_or_build_dataframe("shift_openskill_map", params, _build, discipline=discipline)
 
 
 async def build_shift_feature_frame(
     session: AsyncSession,
     tournament_ids: typing.Iterable[int],
     *,
+    discipline: str,
     history_through_tournament_id: int | None = None,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
@@ -218,7 +102,8 @@ async def build_shift_feature_frame(
     if not tournament_ids:
         return pd.DataFrame()
 
-    rank_history = await _player_rank_history(
+    exports = analytics_exports(discipline)
+    rank_history = await exports.load_player_rank_history(
         session,
         tournament_ids,
         history_through_tournament_id=history_through_tournament_id,
@@ -228,11 +113,12 @@ async def build_shift_feature_frame(
     if rank_history.empty:
         return pd.DataFrame()
 
-    performance_features = await _performance_features(session, tournament_ids)
+    performance_features = await exports.load_performance_features(session, tournament_ids)
     df_history = await _linear_history_frame(
         session,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
+        discipline=discipline,
     )
     if df_history.empty:
         return pd.DataFrame()
@@ -244,6 +130,7 @@ async def build_shift_feature_frame(
             tid,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
+            discipline=discipline,
         )
         if tournament_features.empty:
             continue
@@ -257,6 +144,7 @@ async def build_shift_feature_frame(
                 df_history,
                 workspace_id=workspace_id,
                 workspace_ids=workspace_ids,
+                discipline=discipline,
             )
             shift_map = {int(row.player_id): float(row.os_shift) for row in shift_frame.itertuples(index=False)}
         except Exception:
@@ -266,92 +154,16 @@ async def build_shift_feature_frame(
             )
             shift_map = {}
 
-        ranks_t = rank_history[rank_history["tournament_id"] == tid]
-        merged = tournament_features.merge(
-            ranks_t[
-                [
-                    "player_id",
-                    "prior_div",
-                    "next_tournament_div",
-                    "tournaments_played",
-                    "tournaments_at_current_div",
-                    "div",
-                    "grid_n_div",
-                ]
-            ],
-            on="player_id",
-            how="left",
-        )
-        linear_t = df_history[df_history["tournament_id"] == tid][
-            [
-                "player_id",
-                "linear_stable_shift",
-                "linear_trend_shift",
-                "confidence",
-                "effective_evidence",
-                "sample_tournaments",
-                "sample_matches",
-                "overall_position",
-                "team_count",
-            ]
-        ].rename(
-            columns={
-                "confidence": "linear_confidence",
-                "effective_evidence": "linear_effective_evidence",
-                "sample_tournaments": "linear_sample_tournaments",
-                "sample_matches": "linear_sample_matches",
-            }
-        )
-        merged = merged.merge(linear_t, on="player_id", how="left")
-        merged["current_div"] = merged["div"]
-        merged["os_shift"] = merged["player_id"].map(lambda pid, lookup=shift_map: lookup.get(int(pid))).astype(float)
-        if not performance_features.empty:
-            merged = merged.merge(
-                performance_features[performance_features["tournament_id"] == tid],
-                on=["player_id", "tournament_id"],
-                how="left",
+        all_frames.append(
+            exports.assemble_shift_tournament_frame(
+                tid,
+                tournament_features=tournament_features,
+                rank_history=rank_history,
+                history=df_history,
+                shift_map=shift_map,
+                performance_features=performance_features,
+                dominance=await exports.compute_mvp_dominance(session, tid),
             )
-        # Raw match-log MVP dominance — a secondary individual-skill signal that
-        # lifts a consistent scoreboard-topper the expectation-adjusted impact
-        # under-credits. Neutral (0.5) where there is no match log.
-        dominance_df = await compute_mvp_dominance(session, tid)
-        if not dominance_df.empty:
-            merged = merged.merge(dominance_df, on="player_id", how="left")
-        merged["mvp_dominance"] = pd.to_numeric(
-            merged.get("mvp_dominance", pd.Series(index=merged.index, dtype=float)),
-            errors="coerce",
-        ).fillna(0.5)
-        # Flag rows that actually carry a Performance v2 row BEFORE the fillna
-        # below masks missing perf as 0.0 — the merit target trains only on these
-        # (treating "no perf data" as "average performance" would poison it).
-        merged["has_perf_v2"] = (
-            merged["performance_v2_local_zscore"].notna()
-            if "performance_v2_local_zscore" in merged.columns
-            else pd.Series(False, index=merged.index)
         )
-        merged["confidence_v1"] = 0.0  # filled if/when v1 shift rows are joined
-        for column in (
-            "performance_v2_raw",
-            "performance_v2_confidence",
-            "performance_v2_local_residual",
-            "performance_v2_local_zscore",
-            "performance_v2_local_percentile",
-            "performance_v2_local_reference_n",
-            "linear_stable_shift",
-            "linear_trend_shift",
-            "linear_confidence",
-            "linear_effective_evidence",
-            "linear_sample_tournaments",
-            "linear_sample_matches",
-        ):
-            if column not in merged.columns:
-                merged[column] = 0.0
-            merged[column] = merged[column].fillna(0.0)
-        all_frames.append(merged)
 
-    if not all_frames:
-        return pd.DataFrame()
-    df = pd.concat(all_frames, ignore_index=True)
-    # Replace inf/-inf so LightGBM doesn't complain.
-    df = df.replace([np.inf, -np.inf], np.nan)
-    return df
+    return exports.concat_shift_frames(all_frames)

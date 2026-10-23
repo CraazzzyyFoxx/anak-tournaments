@@ -1,16 +1,15 @@
 "use client";
 
-import { useId, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Plus, Save, Trash2 } from "lucide-react";
+import { useEffect, useId, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { Badge } from "@/components/ui/badge";
+import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -20,18 +19,19 @@ import {
 } from "@/components/ui/select";
 import { DiscordRoleSelect } from "@/components/discord/DiscordRoleSelect";
 import { DiscordServerStatus } from "@/components/discord/DiscordServerStatus";
-import { SocialIcon } from "@/components/social/SocialIcon";
-import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import { PROVIDER_LABELS } from "@/lib/registration/subscription-requirement";
+import { workspaceQueryKeys } from "@/lib/workspace/query-keys";
 import balancerAdminService from "@/services/balancer-admin.service";
 import type {
   SubscriptionCodeUpsert,
   SubscriptionProviderConfigRead,
+  SubscriptionProviderConfigUpsert,
   SubscriptionRoleTier,
   VerificationMethod,
 } from "@/types/registration.types";
-import { Spinner } from "@/components/ui/spinner";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface MethodOption {
   value: VerificationMethod;
@@ -82,48 +82,76 @@ const CODE_AND_EITHER = [
   },
 ] as const satisfies readonly MethodOption[];
 
-interface SubscriptionProvidersCardProps {
-  workspaceId: number;
+/** One provider's unsaved edits, as the request that would store them. */
+export interface ProviderDraft {
+  label: string;
+  payload: SubscriptionProviderConfigUpsert;
+  /** Two tiers on one role: the server rejects it, so saving is refused here. */
+  blocked: boolean;
 }
 
-export default function SubscriptionProvidersCard({ workspaceId }: Readonly<SubscriptionProvidersCardProps>) {
-  const t = useTranslations("subscriptionProviders");
-  const queryClient = useQueryClient();
-  const queryKey = ["subscription-providers", workspaceId] as const;
+interface SubscriptionProvidersCardProps {
+  workspaceId: number;
+  /** Bumped by the section after a save or a discard: every editor restarts from what is stored. */
+  resetKey: number;
+  /** A provider's draft while it differs from what is stored, `null` once it does not. */
+  onDraftChange: (provider: string, draft: ProviderDraft | null) => void;
+}
 
-  const { data, isLoading } = useQuery({
-    queryKey,
+/**
+ * The providers half of the subscriptions section: one settings group per
+ * provider. It saves nothing itself: each editor reports its draft, and the
+ * section's one `SaveBar` stores every draft together with the workspace rule.
+ */
+export default function SubscriptionProvidersCard({
+  workspaceId,
+  resetKey,
+  onDraftChange,
+}: Readonly<SubscriptionProvidersCardProps>) {
+  const t = useTranslations("subscriptionProviders");
+
+  const query = useQuery({
+    queryKey: workspaceQueryKeys.subscriptionProviders(workspaceId),
     queryFn: () => balancerAdminService.listSubscriptionProviders(workspaceId),
     refetchOnWindowFocus: false,
   });
 
-  return (
-    <Card className="border-border/60">
-      <CardHeader className="p-4 pb-3">
-        <CardTitle className="text-base font-semibold">{t("title")}</CardTitle>
-        <CardDescription className="max-w-prose text-xs">{t("description")}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4 p-4 pt-0">
-        {workspaceId ? <DiscordServerStatus workspaceId={workspaceId} className="mb-2" /> : null}
-        {isLoading && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
-            <Spinner className="size-3.5" />
-            {t("loading")}
-          </div>
-        )}
+  if (query.isError) {
+    return (
+      <PageStateCard state="error" title={t("loadError")} onAction={() => void query.refetch()} />
+    );
+  }
 
-        {data?.configs.map((config) => (
-          <ProviderEditor
-            key={`${config.provider}:${JSON.stringify(config)}`}
-            workspaceId={workspaceId}
-            config={config}
-            discordGuildId={data.discord_guild_id ?? null}
-            onSaved={() => queryClient.invalidateQueries({ queryKey })}
-          />
-        ))}
-      </CardContent>
-    </Card>
-  );
+  if (query.isLoading || !query.data) {
+    // Two provider groups of label/control rows. The provider names are not
+    // known until the configs land, so the bare card stands in for `SettingGroup`.
+    return [0, 1].map((group) => (
+      <Card key={group} aria-busy="true">
+        <div className="px-5 py-3">
+          <Skeleton className="h-5 w-24" />
+        </div>
+        <div className="@container flex flex-col gap-6 border-t border-border px-5 py-3">
+          {[0, 1, 2].map((row) => (
+            <div key={row} className="grid gap-2 @xl:grid-cols-2 @xl:items-center @xl:gap-6">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-9 w-full" />
+            </div>
+          ))}
+        </div>
+      </Card>
+    ));
+  }
+
+  const { configs, discord_guild_id } = query.data;
+  return configs.map((config) => (
+    <ProviderEditor
+      key={`${resetKey}:${config.provider}:${JSON.stringify(config)}`}
+      workspaceId={workspaceId}
+      config={config}
+      discordGuildId={discord_guild_id ?? null}
+      onDraftChange={onDraftChange}
+    />
+  ));
 }
 
 /** The editable role/code rows carry no server id, yet they can be removed from
@@ -144,12 +172,12 @@ function ProviderEditor({
   workspaceId,
   config,
   discordGuildId,
-  onSaved,
+  onDraftChange,
 }: Readonly<{
   workspaceId: number;
   config: SubscriptionProviderConfigRead;
   discordGuildId: string | null;
-  onSaved: () => void;
+  onDraftChange: (provider: string, draft: ProviderDraft | null) => void;
 }>) {
   const t = useTranslations("subscriptionProviders");
   const methodSelectId = useId();
@@ -178,36 +206,43 @@ function ProviderEditor({
   const methodOptions = [{ value: "live" as const, ...liveKeys }, ...CODE_AND_EITHER];
   const selectedMethod = methodOptions.find((option) => option.value === method);
 
-  const save = useMutation({
-    mutationFn: () =>
-      balancerAdminService.upsertSubscriptionProvider(workspaceId, {
-        provider: config.provider,
-        enabled,
-        verification_method: method,
-        // `rowId` is a client-side key, never part of the wire contract.
-        ...(acceptsLive && isBoosty
-          ? { role_tiers: roleTiers.map(({ rowId, ...tier }) => tier) }
-          : {}),
-        ...(acceptsLive && !isBoosty
-          ? { broadcaster_id: broadcasterId.trim(), broadcaster_login: broadcasterLogin.trim() }
-          : {}),
-        ...(acceptsCode && newCodes.length > 0
-          ? { codes: newCodes.map(({ rowId, ...code }) => code) }
-          : {}),
-      }),
-    onSuccess: () => {
-      notify.success(t("saved", { provider: label }));
-      onSaved();
-    },
-    onError: (error: unknown) =>
-      notify.error(
-        error instanceof Error ? error.message : t("saveFailed", { provider: label })
-      ),
-  });
+  const payload: SubscriptionProviderConfigUpsert = {
+    provider: config.provider,
+    enabled,
+    verification_method: method,
+    // `rowId` is a client-side key, never part of the wire contract.
+    ...(acceptsLive && isBoosty ? { role_tiers: roleTiers.map(({ rowId, ...tier }) => tier) } : {}),
+    ...(acceptsLive && !isBoosty
+      ? { broadcaster_id: broadcasterId.trim(), broadcaster_login: broadcasterLogin.trim() }
+      : {}),
+    ...(acceptsCode && newCodes.length > 0
+      ? { codes: newCodes.map(({ rowId, ...code }) => code) }
+      : {}),
+  };
+  // The first render's request is what is stored: any later difference is a draft.
+  const serialized = JSON.stringify(payload);
+  const [stored] = useState(serialized);
+  const dirty = serialized !== stored;
 
   const duplicateRole =
     new Set(roleTiers.map((tier) => tier.role_id.trim()).filter(Boolean)).size !==
     roleTiers.filter((tier) => tier.role_id.trim()).length;
+
+  useEffect(() => {
+    onDraftChange(
+      config.provider,
+      dirty
+        ? {
+            label,
+            // Parsed back from the string the effect keys on, so the object is
+            // rebuilt only when the request actually changes.
+            payload: JSON.parse(serialized) as SubscriptionProviderConfigUpsert,
+            blocked: duplicateRole,
+          }
+        : null
+    );
+  }, [config.provider, dirty, duplicateRole, label, onDraftChange, serialized]);
+  useEffect(() => () => onDraftChange(config.provider, null), [config.provider, onDraftChange]);
 
   const rolesMissing =
     acceptsLive && isBoosty && enabled && Boolean(discordGuildId) && roleTiers.length === 0;
@@ -220,227 +255,178 @@ function ProviderEditor({
     method === "code" && enabled && config.codes.length === 0 && newCodes.length === 0;
 
   return (
-    <Card className="rounded-lg border-border/50 bg-muted/10 shadow-none">
-      <CardHeader className="p-3 pb-2 flex flex-row items-center justify-between space-y-0">
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id={`enabled-${config.provider}`}
-            checked={enabled}
-            onCheckedChange={(checked) => setEnabled(checked === true)}
-          />
-          <Label
-            htmlFor={`enabled-${config.provider}`}
-            className="flex cursor-pointer items-center gap-1.5 text-sm font-semibold"
-          >
-            <SocialIcon provider={config.provider} size={16} decorative />
-            {label}
-          </Label>
-          <Badge tone={enabled ? "success" : "neutral"} className="text-xs uppercase font-mono">
-            {enabled ? t("status.active") : t("status.disabled")}
-          </Badge>
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={save.isPending || duplicateRole}
-          onClick={() => save.mutate()}
-        >
-          {save.isPending && (
-            <Spinner className="mr-1.5 size-3.5" />
-          )}
-          {!save.isPending && <Save className="mr-1.5 size-3.5" aria-hidden />}
-          {t("save")}
-        </Button>
-      </CardHeader>
+    <SettingGroup id={`provider-${config.provider}`} title={label}>
+      <SettingRow
+        htmlFor={`enabled-${config.provider}`}
+        label={t("enabled.label")}
+        hint={t("enabled.hint")}
+      >
+        <Checkbox
+          id={`enabled-${config.provider}`}
+          checked={enabled}
+          onCheckedChange={(checked) => setEnabled(checked === true)}
+        />
+      </SettingRow>
 
-      <CardContent className="p-3 pt-1 space-y-3">
-        <div className="space-y-1.5">
-          <Label htmlFor={methodSelectId} className="text-xs font-medium text-muted-foreground">
-            {t("methodLabel")}
-          </Label>
-          <Select value={method} onValueChange={(next) => setMethod(next as VerificationMethod)}>
-            <SelectTrigger
-              id={methodSelectId}
-              className="h-8 w-full text-xs sm:max-w-xs"
-              aria-label={t("methodAria")}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {methodOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value} className="text-xs">
-                  {t(option.labelKey)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {/* The chosen mechanism's consequence stays on screen. A dropdown that
-              hid it would turn "Either" against "Challenge code" into a guess,
-              which is what the radio list spelled out for free. */}
-          {selectedMethod && (
-            <p className="max-w-prose text-xs text-muted-foreground">
-              {t(selectedMethod.descriptionKey)}
-            </p>
-          )}
-        </div>
+      {/* The chosen mechanism's consequence stays on screen. A dropdown that
+          hid it would turn "Either" against "Challenge code" into a guess,
+          which is what the radio list spelled out for free. */}
+      <SettingRow
+        htmlFor={methodSelectId}
+        label={t("methodLabel")}
+        hint={selectedMethod ? t(selectedMethod.descriptionKey) : undefined}
+      >
+        <Select value={method} onValueChange={(next) => setMethod(next as VerificationMethod)}>
+          <SelectTrigger id={methodSelectId} className="w-full" aria-label={t("methodAria")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {methodOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {t(option.labelKey)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </SettingRow>
 
-        {acceptsLive &&
-          (isBoosty ? (
-            <div className="space-y-3 pt-1">
-              <div className="space-y-1">
-                {/* The server's own identity is the status card above — name, icon,
-                    bot reachability. This line only speaks up when there is nothing
-                    to show; the raw snowflake was never the useful half. */}
-                {!discordGuildId && (
-                  <p
-                    className={cn(
-                      "text-xs",
-                      guildMissing ? "font-medium text-destructive" : "text-muted-foreground"
-                    )}
-                  >
-                    {guildMissing ? t("guild.missing") : t("guild.unset")}
-                  </p>
+      {acceptsLive && isBoosty && (
+        <>
+          {/* The bound server's identity (name, icon, bot reachability); with
+              none bound, the line that says so. The raw snowflake was never
+              the useful half. */}
+          <SettingRow label={t("guild.label")} hint={t("guild.hint")}>
+            {discordGuildId ? (
+              <DiscordServerStatus workspaceId={workspaceId} />
+            ) : (
+              <p
+                className={cn(
+                  "text-caption",
+                  guildMissing ? "text-danger" : "text-muted-foreground"
                 )}
-                <p className="max-w-prose text-xs text-muted-foreground">{t("guild.hint")}</p>
-              </div>
+              >
+                {guildMissing ? t("guild.missing") : t("guild.unset")}
+              </p>
+            )}
+          </SettingRow>
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs font-medium">{t("roles.label")}</Label>
+          <SettingRow label={t("roles.label")} stacked>
+            <div className="w-full space-y-2">
+              {roleTiers.map((tier, index) => (
+                <div key={tier.rowId} className="flex flex-wrap items-center gap-2">
+                  <DiscordRoleSelect
+                    workspaceId={workspaceId}
+                    value={tier.role_id}
+                    onChange={(newRoleId) =>
+                      setRoleTiers((rows) =>
+                        rows.map((row, i) => (i === index ? { ...row, role_id: newRoleId } : row))
+                      )
+                    }
+                    onRoleNameSelected={(roleName) =>
+                      setRoleTiers((rows) =>
+                        rows.map((row, i) =>
+                          i === index && !row.tier_label ? { ...row, tier_label: roleName } : row
+                        )
+                      )
+                    }
+                    ariaLabel={t("roles.roleAria")}
+                    // Wide enough that the role name survives once the two
+                    // icon buttons take their 32px each; the row wraps rather
+                    // than truncating the value to nothing.
+                    className="min-w-56 flex-1"
+                  />
+                  <Input
+                    type="number"
+                    min={1}
+                    value={tier.tier_rank}
+                    onChange={(event) =>
+                      setRoleTiers((rows) =>
+                        rows.map((row, i) =>
+                          i === index ? { ...row, tier_rank: Number(event.target.value) || 1 } : row
+                        )
+                      )
+                    }
+                    className="w-20"
+                    aria-label={t("roles.tierRankAria")}
+                  />
+                  <Input
+                    value={tier.tier_label ?? ""}
+                    aria-label={t("roles.tierLabelAria")}
+                    onChange={(event) =>
+                      setRoleTiers((rows) =>
+                        rows.map((row, i) =>
+                          i === index ? { ...row, tier_label: event.target.value } : row
+                        )
+                      )
+                    }
+                    placeholder={t("roles.tierLabelPlaceholder")}
+                    className="min-w-40 flex-1"
+                  />
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    onClick={() =>
-                      setRoleTiers((rows) => [
-                        ...rows,
-                        { role_id: "", tier_rank: rows.length + 1, tier_label: "", rowId: nextRowId() },
-                      ])
-                    }
+                    aria-label={t("roles.removeAria", { number: index + 1 })}
+                    title={t("roles.removeAria", { number: index + 1 })}
+                    onClick={() => setRoleTiers((rows) => rows.filter((_, i) => i !== index))}
                   >
-                    <Plus className="mr-1.5 size-3.5" aria-hidden />
-                    {t("roles.add")}
+                    <Trash2 className="size-3.5" aria-hidden />
                   </Button>
                 </div>
-
-                {roleTiers.map((tier, index) => (
-                  <div key={tier.rowId} className="flex flex-wrap items-center gap-2">
-                    <DiscordRoleSelect
-                      workspaceId={workspaceId}
-                      value={tier.role_id}
-                      onChange={(newRoleId) =>
-                        setRoleTiers((rows) =>
-                          rows.map((row, i) =>
-                            i === index ? { ...row, role_id: newRoleId } : row
-                          )
-                        )
-                      }
-                      onRoleNameSelected={(roleName) =>
-                        setRoleTiers((rows) =>
-                          rows.map((row, i) =>
-                            i === index && !row.tier_label ? { ...row, tier_label: roleName } : row
-                          )
-                        )
-                      }
-                      ariaLabel={t("roles.roleAria")}
-                      // Wide enough that the role name survives once the two
-                      // icon buttons take their 32px each; the row wraps rather
-                      // than truncating the value to nothing.
-                      className="min-w-56 flex-1"
-                    />
-                    <Input
-                      type="number"
-                      min={1}
-                      value={tier.tier_rank}
-                      onChange={(event) =>
-                        setRoleTiers((rows) =>
-                          rows.map((row, i) =>
-                            i === index ? { ...row, tier_rank: Number(event.target.value) || 1 } : row
-                          )
-                        )
-                      }
-                      className="h-8 w-20"
-                      aria-label={t("roles.tierRankAria")}
-                    />
-                    <Input
-                      value={tier.tier_label ?? ""}
-                      aria-label={t("roles.tierLabelAria")}
-                      onChange={(event) =>
-                        setRoleTiers((rows) =>
-                          rows.map((row, i) =>
-                            i === index ? { ...row, tier_label: event.target.value } : row
-                          )
-                        )
-                      }
-                      placeholder={t("roles.tierLabelPlaceholder")}
-                      className="h-8 min-w-40 flex-1"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      aria-label={t("roles.removeAria", { number: index + 1 })}
-                      onClick={() => setRoleTiers((rows) => rows.filter((_, i) => i !== index))}
-                    >
-                      <Trash2 className="size-3.5" aria-hidden />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="grid gap-2 sm:grid-cols-2 pt-1">
-              <div className="space-y-1">
-                <Label htmlFor={`bid-${config.provider}`} className="text-xs font-medium">
-                  {t("broadcaster.idLabel")}
-                </Label>
-                <Input
-                  id={`bid-${config.provider}`}
-                  value={broadcasterId}
-                  onChange={(event) => setBroadcasterId(event.target.value)}
-                  placeholder="12345"
-                  inputMode="numeric"
-                  autoComplete="off"
-                  className="h-8 font-mono"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor={`blogin-${config.provider}`} className="text-xs font-medium">
-                  {t("broadcaster.loginLabel")}
-                </Label>
-                <Input
-                  id={`blogin-${config.provider}`}
-                  value={broadcasterLogin}
-                  onChange={(event) => setBroadcasterLogin(event.target.value)}
-                  placeholder={t("broadcaster.loginPlaceholder")}
-                  autoComplete="off"
-                  className="h-8"
-                />
-              </div>
-              <p className="max-w-prose text-xs text-muted-foreground sm:col-span-2">
-                {t.rich("broadcaster.note", { em: (chunks) => <em>{chunks}</em> })}
-              </p>
-            </div>
-          ))}
-
-        {acceptsCode && (
-          <div className="space-y-2 pt-1">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs font-medium">{t("codes.label")}</Label>
+              ))}
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  setNewCodes((rows) => [...rows, { code: "", tier_rank: 1, rowId: nextRowId() }])
+                  setRoleTiers((rows) => [
+                    ...rows,
+                    { role_id: "", tier_rank: rows.length + 1, tier_label: "", rowId: nextRowId() }
+                  ])
                 }
               >
-                <Plus className="mr-1.5 size-3.5" aria-hidden />
-                {t("codes.addCode")}
+                {t("roles.add")}
               </Button>
             </div>
-            <p className="max-w-prose text-xs text-muted-foreground">
+          </SettingRow>
+        </>
+      )}
+
+      {acceptsLive && !isBoosty && (
+        <>
+          <SettingRow
+            htmlFor={`bid-${config.provider}`}
+            label={t("broadcaster.idLabel")}
+            hint={t.rich("broadcaster.note", { em: (chunks) => <em>{chunks}</em> })}
+          >
+            <Input
+              id={`bid-${config.provider}`}
+              value={broadcasterId}
+              onChange={(event) => setBroadcasterId(event.target.value)}
+              placeholder="12345"
+              inputMode="numeric"
+              autoComplete="off"
+              className="font-mono"
+            />
+          </SettingRow>
+          <SettingRow htmlFor={`blogin-${config.provider}`} label={t("broadcaster.loginLabel")}>
+            <Input
+              id={`blogin-${config.provider}`}
+              value={broadcasterLogin}
+              onChange={(event) => setBroadcasterLogin(event.target.value)}
+              placeholder={t("broadcaster.loginPlaceholder")}
+              autoComplete="off"
+            />
+          </SettingRow>
+        </>
+      )}
+
+      {acceptsCode && (
+        <SettingRow
+          label={t("codes.label")}
+          stacked
+          hint={
+            <>
               {t("codes.hint")}
               {config.codes.length > 0 && (
                 <>
@@ -455,7 +441,10 @@ function ProviderEditor({
                   })}
                 </>
               )}
-            </p>
+            </>
+          }
+        >
+          <div className="w-full space-y-2">
             {newCodes.map((code, index) => (
               <div key={code.rowId} className="flex flex-wrap items-center gap-2">
                 <Input
@@ -470,7 +459,7 @@ function ProviderEditor({
                   placeholder={t("codes.codePlaceholder")}
                   aria-label={t("codes.codeAria")}
                   autoComplete="off"
-                  className="h-8 min-w-40 flex-1"
+                  className="min-w-40 flex-1"
                 />
                 <Input
                   type="number"
@@ -483,7 +472,7 @@ function ProviderEditor({
                       )
                     )
                   }
-                  className="h-8 w-20"
+                  className="w-20"
                   aria-label={t("codes.tierRankAria")}
                 />
                 <Button
@@ -491,45 +480,49 @@ function ProviderEditor({
                   variant="ghost"
                   size="sm"
                   aria-label={t("codes.removeAria", { number: index + 1 })}
+                  title={t("codes.removeAria", { number: index + 1 })}
                   onClick={() => setNewCodes((rows) => rows.filter((_, i) => i !== index))}
                 >
                   <Trash2 className="size-3.5" aria-hidden />
                 </Button>
               </div>
             ))}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setNewCodes((rows) => [...rows, { code: "", tier_rank: 1, rowId: nextRowId() }])
+              }
+            >
+              {t("codes.addCode")}
+            </Button>
             {newCodes.length > 0 && (
-              <p className="text-xs text-warning">
+              <p className="text-caption text-warning">
                 {t("codes.replaceWarning", { count: newCodes.length })}
               </p>
             )}
           </div>
-        )}
+        </SettingRow>
+      )}
 
-        {duplicateRole && (
-          <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-2.5">
-            <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-destructive" aria-hidden />
-            <p className="max-w-prose text-xs text-destructive">{t("warnings.duplicateRole")}</p>
-          </div>
-        )}
-
-        {rolesMissing && (
-          <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-2.5">
-            <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
-            <p className="max-w-prose text-xs text-warning">
+      {(duplicateRole || rolesMissing || codesMissing) && (
+        <div className="space-y-1 py-4 last:pb-0">
+          {duplicateRole && (
+            <p className="max-w-prose text-caption text-danger">{t("warnings.duplicateRole")}</p>
+          )}
+          {rolesMissing && (
+            <p className="max-w-prose text-caption text-warning">
               {t.rich("warnings.rolesMissing", { em: (chunks) => <em>{chunks}</em> })}
             </p>
-          </div>
-        )}
-
-        {codesMissing && (
-          <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-2.5">
-            <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
-            <p className="max-w-prose text-xs text-warning">
+          )}
+          {codesMissing && (
+            <p className="max-w-prose text-caption text-warning">
               {t.rich("warnings.codesMissing", { em: (chunks) => <em>{chunks}</em> })}
             </p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          )}
+        </div>
+      )}
+    </SettingGroup>
   );
 }

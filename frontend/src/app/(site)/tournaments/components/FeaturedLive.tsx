@@ -3,9 +3,12 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
+import { useMinuteClock } from "@/hooks/useMinuteClock";
 import { ArrowRight, Users } from "lucide-react";
 
 import TeamName from "@/components/TeamName";
+import { Button } from "@/components/ui/button";
+import { duelSeats, seatTeam } from "@/lib/encounter/seats";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
 import { tournamentHref } from "@/lib/tournament/url";
 import type { TeamFormation } from "@/types/tournament.types";
@@ -20,7 +23,9 @@ const FeaturedTournamentCard = ({
 }) => {
   const t = useTranslations();
   const format = useFormatter();
+  const now = useMinuteClock();
   const { tournament, current, encounters } = group;
+  const [seatOne, seatTwo] = duelSeats(current.teams);
 
   const stageName = current.stage?.name ?? null;
   const mapName = currentMapName(current);
@@ -100,20 +105,20 @@ const FeaturedTournamentCard = ({
         <div className="vs">
           <div className="team">
             <TeamName
-              team={current.home_team}
+              team={seatTeam(seatOne)}
               fallback={t("common.tbd")}
               size="sm"
               nameClassName="nm"
             />
           </div>
           <span className="score">
-            <span className="em">{current.score?.home ?? 0}</span>
+            <span className="em">{seatOne?.score ?? 0}</span>
             <span className="sep">·</span>
-            {current.score?.away ?? 0}
+            {seatTwo?.score ?? 0}
           </span>
           <div className="team right">
             <TeamName
-              team={current.away_team}
+              team={seatTeam(seatTwo)}
               fallback={t("common.tbd")}
               size="sm"
               nameClassName="nm"
@@ -128,19 +133,23 @@ const FeaturedTournamentCard = ({
         <div className="left">
           <span className="lead-team">
             {t("tournamentsList.featured.started", {
-              time: current.started_at ? format.relativeTime(new Date(current.started_at)) : "—"
+              time: current.started_at && now !== null ? format.relativeTime(new Date(current.started_at), now) : "—"
             })}
           </span>
         </div>
         <div className="right">
-          <Link href={tournamentHref(tournament, "/bracket")} className="tn-btn">
-            {t("common.bracket")}
-            <ArrowRight aria-hidden width={11} height={11} />
-          </Link>
-          <Link href={tournamentHref(tournament)} className="tn-btn primary">
-            {t("common.open")}
-            <ArrowRight aria-hidden width={11} height={11} />
-          </Link>
+          <Button asChild variant="outline" size="xs">
+            <Link href={tournamentHref(tournament, "/bracket")}>
+              {t("common.bracket")}
+              <ArrowRight aria-hidden />
+            </Link>
+          </Button>
+          <Button asChild variant="accent" size="xs">
+            <Link href={tournamentHref(tournament)}>
+              {t("common.open")}
+              <ArrowRight aria-hidden />
+            </Link>
+          </Button>
         </div>
       </div>
     </article>

@@ -1,4 +1,4 @@
-A division is a band of the Overwatch ladder a player falls into. This page covers where the workspace gets player ranks from, and how to build your own division grid instead of the standard Overwatch ladder.
+A division is a band of a game's rank ladder a player falls into. This page covers where the workspace gets player ranks from, and how to shape each game's division grid.
 
 ## Where ranks come from
 
@@ -23,22 +23,30 @@ To fill ranks into a tournament's entries in bulk, use the **Rank autofill** tab
 
 Open **Admin → Settings → Divisions**.
 
-The top of the page shows which version is currently **In force**. Until a version is activated, players are sorted by their Overwatch rank one to one.
+Every enabled game has a grid of its own from the start: its v1 is the game's built-in ladder, one division per rank (Overwatch 45, League of Legends 31, Deadlock 66, VALORANT 25), and it is in force unless the workspace had already chosen another grid for that game. A game enabled later gets its grid the same way.
 
-The page has three parts:
+With several games enabled, the page opens on **Grids by game**: one row per game with the grid in force, its divisions and its ladder bar. A row opens that game. For one game the page has four parts:
 
-- **Version history** — every version of the grid, with **Open editor** and **View**.
+- **In force** — the grid and version every rank of the game resolves through, with the one thing worth doing next: open the draft, activate a ready version or start a new draft.
+- **Grid** and **Version history** — the open grid (a select when the game has several) with its menu, and every version of it with **Open editor** and **View**.
 - **Who reads which version** — the older versions tournaments still read, and whether their divisions translate into the one in force.
-- **Divisions in force** — the active divisions in a table with **#**, **Division**, **Rank range** and **OW ranks** columns.
+- **Divisions in force** — the active divisions in a table with **#**, **Division**, **Rank range** and the game's ladder ranks (**OW ranks**, **LoL ranks**, **Deadlock ranks**, **VAL ranks**).
+
+## Create and manage grids
+
+- **New grid** (beside the page title) creates a grid for the game. Name it and pick what it starts from: **A copy of … · v…** (the version in force) or **The built-in … ladder**. The choice only appears when the two differ. The new grid gets a published v1 and changes nothing until you activate one of its versions.
+- The grid menu (**⋯** beside the grid's name) holds **New draft from the … ladder**, **Rename…**, **Export JSON**, **Archive** / **Restore from archive** and **Delete…**.
+- The grid in force cannot be archived or deleted: activate another grid first.
+- When tournaments are pinned to a grid's versions, **Delete…** asks to **Detach and delete**: type the grid's name to confirm. Those tournaments then read the game's grid in force. Divisions are worked out whenever ranks are read, so nothing is recalculated or lost: the same ranks simply show on the other grid.
 
 ## Build your own grid
 
-1. Press **Load standard OW ladder** to start from the standard ladder, or **New draft from v…** to start from the latest version. The draft editor opens.
-2. On the **Divisions** tab pick the **Rank scale**. With **Follow OW ladder** a division's rank range is its Overwatch ranks: cut a new division at any rank of the ladder on the left, or join one into the division above. With **Custom** you type each division's floor (its ceiling is the floor above minus one) and choose its Overwatch ranks in the **OW ranks** column — for a grid such as twenty divisions of 100 that is not the Overwatch ladder. On both scales the arrows on the ladder move a boundary one rank. Neighbouring divisions can be folded together (**Merge into the division above**, **Merge into the division below**) and any division halved (**Split in two**). Each division can get its own crest through **Set crest…**.
+1. Press **New draft from v…** to start from the latest version, or **New draft from the … ladder** in the grid menu to start from the game's built-in ladder. The draft editor opens.
+2. On the **Divisions** tab pick the **Rank scale**. With **Follow … ladder** a division's rank range is its ladder ranks: cut a new division at any rank of the ladder on the left, or join one into the division above. With **Custom** you type each division's floor (its ceiling is the floor above minus one) and choose its ladder ranks in the **… ranks** column, for a grid such as twenty divisions of 100 that is not the game's ladder. On both scales the arrows on the ladder move a boundary one rank. Neighbouring divisions can be folded together (**Merge into the division above**, **Merge into the division below**) and any division halved (**Split in two**). Each division can get its own crest through **Set crest…**.
 3. The **Changes** tab shows how the draft differs from the version it came from. **Mappings** shows how divisions of older versions translate into this one. Any row can be pointed elsewhere: click one division to send its players there, or a second one to spread them over every division between the two; the dot marks the division they land in. The choice is stored with **Save draft**. **Impact** holds the **Ready to publish?** checklist.
 4. Press **Save draft**, then **Publish v…**, then **Activate v…**.
 
-A draft can be published once every check passes: each Overwatch rank lands in exactly one division, rank ranges do not overlap, all names are set and unique, the draft is saved, and no mapping decisions are left. A crest for every division, and Overwatch ranks for every division on a custom scale, are advice, not conditions.
+A draft can be published once every check passes: each ladder rank lands in exactly one division, rank ranges do not overlap, all names are set and unique, the draft is saved, and no mapping decisions are left. A crest for every division, and ladder ranks for every division on a custom scale, are advice, not conditions.
 
 <Callout>
 Publishing and activating are two separate steps. A published version becomes immutable, but it only becomes the workspace grid after **Activate**.
@@ -58,13 +66,15 @@ Activating changes the division of every player in the workspace at once. Tourna
 ## Bring a grid in from elsewhere
 
 - **Export JSON** saves the selected grid to a file and **Import JSON** loads such a file back. Import the file exactly as it was exported.
-- **Import from workspace…** copies a grid from another workspace. Three steps: **Source**, **Grid & version**, **Create draft**. The second step offers **Copy the division crests** and **Copy the Overwatch rank mapping**. It finishes by opening the new draft on the **Mappings** tab.
+- **Import from workspace…** copies a grid from another workspace. Three steps: **Source**, **Grid & version**, **Create draft**. The second step offers **Copy the division crests** and **Copy the ladder rank links**. It finishes by opening the new draft on the **Mappings** tab.
 
-A grid the workspace does not own cannot be edited here. To change it, create a draft in your workspace's own grid and activate that instead.
+Both imports sit under **Import** beside the page title; **Export JSON** is in the grid menu.
+
+A grid the workspace does not own (a system or shared grid) cannot be edited here. To change it, make a **New grid** from it and activate that instead.
 
 ## Pin a version to one tournament
 
-By default a tournament reads the version in force. To pin a specific one, open that tournament at **Admin → Tournaments → Settings → General** and pick it in **Division grid version**. **Workspace default** hands the tournament back to the shared setting.
+By default a tournament reads the active version for its game. Each game has its own workspace default: activating an Overwatch grid does not replace a LoL grid. To pin a specific version, open that tournament at **Admin → Tournaments → Settings → General** and pick it in **Division grid version**. **Workspace default** returns the tournament to its game's shared setting.
 
 ## Troubleshooting
 
@@ -73,7 +83,7 @@ By default a tournament reads the version in force. To pin a specific one, open 
 | **Publish** is disabled | Read the **Ready to publish?** list on the **Impact** tab; it names what is missing. |
 | **Activate** is disabled | Mappings are incomplete. Open the **Mappings** tab and close the remaining decisions. |
 | A version cannot be edited | Published versions are immutable, because tournaments are pinned to them. Press **Create draft from this version**. |
-| Players sit on the standard ladder although a grid exists | The version is published but not activated. Press **Activate v…**. |
+| Players sit on the built-in ladder although a grid exists | The version is published but not activated. Press **Activate v…**. |
 
 ## See also
 

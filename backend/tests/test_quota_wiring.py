@@ -19,7 +19,7 @@ CHARGE_CALLS = ("quota.charge(", "quota.lease(", "quota.check_payload(")
 #: An entrypoint is any top-level module in the service directory: analytics
 #: hosts its RPC subjects from ``serve_rpc.py`` and its heavy compute from
 #: ``serve.py``, and only the former meters anything, so the scan cannot assume
-#: a single filename.
+#: a single filename. stats-service configures the gate once for both its processes in ``src/core/lifecycle.py``.
 
 
 def _service_dirs() -> list[Path]:
@@ -35,7 +35,7 @@ def _meters(service: Path) -> bool:
 
 
 def _configures(service: Path) -> bool:
-    for entrypoint in sorted(service.glob("*.py")):
+    for entrypoint in sorted([*service.glob("*.py"), *service.glob("src/core/lifecycle.py")]):
         text = entrypoint.read_text(encoding="utf-8")
         if "quota" in text and "configure" in text:
             return True

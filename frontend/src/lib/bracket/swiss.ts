@@ -1,6 +1,18 @@
+import { duelSeats, duelWinner } from "@/lib/encounter/seats";
 import { isEncounterCompleted } from "@/lib/encounter/status";
 
 import type { BracketMatch, RoundGroup } from "./view";
+
+/** The two seats' team ids, slot 1 first; 0 while a seat is empty or has no source team. */
+function teamIdsOf(match: BracketMatch): [number, number] {
+  const [one, two] = duelSeats(match.teams);
+  return [one?.team_id ?? 0, two?.team_id ?? 0];
+}
+
+function scoresOf(match: BracketMatch) {
+  const [one, two] = duelSeats(match.teams);
+  return { one: one?.score ?? 0, two: two?.score ?? 0 };
+}
 
 interface SwissRecord {
   wins: number;
@@ -8,13 +20,13 @@ interface SwissRecord {
   losses: number;
 }
 
-export interface SwissPool {
+interface SwissPool {
   /** "1-0", or "1-0-0" (W-D-L) once the stage has a draw anywhere. */
   label: string;
   matches: BracketMatch[];
 }
 
-export interface SwissRound {
+interface SwissRound {
   round: number;
   /** Best record first: 2-0, 1-1, 0-2. */
   pools: SwissPool[];
@@ -23,10 +35,10 @@ export interface SwissRound {
 export interface SwissPools {
   rounds: SwissRound[];
   /**
-   * Match id → the side whose record differs from its pool's (a Monrad float
+   * Match id → the seat whose record differs from its pool's (a Monrad float
    * down), and that record. The match sits in its better team's pool.
    */
-  floats: Map<number, { side: "home" | "away"; label: string }>;
+  floats: Map<number, { slot: 1 | 2; label: string }>;
 }
 
 const ZERO: SwissRecord = { wins: 0, draws: 0, losses: 0 };
@@ -51,9 +63,8 @@ export function swissPools(groups: RoundGroup[]): SwissPools {
   let hasDraw = false;
   for (const group of ordered) {
     for (const match of group.matches) {
-      if (match.home_team_id > 0) stageTeams.add(match.home_team_id);
-      if (match.away_team_id > 0) stageTeams.add(match.away_team_id);
-      if (isEncounterCompleted(match) && match.score.home === match.score.away) hasDraw = true;
+      for (const teamId of teamIdsOf(match)) if (teamId > 0) stageTeams.add(teamId);
+      if (isEncounterCompleted(match) && duelWinner(scoresOf(match)) == null) hasDraw = true;
     }
   }
   const format = ({ wins, draws, losses }: SwissRecord) =>
@@ -70,15 +81,16 @@ export function swissPools(groups: RoundGroup[]): SwissPools {
   const rounds = ordered.map((group) => {
     const pools = new Map<string, { record: SwissRecord; matches: BracketMatch[] }>();
     for (const match of group.matches) {
-      const home = recordOf(match.home_team_id);
-      const away = recordOf(match.away_team_id);
-      const homeBetter = compareRecords(home, away) >= 0;
-      const record = homeBetter ? home : away;
+      const [oneId, twoId] = teamIdsOf(match);
+      const one = recordOf(oneId);
+      const two = recordOf(twoId);
+      const oneBetter = compareRecords(one, two) >= 0;
+      const record = oneBetter ? one : two;
       const label = format(record);
-      if (compareRecords(home, away) !== 0) {
+      if (compareRecords(one, two) !== 0) {
         floats.set(
           match.id,
-          homeBetter ? { side: "away", label: format(away) } : { side: "home", label: format(home) }
+          oneBetter ? { slot: 2, label: format(two) } : { slot: 1, label: format(one) }
         );
       }
       const pool = pools.get(label) ?? { record, matches: [] };
@@ -88,16 +100,17 @@ export function swissPools(groups: RoundGroup[]): SwissPools {
 
     const played = new Set<number>();
     for (const match of group.matches) {
-      played.add(match.home_team_id);
-      played.add(match.away_team_id);
+      const [oneId, twoId] = teamIdsOf(match);
+      played.add(oneId);
+      played.add(twoId);
       if (!isEncounterCompleted(match)) continue;
-      const { home, away } = match.score;
-      if (home === away) {
-        add(match.home_team_id, "draws");
-        add(match.away_team_id, "draws");
+      const winner = duelWinner(scoresOf(match));
+      if (winner == null) {
+        add(oneId, "draws");
+        add(twoId, "draws");
       } else {
-        add(match.home_team_id, home > away ? "wins" : "losses");
-        add(match.away_team_id, home > away ? "losses" : "wins");
+        add(oneId, winner === 1 ? "wins" : "losses");
+        add(twoId, winner === 1 ? "losses" : "wins");
       }
     }
     for (const teamId of stageTeams) {

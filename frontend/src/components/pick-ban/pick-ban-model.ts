@@ -10,13 +10,13 @@
  * per-side lists have to be read off the submissions rather than the board
  * (design: docs/plans/2026-09-28-pick-ban-constructor.md).
  */
-import type { AqtRoleKey } from "@/lib/roster/player-role";
 import type {
   EncounterGame,
   PickBanEligible,
   PickBanEntry,
   PickBanEntryStatus,
   PickBanGame,
+  PickBanMember,
   PickBanResolvedStep,
   PickBanSession,
   PickBanState,
@@ -26,7 +26,39 @@ import type {
   VetoUnavailableReason
 } from "@/types/tournament.types";
 
-export type PickBanSide = "home" | "away";
+import { duelSeats, type Duel } from "@/lib/encounter/seats";
+import type { EncounterTeam } from "@/types/encounter.types";
+
+/** How long a draft edit waits before it is saved, so five quick clicks are one request. */
+export const DRAFT_SAVE_DELAY_MS = 300;
+
+/**
+ * One participation of the room as its components name it: `id` is the
+ * `EncounterTeam.id` every pick-ban write and read addresses, `slot` fixes the
+ * order (and the accent: slot 1 teal, slot 2 rose).
+ */
+export interface PickBanSeat {
+  id: number;
+  slot: number;
+  name: string;
+}
+
+/** The room's participations from the encounter's live seats, in slot order. */
+export function pickBanSeats(teams: readonly PickBanSeat[]): PickBanSeat[] {
+  return [...teams]
+    .sort((a, b) => a.slot - b.slot)
+    .map(({ id, slot, name }) => ({ id, slot, name }));
+}
+
+/** A participation's display name; empty string for one the room does not know. */
+export function seatName(seats: readonly PickBanSeat[], teamId: number | null | undefined): string {
+  return seats.find((seat) => seat.id === teamId)?.name ?? "";
+}
+
+/** A mix player's name (`state.members`); empty string for one the room does not know. */
+export function memberName(members: readonly PickBanMember[], memberId: number): string {
+  return members.find((member) => member.id === memberId)?.name ?? "";
+}
 
 /**
  * Picked items in their final play order (action_index, legacy `order`
@@ -49,38 +81,19 @@ export interface SeriesMatchLike {
 }
 
 /**
- * One `Match` row per position of the series, 1-based, aligned with `mapIds`
- * (the settled maps in play order — `pickedItemsInOrder`). `null` where nothing
- * has been written for that position yet.
- *
- * The POSITION identifies the row, not the map: a series can play the same map
- * twice, and matching on `map_id` alone printed one play's score on both. A row
- * with no position (every parsed log, and every row written before
- * `Match.map_index` existed) is adopted by the earliest position holding its map
- * that has no exact row — resolved in a second pass, so an exact row is never
- * stolen by an earlier position, and never by two positions at once.
+ * One proven `Match` row per 1-based position. A null map ID means the
+ * game's map was not expanded; the row must still name its exact position.
+ * Unbound observations remain separate history, even on the same map.
  */
 export function seriesMatchesByPosition<T extends SeriesMatchLike>(
   matches: T[],
-  mapIds: number[]
+  mapIds: (number | null)[]
 ): (T | null)[] {
-  const claimed = new Set<T>();
-  const byPosition = mapIds.map((mapId, index) => {
-    const exact = matches.find(
-      (match) => !claimed.has(match) && match.map_id === mapId && match.map_index === index + 1
-    );
-    if (exact != null) claimed.add(exact);
-    return exact ?? null;
-  });
-  return byPosition.map((match, index) => {
-    if (match != null) return match;
-    const adopted = matches.find(
-      (candidate) =>
-        !claimed.has(candidate) && candidate.map_id === mapIds[index] && candidate.map_index == null
-    );
-    if (adopted != null) claimed.add(adopted);
-    return adopted ?? null;
-  });
+  return mapIds.map((mapId, index) =>
+    matches.find(
+      (match) => match.map_index === index + 1 && (mapId == null || match.map_id === mapId)
+    ) ?? null
+  );
 }
 
 /**
@@ -104,11 +117,18 @@ export function gameAtPosition(games: PickBanGame[], position: number): PickBanG
  * settled. The server holds the same line before it advances the series.
  */
 export function acceptedScore(
-  game: EncounterGame | null
-): { home: number; away: number } | null {
+  game: EncounterGame | PickBanGame | null,
+  seats: readonly Pick<EncounterTeam, "id" | "slot">[] | null | undefined
+): Duel<number> | null {
   if (game == null || game.state !== "confirmed") return null;
-  if (game.accepted_home_score == null || game.accepted_away_score == null) return null;
-  return { home: game.accepted_home_score, away: game.accepted_away_score };
+  const lines = "teams" in game ? game.teams : game.results;
+  const [one, two] = duelSeats(seats);
+  const scoreOf = (seat: Pick<EncounterTeam, "id"> | null) =>
+    lines.find((line) => line.encounter_team_id === seat?.id)?.score ?? null;
+  const oneScore = scoreOf(one);
+  const twoScore = scoreOf(two);
+  if (oneScore == null || twoScore == null) return null;
+  return { one: oneScore, two: twoScore };
 }
 
 /**
@@ -234,9 +254,9 @@ export function pickBanReserveMap(session: PickBanSession | null): Map<number, n
  */
 export interface PickBanStepSummary {
   action: PickBanStepAction;
-  /** The acting sides, in resolved order; empty for an engine-resolved step. */
-  sides: PickBanSide[];
-  /** No captain acts here — the engine rolls it (`sides: ["system"]`). */
+  /** The acting participations (`EncounterTeam.id`), in resolved order; empty for an engine-resolved step. */
+  actors: number[];
+  /** No captain acts here — the engine rolls it (`actors: [null]`). */
   system: boolean;
   /** Items per acting side; null when a step takes exactly one. */
   count: number | null;
@@ -252,11 +272,11 @@ export interface PickBanStepSummary {
 }
 
 export function stepSummary(step: PickBanResolvedStep): PickBanStepSummary {
-  const sides = step.sides.filter((side): side is PickBanSide => side !== "system");
+  const actors = step.actors.filter((actor): actor is number => actor !== null);
   return {
     action: step.action,
-    sides,
-    system: sides.length === 0,
+    actors,
+    system: actors.length === 0,
     count: step.count > 1 ? step.count : null,
     blind: step.blind,
     targeted: step.target != null,
@@ -359,13 +379,18 @@ export function stepSubmissions(
   return rows.filter((row) => row.attempt === attempt);
 }
 
-/** The viewer's own submission on the step in play, or null (no step, spectator, nothing sent). */
-export function viewerSubmission(state: PickBanState): PickBanSubmission | null {
-  if (state.current_step_index == null || state.viewer_side == null) return null;
+/**
+ * The viewer's own submission on the step in play, or null (no step, spectator, nothing sent). On a member step it is
+ * the answer of `memberId`, the player being picked for: a teammate's lock is not theirs. A team step never reads a
+ * member's row.
+ */
+export function viewerSubmission(state: PickBanState, memberId: number | null = null): PickBanSubmission | null {
+  if (state.current_step_index == null) return null;
+  const rows = stepSubmissions(state.submissions, state.current_step_index);
+  if (memberId != null) return rows.find((row) => row.team_member_id === memberId) ?? null;
+  if (state.viewer_team_id == null) return null;
   return (
-    stepSubmissions(state.submissions, state.current_step_index).find(
-      (submission) => submission.side === state.viewer_side
-    ) ?? null
+    rows.find((row) => row.encounter_team_id === state.viewer_team_id && row.team_member_id == null) ?? null
   );
 }
 
@@ -406,48 +431,45 @@ export function viewerDraftItems(state: PickBanState): PickBanSubmissionItem[] {
  * them rather than silently showing one side a ban it did not spend.
  */
 export function duplicateItemIds(submissions: PickBanSubmission[]): Set<number> {
-  const sidesByItem = new Map<number, Set<string>>();
+  const teamsByItem = new Map<number, Set<number>>();
   for (const submission of submissions) {
     for (const item of submission.items) {
-      const sides = sidesByItem.get(item.item_id) ?? new Set<string>();
-      sides.add(submission.side);
-      sidesByItem.set(item.item_id, sides);
+      const teams = teamsByItem.get(item.item_id) ?? new Set<number>();
+      teams.add(submission.encounter_team_id);
+      teamsByItem.set(item.item_id, teams);
     }
   }
   return new Set(
-    [...sidesByItem.entries()].filter(([, sides]) => sides.size > 1).map(([itemId]) => itemId)
+    [...teamsByItem.entries()].filter(([, teams]) => teams.size > 1).map(([itemId]) => itemId)
   );
 }
 
-export interface PickBanSideItems {
-  home: PickBanSubmissionItem[];
-  away: PickBanSubmissionItem[];
-}
+/** `EncounterTeam.id` -> the items that participation applied. */
+export type PickBanItemsByTeam = Record<number, PickBanSubmissionItem[]>;
 
 /**
- * What each side applied, in step then item order — optionally narrowed to one
- * round and one action.
+ * What each participation applied, in step then item order — optionally
+ * narrowed to one round and one action.
  *
  * Read from the submissions, never from the board: a blind step where both
- * sides banned the same hero writes ONE banned entry with one `picked_by`, so
- * the board alone would credit the ban to whichever side the projection walked
- * first and leave the other side a ban short.
+ * participations banned the same hero writes ONE banned entry with one
+ * `picked_by_team_id`, so the board alone would credit the ban to whichever
+ * the projection walked first and leave the other a ban short.
  */
-export function appliedItemsBySide(
+export function appliedItemsByTeam(
   sequence: PickBanResolvedStep[],
   submissions: PickBanSubmission[],
   filter: { round?: number | null; action?: PickBanStepAction } = {}
-): PickBanSideItems {
-  const items: PickBanSideItems = { home: [], away: [] };
+): PickBanItemsByTeam {
+  const items: PickBanItemsByTeam = {};
   for (const step of sequence) {
     if (filter.round !== undefined && step.round !== filter.round) continue;
     if (filter.action !== undefined && step.action !== filter.action) continue;
     for (const submission of stepSubmissions(submissions, step.index)) {
       // Applied = revealed, or any draft of an OPEN step: an open step's
       // choices are public the moment they are made (spec §5).
-      if (submission.side === "system") continue;
       if (step.blind && submission.state !== "revealed") continue;
-      items[submission.side].push(...submission.items);
+      (items[submission.encounter_team_id] ??= []).push(...submission.items);
     }
   }
   return items;
@@ -514,7 +536,7 @@ export type PickBanStatusLabelKey = `status.${PickBanEntryStatus | "remaining"}`
  * nobody picked the entry and it is simply what the sequence left standing.
  */
 export function statusLabelKey(entry: PickBanEntry): PickBanStatusLabelKey {
-  if (entry.round != null && entry.status === "picked" && entry.picked_by === "decider") {
+  if (entry.round != null && entry.status === "picked" && entry.picked_by_kind === "decider") {
     return "status.remaining";
   }
   return `status.${entry.status}`;
@@ -585,53 +607,76 @@ export function tileStatus(
 
 // ─── Lobby copy ─────────────────────────────────────────────────────────────
 
-/** One item as the lobby list names it: its role decides which line it lands on. */
-export interface PickBanRoleItem {
-  itemId: number;
-  name: string;
-  role: AqtRoleKey | null;
+/**
+ * A character's class, lowercased: the group vocabulary `item_group` conditions name and the grid filters by.
+ * It is catalog data of the item (`attrs.class`) -- never a player's assigned role -- and `null` when the catalog
+ * has not loaded or the row declares none.
+ */
+export function characterClassOf(item: { attrs?: Record<string, unknown> } | null | undefined): string | null {
+  const value = item?.attrs?.class;
+  return typeof value === "string" && value.trim() !== "" ? value.trim().toLowerCase() : null;
 }
 
-export interface PickBanRoleGroup<T extends PickBanRoleItem = PickBanRoleItem> {
-  /** Null is the "role unknown" bucket — rendered last, never dropped. */
-  role: AqtRoleKey | null;
+/**
+ * Rank of a class in the module's declared `character_classes` order: declared first, undeclared classes after,
+ * "unknown" last. Declarations are compared case-insensitively, like every item group.
+ */
+export function classRank(group: string | null, declared: readonly string[]): number {
+  if (group == null) return declared.length + 1;
+  const index = declared.findIndex((code) => code.trim().toLowerCase() === group);
+  return index === -1 ? declared.length : index;
+}
+
+/** One item as the lobby list names it: its class decides which line it lands on. */
+export interface PickBanClassItem {
+  itemId: number;
+  name: string;
+  /** `characterClassOf` of the catalog row; null is the "class unknown" bucket. */
+  group: string | null;
+}
+
+export interface PickBanClassGroup<T extends PickBanClassItem = PickBanClassItem> {
+  /** Null is the "class unknown" bucket -- rendered last, never dropped. */
+  group: string | null;
   items: T[];
 }
 
-/** Tank-damage-support, the order the game's own hero list uses. */
-const ROLE_ORDER: AqtRoleKey[] = ["tank", "damage", "support"];
-
 /**
- * Items grouped by role in the game's own order, names sorted inside each
- * group. Empty roles are dropped; the unknown-role bucket comes last so a
- * catalog that has not loaded yet never hides an item.
+ * Items grouped by class in the module's declared order, names sorted inside each group. A class the module does
+ * not declare sorts after the declared ones by name; the unknown bucket comes last so a catalog that has not
+ * loaded yet never hides an item.
  */
-export function groupItemsByRole<T extends PickBanRoleItem>(items: T[]): PickBanRoleGroup<T>[] {
-  const byRole = new Map<AqtRoleKey | null, T[]>();
+export function groupItemsByClass<T extends PickBanClassItem>(
+  items: T[],
+  declared: readonly string[] = []
+): PickBanClassGroup<T>[] {
+  const byGroup = new Map<string | null, T[]>();
   for (const item of items) {
-    const bucket = byRole.get(item.role) ?? [];
+    const bucket = byGroup.get(item.group) ?? [];
     bucket.push(item);
-    byRole.set(item.role, bucket);
+    byGroup.set(item.group, bucket);
   }
-  const order: (AqtRoleKey | null)[] = [...ROLE_ORDER, null];
-  return order
-    .filter((role) => (byRole.get(role)?.length ?? 0) > 0)
-    .map((role) => ({
-      role,
-      items: [...byRole.get(role)!].sort((left, right) => left.name.localeCompare(right.name))
+  return [...byGroup.entries()]
+    .sort(
+      ([left], [right]) =>
+        classRank(left, declared) - classRank(right, declared) || (left ?? "").localeCompare(right ?? "")
+    )
+    .map(([group, bucket]) => ({
+      group,
+      items: [...bucket].sort((left, right) => left.name.localeCompare(right.name))
     }));
 }
 
 /**
  * The text the "copy for the lobby" button puts on the clipboard: one line per
- * role, so a captain reads it off while ticking heroes off in the custom-game
- * hero list, which is itself grouped by role.
+ * class, so a captain reads it off while ticking characters off in the
+ * custom-game list, which is itself grouped by class.
  */
 export function lobbyCopyText(
-  groups: PickBanRoleGroup[],
-  roleLabel: (role: AqtRoleKey | null) => string
+  groups: PickBanClassGroup[],
+  groupLabel: (group: string | null) => string
 ): string {
   return groups
-    .map((group) => `${roleLabel(group.role)}: ${group.items.map((item) => item.name).join(", ")}`)
+    .map((group) => `${groupLabel(group.group)}: ${group.items.map((item) => item.name).join(", ")}`)
     .join("\n");
 }

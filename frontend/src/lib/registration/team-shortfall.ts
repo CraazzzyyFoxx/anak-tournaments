@@ -1,7 +1,7 @@
-import { ROSTER_SLOT_CODES, type RosterSlotCode } from "@/lib/roster/shape";
+import type { SlotCode, RosterSlotMap } from "@/lib/roster/shape";
 
-/** A next-intl translator scoped to `rosterShape.slotCodes`. */
-export type SlotLabelTranslator = (code: RosterSlotCode) => string;
+/** Names a slot code: the owner game's role name, or the open slot's label. */
+export type SlotLabelTranslator = (code: SlotCode) => string;
 
 /**
  * "What this roster still needs", rendered from the structured `open_slots` map.
@@ -11,21 +11,18 @@ export type SlotLabelTranslator = (code: RosterSlotCode) => string;
  * slot codes in an English shape, and it was being interpolated verbatim into a
  * Russian sentence. Building it here fixes that.
  *
- * The labels come from `rosterShape.slotCodes`, the SAME translated set the slot
- * chips elsewhere in these cards use. An earlier version of this reached for
- * `ROLE_LABELS` (hardcoded English, and with no `flex` entry), which made one card
- * read "1× DPS" in its shortfall and "Damage" on its invite chip, and rendered a
- * flex slot as the raw code.
+ * The labels come from the owner game's ontology (see `useSlotLabel`), the SAME
+ * names the slot chips elsewhere in these cards use, so one card never reads
+ * "1× DPS" in its shortfall and "Damage" on its invite chip. Codes are listed in
+ * the server's order, which follows the tournament's team format.
  *
  * The server's field stays the source of TRUTH — it is computed against the
  * tournament's real roster shape. This owns only the presentation of the same
  * numbers, which is where presentation belongs.
  */
-export function formatShortfall(
-  openSlots: Partial<Record<RosterSlotCode, number>>,
-  slotLabel: SlotLabelTranslator,
-): string {
-  return ROSTER_SLOT_CODES.filter((code) => (openSlots[code] ?? 0) > 0)
-    .map((code) => `${openSlots[code]}× ${slotLabel(code)}`)
+export function formatShortfall(openSlots: RosterSlotMap, slotLabel: SlotLabelTranslator): string {
+  return Object.entries(openSlots)
+    .filter(([, count]) => (count ?? 0) > 0)
+    .map(([code, count]) => `${count}× ${slotLabel(code)}`)
     .join(", ");
 }

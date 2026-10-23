@@ -11,7 +11,7 @@ type TournamentNavReasonKey =
   | "tournamentDetail.nav.reasons.noTeams";
 
 /** Every section labels itself from `common.<id>`. */
-export type TournamentSectionLabelKey = `common.${TournamentSectionId}`;
+type TournamentSectionLabelKey = `common.${TournamentSectionId}`;
 
 export type TournamentSectionNavItem = {
   id: TournamentSectionId;
@@ -46,6 +46,11 @@ type BuildTournamentSectionNavInput = {
    * regulation nobody wrote, and most tournaments publish none.
    */
   hasRules?: boolean;
+  /**
+   * Whether any map veto config names a map. Absent-or-present like Rules: an
+   * empty Maps tab would promise a pool nobody configured.
+   */
+  hasMapPool?: boolean;
   pathname: string;
 };
 
@@ -149,15 +154,17 @@ export function buildTournamentSectionNav({
   hasTeams = false,
   hasStreams = false,
   hasRules = false,
+  hasMapPool = false,
   pathname
 }: BuildTournamentSectionNavInput): TournamentSectionNavItem[] {
   const competitionStarted = reachedAtLeast(status, "live");
   const currentPath = normalizePathname(pathname);
-  // `stream` and `rules` are present-or-absent rather than open-or-locked,
-  // because a locked tab claims the content exists somewhere. Both are filtered
+  // `stream`, `rules` and `maps` are present-or-absent rather than open-or-locked,
+  // because a locked tab claims the content exists somewhere. They are filtered
   // from their display position so the rail keeps one order in every case.
   const sections = (competitionStarted ? competitionOrder : preCompetitionOrder).filter(
-    (id) => (id !== "stream" || hasStreams) && (id !== "rules" || hasRules)
+    (id) =>
+      (id !== "stream" || hasStreams) && (id !== "rules" || hasRules) && (id !== "maps" || hasMapPool)
   );
 
   return sections.map((id) => {

@@ -3,25 +3,28 @@
 import type { CSSProperties } from "react";
 import { Check } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { aggregateRoleStats } from "@/lib/roster/role-ref";
 
-import DivisionIcon from "@/components/DivisionIcon";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { RankCrest } from "@/components/RankCrest";
+import { RowButton } from "@/components/ui/row-button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { tint } from "@/lib/colors";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { canSeat, type RoomSelection, type TeamView } from "@/lib/draft/room-model";
 import { playerRoles, roleTopHeroes } from "@/lib/draft/workspace-model";
-import { getRoleIconName, ROLE_ACCENT } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { ratedDimension, roleTint, showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { DraftPlayer, DraftRole } from "@/types/draft.types";
 import type { UserDraftCard } from "@/types/user.types";
 import type { DivisionGrid } from "@/types/workspace.types";
 import { formatSubRoleLabel, getHeroIconUrl } from "@/lib/player";
 
-import { Bar, MIN_WINRATE_MAPS, winrateColor } from "./PlayerCareer";
+import { MIN_WINRATE_MAPS, winrateColor } from "./PlayerCareer";
 
 const PRIORITY_KEYS = ["primary", "second", "third"] as const;
-
-const tint = (role: DraftRole, percent: number) =>
-  `color-mix(in srgb, ${ROLE_ACCENT[role]} ${percent}%, transparent)`;
 
 interface RoleTilesProps {
   player: DraftPlayer;
@@ -36,9 +39,11 @@ interface RoleTilesProps {
   /** Only an organizer can act on a missing rank, so only an organizer is told how. */
   isAdmin: boolean;
   divisionGrid: DivisionGrid;
+  /** The session owner's role dictionary: names, glyphs and colours of every tile. */
+  ontology: RoleOntology | null;
 }
 
-/** One tile per role the player plays: rank, crest, sub-role, maps/WR on the role, top heroes with their WR. */
+/** One tile per role the player plays: rank, crest, sub-role, maps/WR on the role, top characters with their WR. */
 export function RoleTiles({
   player,
   selection,
@@ -47,17 +52,23 @@ export function RoleTiles({
   card,
   cardPending,
   isAdmin,
-  divisionGrid
+  divisionGrid,
+  ontology
 }: Readonly<RoleTilesProps>) {
   const t = useTranslations("draftRedesign");
+  const slotLabel = useSlotLabel(ontology);
+  const ratedCode = ontology ? (ratedDimension(ontology)?.code ?? null) : null;
   const roles = playerRoles(player);
-  const displayName = player.battle_tag ?? `#${player.id}`;
+  // A one-role game's tile is the player, not a role: no role name, no priority.
+  const named = showsRoles(ontology);
+  const displayName = player.identity?.handle ?? `#${player.id}`;
   // The team a tile selects for; tiles are read-only chips without one.
   const team = player.status === "available" ? actingTeam : null;
   const interactive = team != null;
   // Stats lines render whenever a card exists or is coming, so arriving data fills them in place.
   const withStats = card != null || cardPending;
-  const heroRecords = new Map(card?.heroes.map((entry) => [entry.hero.slug, entry]) ?? []);
+  const characterRecords = new Map(card?.characters?.map((entry) => [entry.character.slug, entry]) ?? []);
+  const roleTotals = aggregateRoleStats(card?.roles ?? []);
 
   if (roles.length === 0) {
     return (
@@ -75,7 +86,8 @@ export function RoleTiles({
       style={{ "--tiles": roles.length } as CSSProperties}
     >
       {roles.map((role, index) => {
-        const roleLabel = t(`roles.${role}`);
+        const roleLabel = slotLabel(role);
+        const accent = roleTint(ontology, role);
         // The role's OWN rank, never another role's: an unranked role shows the em-dash.
         const rank = player.role_ranks[role] ?? null;
         const division = resolveDivisionFromRank(divisionGrid, rank);
@@ -87,13 +99,13 @@ export function RoleTiles({
         const heroes = roleTopHeroes(player, role).slice(0, 3);
         const usable = team != null && canSeat(team, role);
         const on = selection?.playerId === player.id && selection.role === role;
-        const priority = PRIORITY_KEYS[index];
-        const roleStats = card?.roles.find((entry) => entry.role === role) ?? null;
+        const priority = named ? PRIORITY_KEYS[index] : undefined;
+        const roleStats = roleTotals.find((entry) => entry.role?.dimension === ratedCode && entry.role.role === role) ?? null;
         const share = roleStats && roleStats.maps > 0 ? roleStats.maps_won / roleStats.maps : 0;
         const lowMaps = (roleStats?.maps ?? 0) < MIN_WINRATE_MAPS;
 
         const title = [
-          roleLabel,
+          named ? roleLabel : null,
           rank ?? "—",
           crestLabel,
           borrowed ? t(`rankSource.${borrowed}`) : null,
@@ -105,9 +117,9 @@ export function RoleTiles({
         const content = (
           <>
             <span className="flex min-w-0 items-center gap-2">
-              <PlayerRoleIcon role={getRoleIconName(role)} size={24} color={ROLE_ACCENT[role]} decorative />
+              <PlayerRoleIcon role={role} ontology={ontology} size={24} decorative />
               <span className="flex min-w-0 flex-col">
-                <span className="whitespace-nowrap text-body font-semibold leading-tight">{roleLabel}</span>
+                {named && <span className="whitespace-nowrap text-body font-semibold leading-tight">{roleLabel}</span>}
                 {(priority || subRole) && (
                   <span className="flex min-w-0 items-center gap-1 whitespace-nowrap text-label font-medium leading-snug">
                     {priority && (
@@ -137,15 +149,7 @@ export function RoleTiles({
                   </span>
                 )}
                 <span className="whitespace-nowrap text-ui font-semibold tabular-nums">{rank ?? "—"}</span>
-                {division != null && (
-                  <DivisionIcon
-                    division={division}
-                    tournamentGrid={divisionGrid}
-                    width={28}
-                    height={28}
-                    className="h-7 w-7 shrink-0 object-contain"
-                  />
-                )}
+                <RankCrest division={division} grid={divisionGrid} size={28} tooltip={false} />
               </span>
             </span>
             {(heroes.length > 0 || withStats) && (
@@ -153,8 +157,8 @@ export function RoleTiles({
                 {heroes.length > 0 && (
                   <span className="flex items-start gap-1">
                     {heroes.map((hero) => {
-                      const record = heroRecords.get(hero.slug);
-                      const name = record?.hero.name ?? hero.slug;
+                      const record = characterRecords.get(hero.slug);
+                      const name = record?.character.name ?? hero.slug;
                       const heroShare = record && record.maps > 0 ? record.maps_won / record.maps : 0;
                       const heroLow = record == null || record.maps < MIN_WINRATE_MAPS;
                       const heroTitle =
@@ -167,20 +171,23 @@ export function RoleTiles({
                               }`;
                       return (
                         <span key={hero.slug} className="flex w-8 flex-col items-center gap-0.5" title={heroTitle}>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={getHeroIconUrl(hero.slug, hero.imagePath)}
-                            alt={name}
-                            width={32}
-                            height={32}
-                            className="h-8 w-8 rounded-full object-cover"
+                          <CatalogEntityImage
+                            entity={{ name, image_path: getHeroIconUrl(hero.slug, hero.imagePath) }}
+                            size={32}
+                            title={heroTitle}
                           />
                           {withStats && (
                             <span
                               className="text-label font-semibold leading-none tabular-nums"
                               style={{ color: record ? winrateColor(heroShare, record.maps) : "var(--aqt-fg-muted)" }}
                             >
-                              {cardPending ? <Bar className="w-6" /> : heroLow ? "—" : `${Math.round(heroShare * 100)}%`}
+                              {cardPending ? (
+                                <Skeleton variant="text" aria-hidden className="w-6" />
+                              ) : heroLow ? (
+                                "—"
+                              ) : (
+                                `${Math.round(heroShare * 100)}%`
+                              )}
                             </span>
                           )}
                         </span>
@@ -194,7 +201,7 @@ export function RoleTiles({
                     title={roleStats && roleStats.maps > 0 && lowMaps ? t("island.tile.wrHidden") : t("island.tile.wrTitle")}
                   >
                     {cardPending ? (
-                      <Bar className="w-20" />
+                      <Skeleton variant="text" aria-hidden className="w-20" />
                     ) : roleStats && roleStats.maps > 0 ? (
                       <>
                         {t("island.tile.maps", { n: roleStats.maps })}
@@ -230,7 +237,7 @@ export function RoleTiles({
               key={role}
               title={title}
               className={cn(tileClass, "border")}
-              style={{ borderColor: tint(role, 50), background: tint(role, 8) }}
+              style={{ borderColor: tint(accent, 50), background: tint(accent, 8) }}
             >
               {content}
             </div>
@@ -238,33 +245,36 @@ export function RoleTiles({
         }
 
         return (
-          <button
+          <RowButton
             key={role}
-            type="button"
             aria-pressed={on}
             aria-disabled={!usable || undefined}
-            aria-label={t("island.tile.select", { player: displayName, role: roleLabel })}
+            aria-label={
+              named
+                ? t("island.tile.select", { player: displayName, role: roleLabel })
+                : t("island.tile.selectPlayer", { player: displayName })
+            }
             title={title}
             onClick={() => {
               if (usable) onSelectRole(role);
             }}
             className={cn(
               tileClass,
-              "min-h-11 outline-hidden transition-colors focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-card-2)] motion-reduce:transition-none",
+              "min-h-11 motion-reduce:transition-none",
               on ? "border-2" : "border",
               usable ? "cursor-pointer" : "cursor-default border-dashed opacity-55"
             )}
             style={{
-              borderColor: on ? "var(--aqt-teal)" : usable ? tint(role, 50) : "var(--aqt-border-2)",
+              borderColor: on ? "var(--aqt-teal)" : usable ? tint(accent, 50) : "var(--aqt-border-2)",
               background: on
-                ? "color-mix(in srgb, var(--aqt-teal) 14%, transparent)"
+                ? tint("var(--aqt-teal)", 14)
                 : usable
-                  ? tint(role, 8)
+                  ? tint(accent, 8)
                   : "transparent"
             }}
           >
             {content}
-          </button>
+          </RowButton>
         );
       })}
     </div>

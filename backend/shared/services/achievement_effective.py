@@ -15,29 +15,14 @@ from shared.models.achievements.achievement import (
 from shared.models.tenancy.workspace import WorkspaceMember
 
 
-def override_applies_to_scope(
-    override_tournament_id: int | None,
-    override_match_id: int | None,
-    candidate_tournament_id: int | None,
-    candidate_match_id: int | None,
-) -> bool:
-    """Return True when an override applies to a candidate result scope."""
-    if override_match_id is not None:
-        return override_match_id == candidate_match_id
-
-    if override_tournament_id is not None:
-        return override_tournament_id == candidate_tournament_id
-
-    return True
-
-
 def override_applies_to_scope_sql(
     override_tournament_id: sa.ColumnElement,
     override_match_id: sa.ColumnElement,
     candidate_tournament_id: sa.ColumnElement,
     candidate_match_id: sa.ColumnElement,
 ) -> sa.ColumnElement[bool]:
-    """SQL expression equivalent of :func:`override_applies_to_scope`."""
+    """Whether an override reaches a candidate result: a match override that match only, a tournament override
+    that tournament (its match rows included), a global override everything."""
     return sa.or_(
         sa.and_(
             override_match_id.is_not(None),
@@ -58,6 +43,7 @@ def override_applies_to_scope_sql(
 def build_effective_achievement_rows_subquery(
     *,
     workspace_id: int | None = None,
+    discipline: str | None = None,
     achievement_rule_ids: Iterable[int] | None = None,
     user_ids: Iterable[int] | sa.Select | sa.ScalarSelect | None = None,
     name: str = "effective_achievement_rows",
@@ -69,14 +55,13 @@ def build_effective_achievement_rows_subquery(
       UNION grant overrides
       MINUS revoke overrides scoped by global/tournament/match precedence
 
-    ``user_ids`` may be a SELECTABLE, not just a list. Narrowing matters more here
-    than anywhere else: unrestricted, this scans every evaluation result and grant
-    in the database and evaluates the correlated revoke ``NOT EXISTS`` against each
-    one before grouping. A caller that then inner-joins its own cohort gets the
-    same rows either way -- the join to a unique key IS a membership test -- but
-    pays for the whole table first, which is what timed the compare page out. Pass
-    the cohort as a subquery so the restriction happens before the scan, and NEVER
-    resolve it to a list first: a 560-element ``IN`` list is its own pathology.
+    ``user_ids`` may be a SELECTABLE, not just a list. Unrestricted, this scans
+    every evaluation result and grant in the database and evaluates the
+    correlated revoke ``NOT EXISTS`` against each one before grouping; a caller
+    that inner-joins its own cohort afterwards gets the same rows but pays for
+    the whole table first. Pass the cohort as a subquery so the restriction
+    happens before the scan, and NEVER resolve it to a list first: a
+    several-hundred-element ``IN`` list is its own pathology.
     """
     achievement_rule_ids = list(achievement_rule_ids or [])
     user_scope: typing.Any
@@ -88,13 +73,10 @@ def build_effective_achievement_rows_subquery(
         user_scope = list(user_ids) or None
 
     # ``AchievementEvaluationResult``/``AchievementOverride`` are anchored on
-    # ``workspace_member_id`` now, not the player identity directly. Every
-    # consumer of this subquery still expects a player id under ``user_id``
-    # (revoke matching, rarity counts, per-user pagination), so both branches
-    # join their own ``WorkspaceMember`` row and expose
-    # ``WorkspaceMember.player_id AS user_id`` — the union's shape and the
-    # ``.in_(user_ids)``/revoke semantics are byte-identical from the
-    # consumer's point of view.
+    # ``workspace_member_id``, but every consumer of this subquery expects a
+    # player id under ``user_id`` (revoke matching, rarity counts, per-user
+    # pagination), so both branches join their own ``WorkspaceMember`` row and
+    # expose ``WorkspaceMember.player_id AS user_id``.
     eval_member = sa.orm.aliased(WorkspaceMember, name="eval_member")
     grant_member = sa.orm.aliased(WorkspaceMember, name="grant_member")
 
@@ -123,15 +105,19 @@ def build_effective_achievement_rows_subquery(
         .where(AchievementOverride.action == AchievementOverrideAction.grant)
     )
 
-    if workspace_id is not None:
+    rule_filters = [
+        *([AchievementRule.workspace_id == workspace_id] if workspace_id is not None else []),
+        *([AchievementRule.discipline == discipline] if discipline is not None else []),
+    ]
+    if rule_filters:
         evaluation_rows = evaluation_rows.join(
             AchievementRule,
             AchievementRule.id == AchievementEvaluationResult.achievement_rule_id,
-        ).where(AchievementRule.workspace_id == workspace_id)
+        ).where(*rule_filters)
         grant_rows = grant_rows.join(
             AchievementRule,
             AchievementRule.id == AchievementOverride.achievement_rule_id,
-        ).where(AchievementRule.workspace_id == workspace_id)
+        ).where(*rule_filters)
 
     if achievement_rule_ids:
         evaluation_rows = evaluation_rows.where(

@@ -62,22 +62,26 @@ derives numbers from what is already in the database.
 | Signal reads | Tournament analytics, streaks, performance, standings distributions, match quality, player anomalies, per-player explanations. |
 | Artifact reads | ML model artifacts, optionally filtered to the active one per kind. |
 | Job reads | Active job, recent job list, single job by id. |
-| Light mutations | Manual shift override, anomaly-feedback upsert, and the deprecated OpenSkill v1 method (always `410`). |
-| Job control | Create a job (`compute` or `train_ml`), plus the `recalculate` and `points` wrappers that create a scoped `compute` job, and the deprecated direct `train` / `infer` dispatch. |
+| Light mutations | Manual shift override and anomaly-feedback upsert. |
+| Job control | Create a job (`compute` or `train_ml`), plus the `recalculate` and `points` wrappers that create a scoped `compute` job. |
 
 The full method list with request/response schemas is published at `/api/docs`, generated
 from `src/openapi_schemas.py` (`OPERATIONS`) and `src/openapi_docs.py` (`DOCS`).
 
-**Durable queues consumed** — by `analytics-worker` only, all three declared in
+**Durable queues consumed** — by `analytics-worker` only, all declared in
 `shared/messaging/config.py` with a `dlx` dead-letter exchange and a per-queue message TTL:
 
 | Queue | Payload | Runs | TTL |
 |---|---|---|---|
 | `analytics_job` | `AnalyticsJobRequested` (job id only) | The unified pipeline: dispatch by `AnalyticsJob.kind` to ratings recompute + ML inference (`compute`) or training (`train_ml`) | 1 h |
-| `analytics_train` | `AnalyticsTrainRequest` | `train_all_models` for a cutoff tournament | 1 h |
-| `analytics_infer` | `AnalyticsInferRequest` | `run_for_tournament` | 30 min |
+| `tournament_state_changed` (bound to `tournament.events`, key `tournament.state.changed`) | `TournamentStateChangedEvent` | A tournament that becomes `completed` gets a `compute` job (`src/worker/tournament_events.py`): the `create_job` gates minus the actor, skipped and acked for an unverified workspace or an active job | 5 min |
 
-Each has a matching `<queue>.dlq`.
+Each has a matching `<queue>.dlq`, declared by `analytics-worker` at startup.
+
+**Dispatch** — every request event above that analytics sends (`AnalyticsJobRequested`) is an
+outbox row written in the request's own
+transaction (for a job, the same one that creates the row), relayed by the
+`event_outbox_drain` tick that both processes run every second.
 
 **Realtime** — `analytics-worker` publishes job lifecycle events (`analytics_job.<status>`,
 carrying staged progress and any error) to the `workspace:{id}:analytics_jobs` topic. Each
@@ -89,6 +93,7 @@ events", not to a failed job.
 **Scheduled work** — `analytics-worker` runs one APScheduler cron job, `nightly_drift_check`
 at 03:30 UTC: it builds a feature frame over the last 10 tournaments, computes per-feature
 Wasserstein drift, and emits a Sentry breadcrumb when any feature crosses the threshold.
+Both processes also run the 1 s `event_outbox_drain` (safe on any number of replicas).
 
 The service publishes no domain events of its own.
 
@@ -98,12 +103,62 @@ Writes the whole `analytics` schema: `algorithms`, `player_shift`, `shifts`, `pe
 `standings_distribution`, `match_quality`, `player_anomaly`, `anomaly_feedback`,
 `ml_model_artifact`, and `job`. Every derived row is keyed on `algorithm_id`, so two
 algorithms can hold different opinions about the same `(tournament, player)` without
-overwriting each other. It also writes `realtime.workspace_event` rows for job progress.
+overwriting each other. It also writes `realtime.workspace_event` rows for job progress and
+`event_outbox` rows for its queue dispatches.
 
 Reads, never writes: `tournament` (the `tournament.player` roster slot that every number is
-anchored on, plus teams, encounters and standings), `matches` (reached through the
-encounter, never referenced directly), `registration`, `tenancy`, and `division_grid` (for
-canonical division resolution).
+anchored on, plus teams and standings), native `stats` observations through their bound
+`encounter.game`, `registration`, `tenancy`, and `division_grid` (for canonical division
+resolution). Match features and match-quality scores retain observed `source_position`
+home/away orientation, not encounter slot order. Roster roles/ranks remain the trained
+input boundary; observed snapshots do not replace registration context.
+
+Concrete features, models and the canonical division scale belong to the discipline module
+(`shared/disciplines/overwatch/analytics/`); this service reaches them only through
+`DisciplineSpec.analytics` (`src/core/analytics_exports.py`) and keeps the feature cache, the
+OpenSkill replay, device selection, artifact storage and the registry/jobs/orchestration.
+
+**Discipline, role and algorithm scope.** The tournament that owns a request (the training cutoff, the tournament
+to infer or back-test) decides which module runs; no code path defaults to a game. Its discipline cuts the history,
+split, feature, rating-replay and cache-key scope (a feature-cache entry is keyed on discipline, feature version,
+namespace and the existing workspace/tournament parameters). A cutoff of another discipline, or outside the
+requested workspace allowlist, is rejected. An artifact belongs to the discipline whose module declares its algorithm
+name and kind (`AnalyticsExports.MODELS`); a role artifact also sits on a rated role of that discipline, so
+another algorithm sharing a kind and another game's same-code role (`support`) are never registered, activated or
+loaded. A discipline that declares no analytics module (LoL) offers no algorithm, returns an empty summary from
+automatic enrichment without a single write, and answers explicit train/infer/model requests with 422 before a job is
+admitted or quota is charged. The CLI takes an optional `--discipline` that must agree with the tournament; a
+`backtest` without `--cutoff` requires it, and `backfill` visits only existing, non-hidden, supported tournaments.
+
+The P4 regression oracle (`tests/fixtures/stats_feature_parity.json`) covers all six
+feature/profile families and the actual aligned main/coarse predictor inputs; it supplies no
+fitted artifact. The frozen pre-move evidence for quantile execution, standings/shift prediction
+frames and the predictions of small fitted fixture estimators is
+`tests/fixtures/ml_prediction_parity.json` with the estimator state and provenance in
+`tests/fixtures/ml_pre_move/`; it was captured once under the pre-move code and is never
+regenerated.
+
+### Artifact class move: explicit two-image conversion
+
+`PerformanceModelV2`, `_ConstantClassifier`, `WinProbabilityModel` and `ShiftModelV2` moved into
+`shared.disciplines.overwatch.analytics.models.*`. The runtime keeps **no** old-path alias, so every
+serialized artifact (active **and** historical) is converted in a maintenance window by
+`scripts/convert_discipline_artifacts.py` (`export` → `stage` → `apply`, plus `rollback`); see
+`docs/runbook-shift-recompute.md` for the steps. Nothing is retrained or refit; originals and
+their SHA256 are never modified. The tool is covered by `tests/test_artifact_discipline_conversion.py`
+against the pre-move pickles in `tests/fixtures/ml_pre_move/`. A real deployment inventory,
+export, stage and apply belong to P9 (retained old image, same pinned numerical libraries,
+workers/training/cache writers stopped); an artifact of an unsupported class or state blocks the
+release until an explicit conversion case is implemented and reviewed.
+
+`tests/test_discipline_runtime_smoke.py` runs the whole chain once on a scratch PostgreSQL clone: export under the
+archived pre-move source, stage, `apply`, then the runtime's own registry selection and `run_for_tournament`
+(performance, shift, standings, anomalies, match quality and its standings loader) as a non-owner role with no USAGE on
+the retained legacy schemas. Every frozen D96 receipt is reproduced bit-for-bit by the registry-loaded models, every
+table written equals the one written from an independently assembled registry (the Monte Carlo
+`standings_distribution` included, compared exactly under a seeded test RNG), LoL resolves to no artifact, no module (`UnsupportedAnalytics`) and
+no read or write, and `rollback` restores the original URI set. This is fixture proof only; production artifacts are
+never described as converted until P9 has run the procedure on its real inventory.
 
 Migrations are central — there is one Alembic project at `backend/migrations/` and this
 service ships none. Entity diagrams and column-level detail:
@@ -148,8 +203,6 @@ Settings that change behaviour:
 - `RPC_PREFETCH_COUNT` (default 16) — `analytics-svc` concurrency; the worker uses the
   broker default.
 
-`PORT=8006` in `analytics.env.example` is vestigial; nothing here binds it.
-
 ## Running
 
 ```bash
@@ -188,21 +241,23 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile workers
   `pending` or `running` and raises `JobConflict`, which job-control returns as `409`.
   Before answering "is a job active", the service reconciles rows whose progress contains a
   failed stage but whose status is still active.
-- **Dispatch is fail-closed.** If RabbitMQ is unconfigured or the publish fails, the job
-  row is marked failed and the caller gets `503` / `502` — no job is left `pending` with
-  nothing to consume it.
+- **Dispatch rides the outbox.** A job row and its `AnalyticsJobRequested` commit together, so
+  no crash leaves a `pending` job with nothing to run it; with the broker down the event waits
+  in `event_outbox` and the job stays `pending` until the drain relays it.
 - **Failure is recorded, not retried.** `run_job` catches, rolls back, writes the stage
   detail plus a truncated traceback onto the row, emits a `failed` realtime event, and
-  returns — the message is acked. Redelivery would restart a job the row already reports as
-  failed. Recovery means creating a new job. Messages that do dead-letter (TTL expiry,
-  broker-side nack) land on `<queue>.dlq`.
+  returns — the message is acked. Delivery is at-least-once, so `run_job` skips (acks and
+  logs) a replayed event for a job that already `succeeded` or `failed`; a redelivered
+  `running` job is run again, since on the single worker that means the attempt that marked
+  it died with its connection. Recovery means creating a new job. Messages that do
+  dead-letter (TTL expiry, broker-side nack, a
+  `tournament_state_changed` handler error) land on `<queue>.dlq`.
 - **Do not scale `analytics-worker`.** APScheduler runs in-process with no leader lock, so
   a second replica multi-fires the nightly drift check. Replicating `analytics-svc` is
   fine.
 - **Cost traps.** Training builds feature frames across every tournament up to the cutoff;
   the feature cache is what keeps that tolerable, and clearing it makes the next training
-  run far more expensive. Inference duration is reported as the
-  `analytics.inference.duration` metric.
+  run far more expensive.
 
 Shift and model recompute procedures live in
 [`docs/runbook-shift-recompute.md`](docs/runbook-shift-recompute.md).

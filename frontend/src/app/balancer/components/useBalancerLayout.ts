@@ -2,43 +2,18 @@
 
 import { useEffect, useState, type RefObject } from "react";
 
-import { type BalancerOperationStepDefinition } from "./BalancerOperationDialog";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 
-export const EXPORT_TO_TOURNAMENT_STEPS: BalancerOperationStepDefinition[] = [
-  {
-    id: "validate",
-    label: "Validate selected balance",
-    description: "Check that the selected result can be exported."
-  },
-  {
-    id: "save",
-    label: "Save selected balance",
-    description: "Persist the current teams before exporting them."
-  },
-  {
-    id: "export",
-    label: "Create tournament teams",
-    description: "Replace previously exported teams and create tournament rosters."
-  },
-  {
-    id: "refresh",
-    label: "Refresh tournament data",
-    description: "Update cached balance, team, standings, and public tournament views."
-  }
+import type { BalancerOperationStepId } from "./operation-steps";
+
+export const EXPORT_TO_TOURNAMENT_STEPS: readonly BalancerOperationStepId[] = [
+  "validate",
+  "save",
+  "export",
+  "refresh"
 ];
 
-export const IMPORT_JSON_STEPS: BalancerOperationStepDefinition[] = [
-  {
-    id: "read",
-    label: "Read JSON file",
-    description: "Parse the file and check that it holds a balance payload."
-  },
-  {
-    id: "load",
-    label: "Load balance preview",
-    description: "Add it to the variant list so it can be reviewed, saved or exported."
-  }
-];
+export const IMPORT_JSON_STEPS: readonly BalancerOperationStepId[] = ["read", "load"];
 
 export function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
@@ -51,17 +26,7 @@ export function getErrorMessage(error: unknown, fallback: string): string {
  * so the common case matches between server render and hydration.
  */
 export function useIsWideBalancerLayout(): boolean {
-  const [isWide, setIsWide] = useState(true);
-
-  useEffect(() => {
-    const mql = window.matchMedia("(min-width: 1280px)");
-    const sync = () => setIsWide(mql.matches);
-    sync();
-    mql.addEventListener("change", sync);
-    return () => mql.removeEventListener("change", sync);
-  }, []);
-
-  return isWide;
+  return useMediaQuery("(min-width: 1280px)", true);
 }
 
 /**

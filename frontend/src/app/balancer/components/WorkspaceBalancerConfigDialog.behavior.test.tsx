@@ -6,10 +6,13 @@
 // move the channel, so the save it sends carries the stored one untouched and
 // never 403s the whole dialog.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import en from "@/i18n/messages/en.json";
+import ru from "@/i18n/messages/ru.json";
 import type { WorkspaceBalancerConfig } from "@/types/balancer-admin.types";
 
 import { WorkspaceBalancerConfigDialog } from "./WorkspaceBalancerConfigDialog";
@@ -23,8 +26,6 @@ globalThis.ResizeObserver ??= class {
   unobserve() {}
   disconnect() {}
 } as unknown as typeof ResizeObserver;
-
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 
 // Stands in as the plain field underneath: the real picker fetches the guild's
 // channels, and what this dialog owes it is value/onChange/disabled.
@@ -82,20 +83,22 @@ function tick() {
   return promise;
 }
 
-async function mount() {
+async function mount(locale: "en" | "ru" = "en") {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
   await act(async () => {
     createRoot(container).render(
-      <QueryClientProvider client={client}>
-        <WorkspaceBalancerConfigDialog
-          workspaceId={WORKSPACE_ID}
-          config={CONFIG}
-          open
-          onOpenChange={vi.fn()}
-        />
-      </QueryClientProvider>,
+      <NextIntlClientProvider locale={locale} messages={locale === "en" ? en : ru}>
+        <QueryClientProvider client={client}>
+          <WorkspaceBalancerConfigDialog
+            workspaceId={WORKSPACE_ID}
+            config={CONFIG}
+            open
+            onOpenChange={vi.fn()}
+          />
+        </QueryClientProvider>
+      </NextIntlClientProvider>,
     );
   });
   await act(async () => {
@@ -165,5 +168,17 @@ describe("WorkspaceBalancerConfigDialog", () => {
       mix_voice_category_id: "10",
       mix_general_voice_channel_ids: ["1"],
     });
+  });
+
+  it("reads Russian under the ru catalog", async () => {
+    granted.add("workspace.update");
+    const scope = await mount("ru");
+
+    expect(scope.textContent).toContain("Настройки балансировщика воркспейса");
+    expect(scope.textContent).toContain("Скрывать из пула");
+    expect(byName(scope, "Очистить")).not.toBeNull();
+    expect(byName(scope, "Сохранить")).not.toBeNull();
+    expect(scope.textContent).not.toContain("Workspace balancer settings");
+    expect(scope.textContent).not.toContain("Hide from pool");
   });
 });

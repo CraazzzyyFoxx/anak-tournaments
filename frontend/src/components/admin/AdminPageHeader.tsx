@@ -39,7 +39,7 @@ export function AdminPageHeader({
               // `title` exposes the full string once truncation kicks in.
               <h1
                 title={title}
-                className="truncate text-lg font-semibold tracking-tight text-foreground"
+                className="truncate text-lg font-semibold text-foreground"
               >
                 {title}
               </h1>

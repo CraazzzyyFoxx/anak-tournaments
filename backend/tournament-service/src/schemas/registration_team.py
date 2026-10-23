@@ -4,8 +4,8 @@ The read models deliberately carry the *computed* shortfall alongside the
 denormalized `status`. `status` exists for indexed filtering ("show me incomplete
 teams"); the per-slot `open_slots` is what a captain and an organizer actually act
 on, and it can only come from comparing the roster against the tournament's
-`RosterShape`. Serving only `status` is the §12.5 dead end in read-model form: the
-people in an incomplete team learn they are stuck but not what is missing.
+`RosterShape`. Serving only `status` would tell the people in an incomplete team
+they are stuck but not what is missing.
 """
 
 from __future__ import annotations
@@ -15,9 +15,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from shared.domain.roster_shape import ROSTER_SLOT_CODES, RosterSlotCode
+from shared import models
 from shared.domain.team_roster import RosterOccupancy
-from src import models
+from shared.schemas.role import RoleRef
 from src.schemas.registration import RegistrationSubmit
 
 __all__ = (
@@ -37,14 +37,14 @@ __all__ = (
 class RegistrationTeamCreateRequest(BaseModel):
     """Create a team and register the caller as its captain, in one call.
 
-    The captain is a member like any other (decision 5), so their own registration
+    The captain is a member like any other, so their own registration
     payload rides along and goes through the identical validation a solo entrant
     gets. Splitting this into "create team" then "register captain" would allow a
     captainless team to exist between the two calls.
     """
 
     name: str = Field(min_length=1, max_length=255)
-    slot_code: RosterSlotCode
+    slot_code: str
     registration: RegistrationSubmit
 
     @field_validator("name")
@@ -61,7 +61,7 @@ class RegistrationTeamInviteCreateRequest(BaseModel):
 
     ``target_registration_id`` addresses a free agent already registered for this
     tournament; omitting it produces a shareable link for someone with no account
-    yet (decision 3). Both modes are one entity, so the slot accounting cannot
+    yet. Both modes are one entity, so the slot accounting cannot
     diverge between them.
 
     A REGISTRATION id, not an account id: the captain picks from this tournament's
@@ -71,11 +71,11 @@ class RegistrationTeamInviteCreateRequest(BaseModel):
     resubmitted underneath it.
     """
 
-    slot_code: RosterSlotCode
+    slot_code: str
     is_substitute: bool = False
     target_registration_id: int | None = None
-    #: ``None`` means "no expiry"; the service's default is applied when the field
-    #: is omitted entirely, which is why this is not simply ``int = 7``.
+    #: An explicit ``None`` means "no expiry"; omitting the field applies the
+    #: service's default.
     ttl_days: int | None = Field(default=None, ge=1, le=90)
 
 
@@ -89,9 +89,7 @@ class RegistrationTeamAcceptRequest(BaseModel):
     ``registration`` is OPTIONAL because an invitee who already has a live
     registration is a free agent *attaching*: the service reuses their existing row
     and ignores anything sent here, so demanding a payload would make them re-answer
-    a form they already filled. Required-but-ignored is what it used to be, and the
-    client expressed that by casting an empty object — a lie the type system had no
-    way to catch.
+    a form they already filled.
 
     A genuinely new invitee who sends nothing is still rejected, by the registration
     form's own validation downstream. ``None`` rather than an empty default: a
@@ -124,7 +122,7 @@ class RegistrationTeamRenameRequest(BaseModel):
 
 
 class RegistrationTeamPlaceMemberRequest(BaseModel):
-    slot_code: RosterSlotCode
+    slot_code: str
     is_substitute: bool = False
     swap_with_registration_id: int | None = None
 
@@ -155,16 +153,10 @@ class RegistrationTeamNotesRequest(BaseModel):
     notes: str | None = None
 
 
-class RegistrationTeamPlaceAdminRequest(BaseModel):
-    registration_id: int
-    slot_code: RosterSlotCode
-    is_substitute: bool = False
-
-
 class RegistrationTeamAttachAdminRequest(BaseModel):
     #: Matched against the primary game handle of the tournament's registrations.
     handle: str = Field(min_length=1, max_length=255)
-    slot_code: RosterSlotCode
+    slot_code: str
     is_substitute: bool = False
 
     @field_validator("handle")
@@ -212,11 +204,10 @@ class RegistrationTeamInviteRead(BaseModel):
     slot_code: str
     is_substitute: bool
     state: str
-    #: Who a targeted invite was addressed to, as the captain knows them. The
-    #: account id it replaced was useless to any client and was an internal
-    #: identity leaking outward; a captain managing pending offers needs a name,
-    #: otherwise two chips are indistinguishable and neither can be revoked on
-    #: purpose. ``None`` on a link invite, which has no addressee.
+    #: Who a targeted invite was addressed to, as the captain knows them: a captain
+    #: managing pending offers needs a name to tell two chips apart, and an account
+    #: id would leak an internal identity. ``None`` on a link invite, which has no
+    #: addressee.
     target_handle: str | None = None
     #: True when the invite is a shareable link. The token itself is never
     #: serialized — it is returned once, by the create call.
@@ -254,14 +245,6 @@ class RegistrationTeamRead(BaseModel):
     check_in_total: int = 0
     eligibility_issues: list[TeamEligibilityIssueRead] = Field(default_factory=list)
 
-    @field_validator("open_slots")
-    @classmethod
-    def _known_codes(cls, slots: dict[str, int]) -> dict[str, int]:
-        unknown = set(slots) - set(ROSTER_SLOT_CODES)
-        if unknown:
-            raise ValueError(f"Unknown roster slot codes: {', '.join(sorted(unknown))}")
-        return slots
-
 
 class RegistrationTeamListResponse(BaseModel):
     items: list[RegistrationTeamRead] = Field(default_factory=list)
@@ -288,6 +271,8 @@ class RegistrationTeamInvitePreview(BaseModel):
     tournament_id: int
     tournament_name: str
     workspace_id: int
+    #: The tournament's discipline: the game whose roles name ``slot_code``.
+    discipline: str
     team_id: int
     team_name: str
     slot_code: str
@@ -313,7 +298,7 @@ class RegistrationFreeAgentRead(BaseModel):
     primary_handle: str | None = None
     #: Role codes, primary first. The captain is filling one slot; a list of bare
     #: names would make them open every profile to find a tank.
-    roles: list[str] = Field(default_factory=list)
+    roles: list[RoleRef] = Field(default_factory=list)
 
 
 class RegistrationFreeAgentListResponse(BaseModel):
@@ -355,6 +340,7 @@ class RegistrationTeamInviteHistoryEntry(BaseModel):
     is_substitute: bool
     #: Includes ``expired``, which is not a stored state but a pending row past its
     #: clock. A lapsed offer and a live one are not the same entry to a reader.
+    state: str
     target_handle: str | None = None
     is_link: bool = False
     invited_at: datetime | None = None
@@ -370,9 +356,9 @@ class RegistrationTeamInviteHistoryEntry(BaseModel):
 class RegistrationTeamInviteHistoryResponse(BaseModel):
     """The history plus the cap standing it explains.
 
-    They ship together because apart they are a riddle: the cap counts every invite
-    ever issued while only pending ones were ever visible, so a captain refused at
-    the ceiling had no way to see where it went.
+    They ship together because the cap counts every invite ever issued while the
+    live list shows only pending ones; without the history a captain refused at
+    the ceiling cannot see where the cap went.
     """
 
     items: list[RegistrationTeamInviteHistoryEntry] = Field(default_factory=list)
@@ -384,7 +370,7 @@ class RegistrationTeamInviteHistoryResponse(BaseModel):
 
 
 def serialize_registration_team(
-    team: models.BalancerRegistrationTeam,
+    team: models.RegistrationTeam,
     occupancy: RosterOccupancy,
     *,
     members: list[RegistrationTeamMemberRead] | None = None,
@@ -429,7 +415,7 @@ def serialize_registration_team(
 
 
 def serialize_invite(
-    invite: models.BalancerRegistrationTeamInvite,
+    invite: models.RegistrationTeamInvite,
     *,
     target_handle: str | None = None,
 ) -> RegistrationTeamInviteRead:

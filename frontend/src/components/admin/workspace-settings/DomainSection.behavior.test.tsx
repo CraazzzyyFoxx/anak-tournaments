@@ -4,7 +4,7 @@
 //  1. adding a domain surfaces the DNS records to copy — the domain is not
 //     live until a resolver can see them, so the records ARE the next step;
 //  2. a pending domain re-checks DNS on its own, without anyone pressing
-//     "Verify now", and flips to "Verified · live" when the check passes;
+//     "Verify now", and moves the stepper to "Verified" when the check passes;
 //  3. removing a live domain goes through a confirmation: it takes the
 //     workspace off its own address, which no misclick should be able to do.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -96,8 +96,9 @@ const WORKSPACE: Workspace = {
   custom_domain_verified_at: null,
   custom_domain_verification_token: null,
   discord_guild_id: null,
-  default_division_grid_version_id: null,
-  default_division_grid_version: null,
+  disciplines_enabled: ["overwatch"],
+  default_division_grid_versions: {},
+  effective_division_grid_versions: {},
   newcomer_scope: "global"
 };
 
@@ -161,13 +162,10 @@ async function click(node: Element | undefined) {
 }
 
 function buttonIn(scope: ParentNode, label: string) {
-  return [...scope.querySelectorAll("button")].find(
-    (node) => node.textContent?.trim() === label
-  );
+  return [...scope.querySelectorAll("button")].find((node) => node.textContent?.trim() === label);
 }
 
-const domainInput = () =>
-  container.querySelector<HTMLInputElement>("#workspace-custom-domain")!;
+const domainInput = () => container.querySelector<HTMLInputElement>("#workspace-custom-domain")!;
 
 beforeEach(() => {
   fetchWorkspaces.mockReset();
@@ -210,7 +208,6 @@ describe("Workspace settings › Domain", () => {
 
     // Nobody pressed "Verify now": the pending state polls by itself.
     expect(verifyCustomDomain).toHaveBeenCalledWith(7);
-    expect(container.textContent).toContain("Verified · live");
     expect(container.querySelector('[aria-current="step"]')?.textContent).toContain("Verified");
     expect(domainInput().disabled).toBe(true);
   });

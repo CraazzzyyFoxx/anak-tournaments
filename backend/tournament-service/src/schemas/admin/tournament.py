@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field, model_validator
 from shared.core import tournament_state
 from shared.core.enums import TournamentStatus
 from shared.schemas.draft_format import DraftFormatField
-from shared.schemas.roster_slots import RosterSlotsField
 
 __all__ = (
     "TournamentCreate",
@@ -24,9 +23,9 @@ RULES_MAX_LENGTH = 32_000
 
 
 class TournamentCreate(BaseModel):
-    """Schema for creating a tournament"""
-
     workspace_id: int
+    #: The game the tournament is played in; always the caller's explicit choice (enabled in the workspace).
+    discipline: str
     name: str
     # Public-URL slug. Slugified and uniqueness-checked server-side; left
     # blank, one is generated from `name` (see shared.services.tournament.slug).
@@ -40,21 +39,18 @@ class TournamentCreate(BaseModel):
     end_date: date
     auto_transitions_enabled: bool = True
     allow_late_registration: bool = False
+    # Owner policy for canonical match ingest; false unless the authorized organizer sets it.
+    logs_official: bool = False
     win_points: float = 1.0
     draw_points: float = 0.5
     loss_points: float = 0.0
     division_grid_version_id: int | None = None
-    # None = inherit (workspace default -> built-in 5v5). Normalized by
-    # RosterSlotsField, so the column never stores a zero count.
-    roster_slots_json: RosterSlotsField = None
     # None = the snake default. Normalized by DraftFormatField, so the column
     # never stores round rules a non-custom format would ignore.
     draft_format_json: DraftFormatField = None
 
 
 class TournamentUpdate(BaseModel):
-    """Schema for updating a tournament"""
-
     name: str | None = None
     description: str | None = None
     rules: str | None = Field(default=None, max_length=RULES_MAX_LENGTH)
@@ -72,17 +68,15 @@ class TournamentUpdate(BaseModel):
     allow_late_registration: bool | None = None
     discord_broadcasts_enabled: bool | None = None
     discord_dms_enabled: bool | None = None
+    logs_official: bool | None = None
     win_points: float | None = None
     draw_points: float | None = None
     loss_points: float | None = None
     division_grid_version_id: int | None = None
-    roster_slots_json: RosterSlotsField = None
     draft_format_json: DraftFormatField = None
 
 
 class TournamentStatusTransition(BaseModel):
-    """Schema for transitioning tournament status"""
-
     status: TournamentStatus
     force: bool = False
 
@@ -96,7 +90,7 @@ class TournamentScheduleEntryInput(BaseModel):
 
 
 class TournamentScheduleSet(BaseModel):
-    """Schema for replacing a tournament's phase schedule (full replace)."""
+    """A tournament's whole phase schedule; replaces the stored one."""
 
     schedule: list[TournamentScheduleEntryInput]
 

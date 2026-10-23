@@ -239,7 +239,7 @@ class ChatMuteRepository:
         reason: str | None,
         by_auth_user_id: int,
     ) -> models.ChatMute:
-        """Upsert. Re-muting an already-muted account replaces the term."""
+        """Upsert. Re-muting an already-muted account overwrites the term."""
         stmt = (
             pg_insert(models.ChatMute)
             .values(

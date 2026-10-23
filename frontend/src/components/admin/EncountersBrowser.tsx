@@ -4,18 +4,28 @@ import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
-import { Plus, RefreshCw } from "lucide-react";
+import { FileX2, Plus } from "lucide-react";
 
 import { DataTable } from "@/components/data-table";
+import { StatusIcon } from "@/components/admin/StatusIcon";
+import { RowGameLabel, gameColumn } from "@/components/workspace/game-column";
 import { EncounterForm } from "@/components/admin/EncounterForm";
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { Inspector } from "@/components/kit/Inspector";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { useFilters } from "@/components/kit/useFilters";
+import { gameFilterDefs } from "@/components/admin/game-filter";
 import { hasChallongeSource } from "@/components/admin/tournament-checklist";
-import { TOURNAMENT_QUERY_PARAM, parseTournamentQueryParam } from "@/components/admin/tournament-filter";
+import {
+  TOURNAMENT_QUERY_PARAM,
+  parseTournamentQueryParam,
+  strandedTournamentParams,
+  tournamentOptions
+} from "@/components/admin/tournament-filter";
 import { Button } from "@/components/ui/button";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { Spinner } from "@/components/ui/spinner";
 import { invalidateTournamentWorkspace } from "@/lib/tournament/workspace-query-keys";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
@@ -25,11 +35,12 @@ import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import encounterService from "@/services/encounter.service";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 import type { Encounter } from "@/types/encounter.types";
-import { EmptyNote } from "@/components/kit/EmptyNote";
+import { seatsBySlot } from "@/lib/encounter/seats";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 
-import { encounterScopeLabel } from "./encounters/EncounterCells";
+import { ResultStatusPill, encounterScopeLabel, encounterStatusKey } from "./encounters/EncounterCells";
 import { encounterFilterDefs } from "./encounters/filters";
 import {
   EncounterInspectorActions,
@@ -55,19 +66,29 @@ const PAGE_SIZE = 15;
  */
 export function EncountersBrowser({
   tournamentId,
-  workspaceId
+  workspaceId,
+  discipline,
+  games
 }: Readonly<{
   /** `null` = every tournament in the workspace, with the chip unpinned. */
   tournamentId: number | null;
   workspaceId: number | null;
+  /**
+   * The workspace view's Game chip (`?discipline=`, spec §6.9): `null` = every game, with a "Game" column; a code =
+   * that game's encounters, filtered on the server. Absent in a tournament hub, where the tournament is the game.
+   */
+  discipline?: string | null;
+  /** The community's games, for the Game chip; absent in a hub. */
+  games?: readonly DisciplineDescriptor[];
 }>) {
   const t = useTranslations("adminMatches.encounters");
+  const tGame = useTranslations("common.discipline");
   const formatRound = useBracketRoundLabel();
   const queryClient = useQueryClient();
   const { canAccessPermission } = usePermissions();
   // `id` is the inspector, not a filter: opening a row must not drop the page
   // the row is on, so nothing resets here.
-  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
   const openId = searchParams?.get("id") ?? null;
   // A pre-game room opened from here hands the organizer back to this exact
   // list — chips, page and open row included, since they all live in the URL.
@@ -85,25 +106,28 @@ export function EncountersBrowser({
   const [pageRows, setPageRows] = useState<Encounter[]>([]);
   const [pendingDelete, setPendingDelete] = useState<Encounter | null>(null);
 
-  // Scope: pinned by the hub, or picked with a chip on the workspace browser.
-  const chipTournamentId = parseTournamentQueryParam(
-    searchParams?.get(TOURNAMENT_QUERY_PARAM) ?? null
-  );
+  // The tournament chip works under every game: without one it offers every tournament of the workspace. A tournament
+  // pinned by the hub is the game's owner (`discipline` is absent there).
+  const chipTournamentId = parseTournamentQueryParam(searchParams?.get(TOURNAMENT_QUERY_PARAM) ?? null);
   const scopeTournamentId = tournamentId ?? chipTournamentId;
 
-  const scope = useEncounterScope({ tournamentId, scopeTournamentId });
+  const scope = useEncounterScope({ tournamentId, scopeTournamentId, workspaceId });
   const { stages, teams } = scope;
+  const chipTournamentGame = scope.tournaments.find((tournament) => tournament.id === chipTournamentId)?.discipline;
 
   const defs = useMemo(
-    () =>
-      encounterFilterDefs({
+    () => [
+      // A game pick drops a tournament of another game, with its stage and group.
+      ...gameFilterDefs(games, tGame("column"), (next) => strandedTournamentParams(chipTournamentGame, next)),
+      ...encounterFilterDefs({
         tournamentId,
-        tournaments: scope.tournaments,
+        tournaments: tournamentOptions(scope.tournaments, discipline ?? null),
         stages,
         stageItems: scope.stageItems,
         t: t as unknown as (key: string) => string
-      }),
-    [tournamentId, scope.tournaments, stages, scope.stageItems, t]
+      })
+    ],
+    [games, chipTournamentGame, tournamentId, discipline, scope.tournaments, stages, scope.stageItems, t, tGame]
   );
 
   const filters = useFilters(defs);
@@ -126,6 +150,11 @@ export function EncountersBrowser({
   };
 
   const form = useEncounterForm({ scopeTournamentId, stages, onSaved: invalidate });
+  const formScope = useEncounterScope({
+    tournamentId: form.tournamentId,
+    scopeTournamentId: form.tournamentId,
+    workspaceId
+  });
 
   const deleteMutation = useMutation({
     mutationFn: (encounterId: number) => adminService.deleteEncounter(encounterId),
@@ -146,23 +175,26 @@ export function EncountersBrowser({
     }
   });
 
-  const columns = useEncounterColumns({
+  const baseColumns = useEncounterColumns({
     canUpdate,
     canDelete,
     returnTo,
     onEdit: form.openEdit,
     onDelete: setPendingDelete
   });
+  const columns =
+    discipline === null
+      ? [baseColumns[0], gameColumn<Encounter>(tGame("column"), (row) => row.discipline), ...baseColumns.slice(1)]
+      : baseColumns;
 
   if (workspaceId == null) {
-    return (
-      <EmptyNote>
-        {t("scopePrompt")}
-      </EmptyNote>
-    );
+    return <PageStateCard state="empty" description={t("scopePrompt")} />;
   }
 
   const challongeReady = hasChallongeSource(scope.tournament, stages);
+  // Creating needs a stage to file under and two teams to seat; without them
+  // the button is absent and the empty table says what is missing.
+  const createReady = scopeTournamentId != null && stages.length > 0 && teams.length >= 2;
   const reportsHref =
     tournamentId != null
       ? `/admin/tournaments/${tournamentId}/matches/reports`
@@ -170,23 +202,14 @@ export function EncountersBrowser({
 
   const trailing = (
     <>
-      {canSync ? (
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={syncMutation.isPending || scopeTournamentId == null || !challongeReady}
-          onClick={() => syncMutation.mutate()}
-        >
-          <RefreshCw aria-hidden className="size-4" />
+      {canSync && scopeTournamentId != null && challongeReady ? (
+        <Button variant="outline" size="sm" disabled={syncMutation.isPending} onClick={() => syncMutation.mutate()}>
+          {syncMutation.isPending ? <Spinner /> : null}
           {t("sync")}
         </Button>
       ) : null}
-      {canCreate ? (
-        <Button
-          size="sm"
-          disabled={scopeTournamentId == null || stages.length === 0 || teams.length < 2}
-          onClick={form.openCreate}
-        >
+      {canCreate && createReady ? (
+        <Button size="sm" onClick={form.openCreate}>
           <Plus aria-hidden className="size-4" />
           {t("create")}
         </Button>
@@ -214,69 +237,70 @@ export function EncountersBrowser({
               defs={defs}
               filters={filters}
               trailing={trailing}
-              pinned={
-                tournamentId != null
-                  ? [
-                      {
-                        key: TOURNAMENT_QUERY_PARAM,
-                        label: t("tournamentChip", { name: scope.tournament?.name ?? `#${tournamentId}` })
-                      }
-                    ]
-                  : undefined
-              }
             />
           }
           emptyMessage={
             scopeTournamentId == null
               ? t("emptyTournament")
-              : t("empty")
+              : canCreate && !createReady
+                ? t("createNeeds")
+                : t("empty")
           }
           onRowClick={(row) => setParams({ id: String(row.original.id) })}
-          renderMobileCard={(row) => (
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{row.original.name}</p>
-              <p className="truncate text-xs text-muted-foreground">
-                {encounterScopeLabel(row.original)} · R{row.original.round} ·{" "}
-                <span className="font-mono tabular-nums">
-                  {row.original.score.home}&ndash;{row.original.score.away}
-                </span>
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {row.original.status} · {row.original.has_logs ? t("logsMobile") : t("noLogsMobile")}
-              </p>
-            </div>
-          )}
+          renderMobileCard={(row) => {
+            const status = encounterStatusKey(row.original.status);
+            const scopeLabel = encounterScopeLabel(row.original);
+            return (
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <p className="truncate text-sm font-medium">{row.original.name}</p>
+                {discipline === null ? (
+                  <RowGameLabel code={row.original.discipline} className="flex text-xs text-muted-foreground" />
+                ) : null}
+                <p className="truncate text-xs text-muted-foreground">
+                  {scopeLabel ? `${scopeLabel} · ` : null}R{row.original.round} ·{" "}
+                  <span className="tabular-nums">
+                    {seatsBySlot(row.original.teams).map((seat) => seat.score).join("\u2013")}
+                  </span>
+                </p>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  {status && status !== "completed" ? <span>{t(status)}</span> : null}
+                  <ResultStatusPill status={row.original.result_status} />
+                  {row.original.has_logs ? null : <StatusIcon icon={FileX2} label={t("noLogs")} variant="muted" />}
+                </div>
+              </div>
+            );
+          }}
           queryKey={(page, search, pageSize, sortField, sortDir) => [
             "encounters",
+            workspaceId,
             scopeTournamentId,
             page,
             search,
             pageSize,
             sortField,
             sortDir,
-            { stage: stageFilter, group: groupFilter, status: statusFilter, has_logs: logsFilter }
+            { stage: stageFilter, group: groupFilter, status: statusFilter, has_logs: logsFilter },
+            discipline ?? null
           ]}
-          queryFn={async (page, search, pageSize, sortField, sortDir) => {
-            const result = await encounterService.getAll(
+          queryFn={(page, search, pageSize, sortField, sortDir) =>
+            encounterService.getAll(
               page,
               search,
               scopeTournamentId,
               pageSize,
               sortField,
               sortDir,
-              undefined,
+              workspaceId,
               {
                 stage_id: stageFilter ? Number(stageFilter) : null,
                 stage_item_id: groupFilter ? Number(groupFilter) : null,
                 status: statusFilter || null,
-                has_logs: logsFilter ? logsFilter === "true" : null
+                has_logs: logsFilter ? logsFilter === "true" : null,
+                discipline: discipline ?? null
               }
-            );
-            // The inspector pages through the rows currently on screen, and the
-            // table owns the fetch, so this is where that page is observed.
-            setPageRows(result.results);
-            return result;
-          }}
+            )
+          }
+          onPageRowsChange={setPageRows}
         />
       </div>
 
@@ -324,7 +348,6 @@ export function EncountersBrowser({
           if (!next) form.close();
         }}
         title={form.mode === "edit" ? t("editTitle") : t("createTitle")}
-        description={t("createDescription")}
         isSubmitting={form.isSaving}
         submittingLabel={form.mode === "edit" ? t("updating") : t("creating")}
         errorMessage={form.error}
@@ -338,8 +361,8 @@ export function EncountersBrowser({
           mode={form.mode === "edit" ? "edit" : "create"}
           value={form.value}
           onChange={form.setValue}
-          stages={stages}
-          teams={teams}
+          stages={formScope.stages}
+          teams={formScope.teams}
         />
       </EntityFormDialog>
 
@@ -351,7 +374,7 @@ export function EncountersBrowser({
         pending={deleteMutation.isPending}
         intent={{
           title: t("delete"),
-          description: t("deleteDescription", { name: pendingDelete?.name ?? "this encounter" }),
+          description: t("deleteDescription", { name: pendingDelete?.name ?? "" }),
           confirmLabel: t("delete"),
           tone: "danger",
           cascade: [t("allMatches"), t("attachedStats")]

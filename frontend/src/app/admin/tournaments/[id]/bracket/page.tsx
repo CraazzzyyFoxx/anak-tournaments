@@ -45,23 +45,27 @@ export default function BracketTabPage() {
     queryFn: () => adminService.getStages(tournamentId)
   });
 
-  const { data: tournament } = useQuery({
+  const tournamentQuery = useQuery({
     queryKey: adminQueryKeys.tournament(tournamentId),
     queryFn: () => adminService.getTournament(tournamentId)
   });
+  const tournament = tournamentQuery.data;
 
-  const { data: teamsData, isLoading: isTeamsLoading } = useQuery({
+  const teamsQuery = useQuery({
     queryKey: adminQueryKeys.tournamentTeamCatalog(tournamentId),
     queryFn: () => teamService.getAll({ tournamentId, sort: "name", order: "asc" })
   });
+  const teamsData = teamsQuery.data;
+  const isTeamsLoading = teamsQuery.isLoading;
 
   const stages = stagesQuery.data ?? [];
 
-  const { data: stageProgress = [] } = useQuery({
+  const progressQuery = useQuery({
     queryKey: adminQueryKeys.stagesProgress(tournamentId),
     queryFn: () => adminService.getStagesProgress(tournamentId),
     enabled: stages.length > 0
   });
+  const stageProgress = useMemo(() => progressQuery.data ?? [], [progressQuery.data]);
 
   const orderedStages = useMemo(
     () => [...stages].sort((left, right) => left.order - right.order),
@@ -82,12 +86,17 @@ export default function BracketTabPage() {
     orderedStages.find((stage) => stage.id === stageParam) ??
     (isMobile ? null : (orderedStages.at(-1) ?? null));
 
-  if (stagesQuery.isError) {
+  // The editor reads all four: a failed team catalogue would draw "0 teams"
+  // and empty pickers, which is a lie, not a state.
+  const failedQuery = [stagesQuery, tournamentQuery, teamsQuery, progressQuery].find(
+    (query) => query.isError
+  );
+  if (failedQuery) {
     return (
       <PageStateCard
         state="error"
         title={t("loadError")}
-        onAction={() => void stagesQuery.refetch()}
+        onAction={() => void failedQuery.refetch()}
       />
     );
   }
@@ -103,7 +112,6 @@ export default function BracketTabPage() {
         <StageList
           tournamentId={tournamentId}
           stages={orderedStages}
-          teamsCount={teams.length}
           progressByStageId={progressByStageId}
           selectedStageId={selectedStage?.id ?? null}
           onSelect={(stageId) => setParams({ stage: stageId, section: null })}
@@ -131,11 +139,7 @@ export default function BracketTabPage() {
         <PageStateCard
           state="empty"
           title={orderedStages.length > 0 ? t("noStageSelected") : t("noStages")}
-          description={
-            orderedStages.length > 0
-              ? t("pickStage")
-              : t("addFirstStage")
-          }
+          description={orderedStages.length > 0 ? t("pickStage") : t("addFirstStage")}
         />
       }
     />

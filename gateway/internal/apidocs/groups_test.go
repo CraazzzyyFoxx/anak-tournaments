@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/app"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/openapi"
 )
 
@@ -77,6 +78,18 @@ func TestGroups_NoOverlap(t *testing.T) {
 	for op := range opSet(admin) {
 		if pubOps[op] {
 			t.Errorf("operation %q appears in both public and admin specs", op)
+		}
+	}
+}
+
+// TestGroups_WorkspaceAndQuotaAdminDocumented: both tables are registered on the
+// mux (main.go) but were in no group, so 27 working routes had no docs page.
+func TestGroups_WorkspaceAndQuotaAdminDocumented(t *testing.T) {
+	_, admin := Groups()
+	adminOps := opSet(admin)
+	for _, r := range concat(app.WorkspaceWriteRoutes, app.QuotaAdminRoutes) {
+		if op := strings.ToLower(r.Method) + " " + r.Pattern; !adminOps[op] {
+			t.Errorf("%s is served but not on the admin docs page", op)
 		}
 	}
 }

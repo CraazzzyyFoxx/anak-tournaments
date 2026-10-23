@@ -1,12 +1,12 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { useTranslations } from "next-intl";
 
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { useQueryParams } from "@/hooks/useQueryParams";
-import { cn } from "@/lib/utils";
-import type { MapRead } from "@/types/map.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 
 import styles from "../TournamentDetail.module.css";
 import { MapCard } from "../_components/MapCard";
@@ -22,22 +22,17 @@ import {
 } from "../_hooks/useTournamentMapPool";
 import { getPublicPageQueryPresentation } from "@/lib/public-page-query-presentation";
 
-const EYEBROW =
-  "aqt-tnum block text-label uppercase tracking-[0.06em] text-[color:var(--aqt-fg-faint)]";
-const LABEL =
-  "text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
-
-type Gamemode = NonNullable<MapRead["gamemode"]>;
+type Gamemode = CatalogEntityRead;
 
 /** The one game mode every map here plays, or `null` when they disagree. */
-function singleGamemode(maps: readonly MapRead[]): Gamemode | null {
-  const first = maps[0]?.gamemode ?? null;
+function singleGamemode(maps: readonly CatalogEntityRead[]): Gamemode | null {
+  const first = maps[0]?.parent ?? null;
   if (first === null) return null;
-  return maps.every((map) => map.gamemode?.id === first.id) ? first : null;
+  return maps.every((map) => map.parent?.id === first.id) ? first : null;
 }
 
 /** Every map of a pool-mode round, in mode order. */
-function roundPoolMaps(round: MapPoolScopeView): MapRead[] {
+function roundPoolMaps(round: MapPoolScopeView): CatalogEntityRead[] {
   return round.pool.byGamemode.flatMap((group) => group.maps);
 }
 
@@ -65,11 +60,12 @@ function ModeIcon({ gamemode }: Readonly<{ gamemode: Gamemode | null }>) {
  * before the tournament starts, and Statistics is locked until it does.
  */
 export default function TournamentMapsPage({
-  tournamentId
-}: Readonly<{ tournamentId: number; slug: string }>) {
+  tournamentId,
+  discipline
+}: Readonly<{ tournamentId: number; slug: string; discipline: string }>) {
   const t = useTranslations();
   const { searchParams, setParams } = useQueryParams();
-  const mapPool = useTournamentMapPool(tournamentId);
+  const mapPool = useTournamentMapPool(tournamentId, discipline);
 
   // `useTournamentMapPool` exposes no `data`, so "has something to show" is
   // derived: an errored first read leaves the pool empty, and passing that
@@ -138,9 +134,9 @@ export default function TournamentMapsPage({
             {/* Title and lede on one line: together they are one caption for
                 everything below, not two blocks of their own. */}
             <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <h2 className={EYEBROW}>
+              <Eyebrow as="h2" className="aqt-tnum block">
                 {t("tournamentDetail.mapPool.title", { count: pool.total })}
-              </h2>
+              </Eyebrow>
               <p className="text-caption text-[color:var(--aqt-fg-faint)]">
                 {t("tournamentDetail.mapPool.rounds.lede")}
               </p>
@@ -154,10 +150,10 @@ export default function TournamentMapsPage({
               <div className="grid gap-5">
                 {pool.byGamemode.map((group) => (
                   <div key={group.gamemode}>
-                    <h3 className={cn(LABEL, "mb-2 flex items-center gap-1.5")}>
-                      {group.maps[0]?.gamemode?.image_path ? (
+                    <Eyebrow as="h3" className="mb-2 flex items-center gap-1.5">
+                      {group.maps[0]?.parent?.image_path ? (
                         <Image
-                          src={group.maps[0].gamemode.image_path}
+                          src={group.maps[0].parent.image_path}
                           alt=""
                           width={14}
                           height={14}
@@ -168,7 +164,7 @@ export default function TournamentMapsPage({
                       <span className="aqt-tnum text-[color:var(--aqt-fg-dim)]">
                         {group.maps.length}
                       </span>
-                    </h3>
+                    </Eyebrow>
                     <div
                       className="grid gap-2"
                       style={{ gridTemplateColumns: "repeat(auto-fill, minmax(11rem, 1fr))" }}
@@ -225,12 +221,12 @@ export default function TournamentMapsPage({
                                       className="grid grid-cols-1 gap-2 px-3.5 py-3 sm:grid-cols-[minmax(4.5rem,5.5rem)_minmax(0,1fr)] sm:items-center sm:gap-3"
                                     >
                                       {slot.position > 0 ? (
-                                        <div className={cn(LABEL, "flex items-center gap-1.5")}>
+                                        <Eyebrow as="div" className="flex items-center gap-1.5">
                                           <ModeIcon gamemode={slotMode} />
                                           {t("tournamentDetail.mapPool.slot", {
                                             n: slot.position
                                           })}
-                                        </div>
+                                        </Eyebrow>
                                       ) : (
                                         <span className="hidden sm:block" />
                                       )}

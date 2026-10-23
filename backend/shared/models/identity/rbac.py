@@ -26,8 +26,8 @@ user_roles = Table(
     Column("user_id", Integer, ForeignKey("auth.user.id", ondelete="CASCADE"), nullable=False),
     Column("role_id", Integer, ForeignKey("auth.roles.id", ondelete="CASCADE"), nullable=False),
     Column("created_at", db.DateTime(timezone=True), server_default=text("now()"), nullable=False),
-    # FK indexes created CONCURRENTLY by dbarch01 (permission resolution and
-    # user/role CASCADE deletes previously seq-scanned this table).
+    # FK indexes for permission resolution and user/role CASCADE deletes
+    # (created CONCURRENTLY by dbarch01).
     Index("ix_user_roles_user_id", "user_id"),
     Index("ix_user_roles_role_id", "role_id"),
     schema="auth",

@@ -44,7 +44,7 @@ COPY pyproject.toml uv.lock /app/
 
 COPY app-service/pyproject.toml /app/app-service/pyproject.toml
 COPY identity-service/pyproject.toml /app/identity-service/pyproject.toml
-COPY parser-service/pyproject.toml /app/parser-service/pyproject.toml
+COPY stats-service/pyproject.toml /app/stats-service/pyproject.toml
 COPY tournament-service/pyproject.toml /app/tournament-service/pyproject.toml
 COPY discord-service/pyproject.toml /app/discord-service/pyproject.toml
 COPY balancer-service/pyproject.toml /app/balancer-service/pyproject.toml

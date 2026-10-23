@@ -69,8 +69,10 @@ Arbitrary Tailwind colours need the `color:` hint:
 | `--aqt-card-2`         | `hsl(222 24% 11%)`       | nested surface, bar track on a card              |
 | `--aqt-overlay-1`      | `hsl(0 0% 100% / 0.015)` | group card fill (`.team-card`)                   |
 | `--aqt-overlay-2`      | `hsl(0 0% 100% / 0.025)` | **row hover**, bar track                         |
-| `--aqt-overlay-3`      | `hsl(0 0% 100% / 0.05)`  | pressed / neutral tint                           |
+| `--aqt-overlay-3`      | `hsl(0 0% 100% / 0.05)`  | pressed / neutral tint, a tonal button at rest   |
+| `--aqt-overlay-4`      | `hsl(0 0% 100% / 0.08)`  | a tonal button under the pointer                 |
 | `--aqt-overlay-border` | `hsl(0 0% 100% / 0.06)`  | group card border, in-card dividers              |
+| `--aqt-sheen`          | `hsl(0 0% 100% / 0.22)`  | the 1px light along a filled button's top edge   |
 | `--aqt-border`         | `hsl(219 19% 15%)`       | hairline, section card border                    |
 | `--aqt-border-2`       | `hsl(217 17% 21%)`       | control border                                   |
 | `--aqt-border-3`       | `hsl(216 16% 26%)`       | hover / focus / active border                    |
@@ -143,6 +145,29 @@ carries its line-height, weight stays explicit):
 - `cn()` (`lib/utils.ts`) knows these role names; keep using it, or
   tailwind-merge files `text-label` under colour and drops it.
 
+### Control text
+
+A control's text is set by its primitive, never at the call site. The `size`
+prop picks the row; the text follows the row height:
+
+| Row                  | `size`           | Text                 |
+| -------------------- | ---------------- | -------------------- |
+| 32px (toolbar row)   | `sm`             | 13px `text-caption`  |
+| 36 / 40px (form row) | `default` / `lg` | 14px `text-sm`       |
+
+- Weight follows the role: what you press (`Button`, `SelectTrigger`,
+  `FilterChip`, `ToggleGroupItem`, `TabsTrigger`, date and combobox
+  triggers) is 500; what you type into (`Input`, `NumberInput`, `TimeInput`,
+  `Textarea`, `SearchField`) is 400.
+- A filled button (`default`, `destructive`, `positive`) is 600; its text is
+  its row's size and sentence case, like every control. The fill and its
+  sheen carry the emphasis, not the type.
+- Text-entry fields stay 16px below `sm`: iOS Safari zooms into any smaller
+  focused field. The primitives carry this; do not undo it.
+- No `text-*` or `font-*` on a control, no `h-8`/`h-9` where `size` says it.
+  `Button`, `SelectTrigger`, `Input`, `NumberInput` and `TimeInput` take
+  `size="sm"`; a smaller box (`h-7`) still takes `size="sm"` for its text.
+
 ## 4. Chips — the policy
 
 A chip is a small bordered or tinted label. The codebase has about 30
@@ -195,6 +220,7 @@ plain fact. That ends here.
 | Section card (`Card`, `.card`) | 12px (`rounded-xl`)     | `--aqt-card` fill, `--aqt-border` border              |
 | Page hero (`HeroFrame`)        | 14px (`--aqt-radius`)   | `--aqt-bg-2`, one teal hairline, one corner glow      |
 | Controls, filter chip          | 8px (`--aqt-radius-sm`) | `--aqt-overlay-2`, `--aqt-border-2`                   |
+| Button (`ui/button.tsx`)       | 8px (`rounded-lg`)      | filled: its tone + `--aqt-sheen` top line; `outline`: `--aqt-overlay-3` + `--aqt-border-2` + an `--aqt-overlay-3` top line |
 | Status pill, `Badge`           | `rounded-md`            | tone tint (`TONE_CLASS`)                              |
 | Bars                           | `rounded-full`          | `--aqt-overlay-2` / `--aqt-card-2` track              |
 
@@ -204,7 +230,12 @@ plain fact. That ends here.
 - **When to frame.** Frame a group of rows that belong together (a team, a
   round, a role column, a day of matches) or a dense data block. A page
   section is open: a heading, then its content.
-- No shadows on dark surfaces; elevation is fill + border.
+- No shadows on dark surfaces; elevation is fill + border. The one exception
+  is a button's inset 1px top line (`--aqt-sheen` on a filled button,
+  `--aqt-overlay-3` on a tonal one): a lit edge, not a drop shadow.
+- A button sits above its surface, never below it: its fill is lighter than
+  the page, card or dialog it is on. A fill darker than the surface reads as
+  a hole, not as something to press.
 - Hover on a row is `bg-[color:var(--aqt-overlay-2)]`; on a card it is the
   border moving to `--aqt-border-3` (or teal for a whole-card link). Never a
   scale or size change.
@@ -216,33 +247,50 @@ plain fact. That ends here.
 | Need                       | Use                                                                                                                                                                                                                                                                                                    |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Titled group card          | `TournamentTeamCardFrame` (`components/TournamentTeamCard.tsx`): `name`, optional `leadingTag` / `positionTag`, `metricLabel` + `metricValue` on the right, `side` for a home/away top edge. Teams, match rounds, map-pool rounds and stat role columns all use it. Do not retype its classes by hand. |
-| Section card               | `Card` (`ui/card.tsx`, keeps `data-ui="card"`)                                                                                                                                                                                                                                                         |
+| Section card               | `Card` (`ui/card.tsx`, keeps `data-ui="card"`); `variant="flat"` for a list or table frame with no shadow — never a hand-typed `rounded-xl border bg-card` |
 | Page hero                  | `PageHero` / `HeroFrame` (`components/site/PageHero.tsx`); `variant="plain"` on `/` and `/get-workspace`                                                                                                                                                                                               |
-| Profile section / open KPI | `CardSurface`, `ProfileStat` (`users/components/shared/atoms.tsx`): uppercase label, Onest figure, dim sub line, colour only for quality                                                                                                                                                               |
+| Profile section / open KPI | `CardSurface`, `ProfileStat`, `SummaryCellBox` (`components/profile/atoms.tsx`): uppercase label, Onest figure, dim sub line, colour only for quality                                                                                                                                                  |
 | Empty / error / not-found  | `PageStateCard` (`ui/page-state-card.tsx`); on tournament sections `TournamentPageState` (adds `refresh-error` under stale content)                                                                                                                                                                    |
-| Skeletons                  | `ui/skeleton.tsx`; tournament sections `_components/TournamentSkeletons.tsx`; dashboards `components/skeletons/dashboard-skeletons.tsx`                                                                                                                                                                |
-| Link with hover prefetch   | `HoverPrefetchLink`                                                                                                                                                                                                                                                                                    |
+| Skeletons                  | `ui/skeleton.tsx` (`variant="text"` for one line of text; stops pulsing under reduced motion); tournament sections `_components/TournamentSkeletons.tsx`; open sections draw their own skeleton beside the section (`LeadersSkeleton`, `statistics/_components/*Skeleton`)            |
+| Link with hover prefetch   | `HoverPrefetchLink`; "← Back to …" text link `BackLink` (`components/site/BackLink.tsx`)                                                                                                                                                                                                              |
 | Team identity              | `TeamName` / `TeamLogo` (`components/TeamName.tsx`) — no fallback glyph when a team has no image                                                                                                                                                                                                       |
-| Player identity            | `PlayerName`, roster rows `RosterPlayer` / `RosterRole` / `RosterRank` (`TournamentTeamCard.tsx`)                                                                                                                                                                                                      |
-| Role / division marker     | `PlayerRoleIcon`, `DivisionIcon`                                                                                                                                                                                                                                                                       |
-| Hero avatars               | `HeroImage`, `HeroStrip` (collapsing `+N` stack)                                                                                                                                                                                                                                                       |
+| Player identity            | `PlayerName` (profile link); a bare handle `HandleLabel` (`components/HandleLabel.tsx`: name + faint `#tag`, the tag truncates first) over `splitHandle` (`lib/player.ts`) — never `split("#")`; avatar `PlayerAvatar`; roster rows `RosterPlayer` / `RosterRole` / `RosterRank` (`TournamentTeamCard.tsx`) |
+| Role / division marker     | `PlayerRoleIcon`; `DivisionIcon` (`tooltip` names the division); a crest from a rank or a division `RankCrest` (`components/RankCrest.tsx`)                                                                                                                                                          |
+| Hero / map images          | `CatalogEntityImage` (`components/catalog/CatalogEntityImage.tsx`): hero faces square, map stills `shape="wide"` (4:3); initials when there is no image                                                                                                                                             |
 | Group colour               | `groupHue(name)`, `groupIndex(name)`, `groupDisplayName(name, word)` (`lib/tournament/group.ts`)                                                                                                                                                                                                       |
+| Media queries              | `useMediaQuery(query)` (`hooks/useMediaQuery.ts`), `usePrefersReducedMotion()` — never a hand-rolled `matchMedia` listener                                                                                                                                                                         |
 
 ### Controls
 
+**Library controls only.** Native `<button>`, `<input>`, `<select>`,
+`<textarea>` and `<img>` appear only inside `components/ui/*`. Feature code
+uses the primitives below; when none fits, add a variant or a primitive to
+`components/ui/` rather than hand-rolling one. `lint:design` (R8, R9)
+enforces it; its few exemptions (OG renderer, user markdown, image capture,
+the last-resort `global-error`) are listed in the script with their reason.
+
 | Need                        | Use                                                                                                                     |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Filter chip                 | `FilterChip` in `FilterChipGroup` (`ui/filter-chip.tsx`)                                                                |
+| Filter chip                 | `FilterChip` in `FilterChipGroup` (`ui/filter-chip.tsx`), `accent` for a role-tinted chip                               |
 | Filter + controls row       | `SectionToolbar` (tournament sections): chips at the start, search/sort/view at the end                                 |
 | Search                      | `SearchField` (`ui/search-field.tsx`), `label` required                                                                 |
+| Text / number / time field  | `ui/input.tsx`, `ui/number-input.tsx`, `ui/time-input.tsx`, `ui/textarea.tsx`; the public form skin is `variant="surface"` (also on `SelectTrigger` and `Checkbox`) |
+| Labelled form field         | `FieldShell` (`components/forms/FieldShell.tsx`): label, help and error wired by id; `FieldError` / `FieldDescription` (`ui/field.tsx`) for a bare error or hint |
+| Checkbox / switch / radio   | `ui/checkbox.tsx`, `ui/switch.tsx` (`size="sm"`), `ui/radio-group.tsx` (`RadioGroupItem variant="card"` for option cards) |
+| Colour                      | `ui/color-swatch.tsx` — the one native `<input type="color">`; a blank value paints its fallback, dashed                |
+| File                        | `FileButton` / `useFilePicker` (`ui/file-button.tsx`) — the one hidden `<input type="file">`                            |
 | Select                      | `ui/select.tsx` — never a native `<select>`                                                                             |
-| Panels of different content | `ui/tabs.tsx` (Radix), `TabsTrigger badge` for a count                                                                  |
-| Tabs that are addresses     | `kit/LinkTabs.tsx` (`aria-current="page"`, `level={2}` for sub-tabs)                                                    |
-| View/mode of the same data  | `ui/toggle-group.tsx` pill; on tournament sections `ViewSegment` (`?view=` / `?tab=`, default never written to the URL) |
-| Pagination                  | `ui/data-pagination.tsx`                                                                                                |
+| Searchable picker           | `ui/combobox.tsx`; with images or multi-select `ui/searchable-image-select.tsx`; server search `kit/ServerSearchCombobox` |
+| Panels of different content | `ui/tabs.tsx` (Radix), `TabsTrigger badge` for a count; `variant="rail"` for a vertical section list beside its panels (the account settings dialog: overlay fill + teal bar on the active row, 44px rows below `md`) |
+| Tabs that are addresses     | `kit/LinkTabs.tsx` (`aria-current="page"`, `level={2}` for sub-tabs, `variant="pill"` for a segmented look)             |
+| View/mode of the same data  | `ui/toggle-group.tsx` pill (`accent` per item; `variant="card"` for option cards); on tournament sections `ViewSegment` (`?view=` / `?tab=`, default never written to the URL) |
+| Pagination                  | `ui/data-pagination.tsx` (`leading` slot for the range or rows-per-page)                                                |
 | Data table                  | `components/data-table/DataTable.tsx`                                                                                   |
 | URL state                   | `hooks/useQueryParams.ts`                                                                                               |
-| Button                      | `ui/button.tsx`; `static={false}` opts into a reduced-motion-safe press                                                 |
+| Button                      | `ui/button.tsx`. Filled, semibold: `default` (teal, the screen's main action) · `destructive` · `positive` (check in). Tonal: `outline` (the everyday button, raised off any surface). Quiet: `ghost` · `ghost-destructive` (icon remove) · `link`. Tinted: `accent` (teal row action, and the chosen option of a choice, so picking never changes its shape). `dashed` (add one more). Sizes `default` · `sm` · `lg` · `xs` · `icon` · `icon-sm` (28px, icon beside text) · `icon-xs` · `inline` (a link in a sentence) · `label` (sortable header). Every button sinks on press (§10) |
+| Row that is one action      | `RowButton` (`ui/row-button.tsx`): row hover, `aria-current="true"` selected fill, inset focus ring; the caller lays out |
+| Dialog / sheet chrome       | `DialogContent` / `SheetContent` + their headers, `variant="panel"` for the edge-to-edge panel with a bordered header |
+| Range                       | `ui/slider.tsx`, `accent` for a role-tinted track                                                                       |
 
 ### Status and data
 
@@ -251,10 +299,12 @@ plain fact. That ends here.
 | Lifecycle status   | `TournamentStatusPill` (public), `kit/StatusPill` (admin)                  |
 | Boolean state icon | `StatusIconBadge` (`components/status/StatusIconBadge.tsx`)                |
 | Live / recency dot | `StatusDot` (`ui/status-dot.tsx`), always `aria-hidden`                    |
-| Placement medal    | `PlaceBadge` (`ui/place-badge.tsx`, `--aqt-medal-*`)                       |
+| Placement medal    | `PlaceBadge` (`ui/place-badge.tsx`, `--aqt-medal-*`); `size` `sm`/`md`/`lg` for the 28/36/44px squares, `null` draws "—" |
+| Tinted label chip  | `Badge` (`ui/badge.tsx`): `tone` + `palette="aqt"` for `--aqt-*` hues, `voice="label"` for the uppercase data voice, `size="sm"` for dense tables |
+| Eyebrow / uppercase label | `Eyebrow` / `eyebrowClass(tone)` (`ui/eyebrow.tsx`), tone `faint` (default) · `dim` · `muted` |
 | W/L/D square       | `ResTag` (`components/match/cells.tsx`)                                    |
-| MVP placement      | `MvpOrdinal` (`users/components/shared/MvpOrdinal.tsx`): gold for 1st only |
-| Platform totals    | `components/stats/PlatformStatsGrid.tsx`                                   |
+| MVP placement      | `MvpOrdinal` (`disciplines/overwatch/match/MvpOrdinal.tsx`): gold for 1st only |
+| Platform totals    | `LeadersContent` (`components/site/leaders.tsx`) on `/` and the community page; `HeroStat` figures in the `/statistics` hero (`statistics/_components/OverallFigures.tsx`) |
 | Markdown           | `components/Markdown.tsx`; editing `components/admin/MarkdownEditor.tsx`   |
 | Spinner (rare)     | `ui/spinner.tsx` — prefer a skeleton                                       |
 
@@ -321,6 +371,7 @@ system.
 | **Card that drops what is obvious** | a finished tournament card shows no status pill and no progress bar                                                                                                                                                                              | `tournaments/components/TournamentCard.tsx`                                             |
 | **Search highlight**                | `<mark className={MARK_CLASS}>` on the matched token                                                                                                                                                                                             | `_views/tournamentTeams.model.ts`                                                       |
 | **Inline roster**                   | role glyph + nick, captain crown, in one truncating caption line                                                                                                                                                                                 | `TeamListRow.tsx`                                                                       |
+| **Add at the list's foot**          | a `<form>` row closing the list it adds to: `Plus` glyph, borderless input, outline Add; Enter submits, the field clears and keeps focus; what the list already fixes (game, parent) is never asked; a refusal shows under the field             | `admin/settings/sub-roles/page.tsx` (`AddSubRole`)                                      |
 
 ## 9. States
 
@@ -339,8 +390,26 @@ system.
 
 - Transitions: colour, border, opacity, `transform` for a chevron. ~150ms.
 - No entrance animations, no staggered reveals, no perpetual loops — except
-  the live pulse (`StatusDot pulse`, `.livePulse`) on something that is live.
+  the live pulse (`StatusDot pulse`, `.livePulse`) on something that is live,
+  and the settings page change through `kit/SettingsContinuation` (the old
+  page lifts away in 180ms, the new one rises from where its ghost was in
+  320ms; reversed going back), which says which way the reader went. A pick
+  in `kit/SectionNav` plays the same 320ms entrance on the content column,
+  from below for a section under the open one, from above for one over it.
+- The mix match room (`app/balancer/mix/_room`) moves what the server moved,
+  through view transitions: a drafted player flies from the pool into their
+  slot, a banned or picked hero from the grid into its team's ban row or
+  beside its player, and the centre hands over to the next phase (the old
+  one lifts away in 180ms, the new one rises in 320ms). Only named elements
+  animate; the page itself is never captured, so it stays clickable.
+  Going in from the mix page, the lobby's card (its desk, while open) grows
+  into the room in 320ms and a player on the desk flies to their side;
+  "Back to the mix" shrinks the room back into it in 260ms, and the pages
+  crossfade. The browser's own back is not animated.
 - No hover that changes size or shifts layout.
+- The one press: every `Button` sinks 1px while pressed (`translate-y-px`,
+  `motion-safe` only), the same on every width; the `inline` and `label`
+  sizes, which are text, do not.
 - `prefers-reduced-motion` mutes all of it; the static cue (colour, border,
   word) always remains.
 
@@ -364,7 +433,7 @@ system.
   - word only in a role split; text only in a meta line. Divisions: icon only,
     name in `title`.
 - **Hero avatar sizes**: 30px stacks, 24px compact rows, 26px in tables, 32px
-  single.
+  single, 56px as the identity of a hero hover card (`CharacterCard`).
 - **No encoding captions** ("bar = …", "lower is better"): if the encoding
   needs a caption, change the encoding.
 - One term per metric (Closeness, not Proximity).
@@ -419,8 +488,8 @@ the IA is wrong — say so before inventing a surface.
 | T2  | Browser       | header → filter bar (search + chips) → table with an always-visible kebab → Inspector (`?id=`) with "Open page" when the row has a route | Tournaments, People, Teams, Matches, Achievements, Members, `content/*`, `access/*`, Audit, hub Registration entries, hub Matches |
 | T3  | Hub           | entity header (name, status, metrics, 1–2 actions) → routed tabs → optional routed sub-tabs → body                                       | tournament hub, `people/[id]`, `teams/[id]`, `achievements/[id]`                                                                  |
 | T4  | Master-detail | sortable list left (`+ Add`) → editor right; destructive actions in a menu, one parameterised confirm                                    | bracket stages, pre-game phase scopes, access roles; Divisions draft editor (full-screen variant)                                 |
-| T5  | Settings      | section nav left → the section's form → sticky save bar while dirty                                                                      | `/admin/settings/*`, tournament `settings/*`, `workspaces/[id]/*`, collector settings                                             |
-| T6  | Wizard        | step rail → step body → footer (Back · Save draft · Continue)                                                                            | new tournament, draft setup, divisions import, Challonge sync                                                                     |
+| T5  | Settings      | sticky section nav left → page header (h1, one-line description, actions) → routed tabs when a page groups sections → a stack of `SettingGroup` cards → sticky save bar while dirty | `/admin/settings/*`, tournament `settings/*`, `workspaces/[id]/*`, collector settings                                             |
+| T6  | Wizard        | step rail → step body → footer (Back · Save draft · Continue)                                                                            | new workspace, new tournament, draft setup, divisions import, Challonge sync                                                      |
 | T7  | Control room  | status hero (phase, timer, connection) → current action + lifecycle buttons → right column (presence, feasibility)                       | live draft                                                                                                                        |
 
 Rules on every admin screen:
@@ -429,35 +498,79 @@ Rules on every admin screen:
   `EntityFormDialog`. Read-only investigation → `Inspector`. Editable _and_
   shareable → its own route. T2 defaults to the Inspector.
 - **One filter surface.** `FilterBar` above the table; nothing in the header,
-  no `<Select>` in the toolbar.
+  no `<Select>` in the toolbar. The one filter a page's actions depend on (the
+  game on a per-game page) is an `inline` def: a visible select in the bar,
+  not a "+ Filter" entry.
 - **One tab look.** Routed tabs are `LinkTabs`; non-address tabs are
   `ui/tabs.tsx`; a view switch is a `ToggleGroup`, never a hand-rolled
   `<nav>` of pills.
 - **One row-actions convention.** `createKebabColumn`
-  (`data-table/kebab-column.tsx`). An action the reader may not perform is
-  _absent_, never disabled; the menu is always visible.
+  (`data-table/kebab-column.tsx`); the menu is always visible. The one or two
+  actions a reader uses on most rows (change a slot, reorder, "only this
+  actor") stay inline as labelled or titled buttons; rare and destructive
+  ones go in the menu, or, where the row opens an `EntityFormDialog`, at its
+  footer's start (`footerStart`: switch off, delete). A list that already
+  separates on and off rows (active above, the rest folded) puts no switch
+  on each row: the place says the state, the fold offers "Restore".
+- **Permission hides, state disables.** An action the reader may _never_
+  perform (no grant) is absent. An action they may perform once something
+  else is true (pick a tournament, a game, resolve the blockers, finish the
+  draft) is shown disabled with the reason as visible text beside it, not
+  only in a tooltip.
+- **Header actions.** A hub header leads with the next step as its primary
+  button (`→ Live`), then a menu for the rest. A menu groups what differs in
+  kind or risk (allowed vs forced transitions, a flag vs a status) under
+  labels; it never lists them as one flat run.
 - **At most three dialogs per screen**: `EntityFormDialog`, one
   `ConfirmDialog` with a swapped `intent`, at most one domain dialog.
-- **All three page states**, through `PageStateCard`.
+- **All three page states**, through `PageStateCard`; the first load is a
+  skeleton, never the empty state.
 - **State lives in the URL** (`useQueryParams` / `kit/useFilters.ts`). Depth
   stays at three: sidebar → screen → (sub-tab | inspector).
-- Chips in admin: lifecycle → `kit/StatusPill`; a category → `Badge`
-  (`rounded-md`); a boolean in a table → `StatusIcon`. The §4 limits apply.
+- **Chips in admin follow §4 exactly.** A lifecycle state that needs
+  attention → `kit/StatusPill`; the default or finished state of a row
+  (active, verified, published, done, processed, completed, accepted,
+  connected, monitoring) renders _nothing_, because on a list where most rows
+  are in that state the absence of a pill says it. One pill per row, in the
+  status column only. A boolean → `StatusIcon`, shown for the exception, not
+  the norm. A category (role, kind, scope, provider, format, type, mode,
+  class, direction) is plain text; a count beside a heading is plain text; an
+  id is plain text. `Badge` is not an admin primitive: the only chip that is
+  not a status is a chosen entity shown as a removable `FilterChip`.
+- **No metric strip above a table.** `StatTile` lives on the dashboard (T1)
+  and on a collector's health page. A count that restates the table below, a
+  filter chip's count or a checklist row is said once, there.
+- **A fact is shown once per screen.** The hub header carries the status;
+  the body does not repeat it in a pill, a `Select` value, a strip and a
+  checklist row. An inspector repeats nothing the row already shows.
+- **Helper copy earns its line.** No `description` under a heading that
+  restates the heading or lists the tabs below it; no placeholder equal to its
+  label; no "Yes/No" for a boolean; no `—` or `-` for a missing value (render
+  nothing); no raw API enum on screen.
 
 | Component                                    | Owns                                                           |
 | -------------------------------------------- | -------------------------------------------------------------- |
 | `kit/LinkTabs.tsx`                           | routed tabs and sub-tabs                                       |
 | `kit/FilterBar.tsx` + `kit/useFilters.ts`    | the filter surface and its URL state                           |
 | `kit/Inspector.tsx`                          | row detail: right panel at `lg`+, a sheet below                |
+| `kit/InspectorField.tsx`                     | a labelled fact and a titled group inside an inspector or detail dialog; no local `Field` copies |
 | `kit/ConfirmDialog.tsx`                      | every confirmation                                             |
-| `kit/SectionNav.tsx`                         | T5 navigation (`<nav>` at `md`+, `Select` below)               |
-| `kit/SaveBar.tsx` + `kit/useUnsavedGuard.ts` | dirty-form save/discard and the leave guard                    |
+| `kit/SectionNav.tsx`                         | T5 navigation (sticky `<nav>` at `lg`+, `Select` below); a rail item is a page, small related sections are its `LinkTabs`, never extra rail items. Under the active item it lists the open page's groups (`kit/SettingsOutline.tsx`, mounted by the T5 shells) once there are three or more: `#id` links, scroll-spy highlight, a fragment URL lands on its group |
+| `kit/SettingRow.tsx`                         | T5 body: `SettingGroup` is one card per group, with a stable locale-free `id` (its anchor and outline entry; `immediate` when its controls act without the save bar); `SettingRow` is label + hint left, control right once the group is `@xl` (36rem) wide. Text a reader types (names, links, domains) and long text are `stacked`; switches, selects and radios stay two-column. `error` renders under the control with an icon (pair it with `invalidProps` on the control); `count` puts a `value / max` counter on the label line, `soft` for advice rather than a cap. A switch points `aria-describedby` at `settingHintId(id)`. `level` lowers the group heading where a dialog title and a section heading sit above it (the account settings dialog uses `4`; its sections are these groups too). Never wrap a group in another `Card` |
+| `workspace-settings/WorkspaceSettingsShell.tsx` | the workspace hub's header and tabs; `SettingsHeaderActions` puts a section's page-level controls (audit trail, discipline picker) beside the h1. Forms are capped at `max-w-3xl`, tables and list/detail pages take the column |
+| `kit/SaveBar.tsx` + `kit/useUnsavedGuard.ts` | dirty-form save/discard and the leave guard. A refused or failed save is the bar's `error`, never a toast (a toast covers the bar's own Discard). `useScopedSettingsForm` `validate` gives field errors, shown once the reader leaves the field or tries to save; a 422's per-field reasons land on the same fields |
+| `kit/SettingsContinuation.tsx`               | a T5 page between its neighbours. Below it the next page's ghost: its real render, inert and faded, under a "Next" link; scrolling on past the end fills a bar and opens it at its top. Scrolling up past the top fills a pill naming the previous page and opens it at its end (wheel and keys only: a downward swipe at the top is the browser's pull-to-refresh). Both off while unsaved and under reduced motion; a wheel gesture that opened a page does not carry into the next. Inside the ghost `useInSettingsPreview()` is true: groups stay out of the outline, header actions, page headers and polling stay off. Chains: workspace hub Overview → General → Branding → Visibility → Domain → Discord; tournament settings run through the form sections the caller may open, in rail order, skipping the editors (pre-game, report form, links) and Danger zone |
 | `kit/WizardShell.tsx`                        | T6 frame                                                       |
-| `kit/EntityHubHeader.tsx`                    | T3 header (title, status pill, middot-joined metrics, actions) |
+| `kit/EntityHubHeader.tsx`                    | T3 header (back link, `leading` avatar/logo, title, status pill, middot-joined metrics, actions) |
 | `kit/PhaseStrip.tsx`                         | lifecycle position, indicator only                             |
-| `kit/MasterDetail.tsx`                       | T4 split with the narrow-viewport switch                       |
+| `kit/MasterDetail.tsx`                       | T4 split with the narrow-viewport switch; `MasterList` / `MasterListSkeleton` for the plain list column |
 | `kit/NextActionHero.tsx`                     | the single "do this next" on T1 and hub Overview               |
-| `kit/tone.ts` / `ui/tone.ts`                 | `TONE_CLASS` / `TONE_TEXT` tint recipes                        |
+| `admin/PermissionGate.tsx`                   | a page's permission gate: skeleton while permissions load, "No access" `PageStateCard` when refused |
+| `admin/AdminTabbedPage.tsx`                  | T2 page header plus level-1 `LinkTabs` for a tabbed admin section |
+| `tournaments/[id]/sub-tabs.tsx`              | hub sub-tabs: `useSubTabSegment` (active segment from the path), `SubTabShell`, `useTabAccess` |
+| `kit/FactList.tsx`                           | a `<dl>` strip of labelled facts in a header or summary          |
+| `kit/ServerSearchCombobox.tsx`               | pickers over a server search (`UserSearchCombobox`, `AuthUserSearchCombobox`) |
+| `ui/tone.ts`                                 | `Tone`, `TONE_CLASS` / `TONE_TEXT` tint recipes                |
 | `admin/AdminDetailTable.tsx`                 | styling for a dense table inside an editor, not a browser      |
 
 ## 15. Never
@@ -468,16 +581,27 @@ Rules on every admin screen:
   `#1` and "1st place").
 - A card inside a card; a tinted callout or coloured left border inside a
   card.
-- A control with no choice (one filter, one tab, one view).
+- A control with no choice (one filter, one tab, one view). Table utilities
+  are not choices about the data and always stay: saved Views, rows per page,
+  CSV (disabled while there is nothing to export).
+- A state-gated action that vanishes: it is disabled with a visible reason
+  (see "Permission hides, state disables" in §14).
+- A banner's action dropped as "a repeated fact": "Draft live → Open draft
+  board", "N failed → Show failed" are the shortest path to the work, not a
+  restatement.
 - Raw hex, Tailwind neutrals, `text-[Npx]`, a font size below 12px, a
   tracking other than `tracking-label` on uppercase text.
+- A `text-*`, `font-*` or height override on a control (§3, Control text).
 - Uppercase user content; `font-mono` on UI labels.
 - A "finished/completed" status pill on a list of mostly finished items.
 - Colour as decoration: gradient text, decorative glows, the role spectrum as
   a background.
-- Emoji or glyphs as icons; `<div onClick>`; a native `<select>`.
+- Emoji or glyphs as icons; `<div onClick>`; a native `<button>`, `<input>`,
+  `<select>` or `<textarea>` outside `components/ui/`.
 - Hover that scales or shifts layout; entrance animations; perpetual loops
   on anything that is not live.
+- A button filled darker than the surface it sits on (`bg-background` on a
+  card or a dialog).
 - A spinner where a skeleton fits; `empty` shown for a failed load.
 - Hand-rolling a primitive listed in §6.
 
@@ -486,9 +610,12 @@ Rules on every admin screen:
 - [ ] Every chip on the screen maps to one of the four jobs in §4.
 - [ ] No fact appears twice in one view.
 - [ ] Every control offers a real choice.
-- [ ] Tokens only; type roles only; `npm run lint:design` passes.
+- [ ] Tokens only; type roles only; `bun run lint:design` passes (it also
+      fails a native control or `<img>` outside `components/ui/`).
 - [ ] Skeleton matches the layout; `empty`, `error`, `filtered-empty` all
       render.
 - [ ] Checked at 390 / 768 / 1024 / 1440; no horizontal page scroll.
 - [ ] Everything interactive has hover, visible focus and an accessible name.
 - [ ] Reused the §6 primitives; nothing hand-rolled that already exists.
+- [ ] No native control outside `components/ui/`; no font or height override
+      on a control.

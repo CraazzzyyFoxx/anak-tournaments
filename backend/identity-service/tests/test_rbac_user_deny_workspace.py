@@ -24,7 +24,7 @@ from shared.repository import UserPermissionDenyRepository
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.services.rbac_admin import PermissionDenyService  # noqa: E402
+from src.services.rbac import PermissionDenyService  # noqa: E402
 from tests._fakes import FakeSessionCache as _NoopCache  # noqa: E402
 from tests._fakes import make_root_actor as _current_user  # noqa: E402
 
@@ -82,6 +82,9 @@ class _QueueSession:
 
     def add(self, obj) -> None:
         self.added.append(obj)
+
+    async def flush(self) -> None:
+        return None
 
     async def commit(self) -> None:
         self.commit_called = True
@@ -259,8 +262,12 @@ def test_add_user_deny_raises_404_for_unknown_workspace() -> None:
 # --- permission_denies.remove: scoped delete never crosses scopes ---
 
 
+_PERMISSION = SimpleNamespace(id=3, name="account.avatar", resource="account", action="avatar", description=None)
+
+
 def test_remove_user_deny_global_scope_matches_null_only() -> None:
-    session = _CapturingSession()
+    # A non-empty row set: the no-op path then finds the user and the permission.
+    session = _CapturingSession(list_rows=[(_PERMISSION, None)])
     cache = _NoopCache()
 
     asyncio.run(_service(cache).remove(session, _current_user(), 9, 3, workspace_id=None))
@@ -274,7 +281,7 @@ def test_remove_user_deny_global_scope_matches_null_only() -> None:
 
 
 def test_remove_user_deny_workspace_scope_matches_that_workspace_only() -> None:
-    session = _CapturingSession()
+    session = _CapturingSession(list_rows=[(_PERMISSION, None)])
 
     asyncio.run(_service().remove(session, _current_user(), 9, 3, workspace_id=7))
 
@@ -283,3 +290,14 @@ def test_remove_user_deny_workspace_scope_matches_that_workspace_only() -> None:
     compiled = _compiled(delete_stmt)
     assert "workspace_id = 7" in compiled
     assert "IS NULL" not in compiled
+
+
+def test_remove_user_deny_of_a_missing_user_is_404() -> None:
+    """It answered 200 for any ids: "idempotent" covers a deny that is gone, not a user that never was."""
+    session = _CapturingSession()
+    session._list_result = _AllResult(None)  # the DELETE matches nothing and the user load finds no row
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(_service().remove(session, _current_user(), 999_999_999, 999_999_999))
+
+    assert (exc_info.value.status_code, exc_info.value.detail) == (404, "User not found")

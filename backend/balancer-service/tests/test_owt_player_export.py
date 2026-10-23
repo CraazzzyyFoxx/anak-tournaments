@@ -22,7 +22,6 @@ Two additions are load-bearing rather than cosmetic and are pinned here:
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -33,12 +32,13 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
 from shared.core.enums import HeroClass  # noqa: E402
+from shared.core.social import SocialProvider  # noqa: E402
 from shared.division_grid import DivisionGrid, DivisionTier  # noqa: E402
-from shared.domain.roster import HeroRef, PlayerRoster, RosterRole  # noqa: E402
-from shared.domain.roster_shape import FLEX_SLOT_CODE, parse_roster_slots  # noqa: E402
+from shared.domain.roster import CharacterRef, PlayerRoster, RosterRole  # noqa: E402
+from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape  # noqa: E402
+from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from shared.services.roster import RosterEngine  # noqa: E402
 from src.domain.balancer.player_loader import load_players_from_dict  # noqa: E402
 
@@ -58,12 +58,14 @@ def _roster(
     registration_id: int,
     roles: tuple[RosterRole, ...],
     *,
-    battle_tag: str | None = None,
+    handle: str | None = None,
     **overrides: object,
 ) -> PlayerRoster:
     return PlayerRoster(
         registration_id=registration_id,
-        battle_tag=battle_tag if battle_tag is not None else f"player{registration_id}#2100",
+        identity=PlayerIdentityRead.of(
+            SocialProvider.BATTLENET, handle if handle is not None else f"player{registration_id}#2100"
+        ),
         display_name=None,
         player_id=None,
         auth_user_id=None,
@@ -82,16 +84,16 @@ def _role(
     is_primary: bool = False,
     subrole: str | None = None,
     source: str = "registration",
-    top_heroes: tuple[HeroRef, ...] = (),
+    top_characters: tuple[CharacterRef, ...] = (),
 ) -> RosterRole:
     return RosterRole(
-        role=role,
+        role=role.slot_code,
         rank=rank,
         source=source,  # type: ignore[arg-type]
         is_primary=is_primary,
         priority=priority,
         subrole=subrole,
-        top_heroes=top_heroes,
+        top_characters=top_characters,
     )
 
 
@@ -101,7 +103,7 @@ def _pool() -> list[PlayerRoster]:
         _roster(
             1,
             (
-                _role(HeroClass.tank, 3100, priority=0, is_primary=True, subrole="main_tank"),
+                _role(HeroClass.tank, 3100, priority=0, is_primary=True, subrole="tank_main_tank"),
                 _role(HeroClass.support, 2600, priority=1),
             ),
         ),
@@ -122,8 +124,9 @@ def _export(**overrides):
     engine = RosterEngine()
     return engine.full_export(
         _pool(),
-        shape=overrides.pop("shape", parse_roster_slots(ROLE_MASK)),
+        shape=overrides.pop("shape", RosterShape(entries=tuple(ROLE_MASK.items()))),
         flex_role_mode=overrides.pop("flex_role_mode", "optional"),
+        dimension=overrides.pop("dimension", "player_role"),
         grid=overrides.pop("grid", GRID),
         source=overrides.pop("source", {"tournament_id": 84, "scope": "pool"}),
         **overrides,
@@ -150,7 +153,7 @@ def test_owt_export_loads_exactly_like_the_xv1_export() -> None:
 
 def test_owt_export_loads_exactly_like_the_xv1_export_under_a_flex_mask() -> None:
     engine = RosterEngine()
-    owt = _export(shape=parse_roster_slots(FLEX_MASK))
+    owt = _export(shape=RosterShape(entries=tuple(FLEX_MASK.items())))
 
     loaded = _loaded(owt, FLEX_MASK)
     assert loaded == _loaded(engine.balancer_input(_pool()), FLEX_MASK)
@@ -169,12 +172,20 @@ def test_unranked_declared_role_travels_but_is_inactive() -> None:
     }
     # ...and the loader neither rates it nor chokes on the null rank.
     assert dict(_loaded(_export(), ROLE_MASK)["2"][1]) == {"damage": 2800}
+    assert node["owt"]["roles"][1]["role"] == {
+        "dimension": "player_role",
+        "role": "support",
+        "parent": None,
+    }
+    assert "subrole" not in node["owt"]["roles"][1]
 
 
 def test_undraftable_registration_is_exported_and_still_not_loaded() -> None:
     payload = _export()
 
     assert payload["players"]["3"]["owt"]["draftable"] is False
+    assert payload["players"]["3"]["owt"]["primary_role"] is None
+    assert "sub_role" not in payload["players"]["3"]["owt"]
     # xv-1 drops it outright; ours keeps the row, the loader keeps ignoring it.
     assert "3" not in _loaded(payload, ROLE_MASK)
     assert "3" not in RosterEngine().balancer_input(_pool())["players"]
@@ -186,7 +197,7 @@ def test_undraftable_registration_is_exported_and_still_not_loaded() -> None:
 
 
 def test_roster_shape_and_flex_mode_travel_with_the_export() -> None:
-    payload = _export(shape=parse_roster_slots(FLEX_MASK), flex_role_mode="forced")
+    payload = _export(shape=RosterShape(entries=tuple(FLEX_MASK.items())), flex_role_mode="forced")
 
     assert payload["format"] == "owt-1"
     assert payload["roster"] == {
@@ -199,6 +210,12 @@ def test_roster_shape_and_flex_mode_travel_with_the_export() -> None:
     assert payload["source"]["player_key"] == "registration_id"
 
 
+def test_role_refs_use_the_supplied_rated_dimension() -> None:
+    owt = _export(dimension="position")["players"]["1"]["owt"]
+    assert owt["primary_role"] == {"dimension": "position", "role": "tank_main_tank", "parent": "tank"}
+    assert all(entry["role"]["dimension"] == "position" for entry in owt["roles"])
+
+
 def test_role_entries_carry_rank_source_division_and_heroes() -> None:
     engine = RosterEngine()
     roster = _roster(
@@ -208,34 +225,35 @@ def test_role_entries_carry_rank_source_division_and_heroes() -> None:
                 HeroClass.tank,
                 3100,
                 is_primary=True,
-                subrole="main_tank",
-                source="ow",
-                top_heroes=(HeroRef(id=3, slug="dva", image_path="/dva.png"),),
+                subrole="tank_main_tank",
+                source="native",
+                top_characters=(CharacterRef(id=3, slug="dva", image_path="/dva.png"),),
             ),
         ),
     )
 
     owt = engine.full_export(
         [roster],
-        shape=parse_roster_slots(ROLE_MASK),
+        shape=RosterShape(entries=tuple(ROLE_MASK.items())),
         flex_role_mode="optional",
+        dimension="player_role",
         grid=GRID,
     )["players"]["9"]["owt"]
 
     assert owt["roles"] == [
         {
-            "role": "tank",
+            "role": {"dimension": "player_role", "role": "tank_main_tank", "parent": "tank"},
             "rank": 3100,
-            "source": "ow",
+            "source": "native",
             "is_primary": True,
             "priority": 0,
-            "subrole": "main_tank",
             "playable": True,
             "division": {"number": 12, "name": "Diamond 2"},
-            "top_heroes": [{"hero_id": 3, "slug": "dva", "image_path": "/dva.png"}],
+            "top_characters": [{"entity_id": 3, "slug": "dva", "image_path": "/dva.png"}],
         }
     ]
-    assert owt["primary_role"] == "tank"
+    assert owt["primary_role"] == {"dimension": "player_role", "role": "tank_main_tank", "parent": "tank"}
+    assert "sub_role" not in owt
     assert owt["flex_rating"] == 3100
     assert owt["ranked_complete"] is True
 
@@ -255,8 +273,9 @@ def test_workflow_fields_ride_along() -> None:
 
     owt = engine.full_export(
         [roster],
-        shape=parse_roster_slots(ROLE_MASK),
+        shape=RosterShape(entries=tuple(ROLE_MASK.items())),
         flex_role_mode="optional",
+        dimension="player_role",
     )["players"]["4"]["owt"]
 
     assert (owt["status"], owt["balancer_status"], owt["checked_in"]) == ("approved", "in_balancer", True)
@@ -277,9 +296,13 @@ def test_private_answers_are_withheld_unless_asked_for() -> None:
         admin_notes="banned last season",
         custom_fields={"shirt": "L"},
         identities={"discord": "player#0001"},
-        smurf_tags=("alt#1111",),
+        additional_handles=("alt#1111",),
     )
-    kwargs = {"shape": parse_roster_slots(ROLE_MASK), "flex_role_mode": "optional"}
+    kwargs = {
+        "shape": RosterShape(entries=tuple(ROLE_MASK.items())),
+        "flex_role_mode": "optional",
+        "dimension": "player_role",
+    }
 
     public = engine.full_export([roster], **kwargs)["players"]["5"]["owt"]
     private = engine.full_export([roster], include_private=True, **kwargs)["players"]["5"]["owt"]
@@ -289,4 +312,4 @@ def test_private_answers_are_withheld_unless_asked_for() -> None:
     assert private["private"]["public_notes"] == "prefers off-tank"
     assert private["private"]["custom_fields"] == {"shirt": "L"}
     assert private["private"]["identities"] == {"discord": "player#0001"}
-    assert private["private"]["smurf_tags"] == ["alt#1111"]
+    assert private["private"]["additional_handles"] == ["alt#1111"]

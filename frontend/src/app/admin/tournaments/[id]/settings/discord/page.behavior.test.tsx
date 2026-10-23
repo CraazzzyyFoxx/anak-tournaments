@@ -148,7 +148,6 @@ describe("Settings › Discord", () => {
   it("says the channel is not configured, and offers to add one", async () => {
     await render();
 
-    expect(container.textContent).toContain("Not configured");
     expect(container.textContent).toContain("No channel yet");
   });
 

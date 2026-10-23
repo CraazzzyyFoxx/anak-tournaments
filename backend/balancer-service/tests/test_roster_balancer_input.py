@@ -34,7 +34,7 @@ def test_payload_carries_only_playable_roles_all_active() -> None:
                 7,
                 ranks={"damage": 4000, "support": 2800, "tank": None},
                 primary="damage",
-                battle_tag="Ana#1",
+                handle="Ana#1",
                 subroles={"support": "main_heal"},
             )
         ]
@@ -61,12 +61,12 @@ def test_a_registration_with_no_playable_role_is_not_in_the_payload() -> None:
     assert list(payload["players"]) == ["7"]
 
 
-def test_identity_falls_back_from_battle_tag_to_display_name_to_the_registration() -> None:
+def test_identity_falls_back_from_handle_to_display_name_to_the_registration() -> None:
     payload = roster_engine.balancer_input(
         [
-            roster(7, ranks={"damage": 3000}, battle_tag="Ana#1", display_name="Ana"),
-            roster(8, ranks={"damage": 3000}, battle_tag=None, display_name="Nameless"),
-            roster(9, ranks={"damage": 3000}, battle_tag=None),
+            roster(7, ranks={"damage": 3000}, handle="Ana#1", display_name="Ana"),
+            roster(8, ranks={"damage": 3000}, handle=None, display_name="Nameless"),
+            roster(9, ranks={"damage": 3000}, handle=None),
         ]
     )
 

@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getApiErrorMessage } from "@/lib/api/error";
+import { duelSeats } from "@/lib/encounter/seats";
 import { notify } from "@/lib/notify";
 import { RETURN_TO_PARAM, withReturnTo } from "@/lib/auth/return-to";
 import scrimService from "@/services/scrim.service";
@@ -37,7 +38,8 @@ function ClaimGate({
   isClaiming: boolean;
 }>) {
   const t = useTranslations("scrims.claim");
-  const openSide = room.home_team.captain_claimed ? room.away_team : room.home_team;
+  const [first, second] = duelSeats(room.teams);
+  const openSide = first?.captain_claimed ? second : first;
 
   return (
     <Card className="mx-auto max-w-xl">
@@ -46,14 +48,14 @@ function ClaimGate({
         <div>
           <h1 className="font-onest text-lg font-semibold">{room.label}</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            {t("sides", { home: room.home_team.name, away: room.away_team.name })}
+            {t("matchup", { first: first?.name ?? "", second: second?.name ?? "" })}
           </p>
         </div>
-        <p className="text-sm">{t("prompt", { team: openSide.name })}</p>
+        <p className="text-sm">{t("prompt", { team: openSide?.name ?? "" })}</p>
         <div className="flex flex-wrap items-center justify-center gap-2">
           <Button onClick={onClaim} disabled={isClaiming}>
             {isClaiming ? <Spinner /> : null}
-            {t("claim", { team: openSide.name })}
+            {t("claim", { team: openSide?.name ?? "" })}
           </Button>
           <Button variant="outline" onClick={onWatch} disabled={isClaiming}>
             <Eye aria-hidden className="size-4" />
@@ -91,7 +93,7 @@ export default function ScrimRoomPage() {
     queryFn: () => scrimService.getRoom(token),
     enabled: Boolean(token)
   });
-  useEntityWorkspace(roomQuery.data?.workspace_id ?? null);
+  useEntityWorkspace(roomQuery.data?.workspace_id ?? null, roomQuery.data?.discipline);
 
   // `PregameRoom` reads its exit target off the URL and has no prop for it, so
   // the param is planted here rather than passed. Without it the room would fall
@@ -126,6 +128,7 @@ export default function ScrimRoomPage() {
     return (
       <PageStateCard
         state="error"
+        headingLevel={1}
         actionLabel={t("retry")}
         onAction={() => void roomQuery.refetch()}
       />

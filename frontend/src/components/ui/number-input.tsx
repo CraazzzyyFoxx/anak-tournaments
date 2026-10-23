@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import { Input } from "@/components/ui/input";
 
-export interface NumberInputProps
+interface NumberInputProps
   extends Omit<React.ComponentProps<typeof Input>, "value" | "onChange" | "type" | "inputMode"> {
   /** Current numeric value; null/undefined renders an empty field. */
   value: number | null | undefined;

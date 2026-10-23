@@ -3,9 +3,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.domain.player_sub_roles import normalize_sub_role
+from shared.models.tournament.player_role import assignment_of
 from shared.repository import (
     PlayerRepository,
     StandingRepository,
@@ -14,13 +15,14 @@ from shared.repository import (
     UserRepository,
     resolve_workspace_member_id,
 )
-from src import models, schemas
+from shared.services.ontology import resolve_role_ref
+from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
+from src import schemas
 from src.services.tournament.events import STRUCTURE_RESOURCES, publish_tournament_invalidation
 
 
 def _prepare_player_create_data(data: schemas.PlayerCreate) -> dict:
-    player_data = data.model_dump()
-    player_data["sub_role"] = normalize_sub_role(player_data.get("sub_role"))
+    player_data = data.model_dump(exclude={"role"})
     if not player_data.get("is_substitution"):
         player_data["related_player_id"] = None
     return player_data
@@ -30,9 +32,7 @@ def _prepare_player_update_data(
     player: models.Player,
     data: schemas.PlayerUpdate,
 ) -> dict:
-    update_data = data.model_dump(exclude_unset=True)
-    if "sub_role" in update_data:
-        update_data["sub_role"] = normalize_sub_role(update_data["sub_role"])
+    update_data = data.model_dump(exclude_unset=True, exclude={"role"})
     if update_data.get("is_substitution") is False:
         update_data["related_player_id"] = None
     return update_data
@@ -125,7 +125,7 @@ class AdminTeamService:
         """Resolve the ``workspace_member`` anchor for a roster player being created.
 
         Delegates to the shared core (workspace from tournament, then an
-        idempotent get-or-create) that ``parser-service``'s roster import derives
+        idempotent get-or-create) that ``stats-service``'s roster import derives
         this identically from; only the not-found error differs per service, which
         is why it stays here rather than in the shared helper.
         """
@@ -200,20 +200,16 @@ class AdminTeamService:
         return player
 
     async def create_team(self, session: AsyncSession, data: schemas.TeamCreate) -> models.Team:
-        """Create a new team"""
-        # Verify tournament exists
         tournament = await self.tournament_repo.get(session, data.tournament_id)
 
         if not tournament:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
-        # Verify captain exists
         captain = await self.user_repo.get(session, data.captain_id)
 
         if not captain:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Captain user not found")
 
-        # Create team
         team = await self.team_repo.create(session, models.Team(**_prepare_team_create_data(data)))
 
         await self._publish_structure_changed(session, data.tournament_id)
@@ -221,7 +217,6 @@ class AdminTeamService:
         return await self.get_team(session, team.id)
 
     async def update_team(self, session: AsyncSession, team_id: int, data: schemas.TeamUpdate) -> models.Team:
-        """Update team fields"""
         team = await self.team_repo.get(
             session,
             team_id,
@@ -231,7 +226,6 @@ class AdminTeamService:
         if not team:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
 
-        # Verify captain exists if being updated
         if data.captain_id is not None:
             captain = await self.user_repo.get(session, data.captain_id)
             if not captain:
@@ -245,7 +239,6 @@ class AdminTeamService:
                     detail="Captain must belong to the current team roster",
                 )
 
-        # Update fields
         update_data = _prepare_team_update_data(team, data)
         for field, value in update_data.items():
             setattr(team, field, value)
@@ -280,80 +273,28 @@ class AdminTeamService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
 
         tournament_id = team.tournament_id
+        evidence = await capture_owner_delete(session, team_id=team_id)
+        tournament = await self.tournament_repo.get(session, tournament_id)
         await self.standing_repo.delete_for_team(session, team_id)
         await self.team_repo.delete(session, team)
         await self._publish_structure_changed(session, tournament_id)
-        await session.commit()
-
-    # ─── Player Management ───────────────────────────────────────────────────
-
-    async def add_player_to_team(
-        self, session: AsyncSession, team_id: int, data: schemas.PlayerCreate
-    ) -> models.Player:
-        """Add a player to a team"""
-        # Verify team exists
-        team = await self.team_repo.get(session, team_id)
-
-        if not team:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
-
-        # Verify user exists
-        user = await self.user_repo.get(session, data.user_id)
-
-        if not user:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
-        # Override team_id from URL parameter
-        player_data = _prepare_player_create_data(data)
-        player_data["team_id"] = team_id
-        player_data["tournament_id"] = team.tournament_id
-        related_player = await self._get_related_player(
+        await stage_owner_delete(
             session,
-            related_player_id=player_data.get("related_player_id"),
+            evidence,
+            workspace_id=tournament.workspace_id,
+            entity_type="team",
+            entity_id=team_id,
         )
-        _validate_related_player_scope(
-            related_player=related_player,
-            related_player_id=player_data.get("related_player_id"),
-            team_id=team_id,
-            tournament_id=team.tournament_id,
-        )
-
-        player_data["workspace_member_id"] = await self._resolve_workspace_member_id(
-            session,
-            tournament_id=team.tournament_id,
-            player_id=player_data.pop("user_id"),
-        )
-
-        # Create player
-        player = await self.player_repo.create(session, models.Player(**player_data))
-
-        await self._publish_structure_changed(session, team.tournament_id)
-        await session.commit()
-        return await self.get_player(session, player.id)
-
-    async def remove_player_from_team(self, session: AsyncSession, team_id: int, player_id: int) -> None:
-        """Remove a player from a team"""
-        player = await self.player_repo.get_by(session, id=player_id, team_id=team_id)
-
-        if not player:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Player not found in this team")
-
-        tournament_id = player.tournament_id
-        await self.player_repo.delete(session, player)
-        await self._publish_structure_changed(session, tournament_id)
         await session.commit()
 
     # ─── Player CRUD ─────────────────────────────────────────────────────────
 
     async def create_player(self, session: AsyncSession, data: schemas.PlayerCreate) -> models.Player:
-        """Create a new player"""
-        # Verify user exists
         user = await self.user_repo.get(session, data.user_id)
 
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-        # Verify team exists
         team = await self.team_repo.get(session, data.team_id)
 
         if not team:
@@ -384,8 +325,12 @@ class AdminTeamService:
             tournament_id=team.tournament_id,
             player_id=player_data.pop("user_id"),
         )
+        tournament = await self.tournament_repo.get(session, team.tournament_id)
+        leaf = await resolve_role_ref(
+            session, discipline=tournament.discipline, workspace_id=tournament.workspace_id, ref=data.role
+        )
+        player_data["assignments"] = [] if leaf is None else [assignment_of(leaf)]
 
-        # Create player
         player = await self.player_repo.create(session, models.Player(**player_data))
 
         await self._publish_structure_changed(session, team.tournament_id)
@@ -393,7 +338,6 @@ class AdminTeamService:
         return await self.get_player(session, player.id)
 
     async def update_player(self, session: AsyncSession, player_id: int, data: schemas.PlayerUpdate) -> models.Player:
-        """Update player fields"""
         player = await self.player_repo.get(session, player_id)
 
         if not player:
@@ -411,8 +355,13 @@ class AdminTeamService:
             player_id=player.id,
         )
 
-        # Update fields
         update_data = _prepare_player_update_data(player, data)
+        if "role" in data.model_fields_set:
+            tournament = await self.tournament_repo.get(session, player.tournament_id)
+            leaf = await resolve_role_ref(
+                session, discipline=tournament.discipline, workspace_id=tournament.workspace_id, ref=data.role
+            )
+            player.assignments = [] if leaf is None else [assignment_of(leaf)]
         for field, value in update_data.items():
             setattr(player, field, value)
 
@@ -421,7 +370,6 @@ class AdminTeamService:
         return await self.get_player(session, player.id)
 
     async def delete_player(self, session: AsyncSession, player_id: int) -> None:
-        """Delete player"""
         player = await self.player_repo.get(session, player_id)
 
         if not player:

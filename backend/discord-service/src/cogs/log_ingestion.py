@@ -1,5 +1,6 @@
 """Watches monitored tournament channels for match-log attachments: live
-messages, edits that add attachments, and periodic history rescans.
+messages, edits that add attachments, and history rescans on connect -- from
+each channel's cursor, so a reconnect reads only what it missed.
 """
 
 from __future__ import annotations
@@ -15,7 +16,11 @@ if TYPE_CHECKING:
     from src.bot import LogCollectorBot
 
 _HISTORY_RESCAN_LIMIT = 500
-_CHANNEL_RELOAD_INTERVAL_MINUTES = 5
+# Tournament changes reload the registry as events (DiscordRabbitGateway), and
+# a binding written through rpc.discord.channel.* reloads it in-process; this
+# loop only catches what neither announces -- a finished tournament leaving
+# its grace period -- and an event that was lost.
+_CHANNEL_RELOAD_FALLBACK_MINUTES = 60
 
 
 class LogIngestionCog(commands.Cog):
@@ -40,7 +45,12 @@ class LogIngestionCog(commands.Cog):
         # not their sum.
         await asyncio.gather(
             *(
-                self._processor.process_channel_history(channel_id, tournament_id, limit=_HISTORY_RESCAN_LIMIT)
+                self._processor.process_channel_history(
+                    channel_id,
+                    tournament_id,
+                    after_message_id=self._registry.cursor_for(channel_id),
+                    limit=_HISTORY_RESCAN_LIMIT,
+                )
                 for channel_id, tournament_id in self._registry.channel_ids().items()
             )
         )
@@ -48,10 +58,9 @@ class LogIngestionCog(commands.Cog):
         if not self.channel_monitor.is_running():
             self.channel_monitor.start()
 
-    @tasks.loop(minutes=_CHANNEL_RELOAD_INTERVAL_MINUTES)
+    @tasks.loop(minutes=_CHANNEL_RELOAD_FALLBACK_MINUTES)
     async def channel_monitor(self) -> None:
-        """Periodically reload active channels so tournament additions/removals
-        take effect without a bot restart."""
+        """Slow fallback reload of the active channels (see ``_CHANNEL_RELOAD_FALLBACK_MINUTES``)."""
         try:
             await self._registry.reload()
         except Exception as e:
@@ -64,32 +73,28 @@ class LogIngestionCog(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
         """Handle new messages in monitored channels."""
-        # Ignore bot's own messages
         if message.author == self.bot.user:
             return
 
-        # Check if this channel is being monitored
         tournament_id = self._registry.tournament_id_for(message.channel.id)
         if not tournament_id:
             return
 
-        # Process message attachments
         if message.attachments:
             logger.info(
                 f"📨 New message in monitored channel from {message.author.name} "
                 f"with {len(message.attachments)} attachment(s)"
             )
             await self._processor.process_message(message, tournament_id)
+            await self._registry.advance(message.channel.id, message.id)
 
     @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message) -> None:
         """Handle message edits (in case attachments were added)."""
-        # Check if this channel is being monitored
         tournament_id = self._registry.tournament_id_for(after.channel.id)
         if not tournament_id:
             return
 
-        # Check if attachments were added
         if len(after.attachments) > len(before.attachments):
             logger.info("📝 Message edited with new attachments")
             await self._processor.process_message(after, tournament_id)

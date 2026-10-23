@@ -10,7 +10,9 @@ import type { FieldRendererContext } from "@/components/forms/types";
 import {
   AuthUserSearchCombobox,
   type AuthUserOption
-} from "@/components/kit/AuthUserSearchCombobox";
+} from "@/components/kit/ServerSearchCombobox";
+import { Button } from "@/components/ui/button";
+import { RowButton } from "@/components/ui/row-button";
 import {
   Select,
   SelectContent,
@@ -18,13 +20,14 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { identityProvider } from "@/lib/forms/builtin-keys";
 import { fieldErrorsFrom } from "@/lib/forms/form-errors";
 import { visibleFields } from "@/lib/forms/visible-when";
 import { notify } from "@/lib/notify";
-import { ROLES, type RoleCode } from "@/lib/roster/roles";
+import { roleOf, subRoleSlugOf, toRoleRef, type RoleRef } from "@/lib/roster/role-ref";
+import { ratedDimension, registrationRoles, showsRoles } from "@/lib/roster/ontology";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
-import { cn } from "@/lib/utils";
 import { BUILTIN_STATUS_MESSAGE_KEYS } from "@/lib/registration/balancer-statuses";
 import registrationService from "@/services/registration.service";
 import { rbacService } from "@/services/rbac.service";
@@ -39,14 +42,18 @@ import type {
 } from "@/types/registration.types";
 import type { User } from "@/types/user.types";
 import { Spinner } from "@/components/ui/spinner";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useRoleName } from "@/hooks/useRoleName";
+import type { DisciplineMetadata } from "@/types/discipline.types";
 
-import FieldLabel from "./FieldLabel";
-import TextField, { fieldControlClass } from "./FormField";
+import FieldLabel from "@/components/forms/FieldLabel";
+import TextField from "@/components/forms/FormField";
 import SubscriptionRuleNotice from "./SubscriptionRuleNotice";
+import { useRequirementDescription } from "./useRequirementDescription";
 import { defaultRoleAnswer, rolesParams } from "./fields/RolesField";
 import { registrationRenderers } from "./registrationRenderers";
-import { fromRoleSelections, toRoleSelections } from "./types";
-import { useHeroesCatalog } from "@/hooks/useHeroesCatalog";
+import { fromRoleSelections, toRoleSelections, type RoleCode } from "./types";
+import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 
 /**
  * The non-schema half of an organizer's edit: the site account this row is
@@ -112,12 +119,11 @@ interface RegistrationSchemaFormProps {
 
 /** A role row as either read model serves it. */
 interface StoredRole {
-  role: string;
-  subrole: string | null;
+  role: RoleRef;
   is_primary: boolean;
   priority: number;
   rank_value?: number | null;
-  top_heroes?: string[] | null;
+  top_characters?: string[] | null;
 }
 
 const STATUS_OPTIONS = ["pending", "approved", "rejected", "withdrawn", "banned", "insufficient_data"];
@@ -139,15 +145,19 @@ function allFields(schema: FormSchema): FormField[] {
   return schema.sections.flatMap((section) => section.fields);
 }
 
-/** Stored role rows, priority order, in the shape the `roles` answer holds. */
+/**
+ * Stored role rows, priority order, in the shape the `roles` answer holds. The native read rows name the
+ * picks `top_characters`; the persisted form answer keeps its `top_heroes` spelling, so this is the one
+ * place the two meet.
+ */
 function roleInputsFrom(roles: readonly StoredRole[]): RoleInput[] {
   return [...roles]
     .sort((a, b) => a.priority - b.priority)
     .map((role) => ({
-      role: role.role,
-      ...(role.subrole ? { subrole: role.subrole } : {}),
+      role: roleOf(role.role),
+      ...(subRoleSlugOf(role.role) ? { subrole: subRoleSlugOf(role.role)! } : {}),
       is_primary: role.is_primary,
-      ...(role.top_heroes?.length ? { top_heroes: role.top_heroes } : {})
+      ...(role.top_characters?.length ? { top_heroes: role.top_characters } : {})
     }));
 }
 
@@ -166,6 +176,7 @@ function initialAnswers(
   mode: "public" | "admin",
   initial: Registration | AdminRegistration | null | undefined,
   userProfile: User | undefined,
+  roleCodes: readonly RoleCode[],
   lockedRole: RoleCode | null
 ): Answers {
   const answers: Answers = { ...(initial?.answers ?? {}) };
@@ -174,8 +185,12 @@ function initialAnswers(
   for (const field of allFields(schema)) {
     if (field.key === "roles") {
       answers.roles = initial
-        ? fromRoleSelections(toRoleSelections(roleInputsFrom(initial.roles)), lockedRole)
-        : defaultRoleAnswer(rolesParams(field), lockedRole);
+        ? fromRoleSelections(
+            roleCodes,
+            toRoleSelections(roleCodes, roleInputsFrom(initial.roles)),
+            lockedRole
+          )
+        : defaultRoleAnswer(rolesParams(field), roleCodes, lockedRole);
       continue;
     }
     if (answers[field.key] !== undefined) continue;
@@ -189,10 +204,13 @@ function initialAnswers(
   return answers;
 }
 
-function initialRanks(roles: readonly StoredRole[] | undefined): Record<string, string> {
-  const ranks: Record<string, string> = { tank: "", damage: "", support: "" };
+function initialRanks(
+  roleCodes: readonly RoleCode[],
+  roles: readonly StoredRole[] | undefined
+): Record<string, string> {
+  const ranks: Record<string, string> = Object.fromEntries(roleCodes.map((code) => [code, ""]));
   for (const role of roles ?? []) {
-    if (role.rank_value != null) ranks[role.role] = String(role.rank_value);
+    if (role.rank_value != null) ranks[roleOf(role.role)] = String(role.rank_value);
   }
   return ranks;
 }
@@ -218,15 +236,21 @@ function draftKeyFor(
   return mode === "public" && !isEditing ? `aqt:registration-draft:${tournamentId}` : null;
 }
 
-function readDraft(key: string, lockedRole: RoleCode | null): Answers | null {
+function readDraft(key: string, roleCodes: readonly RoleCode[], lockedRole: RoleCode | null): Answers | null {
   if (typeof window === "undefined") return null;
   try {
     const parsed: unknown = JSON.parse(window.localStorage.getItem(key) ?? "null");
     if (!parsed || typeof parsed !== "object") return null;
     const draft = parsed as Answers;
     // The host dictates the slot (an invite names it, a captain picks it above
-    // the form), so a draft saved under a different one must not reinstate it.
-    if (lockedRole) delete draft.roles;
+    // the form, a one-role game has only it), so a draft saved under a different
+    // one must not reinstate it. What was picked ON the locked role (its heroes,
+    // its specialization) is still the registrant's: it comes back, that role, primary.
+    if (lockedRole && Array.isArray(draft.roles)) {
+      draft.roles = fromRoleSelections(roleCodes, toRoleSelections(roleCodes, draft.roles as RoleInput[]), lockedRole);
+    } else if (lockedRole) {
+      delete draft.roles;
+    }
     return draft;
   } catch {
     // Unparseable or unreadable storage is just an absent draft.
@@ -246,13 +270,49 @@ function dropDraft(key: string | null): void {
 /**
  * The registration form, public and admin alike, rendered from the schema.
  *
+ * The form's owner scope is the form read itself: `form.workspace_id` and `form.discipline` name the
+ * game whose roles, characters and identity provider every question is asked in. Its scoped metadata
+ * loads first, because the answer document opens with a role matrix seeded from that game's roles; a
+ * form never opens against another game's vocabulary while that request is in flight or after it failed.
+ */
+export default function RegistrationSchemaForm(props: Readonly<RegistrationSchemaFormProps>) {
+  const t = useTranslations("common.roleOntology");
+  const tCommon = useTranslations("common");
+  const metadata = useDisciplineMetadata(props.form.workspace_id, props.form.discipline);
+  if (metadata.isError) {
+    return (
+      <div role="alert" className="grid gap-2 text-sm text-destructive">
+        <p>{t("loadError")}</p>
+        <Button
+          type="button"
+          variant="link"
+          size="inline"
+          className="w-fit"
+          onClick={() => void metadata.refetch()}
+        >
+          {tCommon("retry")}
+        </Button>
+      </div>
+    );
+  }
+  if (!metadata.data) return <Spinner />;
+  return (
+    <RegistrationSchemaFormBody
+      key={`${props.form.discipline}:${metadata.data.workspace_id}`}
+      {...props}
+      metadata={metadata.data}
+    />
+  );
+}
+
+/**
  * Everything the tournament asks is a field of `form.form_schema`; this
  * component owns only the answer document, the step the registrant is on and —
  * in admin mode — the organizer's own non-schema annotations. It replaced an
  * 878-line wizard whose step list, validation and payload were three parallel
  * hand-maintained copies of one field catalogue.
  */
-export default function RegistrationSchemaForm({
+function RegistrationSchemaFormBody({
   mode,
   form,
   tournamentId,
@@ -265,9 +325,18 @@ export default function RegistrationSchemaForm({
   submitPending = false,
   hideTitle = false,
   writableKeys,
-  rolesLocked = false
-}: Readonly<RegistrationSchemaFormProps>) {
+  rolesLocked = false,
+  metadata
+}: Readonly<RegistrationSchemaFormProps & { metadata: DisciplineMetadata }>) {
   const t = useTranslations();
+  const roles = registrationRoles(metadata);
+  const nameOf = useRoleName();
+  const roleCodes = roles.map((role) => role.code);
+  // A game with one rated role asks no role question (the single-role rule): the server stores that role on every
+  // write (tournament-service `_common.only_role_answer`). The form still seeds its own answer with it, locked like an
+  // invite's slot, so a required rank block and the organizer's rank field know which role they are about.
+  const onlyRole = showsRoles(metadata) ? null : (roleCodes[0] ?? null);
+  const seededRole = lockedRole ?? onlyRole;
   const tErrors = useTranslations("forms.errors");
   const tOrganizer = useTranslations("registrationOrganizer");
   const queryClient = useQueryClient();
@@ -313,8 +382,8 @@ export default function RegistrationSchemaForm({
   // client-side only (the invite page waits for the URL fragment, the two
   // dialogs for a click), so there is no server render to diverge from.
   const [answers, setAnswers] = useState<Answers>(() => ({
-    ...initialAnswers(schema, mode, initial, userProfile, lockedRole),
-    ...(draftKey ? readDraft(draftKey, lockedRole) : null)
+    ...initialAnswers(schema, mode, initial, userProfile, roleCodes, seededRole),
+    ...(draftKey ? readDraft(draftKey, roleCodes, seededRole) : null)
   }));
   const [step, setStep] = useState(0);
   // Objections stay hidden until the registrant tries to advance: the form used
@@ -329,7 +398,9 @@ export default function RegistrationSchemaForm({
   const [balancerStatus, setBalancerStatus] = useState(
     adminInitial?.balancer_status ?? "not_in_balancer"
   );
-  const [ranks, setRanks] = useState<Record<string, string>>(() => initialRanks(initial?.roles));
+  const [ranks, setRanks] = useState<Record<string, string>>(() =>
+    initialRanks(roleCodes, initial?.roles)
+  );
   const [authUserId, setAuthUserId] = useState<number | undefined>(undefined);
   const [authUserLabel, setAuthUserLabel] = useState<string | undefined>(undefined);
 
@@ -346,7 +417,28 @@ export default function RegistrationSchemaForm({
 
   const rolesField = allFields(schema).find((field) => field.key === "roles");
   const topHeroesEnabled = rolesField ? rolesParams(rolesField).top_heroes.enabled : false;
-  const heroesQuery = useHeroesCatalog({ enabled: topHeroesEnabled });
+  // What the registrant is asked, and what a submit sends: a one-role game keeps the role step only for what else it
+  // carries (top heroes), titled after them, else the step goes whole -- an empty section is no step at all.
+  // Plain, not `useMemo`: the React Compiler memoizes it, and refuses the manual form over `onlyRole`.
+  const shownSchema: FormSchema =
+    onlyRole == null
+      ? schema
+      : {
+          ...schema,
+          sections: schema.sections
+            .map((section) =>
+              !section.fields.some((field) => field.key === "roles")
+                ? section
+                : topHeroesEnabled
+                  ? { ...section, title: t("registration.roles.topHeroes.title") }
+                  : { ...section, fields: section.fields.filter((field) => field.key !== "roles") }
+            )
+            .filter((section) => section.fields.length > 0)
+        };
+  // The picker lists the characters of the form's own game (the owner read names it).
+  const heroesQuery = useCatalogEntities(form.discipline, "character", {
+    enabled: topHeroesEnabled
+  });
 
   // Public mode only: the endpoint answers for the CALLER, so it is meaningless
   // while an organizer edits somebody else's registration.
@@ -359,6 +451,8 @@ export default function RegistrationSchemaForm({
   // The server refuses this submit and no field on this form can change that:
   // anything a challenge code could still fix is asked for at check-in.
   const subscriptionBlocked = subscriptionQuery.data?.blocks_registration === true;
+  // Worded here, from the rule the form read carries, so it follows the reader's locale.
+  const subscriptionRule = useRequirementDescription(form.subscription_requirement_json);
 
   const accounts = isAdmin ? [] : (userProfile?.social_accounts ?? []);
   const onLinkAccounts = isAdmin
@@ -376,7 +470,8 @@ export default function RegistrationSchemaForm({
     accounts,
     subroleCatalog: form.subrole_catalog ?? {},
     heroes: heroesQuery.data ?? [],
-    lockedRole,
+    metadata,
+    lockedRole: seededRole,
     subscription: isAdmin ? null : (subscriptionQuery.data ?? null),
     onLinkAccounts,
     t: tErrors
@@ -431,7 +526,7 @@ export default function RegistrationSchemaForm({
     // server rejects it with `code: "locked"` — so the whole save would fail on
     // fields nobody touched.
     const sent: Answers = {};
-    for (const field of visibleFields(schema, answers)) {
+    for (const field of visibleFields(shownSchema, answers)) {
       if (writableKeys && !writableKeys.includes(field.key)) continue;
       // Same reason as the allowlist: a locked key resent unchanged is still a
       // write of that key, and the server refuses the whole PATCH for it.
@@ -441,27 +536,46 @@ export default function RegistrationSchemaForm({
 
     const payload: RegistrationFormSubmit = { form_version_id: form.version_id, answers: sent };
     if (isAdmin) {
-      const selections = toRoleSelections(
-        Array.isArray(answers.roles) ? (answers.roles as RoleInput[]) : []
-      );
-      // Admin rows carry ranks and activity, which `answers.roles` cannot —
-      // the server takes these over the answer when both are sent. Left out
-      // whole when the viewer lacks `registration.roles`.
-      const adminRoles = rolesReadOnly
-        ? null
-        : fromRoleSelections(selections, lockedRole).map((role, index) => {
-            const typed = ranks[role.role]?.trim();
-            const rank = typed ? Number(typed) : null;
-            return {
-              role: role.role,
-              subrole: role.subrole ?? null,
-              is_primary: role.is_primary,
-              priority: index + 1,
-              rank_value: rank != null && Number.isFinite(rank) ? rank : null,
-              is_active: true,
-              ...(role.top_heroes?.length ? { top_heroes: role.top_heroes } : {})
-            } as AdminRegistrationRoleInput;
-          });
+      const dimension = ratedDimension(metadata)?.code ?? null;
+      // Admin rows carry ranks and activity, which `answers.roles` cannot — the server takes these over the
+      // answer when both are sent, and a send REPLACES the registration's whole role set (assignments, ranks,
+      // picks). Hence `adminRoles` below.
+      const adminRolesFrom = (answered: readonly RoleInput[], typedRanks: Record<string, string>) =>
+        fromRoleSelections(roleCodes, toRoleSelections(roleCodes, answered), seededRole).map((role, index) => {
+          const typed = typedRanks[role.role]?.trim();
+          const rank = typed ? Number(typed) : null;
+          return {
+            role: toRoleRef(role.role, role.subrole ? `${role.role}_${role.subrole}` : null, dimension ?? ""),
+            is_primary: role.is_primary,
+            priority: index + 1,
+            rank_value: rank != null && Number.isFinite(rank) ? rank : null,
+            is_active: true,
+            // The persisted answer spells the picks `top_heroes`; the typed row is the native
+            // `top_characters`.
+            ...(role.top_heroes?.length ? { top_characters: role.top_heroes } : {})
+          } satisfies AdminRegistrationRoleInput;
+        });
+      // The role state is the stored row's unless the form edited it: a schema without a `roles` question (a
+      // tournament with no questionnaire, or one that never asks) leaves `answers.roles` unset, and an unset
+      // answer is not an empty role set.
+      const answeredRoles: readonly RoleInput[] = Array.isArray(answers.roles)
+        ? (answers.roles as RoleInput[])
+        : initial
+          ? roleInputsFrom(initial.roles)
+          : [];
+      const nextRoles =
+        rolesReadOnly || dimension === null ? null : adminRolesFrom(answeredRoles, ranks);
+      // Editing: what the form would send for the stored state untouched. Equal means nothing about roles or
+      // ranks changed, so nothing about them is sent (a roles-less save of a name or a note must not rewrite —
+      // or, for an empty set, wipe — the registration's roles). Creating has nothing stored to compare with.
+      const storedRoles =
+        initial && nextRoles
+          ? adminRolesFrom(roleInputsFrom(initial.roles), initialRanks(roleCodes, initial.roles))
+          : null;
+      const adminRoles =
+        nextRoles && storedRoles && JSON.stringify(nextRoles) === JSON.stringify(storedRoles)
+          ? null
+          : nextRoles;
       payload.admin = {
         display_name: displayName || null,
         admin_notes: adminNotes || null,
@@ -503,7 +617,7 @@ export default function RegistrationSchemaForm({
       // The SAME step list `SchemaForm` renders, or the index would point into
       // a section the edit dialog dropped for having nothing writable on it.
       const target = schemaSteps(
-        schema,
+        shownSchema,
         answers,
         isEditing ? (field) => lockedFields[field.key] === undefined : undefined
       ).findIndex((section) => section.fields.some((field) => rejected.includes(field.key)));
@@ -546,9 +660,9 @@ export default function RegistrationSchemaForm({
 
   const organizerPanel = (
     <section className="grid gap-4 rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-4">
-      <h3 className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
+      <Eyebrow as="h3" tone="muted">
         {t("registrationOrganizer.form.organizer")}
-      </h3>
+      </Eyebrow>
 
       <div className="space-y-2">
         <FieldLabel label={t("registrationOrganizer.form.linkedAccount")} />
@@ -571,10 +685,14 @@ export default function RegistrationSchemaForm({
       />
 
       <div className="grid gap-3 sm:grid-cols-3">
-        {ROLES.map((role) => (
+        {roles.map((role) => (
           <TextField
             key={role.code}
-            label={t("registrationOrganizer.form.rank", { role: role.display })}
+            label={
+              onlyRole
+                ? t("registrationOrganizer.form.rankOnly")
+                : t("registrationOrganizer.form.rank", { role: nameOf(role) })
+            }
             type="number"
             placeholder="—"
             value={ranks[role.code] ?? ""}
@@ -646,14 +764,15 @@ export default function RegistrationSchemaForm({
           className="rounded-lg border border-[color:color-mix(in_srgb,var(--aqt-rose)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-rose)_12%,transparent)] p-2.5 text-xs leading-5 text-[color:var(--aqt-fg)]"
         >
           {t("common.subscription.registrationBlocked", {
-            rule: subscriptionQuery.data?.rule ?? ""
+            rule: subscriptionRule
           })}
         </p>
       )}
 
       <div className="flex items-center justify-between border-t border-[color:var(--aqt-border)] pt-4">
-        <button
+        <Button
           type="button"
+          variant="outline"
           onClick={() => {
             if (!state.canGoBack) {
               onCancel();
@@ -662,7 +781,7 @@ export default function RegistrationSchemaForm({
             setShowErrors(false);
             setStep((current) => current - 1);
           }}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border-2)] px-3 py-2 text-sm font-medium text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="text-[color:var(--aqt-fg-muted)]"
         >
           {state.canGoBack && <ArrowLeft className="size-3.5" aria-hidden />}
           {state.canGoBack
@@ -672,25 +791,24 @@ export default function RegistrationSchemaForm({
               : isAdmin
                 ? t("registrationOrganizer.form.cancel")
               : t("common.cancel")}
-        </button>
+        </Button>
 
         <div className="flex items-center gap-2">
           {isAdmin && !state.isLast && (
-            <button
+            <Button
               type="button"
+              variant="outline"
               onClick={() => void advance(state, true)}
               disabled={submitPending}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border-2)] px-3 py-2 text-sm font-medium text-[color:var(--aqt-fg)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
             >
               {initial ? t("registrationOrganizer.form.save") : t("registrationOrganizer.form.create")}
-            </button>
+            </Button>
           )}
 
-          <button
+          <Button
             type="button"
             onClick={() => void advance(state)}
             disabled={submitPending || (state.isLast && subscriptionBlocked)}
-            className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--aqt-teal)] px-4 py-2 text-sm font-medium text-[color:var(--aqt-bg)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
           >
             {submitPending && <Spinner />}
             {state.isLast ? (
@@ -709,7 +827,7 @@ export default function RegistrationSchemaForm({
                 <ArrowRight className="size-3.5" aria-hidden />
               </>
             )}
-          </button>
+          </Button>
         </div>
       </div>
     </>
@@ -727,7 +845,10 @@ export default function RegistrationSchemaForm({
 
       {!isAdmin && (
         <>
-          <SubscriptionRuleNotice subscription={subscriptionQuery.data} />
+          <SubscriptionRuleNotice
+            subscription={subscriptionQuery.data}
+            requirement={form.subscription_requirement_json}
+          />
           {/* Before the submit, on every step: the entry will carry a "late
               sign-up" mark, and nothing else about it changes. */}
           {lateSignUp && (
@@ -739,10 +860,9 @@ export default function RegistrationSchemaForm({
             </p>
           )}
           {accounts.length === 0 && onLinkAccounts && (
-            <button
-              type="button"
+            <RowButton
               onClick={onLinkAccounts}
-              className="flex w-full items-start gap-3 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-3 text-left transition-colors hover:bg-[color:var(--aqt-overlay-3)]"
+              className="flex items-start gap-3 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-3 hover:bg-[color:var(--aqt-overlay-3)]"
             >
               <div className="space-y-0.5">
                 <div className="text-sm font-medium text-[color:var(--aqt-fg)]">
@@ -756,13 +876,13 @@ export default function RegistrationSchemaForm({
                   <ArrowRight className="size-3" aria-hidden />
                 </div>
               </div>
-            </button>
+            </RowButton>
           )}
         </>
       )}
 
       <SchemaForm
-        schema={schema}
+        schema={shownSchema}
         answers={answers}
         onChange={updateAnswer}
         renderers={registrationRenderers}
@@ -803,7 +923,7 @@ function AdminStatusSelect({
     <div className="space-y-2">
       <FieldLabel label={label} icon={<BadgeInfo className="size-3.5 opacity-50" />} />
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className={cn(fieldControlClass, "h-9")}>
+        <SelectTrigger variant="surface">
           <SelectValue placeholder={t("form.select", { label: label.toLowerCase() })} />
         </SelectTrigger>
         <SelectContent>

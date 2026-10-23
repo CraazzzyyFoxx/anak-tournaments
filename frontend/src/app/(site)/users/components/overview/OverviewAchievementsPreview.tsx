@@ -3,7 +3,8 @@ import { ArrowRight } from "lucide-react";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { AchievementArt } from "@/components/achievements/AchievementArt";
 import { AchievementRarity } from "@/types/achievement.types";
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface } from "@/components/profile/atoms";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { classifyRarity, rarityVarClass, type Rarity } from "@/lib/achievements/rarity";
 
 interface Props {
@@ -58,12 +59,9 @@ const OverviewAchievementsPreview = async ({ achievements, userSlug, limit = DEF
                   {ach.name}
                 </div>
                 <div className="flex items-center gap-2">
-                  <span
-                    className="aqt-tnum text-label font-bold uppercase tracking-label"
-                    style={{ color: "hsl(var(--rar))" }}
-                  >
+                  <Eyebrow className="aqt-tnum" style={{ color: "hsl(var(--rar))" }}>
                     {rarityLabel}
-                  </span>
+                  </Eyebrow>
                   <span className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">
                     {(ach.rarity * 100).toFixed(2)}%
                   </span>

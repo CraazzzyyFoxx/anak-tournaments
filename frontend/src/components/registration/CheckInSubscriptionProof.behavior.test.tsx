@@ -15,6 +15,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextIntlClientProvider } from "next-intl";
 
+import { ApiError } from "@/lib/api/error";
 import type { SubscriptionStatus } from "@/types/registration.types";
 import CheckInSubscriptionProof from "./CheckInSubscriptionProof";
 
@@ -52,6 +53,16 @@ const MESSAGES = {
       linkDiscordCta: "Link Discord",
       reconnectTwitchCta: "Reconnect Twitch"
     }
+  },
+  subscriptionRequirement: {
+    rule: { clause: "{provider} level {tier}", clauseAnyTier: "{provider}", and: " and ", or: " or " }
+  },
+  registrationTeams: {
+    errors: {
+      request_failed: "Something went wrong.",
+      subscription_code_rejected: "The code did not match.",
+      subscription_redeem_rate_limited: "Too many attempts."
+    }
   }
 };
 
@@ -59,7 +70,6 @@ const CODE_PENDING: SubscriptionStatus = {
   required: true,
   mode: "any",
   outcome: "refused",
-  rule: "Boosty level 2 or Twitch",
   blocks_registration: false,
   verdicts: {
     boosty: { state: "inactive", reason: "no_code_redeemed", code_accepted: true },
@@ -138,8 +148,10 @@ describe("CheckInSubscriptionProof", () => {
   });
 
   it("states the composed rule, so an `any` requirement does not read as two failures", async () => {
+    // Worded from the requirement in the reader's locale -- the status read no
+    // longer carries a server-written (Russian) sentence.
     const container = await mount({ active: true });
-    expect(container.textContent).toContain("Boosty level 2 or Twitch");
+    expect(container.textContent).toContain("An active subscription is required: Boosty level 2 or Twitch");
   });
 
   it("offers exactly one field, not one per required provider", async () => {
@@ -174,6 +186,33 @@ describe("CheckInSubscriptionProof", () => {
     expect(container.textContent).not.toContain("Code from the subscriber-only post");
     // The chip came from the redemption response, not a refetch.
     expect(getMySubscriptionStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("words a refused code from its machine code, never the server's sentence", async () => {
+    redeemSubscriptionCode.mockRejectedValue(
+      new ApiError(400, [{ code: "subscription_code_rejected", msg: "Код не подошёл." }])
+    );
+    const container = await mount({ active: true });
+    await type(container.querySelector("input") as HTMLInputElement, "wrong");
+    await act(async () => {
+      redeemButton(container).click();
+    });
+    await flush();
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("The code did not match.");
+    expect(container.textContent).not.toContain("Код не подошёл");
+  });
+
+  it("words the redemption throttle from its code too", async () => {
+    redeemSubscriptionCode.mockRejectedValue(
+      new ApiError(429, [{ code: "subscription_redeem_rate_limited", msg: "Too many attempts. Try again later." }])
+    );
+    const container = await mount({ active: true });
+    await type(container.querySelector("input") as HTMLInputElement, "again");
+    await act(async () => {
+      redeemButton(container).click();
+    });
+    await flush();
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Too many attempts.");
   });
 
   it("renders nothing when the tournament requires no subscription", async () => {

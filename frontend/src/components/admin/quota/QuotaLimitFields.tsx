@@ -3,8 +3,7 @@
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
-import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
+import { SettingRow } from "@/components/kit/SettingRow";
 import { NumberInput } from "@/components/ui/number-input";
 import type { QuotaDimension, QuotaLimitsPayload } from "@/types/auth.types";
 import { QUOTA_DIMENSIONS } from "@/types/auth.types";
@@ -36,6 +35,7 @@ export interface QuotaLimitFieldsProps {
  * A value above the inherited ceiling is the one edit authority splits on, so
  * it is marked in place rather than left to a 422: refused outright for an
  * admin, flagged as a superuser override for the account that may store it.
+ * The inherited ceiling itself is the placeholder of an empty field.
  */
 export function QuotaLimitFields({
   idPrefix,
@@ -48,11 +48,10 @@ export function QuotaLimitFields({
   disabled = false
 }: Readonly<QuotaLimitFieldsProps>) {
   const t = useTranslations("quota");
-  const tSettings = useTranslations("adminSettings.quota");
   const format = useFormatter();
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="divide-y divide-border/60">
       {QUOTA_DIMENSIONS.map((dimension) => {
         const fieldId = `${idPrefix}-${dimension}`;
         const hintId = `${fieldId}-hint`;
@@ -80,53 +79,42 @@ export function QuotaLimitFields({
           .join(" ");
 
         return (
-          <div key={dimension} className="space-y-1.5">
-            <div className="flex min-h-6 items-center justify-between gap-2">
-              <Label htmlFor={fieldId}>{label}</Label>
-              {isRaise ? (
-                <Badge tone={canRaise ? "warning" : "danger"} className="font-normal">
-                  {t("superuserOnly")}
-                </Badge>
+          <SettingRow
+            key={dimension}
+            htmlFor={fieldId}
+            label={label}
+            hint={<span id={hintId}>{t(`dimensions.${dimension}.hint`)}</span>}
+          >
+            <div className="w-full space-y-1.5">
+              <NumberInput
+                id={fieldId}
+                integer
+                min={0}
+                value={values[dimension]}
+                onValueChange={(next) => onChange(dimension, next)}
+                placeholder={
+                  ceiling === null
+                    ? t("inheritPlaceholder")
+                    : t("inheritPlaceholderValue", { value: format.number(ceiling) })
+                }
+                disabled={disabled}
+                aria-invalid={error ? true : undefined}
+                aria-describedby={described}
+              />
+              {error ? (
+                <p id={errorId} className="text-xs font-medium text-danger">
+                  {error}
+                </p>
+              ) : null}
+              {isRaise && canRaise ? (
+                <p id={noteId} className="text-xs font-medium text-warning">
+                  {ceiling === null
+                    ? t("raiseAboveUnlimited")
+                    : t("raiseAbove", { limit: format.number(ceiling) })}
+                </p>
               ) : null}
             </div>
-            <NumberInput
-              id={fieldId}
-              integer
-              min={0}
-              value={values[dimension]}
-              onValueChange={(next) => onChange(dimension, next)}
-              placeholder={
-                ceiling === null
-                  ? t("inheritPlaceholder")
-                  : t("inheritPlaceholderValue", { value: format.number(ceiling) })
-              }
-              disabled={disabled}
-              aria-invalid={error ? true : undefined}
-              aria-describedby={described}
-            />
-            {error ? (
-              <p id={errorId} className="text-xs font-medium text-danger">
-                {error}
-              </p>
-            ) : null}
-            {isRaise && canRaise ? (
-              <p id={noteId} className="text-xs font-medium text-warning">
-                {ceiling === null
-                  ? t("raiseAboveUnlimited")
-                  : t("raiseAbove", { limit: format.number(ceiling) })}
-              </p>
-            ) : null}
-            <p id={hintId} className="text-xs text-muted-foreground">
-              {inherited
-                ? tSettings("hintWithInherited", {
-                    hint: t(`dimensions.${dimension}.hint`),
-                    inherited: t("inheritedCeiling", {
-                      value: ceiling === null ? t("unlimited") : format.number(ceiling)
-                    })
-                  })
-                : t(`dimensions.${dimension}.hint`)}
-            </p>
-          </div>
+          </SettingRow>
         );
       })}
     </div>

@@ -70,10 +70,9 @@ function team(overrides: Partial<Team> = {}): Team {
         created_at: new Date("2026-01-01T00:00:00Z"),
         updated_at: null,
         name: "Nova",
-        sub_role: null,
         rank: 3400,
         division: 4,
-        role: "damage",
+        role: { dimension: "player_role", role: "damage" },
         tournament_id: 7,
         user_id: 91,
         team_id: 9,
@@ -87,6 +86,8 @@ function team(overrides: Partial<Team> = {}): Team {
     tournament: {
       id: 7,
       name: "MoonRise Mix Vol.4",
+      workspace_id: 1,
+      discipline: "overwatch",
       start_date: "2026-02-01",
       end_date: "2026-02-28"
     } as unknown as Team["tournament"],

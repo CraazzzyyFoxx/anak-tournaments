@@ -22,23 +22,23 @@
   --ed-blue: var(--aqt-blue);
   --ed-display: var(--aqt-display);
   --ed-mono: var(--aqt-data);
-  /* Side identity. The home/away pair is the page's organising contrast, so it
+  /* Side identity. The slot 1 / slot 2 pair is the page's organising contrast, so it
      is declared once here and every side-tinted element derives from it. */
-  --ed-home: var(--aqt-teal);
-  --ed-away: var(--aqt-rose);
+  --ed-one: var(--aqt-teal);
+  --ed-two: var(--aqt-rose);
   color: var(--ed-fg);
   display: flex;
   flex-direction: column;
   gap: 24px;
 }
 
-/* Per-side scope: components set `--ed-side` and stop branching on home/away. */
-.sideHome {
-  --ed-side: var(--ed-home);
+/* Per-side scope: components set `--ed-side` and stop branching on the slot. */
+.slotOne {
+  --ed-side: var(--ed-one);
 }
 
-.sideAway {
-  --ed-side: var(--ed-away);
+.slotTwo {
+  --ed-side: var(--ed-two);
 }
 
 /* ============ Section chrome ============ */
@@ -121,43 +121,6 @@
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--ed-faint);
-}
-
-.pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 9px;
-  border-radius: 999px;
-  border: 1px solid var(--ed-border-2);
-  background: var(--aqt-overlay-3);
-  font-size: var(--text-label);
-  color: var(--ed-muted);
-  white-space: nowrap;
-}
-
-.pillAccent {
-  border-color: color-mix(in srgb, var(--ed-teal) 30%, transparent);
-  background: color-mix(in srgb, var(--ed-teal) 12%, transparent);
-  color: var(--ed-teal);
-}
-
-.pillWarn {
-  border-color: color-mix(in srgb, var(--ed-amber) 30%, transparent);
-  background: color-mix(in srgb, var(--ed-amber) 12%, transparent);
-  color: var(--ed-amber);
-}
-
-.pillDanger {
-  border-color: color-mix(in srgb, var(--ed-rose) 30%, transparent);
-  background: color-mix(in srgb, var(--ed-rose) 12%, transparent);
-  color: var(--ed-rose);
-}
-
-.pillGood {
-  border-color: color-mix(in srgb, var(--ed-emerald) 30%, transparent);
-  background: color-mix(in srgb, var(--ed-emerald) 12%, transparent);
-  color: var(--ed-emerald);
 }
 
 .livePulse {
@@ -315,9 +278,9 @@
   min-width: 0;
 }
 
-/* The away side mirrors so both team logos sit beside the score, not beside the
+/* The slot 2 side mirrors so both team logos sit beside the score, not beside the
    page edges — the matchup reads inward toward the result. */
-.boardSideAway {
+.boardSlotTwo {
   flex-direction: row-reverse;
   text-align: right;
 }
@@ -380,12 +343,12 @@
   font-variant-numeric: tabular-nums;
 }
 
-.scoreHome {
-  color: var(--ed-home);
+.scoreOne {
+  color: var(--ed-one);
 }
 
-.scoreAway {
-  color: var(--ed-away);
+.scoreTwo {
+  color: var(--ed-two);
 }
 
 .scoreSep {
@@ -417,12 +380,12 @@
   border: 1px solid transparent;
 }
 
-.pipHome {
-  background: var(--ed-home);
+.pipOne {
+  background: var(--ed-one);
 }
 
-.pipAway {
-  background: var(--ed-away);
+.pipTwo {
+  background: var(--ed-two);
 }
 
 .pipDraw {
@@ -638,57 +601,9 @@
   gap: 8px;
 }
 
-/* Token-native button. shadcn's <Button> resolves against the shadcn theme
-   vars, which read a shade off against these surfaces. */
-.button {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 8px;
-  border: 1px solid var(--ed-border-2);
-  background: var(--aqt-overlay-2);
-  color: var(--ed-fg);
-  font-family: inherit;
-  font-size: var(--text-caption);
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  outline: none;
-  transition: 0.15s;
-}
-
-.button:hover:not(:disabled) {
-  background: var(--aqt-overlay-3);
-  border-color: var(--ed-border-3);
-}
-
-.button:focus-visible {
-  outline: 2px solid var(--ed-teal);
-  outline-offset: 2px;
-}
-
-.button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.buttonAccent {
-  border-color: color-mix(in srgb, var(--ed-teal) 32%, transparent);
-  background: color-mix(in srgb, var(--ed-teal) 12%, transparent);
-  color: var(--ed-teal);
-}
-
-.buttonAccent:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ed-teal) 18%, transparent);
-  border-color: color-mix(in srgb, var(--ed-teal) 45%, transparent);
-}
-
-/* Square sibling of `.button`, for a control whose whole label is its icon.
-   `MatchLogIndicator` merges `className` last, so this overrides its default
-   28px `h-7 w-7 rounded-[7px]` box while leaving its emerald availability tint
-   intact — the two hero actions then share one height and radius. */
+/* A 32px square beside the `Button size="sm"` hero action. `MatchLogIndicator`
+   merges `className` last, so this overrides its default 28px `h-7 w-7
+   rounded-[7px]` box while leaving its emerald availability tint intact. */
 .iconButton {
   height: 32px;
   width: 32px;
@@ -798,6 +713,7 @@
 }
 
 .seriesTable {
+  --ed-side: var(--ed-dim);
   width: 100%;
   min-width: 52rem;
   border-collapse: collapse;
@@ -1026,28 +942,6 @@
   text-decoration: underline;
 }
 
-/* ============ Skeleton ============ */
-.skeleton {
-  border-radius: 8px;
-  background: linear-gradient(
-    105deg,
-    color-mix(in srgb, var(--aqt-card-2) 90%, transparent) 0%,
-    color-mix(in srgb, var(--aqt-teal) 7%, var(--aqt-card-2)) 45%,
-    color-mix(in srgb, var(--aqt-card-2) 90%, transparent) 90%
-  );
-  background-size: 220% 100%;
-  animation: edSkeletonSweep 1.8s ease-in-out infinite;
-}
-
-@keyframes edSkeletonSweep {
-  0% {
-    background-position: 120% 0;
-  }
-  100% {
-    background-position: -40% 0;
-  }
-}
-
 /* ============ Responsive ============
    Three max-width steps; the first two mirror Encounters.module.css. */
 @media (max-width: 1280px) {
@@ -1109,7 +1003,7 @@
   }
 
   .boardSide,
-  .boardSideAway {
+  .boardSlotTwo {
     flex-direction: row;
     text-align: left;
     width: 100%;
@@ -1121,10 +1015,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .skeleton {
-    animation: none;
-  }
-
   .livePulse {
     animation: none;
   }

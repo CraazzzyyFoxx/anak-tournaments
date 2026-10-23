@@ -1,19 +1,23 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { buildTeamViews, filterSortTeams } from "@/lib/draft/room-model";
 import type { RosterShape } from "@/lib/roster/shape";
+import { DEADLOCK_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 import type { DraftBoard, DraftPick, DraftPlayer, DraftSession, DraftTeam } from "@/types/draft.types";
 
 vi.mock("next-intl", () => ({
   useLocale: () => "en",
-  useTranslations: () => (key: string, values?: Record<string, unknown>) =>
-    values ? `${key}:${JSON.stringify(values)}` : key
+  useTranslations: () =>
+    Object.assign(
+      (key: string, values?: Record<string, unknown>) => (values ? `${key}:${JSON.stringify(values)}` : key),
+      { has: () => false }
+    )
 }));
 
-// `next/image` outside a Next build rewrites src through the optimizer loader;
-// the shipped config sets `images.unoptimized`, so the real render keeps it
-// verbatim.
+// `next/image` rewrites src through the optimizer loader; the stand-in keeps
+// the stored URL so the test can read it.
 vi.mock("next/image", () => ({
   // eslint-disable-next-line @next/next/no-img-element -- this IS the next/image stand-in
   default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} alt={props.alt ?? ""} />
@@ -76,18 +80,17 @@ const drafted: DraftPlayer = {
   session_id: 1,
   registration_id: 70,
   user_id: null,
-  battle_tag: "Ana#1234",
-  primary_role: "support",
-  sub_role: null,
+  identity: { provider: "battlenet", handle: "Ana#1234" }, player_name: null,
+  primary_role: { dimension: "player_role", role: "support" },
   is_flex: false,
   effective_rank: 4000,
   status: "picked",
   is_captain: false,
   drafted_by_team_id: 1,
-  secondary_roles: ["damage"],
+  secondary_roles: [{ dimension: "player_role", role: "damage" }],
   role_ranks: { support: 2800, damage: 4000 },
   role_sources: { support: "registration", damage: "registration" },
-  role_top_heroes: {},
+  role_top_characters: {},
   role_sub_roles: {},
   notes: null,
   custom_fields: [],
@@ -124,7 +127,7 @@ function makePick(
   };
 }
 
-const supportPick = makePick(1, 1, 1, 1, "completed", { picked_player_id: 7, target_role: "support" });
+const supportPick = makePick(1, 1, 1, 1, "completed", { picked_player_id: 7, target_role: { dimension: "player_role", role: "support" } });
 
 function makeBoard(
   shape: RosterShape,
@@ -153,33 +156,39 @@ function renderRosters(
     myTeamId = null,
     followed = new Set<number>(),
     filter = "all",
-    onSlotFilter
+    onSlotFilter,
+    ontology = OW_METADATA
   }: {
     myTeamId?: number | null;
     followed?: ReadonlySet<number>;
     filter?: "all" | "follow" | "tank" | "damage" | "support";
     onSlotFilter?: (role: "tank" | "damage" | "support") => void;
+    ontology?: typeof OW_METADATA;
   } = {}
 ) {
   const teamViews = buildTeamViews(board);
+  // The rank crests also ask for the current workspace's own grid, through the query cache.
   return renderToStaticMarkup(
-    <TeamRosters
-      board={board}
-      teamViews={teamViews}
-      teams={filterSortTeams(board, teamViews, { filter, sort: "order", followed, myTeamId })}
-      filter={filter}
-      onFilterChange={noop}
-      sort="order"
-      onSortChange={noop}
-      followed={followed}
-      onToggleFollow={noop}
-      myTeamId={myTeamId}
-      onlineCaptainIds={new Set([101])}
-      onOpenProfile={noop}
-      onSlotFilter={onSlotFilter}
-      divisionGrid={GRID}
-      clockColor="var(--aqt-fg)"
-    />
+    <QueryClientProvider client={new QueryClient()}>
+      <TeamRosters
+        board={board}
+        teamViews={teamViews}
+        teams={filterSortTeams(board, teamViews, { filter, sort: "order", followed, myTeamId })}
+        filter={filter}
+        onFilterChange={noop}
+        sort="order"
+        onSortChange={noop}
+        followed={followed}
+        onToggleFollow={noop}
+        myTeamId={myTeamId}
+        onlineCaptainIds={new Set([101])}
+        onOpenProfile={noop}
+        onSlotFilter={onSlotFilter}
+        divisionGrid={GRID}
+        ontology={ontology}
+        clockColor="var(--aqt-fg)"
+      />
+    </QueryClientProvider>
   );
 }
 
@@ -188,7 +197,7 @@ describe("roster cells", () => {
     const html = renderRosters(makeBoard(ROLE_SHAPE));
     const cell = html.match(/<button[^>]*aria-label="Ana#1234[^"]*"[^>]*>.*?<\/button>/)?.[0] ?? "";
 
-    expect(html).toContain('aria-label="Ana#1234 · roles.support · 2800 SR');
+    expect(html).toContain('aria-label="Ana#1234 · Support · 2800 SR');
     expect(html).not.toContain("4000 SR");
     // The crest is the rank a viewer reads at a glance: the slot's, not the best role's.
     expect(cell).toContain("/low.png");
@@ -200,7 +209,7 @@ describe("roster cells", () => {
     // assignment that was never made, and a role chip a need that does not exist.
     const html = renderRosters(makeBoard(FLEX_SHAPE));
 
-    expect(html).toContain('aria-label="Ana#1234 · roles.flex · 4000 SR');
+    expect(html).toContain('aria-label="Ana#1234 · flex · 4000 SR');
     expect(html).not.toContain("2800 SR");
     expect(html).not.toContain("teams.chips.needAria");
   });
@@ -208,10 +217,10 @@ describe("roster cells", () => {
   test("a mixed shape spans one flex icon over its flex columns and chips only its role slots", () => {
     const html = renderRosters(makeBoard(MIXED_SHAPE, { players: [], picks: [] }));
 
-    expect(html).toContain('title="roles.flex" class="flex justify-center" style="grid-column:span 2"');
+    expect(html).toContain('title="flex" class="flex justify-center" style="grid-column:span 2"');
     expect(html).toContain("repeat(5, minmax(0,1fr))");
-    expect(html).toContain("teams.chips.needAria:{&quot;role&quot;:&quot;tank&quot;");
-    expect(html).toContain("teams.chips.needAria:{&quot;role&quot;:&quot;damage&quot;");
+    expect(html).toContain("teams.chips.needAria:{&quot;role&quot;:&quot;tank&quot;,&quot;label&quot;:&quot;Tank&quot;");
+    expect(html).toContain("teams.chips.needAria:{&quot;role&quot;:&quot;damage&quot;,&quot;label&quot;:&quot;Damage&quot;");
     expect(html).not.toContain("&quot;role&quot;:&quot;support&quot;");
   });
 
@@ -239,15 +248,15 @@ describe("open slots", () => {
   test("my own open role slots are buttons that filter the pool", () => {
     const html = renderRosters(makeBoard(ROLE_SHAPE), { myTeamId: 1, onSlotFilter: noop });
 
-    expect(html).toContain('aria-label="filterBySlot:{&quot;role&quot;:&quot;roles.tank&quot;}"');
-    expect(html).toContain('aria-label="filterBySlot:{&quot;role&quot;:&quot;roles.damage&quot;}"');
+    expect(html).toContain('aria-label="filterBySlot:{&quot;role&quot;:&quot;Tank&quot;}"');
+    expect(html).toContain('aria-label="filterBySlot:{&quot;role&quot;:&quot;Damage&quot;}"');
   });
 
   test("an open flex slot never filters: it asks for no role", () => {
     const html = renderRosters(makeBoard(FLEX_SHAPE), { myTeamId: 1, onSlotFilter: noop });
 
     expect(html).not.toContain("filterBySlot");
-    expect(html).toContain("teams.cell.open:{&quot;role&quot;:&quot;roles.flex&quot;}");
+    expect(html).toContain("teams.cell.open:{&quot;role&quot;:&quot;flex&quot;}");
   });
 
   test("another captain's open slots stay inert", () => {
@@ -295,23 +304,26 @@ describe("order tab", () => {
   function renderOrder(picks: DraftPick[], teams = [makeTeam(1), makeTeam(2)]) {
     const board = makeBoard(ROLE_SHAPE, { teams, players: [], picks });
     return renderToStaticMarkup(
-      <TeamsPanel
-        board={board}
-        teamViews={buildTeamViews(board)}
-        tab="order"
-        onTabChange={noop}
-        filter="all"
-        onFilterChange={noop}
-        sort="order"
-        onSortChange={noop}
-        followed={new Set()}
-        onToggleFollow={noop}
-        myTeamId={null}
-        onlineCaptainIds={new Set()}
-        onOpenProfile={noop}
-        divisionGrid={GRID}
-        headingId="teams-h"
-      />
+      <QueryClientProvider client={new QueryClient()}>
+        <TeamsPanel
+          board={board}
+          teamViews={buildTeamViews(board)}
+          tab="order"
+          onTabChange={noop}
+          filter="all"
+          onFilterChange={noop}
+          sort="order"
+          onSortChange={noop}
+          followed={new Set()}
+          onToggleFollow={noop}
+          myTeamId={null}
+          onlineCaptainIds={new Set()}
+          onOpenProfile={noop}
+          divisionGrid={GRID}
+          ontology={OW_METADATA}
+          headingId="teams-h"
+        />
+      </QueryClientProvider>
     );
   }
 
@@ -360,5 +372,34 @@ describe("order tab", () => {
       [makeTeam(1), makeTeam(2), makeTeam(3)]
     );
     expect(shuffled).toContain("teams.order.roundTitle:{&quot;n&quot;:1,&quot;direction&quot;:&quot;custom&quot;}");
+  });
+});
+
+describe("a one-role game", () => {
+  test("names no role: no need chips, no slot heads, the cell reads the player and the rank", () => {
+    const agent = { dimension: "agent", role: "agent" };
+    const shape: RosterShape = {
+      slots: { agent: 6 },
+      team_size: 6,
+      flex_slots: 0,
+      has_role_slots: true,
+      draft_rounds: 5,
+      source: "tournament"
+    };
+    const player: DraftPlayer = {
+      ...drafted,
+      primary_role: agent,
+      secondary_roles: [],
+      role_ranks: { agent: 2800 },
+      role_sources: { agent: "registration" }
+    };
+    const pick = makePick(1, 1, 1, 1, "completed", { picked_player_id: 7, target_role: agent });
+
+    const html = renderRosters(makeBoard(shape, { players: [player], picks: [pick] }), { ontology: DEADLOCK_METADATA });
+
+    expect(html).toContain('aria-label="Ana#1234 · 2800 SR');
+    expect(html).not.toContain("teams.chips.need");
+    expect(html).not.toContain("Agent");
+    expect(html).toContain("teams.cell.openSeat");
   });
 });

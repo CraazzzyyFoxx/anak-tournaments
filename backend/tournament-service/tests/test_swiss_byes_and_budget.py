@@ -1,9 +1,9 @@
 """The Swiss search node budget.
 
-Review item 18: the search cap bounds found options, not the work spent finding
-them.
+The search cap bounds found options; the node budget bounds the work spent
+finding them.
 
-Does not touch the database -- purely tests the pure-function shared library.
+Does not touch the database: ``src.domain.bracket`` is pure.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
 
-from shared.services.bracket import swiss  # noqa: E402
+from src.domain.bracket import swiss  # noqa: E402
 
 
 def _stress_field(team_count: int) -> tuple[list[swiss.SwissStanding], set[frozenset[int]]]:
@@ -55,5 +55,6 @@ class SwissSearchBudgetTests(TestCase):
         self.assertIsNone(skeleton.bye_team_id)
         self.assertEqual(
             [(1, 3), (2, 4), (5, 7), (6, 8)],
-            [(pairing.home_team_id, pairing.away_team_id) for pairing in skeleton.pairings],
+            # ``team_ids[i]`` is slot ``i + 1``; there is no home or away.
+            [tuple(pairing.team_ids) for pairing in skeleton.pairings],
         )

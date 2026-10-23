@@ -24,8 +24,12 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 vi.mock("next/link", () => ({
   default: forwardRef<
     HTMLAnchorElement,
-    { href: string; children: React.ReactNode } & React.AnchorHTMLAttributes<HTMLAnchorElement>
-  >(function Link({ href, children, ...props }, ref) {
+    {
+      href: string;
+      children: React.ReactNode;
+      prefetch?: boolean | null;
+    } & React.AnchorHTMLAttributes<HTMLAnchorElement>
+  >(function Link({ href, children, prefetch: _prefetch, ...props }, ref) {
     return (
       <a ref={ref} href={href} {...props}>
         {children}
@@ -111,7 +115,8 @@ describe("LinkTabs", () => {
     await render();
     const all = links();
 
-    all[0].focus();
+    // A focused link arms its prefetch, which is a state update.
+    await act(async () => all[0].focus());
     await keyDown("ArrowRight");
     expect(document.activeElement).toBe(all[1]);
 

@@ -8,7 +8,7 @@
  * one entry per locale.
  */
 
-export type NotificationAudience = "user" | "workspace" | "global";
+type NotificationAudience = "user" | "workspace" | "global";
 
 /** Operator-written announcement text, per locale, inside `payload.locales`. */
 export interface AnnouncementLocaleText {
@@ -107,7 +107,7 @@ export interface AnnouncementCreateBody {
 export type NotificationGroup = "tournament" | "matches" | "team" | "staff";
 
 /** One workspace where the account is staff, with its own effective `staff` switch. */
-export interface NotificationStaffWorkspace {
+interface NotificationStaffWorkspace {
   workspace_id: number;
   name: string;
   enabled: boolean;
@@ -136,7 +136,7 @@ export interface NotificationPreferencesUpdate {
 }
 
 /** One DM handed to the bot for an account (`notification_delivery`); sends only, never skips. */
-export interface NotificationDeliveryItem {
+interface NotificationDeliveryItem {
   id: number;
   channel: string;
   kind: string;

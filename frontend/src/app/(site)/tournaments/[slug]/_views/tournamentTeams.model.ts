@@ -1,7 +1,8 @@
-import { isEncounterCompleted } from "@/lib/encounter/status";
-import { normalizePlayerRole } from "@/lib/roster/player-role";
+import { duelSeats } from "@/lib/encounter/seats";
+import { getEncounterWinner } from "@/lib/encounter/status";
+import { roleOf } from "@/lib/roster/role-ref";
 import type { Encounter } from "@/types/encounter.types";
-import type { Hero } from "@/types/hero.types";
+import type { CatalogEntityChip } from "@/types/catalog.types";
 import type { Registration } from "@/types/registration.types";
 import type { Player, Team } from "@/types/team.types";
 
@@ -65,12 +66,11 @@ export function buildRecords(encounters: Encounter[]): Map<number, TeamRecord> {
   };
 
   for (const encounter of encounters) {
-    if (!isEncounterCompleted(encounter)) continue;
-    const home = encounter.score?.home ?? 0;
-    const away = encounter.score?.away ?? 0;
-    if (home === away) continue;
-    bump(encounter.home_team_id, home > away);
-    bump(encounter.away_team_id, away > home);
+    const winner = getEncounterWinner(encounter);
+    if (winner === null) continue;
+    const [one, two] = duelSeats(encounter.teams);
+    bump(one?.team_id, winner === 1);
+    bump(two?.team_id, winner === 2);
   }
 
   return records;
@@ -86,19 +86,19 @@ export function buildRecords(encounters: Encounter[]): Map<number, TeamRecord> {
 export function declaredHeroes(
   player: Player,
   registration: Registration | undefined,
-  heroesMap: Map<string, Hero>
-): Hero[] {
+  heroesMap: Map<string, CatalogEntityChip>
+): CatalogEntityChip[] {
   if (!registration) return [];
   const roles = registration.roles ?? [];
-  const wanted = normalizePlayerRole(player.role);
+  // The pick list of the role the player was drafted into; a flex slot (no role) reads the primary one.
+  const wanted = player.role ? roleOf(player.role) : null;
   const role =
-    roles.find((entry) => normalizePlayerRole(entry.role) === wanted) ??
+    (wanted ? roles.find((entry) => roleOf(entry.role) === wanted) : undefined) ??
     roles.find((entry) => entry.is_primary) ??
     roles[0];
-  return (role?.top_heroes ?? [])
+  return (role?.top_characters ?? [])
     .slice(0, 3)
     .map(
-      (slug) =>
-        heroesMap.get(slug) ?? ({ name: slug, slug, image_path: "", role: wanted } as Hero)
+      (slug) => heroesMap.get(slug) ?? { name: slug, slug, image_path: null, attrs: {} }
     );
 }

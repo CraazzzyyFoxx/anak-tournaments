@@ -3,6 +3,8 @@ import type {
   InternalBalancePayload,
   InternalBalancePlayer,
 } from "@/types/balancer-admin.types";
+import { slotCodeOrder, type RoleOntology } from "@/lib/roster/ontology";
+import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
 
 import {
   calculateOffRoleCountFromPayload,
@@ -22,13 +24,35 @@ import {
  * drops below the original capacity while the payload is edited.
  */
 export function rosterCapacity(payload: InternalBalancePayload): Record<BalancerRosterKey, number> {
-  const capacity: Record<BalancerRosterKey, number> = { Tank: 0, Damage: 0, Support: 0, Flex: 0 };
+  const capacity: Record<BalancerRosterKey, number> = {};
   for (const team of payload.teams) {
-    for (const roleKey of Object.keys(team.roster) as BalancerRosterKey[]) {
-      capacity[roleKey] = Math.max(capacity[roleKey] ?? 0, team.roster[roleKey]?.length ?? 0);
+    for (const [roleKey, players] of Object.entries(team.roster)) {
+      capacity[roleKey] = Math.max(capacity[roleKey] ?? 0, players?.length ?? 0);
     }
   }
   return capacity;
+}
+
+/**
+ * The buckets a balance fields, in the order the owner game declares its roles: only the slots some team has
+ * seats in (a 1-2-2 shape has no open row, an all-open shape only that one), declared roles first, a bucket the
+ * ontology does not know after them, the open slot last — so a player is never hidden for a role the dictionary
+ * lacks. Without the ontology the payload's own order stands, open slot last.
+ */
+export function balanceBucketKeys(
+  payload: InternalBalancePayload,
+  ontology: RoleOntology | null | undefined,
+): BalancerRosterKey[] {
+  const capacity = rosterCapacity(payload);
+  const declared = slotCodeOrder(ontology);
+  const position = (code: BalancerRosterKey) => {
+    if (code === OPEN_SLOT_CODE) return Number.MAX_SAFE_INTEGER;
+    const index = declared.indexOf(code);
+    return index === -1 ? declared.length : index;
+  };
+  return Object.keys(capacity)
+    .filter((roleKey) => capacity[roleKey] > 0)
+    .sort((left, right) => position(left) - position(right));
 }
 
 export type BalancePlayerLocation = {
@@ -101,18 +125,9 @@ export function findBalancePlayerLocation(
 function parseBalanceDropContainerId(
   containerId: string,
 ): { teamIndex: number; roleKey: BalancerRosterKey } | null {
-  const [teamIndexRaw, roleKeyRaw] = containerId.split(":");
-  if (!teamIndexRaw || !roleKeyRaw) {
-    return null;
-  }
-  if (!["Tank", "Damage", "Support"].includes(roleKeyRaw)) {
-    return null;
-  }
-
-  return {
-    teamIndex: Number(teamIndexRaw),
-    roleKey: roleKeyRaw as BalancerRosterKey,
-  };
+  // A role container is `<team>:<slot code>`; the row and insert-slot droppables are prefixed `player-…:`.
+  const match = /^(\d+):([^:]+)$/.exec(containerId);
+  return match ? { teamIndex: Number(match[1]), roleKey: match[2] } : null;
 }
 
 export function resolveBalanceDropTarget(

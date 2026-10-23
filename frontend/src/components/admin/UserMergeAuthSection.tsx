@@ -6,6 +6,7 @@ import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { getSocialProviderConfig } from "@/lib/social/providers";
 
 function conflictValue(value: unknown, emptyLabel: string) {
   if (value == null || value === "") return emptyLabel;
@@ -81,7 +82,7 @@ export function UserMergeAuthSection({
   };
 
   return (
-    <section className="space-y-4 rounded-lg border p-4" aria-labelledby={`${sectionId}-title`}>
+    <section className="space-y-4 border-t pt-4" aria-labelledby={`${sectionId}-title`}>
       <h3 id={`${sectionId}-title`} className="text-sm font-semibold">{t("title")}</h3>
       <p className="max-w-[68ch] text-sm text-muted-foreground">
         {t("description")}
@@ -173,28 +174,37 @@ export function UserMergeAuthSection({
           const ownsPlayer = account.id === survivor?.id;
           const removed = account.id === deletedAccountId;
           return (
-            <div key={account.id} className="space-y-1.5 rounded-md border px-3 py-2 text-sm">
+            <div key={account.id} className="space-y-1.5 text-sm">
               <p className="font-medium break-words">{accountLabel(account.id)}</p>
               <p className="text-xs text-muted-foreground">
                 {t(accountFateKey(ownsPlayer, removed))}
               </p>
               <p className="break-words text-muted-foreground">{account.email}</p>
               <p className="text-muted-foreground">
-                {account.has_password ? t("passwordSet") : t("noPassword")}, {account.is_active ? t("active") : t("inactive")}
-                {account.is_superuser ? `. ${t("superuserStatus")}` : ""}
+                {t("accountFacts", {
+                  password: account.has_password ? "yes" : "no",
+                  active: account.is_active ? "yes" : "no"
+                })}
               </p>
+              {account.is_superuser ? (
+                <p className="text-muted-foreground">{t("superuserStatus")}</p>
+              ) : null}
               <p>
-                <span className="text-muted-foreground">{t("roles")} </span>
-                  {account.roles.length
-                  ? account.roles.map((role) => role.workspace_id == null
-                    ? role.name
-                    : t("roleWorkspace", { role: role.name, id: role.workspace_id })).join(", ")
-                  : t("none")}
+                {t("rolesLine", {
+                  roles: account.roles.length
+                    ? account.roles.map((role) => role.workspace_id == null
+                      ? role.name
+                      : t("roleWorkspace", { role: role.name, id: role.workspace_id })).join(", ")
+                    : t("none")
+                })}
               </p>
               {account.denies.length ? (
                 <p>
-                  <span className="text-muted-foreground">{t("denies")} </span>
-                  {account.denies.map((deny) => `${deny.resource} ${deny.action}${deny.reason ? ` (${deny.reason})` : ""}`).join(", ")}
+                  {t("deniesLine", {
+                    denies: account.denies
+                      .map((deny) => `${deny.resource} ${deny.action}${deny.reason ? ` (${deny.reason})` : ""}`)
+                      .join(", ")
+                  })}
                 </p>
               ) : null}
             </div>
@@ -210,7 +220,7 @@ export function UserMergeAuthSection({
           return (
             <div key={connection.id} className="space-y-2">
               <Label htmlFor={`${sectionId}-oauth-${connection.id}`} className="break-words">
-                {connection.provider}: {connection.username || connection.provider_user_id}
+                {getSocialProviderConfig(connection.provider).label}: {connection.username || connection.provider_user_id}
               </Label>
               <p className="text-xs text-muted-foreground">
                 {t("connectionInfo", { subject: connection.provider_user_id, id: connection.id, account: accountLabel(connection.auth_user_id) })}
@@ -223,7 +233,9 @@ export function UserMergeAuthSection({
                 describedBy={invalidDestination ? `${sectionId}-oauth-error-${connection.id}` : undefined}
                 options={preview.accounts.map((account) => ({
                   value: String(account.id),
-                  label: `${accountLabel(account.id)}${account.id === deletedAccountId ? " — selected for deletion" : ""}`,
+                  label: account.id === deletedAccountId
+                    ? t("selectedForDeletion", { account: accountLabel(account.id) })
+                    : accountLabel(account.id),
                   disabled: account.id === deletedAccountId
                 }))}
                 onValueChange={(value) => onPolicyChange({
@@ -260,7 +272,7 @@ export function UserMergeAuthSection({
         ) : null}
       </div>
       {preview.data_conflicts.map((conflict) => (
-        <div key={conflict.key} className="space-y-2 rounded-md border p-3">
+        <div key={conflict.key} className="space-y-2 border-t pt-3">
           <Label htmlFor={`${sectionId}-conflict-${conflict.key}`}>{conflict.label} ({conflict.resource})</Label>
           <div className="grid gap-3 sm:grid-cols-2 text-sm">
             <div>

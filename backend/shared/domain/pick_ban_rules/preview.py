@@ -1,4 +1,4 @@
-"""Series preview: what each map of a Bo1/2/3/5 would actually look like (§10).
+"""Series preview: what each map of a Bo1/2/3/5 would actually look like.
 
 Answers the question the constructor exists for — "how many heroes are left on
 map 5?" — before a tournament runs on the rules.
@@ -9,6 +9,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from shared.disciplines import discipline as discipline_spec
+
 from .compile import resolve_round, select_phase
 from .registry import RoundCtx, normalize_group
 from .schema import Issue, ResolvedStep, Ruleset, RulesetError, parse_ruleset
@@ -17,21 +19,29 @@ from .validate import validate_ruleset
 #: Below this many playable items in a group the rules are a trap, not a draft.
 MIN_REMAINING_WARNING = 2
 
+#: A preview has no encounter, so the steps resolve against two stand-in
+#: participations: only HOW MANY of them a step spends items for matters here.
+PREVIEW_PARTICIPANTS = (1, 2)
+
 
 def preview_series(
     ruleset: Any,
     *,
     kind: str,
+    discipline: str,
     mode: str = "pool",
     best_of: int = 3,
     pool_groups: Mapping[str, int] | None = None,
     roster_slots: Mapping[str, int] | None = None,
+    pool_size: int | None = None,
 ) -> dict[str, Any]:
     """Resolve every map of a ``best_of`` series and count the damage.
 
     ``pool_groups`` is ``{group: item count}`` of the configured pool (for a
     hero pool: heroes per class). ``worst_case_remaining`` is per group and
     only reported for the hero kind — a map pool has no group budget to blow.
+    ``pool_size`` is the number of items in the pool; it defaults to the grouped
+    total, which is only right when every item has a group.
 
     ``roster_slots`` is ``{role: players per team}``. Without it a per-player
     ban step is counted as if all of its bans could hit one role; with it the
@@ -45,7 +55,11 @@ def preview_series(
     except RulesetError as exc:
         return {"maps": [], "issues": [issue.to_json() for issue in exc.issues]}
 
-    issues = [issue for issue in validate_ruleset(parsed.to_json(), kind=kind, mode=mode) if issue.severity == "error"]
+    issues = [
+        issue
+        for issue in validate_ruleset(parsed.to_json(), kind=kind, mode=mode, discipline=discipline)
+        if issue.severity == "error"
+    ]
     if issues:
         return {"maps": [], "issues": [issue.to_json() for issue in issues]}
 
@@ -55,7 +69,10 @@ def preview_series(
         for role, count in (roster_slots or {}).items()
         if (normalized := normalize_group(role)) and int(count) > 0
     }
-    pool_size = sum(groups.values())
+    sides = dict(zip(discipline_spec(discipline).sides, PREVIEW_PARTICIPANTS, strict=False))
+    # The pool's cardinality is its own fact: an item with no group (a map whose game has no modes, a champion
+    # without a class) still takes part in the series, it just belongs to no group budget.
+    pool_size = sum(groups.values()) if pool_size is None else pool_size
     worst: dict[str, tuple[int, int]] = {}  # group -> (fewest remaining, the map it happens on)
     maps: list[dict[str, Any]] = []
     #: round -> (group -> bans that round can land on it), and the round's steps.
@@ -70,7 +87,9 @@ def preview_series(
                 kind=kind,
                 round=map_index,
                 start_index=0,
-                opener="home",
+                participants=PREVIEW_PARTICIPANTS,
+                opener=PREVIEW_PARTICIPANTS[0],
+                sides=sides,
                 best_of=max(best_of, 1),
                 pool_size=pool_size,
                 candidate_count=pool_size,
@@ -80,9 +99,9 @@ def preview_series(
         )
         per_round[map_index] = [(step, _group_caps(step, groups, roster)) for step in steps if step.action == "ban"]
 
-        max_new_bans = sum(step.count * len(step.sides) for step in steps if step.action == "ban")
+        max_new_bans = sum(step.count * len(step.actors) for step in steps if step.action == "ban")
         max_active_bans = sum(
-            step.count * len(step.sides)
+            step.count * len(step.actors)
             for round_number, rows in per_round.items()
             for step, _ in rows
             if _covers(round_number, step, map_index)
@@ -171,7 +190,7 @@ def _group_caps(step: ResolvedStep, groups: Mapping[str, int], roster: Mapping[s
             # A role-less (flex) player matches every hero, so they widen the
             # ceiling of every group rather than any one of them.
             limits.append(roster.get(normalize_group(group) or "", 0) + roster.get("flex", 0))
-        caps[group] = min([step.count, *limits]) * len(step.sides)
+        caps[group] = min([step.count, *limits]) * len(step.actors)
     return caps
 
 

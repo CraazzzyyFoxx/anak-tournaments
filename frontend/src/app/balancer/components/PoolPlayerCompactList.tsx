@@ -2,36 +2,29 @@
 
 import { memo, useRef, type MouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Check, Circle, Pencil, ShieldX } from "lucide-react";
+import { Check } from "lucide-react";
+import { useTranslations } from "next-intl";
 
-import DivisionIcon from "@/components/DivisionIcon";
-import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Button } from "@/components/ui/button";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuLabel,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
+import { ContextMenuItem, ContextMenuSeparator } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import type { AdminRegistration, BalancerPlayerRecord } from "@/types/balancer-admin.types";
-import { ROLE_TEXT_ACCENTS, getRegistrationBattleTags, splitBattleTag } from "@/components/balancer/balancer-page-helpers";
-import { BalancerStatusContextMenuItems, BalancerStatusMenu, type StatusOptionGroups } from "./BalancerStatusMenu";
-import { BattleTagContextMenuItems, BattleTagCopyButton, SmurfTagStrip } from "./BattleTagCopyControls";
-import { IssueChip, issueChipKey } from "./IssueChip";
-import {
-  ROLE_LABELS,
-  isRoleEntryActive,
-  type PlayerValidationIssue,
-} from "@/components/balancer/workspace-helpers";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import type { DivisionGrid } from "@/types/workspace.types";
+import type { StatusOptionGroups } from "./BalancerStatusMenu";
+import { PoolPlayerCard, type PoolPlayerCardProps } from "./PoolPlayerCard";
+import type { PlayerValidationIssue } from "@/components/balancer/workspace-helpers";
 
 type PoolPlayerCompactListProps = {
   playerStates: Array<{
     player: BalancerPlayerRecord;
     issues: PlayerValidationIssue[];
   }>;
+  /** The tournament owner's role dictionary: role names, glyphs and tints. `null` while it loads. */
+  ontology: RoleOntology | null;
+  /** The owner game's grid the rows' division crests resolve in. */
+  divisionGrid: DivisionGrid;
   registrationsById?: Map<number, AdminRegistration>;
   statusOptions?: StatusOptionGroups;
   selectedPlayerId?: number | null;
@@ -41,8 +34,8 @@ type PoolPlayerCompactListProps = {
   onSetPoolMembership?: (playerId: number, isInPool: boolean) => unknown;
   onSetBalancerStatus?: (playerId: number, balancerStatus: string) => unknown;
   actionsDisabled?: boolean;
-  emptyTitle?: string;
-  emptyDescription?: string;
+  emptyTitle: string;
+  emptyDescription: string;
 };
 
 
@@ -55,18 +48,9 @@ const ROW_GAP = 6;
 const VIRTUALIZATION_THRESHOLD = 50;
 
 
-type PoolPlayerRowProps = {
-  player: BalancerPlayerRecord;
-  issues: PlayerValidationIssue[];
-  registration: AdminRegistration | null;
-  statusOptions?: StatusOptionGroups;
-  isSelected: boolean;
+type PoolPlayerRowProps = Omit<PoolPlayerCardProps, "variant" | "leading" | "menuItems" | "className" | "style"> & {
   isBulkSelected: boolean;
   onToggleBulkSelection?: (playerId: number) => void;
-  onSelectPlayer?: (playerId: number | null) => void;
-  onSetPoolMembership?: (playerId: number, isInPool: boolean) => unknown;
-  onSetBalancerStatus?: (playerId: number, balancerStatus: string) => unknown;
-  actionsDisabled: boolean;
 };
 
 /**
@@ -75,195 +59,56 @@ type PoolPlayerRowProps = {
  * also virtualized — 200 pooled players would otherwise cost ~500ms per filter change.
  */
 const PoolPlayerRow = memo(function PoolPlayerRow({
-  player,
-  issues,
-  registration,
-  statusOptions,
-  isSelected,
   isBulkSelected,
   onToggleBulkSelection,
-  onSelectPlayer,
-  onSetPoolMembership,
-  onSetBalancerStatus,
-  actionsDisabled,
+  ...card
 }: PoolPlayerRowProps) {
-  const isReady = player.is_in_pool && issues.length === 0;
-  const sortedEntries = [...player.role_entries_json].sort((left, right) => left.priority - right.priority);
-  const rankedEntries = sortedEntries.filter((entry) => isRoleEntryActive(entry) && entry.rank_value !== null);
-  const rankedRoleCodes = rankedEntries
-    .map((entry) => entry.role)
-    .filter((roleCode, index, all) => all.indexOf(roleCode) === index);
-  const primaryEntry = rankedEntries[0] ?? sortedEntries[0] ?? null;
-  const divisionNumber = primaryEntry?.division_number ?? null;
-  const { name, suffix } = splitBattleTag(player.battle_tag);
-  const primaryRole = primaryEntry?.role ?? null;
-  const issueSummary = issues.map((issue) => issue.message).join(" | ");
-  const battleTags = getRegistrationBattleTags(registration, player.battle_tag);
-  const primaryBattleTag = battleTags[0] ?? player.battle_tag;
-  const smurfTags = battleTags.slice(1);
+  const t = useTranslations("balancerTool.pool.list");
+  const { player } = card;
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <div
-          title={issueSummary || primaryBattleTag}
+    <PoolPlayerCard
+      {...card}
+      variant="row"
+      className={cn(isBulkSelected && !card.selected && "border-cyan-400/35 bg-cyan-500/[0.06]")}
+      leading={
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-sm"
+          data-card-action
+          aria-pressed={isBulkSelected}
+          aria-label={t(isBulkSelected ? "unselect" : "select", { name: player.identity })}
+          onClick={() => onToggleBulkSelection?.(player.id)}
           className={cn(
-            "group grid w-full cursor-pointer grid-cols-[24px_minmax(0,1fr)] items-start gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors",
-            "border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] hover:border-[color:var(--aqt-border-2)] hover:bg-[color:var(--aqt-overlay-3)]",
-            isSelected && "border-primary/45 bg-primary/[0.08]",
-            isBulkSelected && !isSelected && "border-cyan-400/35 bg-cyan-500/[0.06]",
+            "shrink-0",
+            isBulkSelected
+              ? "border-cyan-300/50 bg-cyan-500/18 text-cyan-100"
+              : "text-[color:var(--aqt-fg-dim)] hover:text-[color:var(--aqt-fg-muted)]",
           )}
         >
-          <button
-            type="button"
-            data-card-action
-            aria-pressed={isBulkSelected}
-            aria-label={isBulkSelected ? `Unselect ${player.battle_tag}` : `Select ${player.battle_tag}`}
-            onClick={() => onToggleBulkSelection?.(player.id)}
-            className={cn(
-              "mt-0.5 flex h-6 w-6 items-center justify-center rounded-md border text-label transition-colors",
-              isBulkSelected
-                ? "border-cyan-300/50 bg-cyan-500/18 text-cyan-100"
-                : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-dim)] hover:text-[color:var(--aqt-fg-muted)]",
-            )}
-          >
-            {isBulkSelected ? <Check className="h-3 w-3" /> : <Circle className="h-2.5 w-2.5 fill-current stroke-none" />}
-          </button>
-
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                {rankedRoleCodes.length > 0 ? (
-                  <div className="flex items-center gap-1">
-                    {rankedRoleCodes.map((roleCode) => (
-                      <span key={roleCode} title={ROLE_LABELS[roleCode]} className="opacity-95">
-                        <PlayerRoleIcon role={ROLE_LABELS[roleCode]} size={15} />
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="text-label text-[color:var(--aqt-fg-dim)]">No roles</span>
-                )}
-                <button
-                  type="button"
-                  data-card-action
-                  onClick={() => onSelectPlayer?.(player.id)}
-                  title={`Edit ${primaryBattleTag}`}
-                  className="flex min-w-0 items-baseline gap-1 rounded text-left"
-                >
-                  <span className="truncate text-caption font-medium text-[color:var(--aqt-fg)]">{name}</span>
-                  {suffix ? <span className="shrink-0 text-label text-[color:var(--aqt-fg-dim)]">{suffix}</span> : null}
-                </button>
-              </div>
-
-              <div className="flex shrink-0 items-center gap-1" data-card-action>
-                <div className="flex items-center gap-2 pr-1">
-                  {divisionNumber != null ? (
-                    <span className="shrink-0" title={`Division ${divisionNumber}`}>
-                      <DivisionIcon division={divisionNumber} width={20} height={20} />
-                    </span>
-                  ) : null}
-                  {primaryEntry?.rank_value != null ? (
-                    <span
-                      className={cn(
-                        "min-w-10 text-right text-caption font-semibold tabular-nums text-cyan-300",
-                        primaryRole && ROLE_TEXT_ACCENTS[primaryRole],
-                      )}
-                    >
-                      {primaryEntry.rank_value}
-                    </span>
-                  ) : (
-                    <span className="text-label text-[color:var(--aqt-fg-dim)]">-</span>
-                  )}
-                </div>
-
-                <BalancerStatusMenu
-                  size="compact"
-                  value={registration?.balancer_status}
-                  statusOptions={statusOptions}
-                  disabled={actionsDisabled}
-                  onChange={registration ? (status) => onSetBalancerStatus?.(player.id, status) : undefined}
-                />
-
-                <BattleTagCopyButton battleTag={primaryBattleTag} />
-
-                {/* Exclude only: an excluded player comes back through a balancer status change. */}
-                {player.is_in_pool ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    disabled={actionsDisabled || !onSetPoolMembership}
-                    className="h-7 w-7 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-dim)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
-                    aria-label={`Exclude ${primaryBattleTag} from the balancer`}
-                    title="Exclude from balancer"
-                    onClick={() => onSetPoolMembership?.(player.id, false)}
-                  >
-                    <ShieldX className="h-3.5 w-3.5" />
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-
-            {player.is_flex || isReady || issues.length > 0 || smurfTags.length > 0 ? (
-              <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                {player.is_flex ? (
-                  <span className="shrink-0 rounded-full border border-violet-300/20 bg-violet-500/12 px-1.5 py-0.5 text-label font-semibold uppercase tracking-label text-violet-200">
-                    Flex
-                  </span>
-                ) : null}
-                {isReady ? (
-                  <span className="shrink-0 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-1.5 py-0.5 text-label font-semibold uppercase tracking-label text-emerald-200">
-                    Ready
-                  </span>
-                ) : null}
-                {issues.map((issue) => (
-                  <IssueChip key={`${player.id}-${issueChipKey(issue)}`} issue={issue} />
-                ))}
-                <SmurfTagStrip smurfTags={smurfTags} />
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </ContextMenuTrigger>
-      <ContextMenuContent className="w-56">
-        <ContextMenuLabel>Player actions</ContextMenuLabel>
-        <ContextMenuItem onClick={() => onSelectPlayer?.(player.id)}>
-          <Pencil className="h-4 w-4" />
-          Edit full profile
-        </ContextMenuItem>
-        <BattleTagContextMenuItems battleTags={battleTags} />
-        {onSetPoolMembership && player.is_in_pool ? (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem disabled={actionsDisabled} onClick={() => onSetPoolMembership(player.id, false)}>
-              <ShieldX className="h-4 w-4" />
-              Exclude from balancer
-            </ContextMenuItem>
-          </>
-        ) : null}
-        <BalancerStatusContextMenuItems
-          value={registration?.balancer_status}
-          statusOptions={statusOptions}
-          disabled={actionsDisabled}
-          onChange={registration ? (status) => onSetBalancerStatus?.(player.id, status) : undefined}
-        />
-        {onToggleBulkSelection ? (
+          {isBulkSelected ? <Check aria-hidden="true" /> : <span aria-hidden="true" className="size-2 rounded-full bg-current" />}
+        </Button>
+      }
+      menuItems={
+        onToggleBulkSelection ? (
           <>
             <ContextMenuSeparator />
             <ContextMenuItem onClick={() => onToggleBulkSelection(player.id)}>
               <Check className="h-4 w-4" />
-              {isBulkSelected ? "Remove from selection" : "Add to selection"}
+              {isBulkSelected ? t("removeFromSelection") : t("addToSelection")}
             </ContextMenuItem>
           </>
-        ) : null}
-      </ContextMenuContent>
-    </ContextMenu>
+        ) : null
+      }
+    />
   );
 });
 
 export function PoolPlayerCompactList({
   playerStates,
+  ontology,
+  divisionGrid,
   registrationsById,
   statusOptions,
   selectedPlayerId,
@@ -273,9 +118,10 @@ export function PoolPlayerCompactList({
   onSetPoolMembership,
   onSetBalancerStatus,
   actionsDisabled = false,
-  emptyTitle = "No players match the current filters",
-  emptyDescription = "Try another search or change the pool filter.",
+  emptyTitle,
+  emptyDescription,
 }: Readonly<PoolPlayerCompactListProps>) {
+  const t = useTranslations("balancerTool.pool.list");
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldVirtualize = playerStates.length > VIRTUALIZATION_THRESHOLD;
   const virtualizer = useVirtualizer({
@@ -290,12 +136,9 @@ export function PoolPlayerCompactList({
 
   if (playerStates.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] px-4 py-8 text-center">
-        <div className="space-y-1.5">
-          <p className="text-sm font-medium text-[color:var(--aqt-fg)]">{emptyTitle}</p>
-          <p className="text-xs text-[color:var(--aqt-fg-dim)]">{emptyDescription}</p>
-        </div>
-      </div>
+      <EmptyNote title={emptyTitle} className="flex-1 justify-center">
+        {emptyDescription}
+      </EmptyNote>
     );
   }
 
@@ -306,9 +149,11 @@ export function PoolPlayerCompactList({
       <PoolPlayerRow
         player={player}
         issues={issues}
+        ontology={ontology}
+        divisionGrid={divisionGrid}
         registration={registrationsById?.get(player.id) ?? null}
         statusOptions={statusOptions}
-        isSelected={player.id === selectedPlayerId}
+        selected={player.id === selectedPlayerId}
         isBulkSelected={selectedBulkIds?.has(player.id) ?? false}
         onToggleBulkSelection={onToggleBulkSelection}
         onSelectPlayer={onSelectPlayer}
@@ -342,7 +187,7 @@ export function PoolPlayerCompactList({
     >
       {shouldVirtualize ? (
         <ul
-          aria-label="Pool players"
+          aria-label={t("label")}
           className="relative w-full"
           style={{ height: virtualizer.getTotalSize() }}
         >
@@ -360,7 +205,7 @@ export function PoolPlayerCompactList({
           ))}
         </ul>
       ) : (
-        <ul aria-label="Pool players" className="space-y-1.5">
+        <ul aria-label={t("label")} className="space-y-1.5">
           {playerStates.map((state, index) => (
             <li key={state.player.id} onClick={openRow(index)}>
               {row(index)}

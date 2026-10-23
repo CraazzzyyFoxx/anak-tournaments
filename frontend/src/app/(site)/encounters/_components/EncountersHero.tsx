@@ -1,101 +1,68 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
-import { TrendingUp } from "lucide-react";
 
-import { PageHero, HeroCoord } from "@/components/site/PageHero";
-import { cn } from "@/lib/utils";
+import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
+import { PageHero, HeroCoord, HeroStat } from "@/components/site/PageHero";
 import type { EncounterOverview } from "@/types/encounter.types";
 
 import { formatPercent } from "./encounters.helpers";
-import { countLabel } from "./encounters.model";
-import styles from "./Encounters.module.css";
 
-export function EncountersHero({ overview }: Readonly<{ overview: EncounterOverview }>) {
+/**
+ * Compact header plus four global numbers: the overview read with no filters (the game and workspace only), so the
+ * toolbar narrowing the list never rewrites them.
+ */
+export function EncountersHero({ overview }: Readonly<{ overview: EncounterOverview | undefined }>) {
   const t = useTranslations();
   const format = useFormatter();
+  const dash = "-";
+  const counts = overview?.counts;
+
   return (
     <PageHero
-      eyebrow={<HeroCoord>{t("encounters.hero.eyebrow")}</HeroCoord>}
+      compact
+      eyebrow={
+        <HeroCoord>
+          <HoverPrefetchLink href="/tournaments" className="transition-colors hover:text-[color:var(--aqt-teal)]">
+            {t("encounters.hero.eyebrowRoot")}
+          </HoverPrefetchLink>{" "}
+          · {t("encounters.hero.eyebrowCurrent")}
+        </HeroCoord>
+      }
       title={t("encounters.hero.title")}
       lede={t("encounters.hero.lede")}
       aside={
-        <div className={styles.heroStats}>
+        <div className="flex flex-wrap gap-x-7 gap-y-4 lg:justify-end">
           <HeroStat
-            label={t("encounters.hero.totalLabel")}
-            value={countLabel(format, overview.kpis.total_encounters)}
-            foot={
-              overview.kpis.recent_count ? (
-                <>
-                  <span className={styles.delta}>
-                    <TrendingUp aria-hidden className="inline size-4 align-[-3px]" />
-                    {/* Icon is decorative; the sign reaches AT through this. */}
-                    <span className="sr-only">+</span>{" "}
-                    {countLabel(format, overview.kpis.recent_count)}
-                  </span>{" "}
-                  {t("encounters.hero.last7Days")}
-                </>
-              ) : (
-                t("encounters.hero.allTime")
-              )
+            label={t("encounters.hero.completed")}
+            value={counts ? format.number(counts.completed) : dash}
+            sub={
+              overview && overview.recent_completed > 0
+                ? t("encounters.hero.recent", { count: format.number(overview.recent_completed) })
+                : undefined
             }
           />
           <HeroStat
-            label={t("encounters.hero.withLogsLabel")}
+            label={t("encounters.hero.withLogs")}
             value={
-              <>
-                {overview.kpis.with_logs_pct}
-                <em>%</em>
-              </>
+              overview && overview.counts.completed > 0
+                ? formatPercent(format, overview.completed_with_logs / overview.counts.completed)
+                : dash
             }
-            foot={t("encounters.hero.ofSeries", {
-              count: countLabel(format, overview.kpis.with_logs_count),
-              total: countLabel(format, overview.kpis.total_encounters)
-            })}
-          />
-          <HeroStat
-            label={t("encounters.hero.avgClosenessLabel")}
-            value={
-              overview.kpis.avg_closeness != null ? (
-                <>
-                  {formatPercent(overview.kpis.avg_closeness, "—").replace("%", "")}
-                  <em>%</em>
-                </>
-              ) : (
-                "—"
-              )
+            sub={
+              overview
+                ? t("encounters.hero.withLogsOf", {
+                    count: format.number(overview.completed_with_logs),
+                    total: format.number(overview.counts.completed)
+                  })
+                : undefined
             }
-            foot={t("encounters.hero.acrossReported")}
           />
-          <HeroStat
-            label={t("encounters.hero.liveNowLabel")}
-            value={countLabel(format, overview.kpis.live_now_count)}
-            foot={t("encounters.hero.upcomingCount", {
-              count: countLabel(format, overview.kpis.upcoming_count)
-            })}
-          />
+          <HeroStat label={t("encounters.hero.live")} value={counts ? format.number(counts.live) : dash} />
+          <HeroStat label={t("encounters.hero.upcoming")} value={counts ? format.number(counts.upcoming) : dash} />
         </div>
       }
     />
-  );
-}
-
-function HeroStat({
-  label,
-  value,
-  foot
-}: Readonly<{
-  label: string;
-  value: ReactNode;
-  foot: ReactNode;
-}>) {
-  return (
-    <div className={styles.heroStat}>
-      <span className={styles.statLabel}>{label}</span>
-      <span className={cn(styles.statValue, "tabular-nums")}>{value}</span>
-      <span className={styles.statFoot}>{foot}</span>
-    </div>
   );
 }

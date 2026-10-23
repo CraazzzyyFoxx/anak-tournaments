@@ -3,7 +3,7 @@
 import { AchievementArt } from "@/components/achievements/AchievementArt";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { useLocale, useTranslations } from "next-intl";
-import { useFormatter } from "@/lib/datetime/client";
+import { formatSeriesClock, observedScore } from "@/lib/encounter/detail";
 import {
   Dialog,
   DialogContent,
@@ -11,30 +11,41 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import type { AchievementRarity, AchievementMatchLink } from "@/types/achievement.types";
 import { cn } from "@/lib/utils";
 import { classifyRarity, localizedText, rarityVarClass, type Rarity } from "@/lib/achievements/rarity";
 
 const MatchRow = ({ match }: { match: AchievementMatchLink }) => {
-  const format = useFormatter();
-  // Older rows store seconds, newer ones milliseconds.
-  const ms = match.time ? (match.time > 1e12 ? match.time : match.time * 1000) : null;
-  const at = ms === null ? null : new Date(ms);
-  const date =
-    at && !Number.isNaN(at.getTime())
-      ? format.dateTime(at, { year: "numeric", month: "short", day: "numeric" })
-      : "";
-  const home = match.home_team?.name ?? "?";
-  const away = match.away_team?.name ?? "?";
+  const t = useTranslations();
+  // The link carries the map's length in seconds, never a date.
+  const duration = formatSeriesClock(match.duration_s, {
+    h: t("common.duration.h"),
+    m: t("common.duration.m"),
+    s: t("common.duration.s")
+  });
+  const scores = match.participants.map((participant) => observedScore(participant) ?? "?");
+  const [home, away] = match.participants;
   return (
     <HoverPrefetchLink
-      href={`/encounters/${match.encounter_id}`}
+      href={`/matches/${match.id}`}
       className="flex items-center justify-between gap-2 border-b border-[color:var(--aqt-border)] py-2 text-caption transition-colors last:border-b-0 hover:text-[color:var(--aqt-teal)]"
     >
       <span className="truncate">
-        {home} <span className="aqt-tnum opacity-80">{match.score.home}:{match.score.away}</span> {away}
+        {match.participants.length === 2 ? (
+          <>
+            {home.name} <span className="aqt-tnum opacity-80">{scores.join(":")}</span> {away.name}
+          </>
+        ) : (
+          <>
+            {match.participants.map((participant) => participant.name).join(" · ")}{" "}
+            <span className="aqt-tnum opacity-80">{scores.join(":")}</span>
+          </>
+        )}
       </span>
-      {date ? <span className="aqt-tnum shrink-0 text-label text-[color:var(--aqt-fg-muted)]">{date}</span> : null}
+      {duration ? (
+        <span className="aqt-tnum shrink-0 text-label text-[color:var(--aqt-fg-muted)]">{duration}</span>
+      ) : null}
     </HoverPrefetchLink>
   );
 };
@@ -44,8 +55,8 @@ interface Props {
   onClose: () => void;
 }
 
-/** Detail modal for a single achievement: shows where/when the player earned it
- *  (tournaments + matches with dates), or a locked state if not yet earned. */
+/** Detail modal for a single achievement: where the player earned it (each tournament and match linking to its
+ *  own page; a match shows its participants, score line and length), or a locked state if not yet earned. */
 export const AchievementDetailDialog = ({ achievement, onClose }: Props) => {
   const tr = useTranslations();
   const locale = useLocale();
@@ -100,14 +111,17 @@ export const AchievementDetailDialog = ({ achievement, onClose }: Props) => {
                   <>
                     {ach.tournaments.length > 0 ? (
                       <section className="flex flex-col gap-1.5">
-                        <h3 className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-                          {tr("users.achievements.detail.earnedIn")}
-                        </h3>
+                        <Eyebrow as="h3">{tr("users.achievements.detail.earnedIn")}</Eyebrow>
                         <div className="flex flex-wrap gap-1.5">
                           {ach.tournaments.map((t) => (
-                            <span key={t.id} className="aqt-stage-pill" title={t.name}>
+                            <HoverPrefetchLink
+                              key={t.id}
+                              href={`/tournaments/${t.id}`}
+                              className="aqt-stage-pill transition-colors hover:text-[color:var(--aqt-teal)]"
+                              title={t.name}
+                            >
                               {t.name}
-                            </span>
+                            </HoverPrefetchLink>
                           ))}
                         </div>
                       </section>
@@ -115,9 +129,7 @@ export const AchievementDetailDialog = ({ achievement, onClose }: Props) => {
 
                     {ach.matches.length > 0 ? (
                       <section className="flex flex-col gap-1.5">
-                        <h3 className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-                          {tr("common.matches")}
-                        </h3>
+                        <Eyebrow as="h3">{tr("common.matches")}</Eyebrow>
                         <div className="flex flex-col">
                           {ach.matches.map((m) => (
                             <MatchRow key={m.id} match={m} />
@@ -141,5 +153,3 @@ export const AchievementDetailDialog = ({ achievement, onClose }: Props) => {
     </Dialog>
   );
 };
-
-export default AchievementDetailDialog;

@@ -96,9 +96,10 @@ def test_the_subject_is_typed() -> None:
     assert openapi_schemas.OPERATIONS[_SUBJECT].query is schemas.AuditLogListQueryParams
 
 
-def test_the_filter_set_is_exactly_the_designed_ten() -> None:
-    # The design cut this from eleven filters to five plus pagination; a
-    # reinstated date range or `source` select should fail here first.
+def test_the_filter_set_is_exactly_the_designed_one() -> None:
+    # Five filters plus pagination, plus the dashboard activity feed's three
+    # narrowing filters (since, exclude_actor_user_id, source). Anything else
+    # reinstated should fail here first.
     assert set(schemas.AuditLogListQueryParams.model_fields) == {
         "workspace_id",
         "entity_type",
@@ -110,6 +111,9 @@ def test_the_filter_set_is_exactly_the_designed_ten() -> None:
         "sort",
         "order",
         "search",
+        "since",
+        "exclude_actor_user_id",
+        "source",
         # Inherited from PaginationQueryParams, not part of the documented set.
         "entities",
         "only_count",
@@ -179,6 +183,60 @@ def test_a_search_term_narrows_within_the_scope_it_does_not_replace_it() -> None
     for field in schemas.AUDIT_SEARCH_FIELDS:
         assert f"audit_log.{field} ILIKE" in sql, field
     assert sql.count("ILIKE") == len(schemas.AUDIT_SEARCH_FIELDS)
+
+
+# --- dashboard activity-feed filters ----------------------------------------
+
+
+def test_since_narrows_by_created_at_within_the_scope() -> None:
+    sql = _compiled(audit_queries.rows_query(7, _params(since="2026-10-14T00:00:00Z")))
+    assert "audit_log.workspace_id = 7" in sql
+    assert "audit_log.created_at >= '2026-10-14" in sql
+
+
+def test_exclude_actor_keeps_machine_rows_with_a_null_actor() -> None:
+    # `actor_auth_user_id != 2` is NULL (not true) for machine rows and would
+    # drop the scheduler/Challonge history; IS DISTINCT FROM keeps it.
+    sql = _compiled(audit_queries.rows_query(7, _params(exclude_actor_user_id=2)))
+    assert "audit_log.workspace_id = 7" in sql
+    assert "audit_log.actor_auth_user_id IS DISTINCT FROM 2" in sql
+    assert "audit_log.actor_auth_user_id != 2" not in sql
+
+
+def test_source_narrows_to_the_listed_channels_within_the_scope() -> None:
+    sql = _compiled(audit_queries.rows_query(7, _params(source=" admin , discord ,")))
+    assert "audit_log.workspace_id = 7" in sql
+    assert "audit_log.source IN ('admin', 'discord')" in sql
+
+
+def test_a_blank_source_is_no_filter() -> None:
+    params = _params(source="")
+    assert params.source is None
+    assert "audit_log.source IN" not in _compiled(audit_queries.rows_query(7, params))
+
+
+def test_the_source_list_is_normalized() -> None:
+    assert _params(source=" admin ,,api_key ").source == "admin,api_key"
+
+
+def test_an_unknown_source_is_rejected_rather_than_silently_ignored() -> None:
+    envelope = _call(_ORGANIZER, workspace_id=7, source="admin,bogus")
+    assert envelope["ok"] is False
+    assert envelope["error"]["code"] == "unprocessable"
+
+
+def test_the_activity_feed_filters_combine_inside_the_scope_on_page_and_count() -> None:
+    params = _params(
+        since="2026-10-14T00:00:00Z",
+        exclude_actor_user_id=2,
+        source="admin,api_key,discord,challonge",
+    )
+    for stmt in (audit_queries.rows_query(7, params), audit_queries.count_query(7, params)):
+        sql = _compiled(stmt)
+        assert "audit_log.workspace_id = 7" in sql
+        assert "audit_log.created_at >= '2026-10-14" in sql
+        assert "audit_log.actor_auth_user_id IS DISTINCT FROM 2" in sql
+        assert "audit_log.source IN ('admin', 'api_key', 'discord', 'challonge')" in sql
 
 
 def test_the_count_query_carries_the_same_scope_as_the_page_query() -> None:

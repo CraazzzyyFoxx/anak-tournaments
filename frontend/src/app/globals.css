@@ -77,9 +77,6 @@
   --color-aqt-gold: var(--aqt-gold);
   --color-aqt-silver: var(--aqt-silver);
   --color-aqt-bronze: var(--aqt-bronze);
-  --color-aqt-tank: var(--aqt-tank);
-  --color-aqt-damage: var(--aqt-damage);
-  --color-aqt-support: var(--aqt-support);
 
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
@@ -590,7 +587,7 @@
   background: var(--aqt-overlay-2);
   border: 1px solid var(--aqt-border);
   color: var(--aqt-fg-muted);
-  font-size: var(--text-label);
+  font-size: var(--text-caption);
   font-weight: 500;
   /* Fixed, not padding-derived: a count badge made chips 36px, a bare label
      34px, while every search/select/segment in the same row is 32px (`h-8`). */
@@ -606,10 +603,12 @@
   color: var(--aqt-fg);
 }
 
+/* `--chip-accent` is `FilterChip accent`: a role-tinted filter set reuses the
+   chip with its own colour instead of teal. */
 .aqt-filter-chip.active {
-  background: color-mix(in srgb, var(--aqt-teal) 12%, transparent);
-  border-color: color-mix(in srgb, var(--aqt-teal) 35%, transparent);
-  color: var(--aqt-teal);
+  background: color-mix(in srgb, var(--chip-accent, var(--aqt-teal)) 12%, transparent);
+  border-color: color-mix(in srgb, var(--chip-accent, var(--aqt-teal)) 35%, transparent);
+  color: var(--chip-accent, var(--aqt-teal));
 }
 
 .aqt-filter-chip .aqt-count {
@@ -622,8 +621,8 @@
 }
 
 .aqt-filter-chip.active .aqt-count {
-  background: color-mix(in srgb, var(--aqt-teal) 16%, transparent);
-  color: var(--aqt-teal);
+  background: color-mix(in srgb, var(--chip-accent, var(--aqt-teal)) 16%, transparent);
+  color: var(--chip-accent, var(--aqt-teal));
 }
 
 .aqt-filter-divider {
@@ -645,10 +644,6 @@
     background: hsl(var(--popover));
     border-color: hsl(var(--border));
     box-shadow: 0 18px 50px rgb(0 0 0 / 0.45);
-  }
-
-  .liquid-glass-surface {
-    background: hsl(var(--background));
   }
 }
 
@@ -695,9 +690,9 @@
    ═══════════════════════════════════════════════════════════════════════ */
 :root {
   /* Values are the design-book palette (public/docs/design-book.html :root),
-     converted hex→HSL. bg/surface/line ladder, text ramp, brand + role/result
-     hues all mirror the book. Note "Results ≠ roles": --aqt-damage (337°)
-     is intentionally distinct from --aqt-rose (loss/live 349°). */
+     converted hex→HSL. bg/surface/line ladder, text ramp, brand + result hues
+     all mirror the book. Core has no role hues: a role's colour is its game's
+     ontology presentation (`catalog.role.attrs`). */
   --aqt-bg: hsl(220 21% 5%);
   --aqt-bg-2: hsl(220 22% 7%);
   --aqt-card: hsl(220 22% 8%);
@@ -719,8 +714,8 @@
   --aqt-teal: hsl(172 70% 49%);
   --aqt-teal-deep: hsl(173 81% 32%);
   --aqt-emerald: hsl(150 57% 52%);
-  /* Positive/up green: the win/positive tone, calmer than emerald and apart from
-     --aqt-support, so a high score does not read as the support role. */
+  /* Positive/up green: the win/positive tone, calmer than emerald, so a high
+     score does not read as a role colour. */
   --aqt-up: hsl(146 60% 58%);
   --aqt-amber: hsl(36 88% 65%);
   --aqt-rose: hsl(349 84% 63%);
@@ -729,9 +724,6 @@
   --aqt-gold: hsl(42 63% 60%);
   --aqt-silver: hsl(212 21% 73%);
   --aqt-bronze: hsl(26 49% 54%);
-  --aqt-tank: hsl(209 82% 65%);
-  --aqt-damage: hsl(337 81% 66%);
-  --aqt-support: hsl(150 57% 52%);
   --aqt-flex: var(--aqt-violet);
   --aqt-live: var(--aqt-rose);
   --aqt-warm: var(--aqt-amber);
@@ -739,8 +731,8 @@
      already means paused/warning and teal means "mine", so a starred team is
      told apart by the filled star's SHAPE, never by borrowing a status hue. */
   --aqt-follow: var(--aqt-fg-muted);
-  /* Online / good / feasible. Same value as the Support role today, but its own
-     name: re-hueing a role must not change what "online" looks like. */
+  /* Online / good / feasible. Its own name: a game's role hue never decides
+     what "online" looks like. */
   --aqt-positive: var(--aqt-emerald);
   /* Rose as TEXT (a stopped draft, overtime, a shortage count). The fill hue
      clears WCAG AA on the dark cards but reads faint as a label (APCA ≈ Lc 40);
@@ -786,11 +778,15 @@
      nesting always uses overlays. White alpha composites over ANY parent
      surface (palette is clamped dark), so contrast and brand hue survive at
      every depth. -1 subtle (strips, thead, zebra) · -2 raised (chips, nested
-     surfaces) · -3 lifted (hover/active, track fills). */
+     surfaces) · -3 lifted (hover/active, track fills; a tonal button at rest)
+     · -4 a tonal button under the pointer. */
   --aqt-overlay-1: hsl(0 0% 100% / 0.015);
   --aqt-overlay-2: hsl(0 0% 100% / 0.025);
   --aqt-overlay-3: hsl(0 0% 100% / 0.05);
+  --aqt-overlay-4: hsl(0 0% 100% / 0.08);
   --aqt-overlay-border: hsl(0 0% 100% / 0.06);
+  /* The 1px light along the top edge of a filled button (`ui/button.tsx`). */
+  --aqt-sheen: hsl(0 0% 100% / 0.22);
   /* Achievement rarity accent (HSL triplet so `hsl(var(--rar) / a)` alpha tints
      work). Global fallback = "common" grey; the `.aqt-rar-*` classes override
      it per tier. Kept as a triplet, not a full color, on purpose. */
@@ -825,11 +821,8 @@
      tabular-nums via .aqt-tnum. It used to be JetBrains Mono; real code and
      identifiers use Tailwind's `font-mono` (system monospace) instead. */
   --aqt-data: var(--font-inter), Inter, system-ui, sans-serif;
-  /* The role spectrum is the single sanctioned multi-hue accent (the profile
-     header's base hairline, role-distribution bars) — everywhere else, one
-     teal leads. --aqt-hero-glow is the coverless tournament card's glow; the
-     page hero draws its own, tinted per page (HeroFrame `tint`). */
-  --aqt-spectrum: linear-gradient(90deg, var(--aqt-tank), var(--aqt-damage), var(--aqt-support));
+  /* --aqt-hero-glow is the coverless tournament card's glow; the page hero
+     draws its own, tinted per page (HeroFrame `tint`). */
   --aqt-hero-glow: radial-gradient(
     ellipse at 30% 45%,
     color-mix(in srgb, var(--aqt-teal) 10%, transparent),

@@ -15,13 +15,18 @@
 //
 // There is no fourth rank field: the per-mix rank pin is gone, so every rank
 // the sheet writes goes to the author's book and nowhere else.
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import en from "@/i18n/messages/en.json";
 import type { CustomGamePlayer, MixMemberStats } from "@/services/custom-game.service";
 
 import { PickupPlayerSheet } from "./PickupPlayerSheet";
+import { DEADLOCK_OWNER, OW_OWNER } from "./mix-owner.fixture";
+import type { MixOwner } from "./pickup-lineup";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -35,7 +40,6 @@ globalThis.ResizeObserver ??= class {
 
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 vi.mock("@/components/RankHistory", () => ({ default: () => null }));
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 // Drag itself is not what this pins, and dnd-kit resolves its own React copy
 // under pnpm, so the sortable wrapper and its hook render inertly here.
 vi.mock("@/components/kit/SortableRows", () => ({
@@ -49,15 +53,17 @@ vi.mock("@/components/kit/SortableRows", () => ({
   useSortableRow: () => ({ ref: () => {}, style: {}, handleProps: {}, isDragging: false }),
   SortableGrip: () => null,
 }));
-vi.mock("@/hooks/useCurrentWorkspace", () => ({
-  useDivisionGrid: () => ({
+// The mix owner with a three-tier grid: the rank fields label and slide against `owner.grid`.
+const OWNER: MixOwner = {
+  ...OW_OWNER,
+  grid: {
     tiers: [
       { number: 1, name: "Bronze", rank_min: 1000, rank_max: 1999, icon_url: "" },
       { number: 2, name: "Silver", rank_min: 2000, rank_max: 2999, icon_url: "" },
       { number: 3, name: "Gold", rank_min: 3000, rank_max: 3999, icon_url: "" },
     ],
-  }),
-}));
+  } as MixOwner["grid"],
+};
 
 const onSave = vi.fn();
 const onOpenChange = vi.fn();
@@ -68,13 +74,14 @@ function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
     id: 1,
     workspace_member_id: 7,
     display_name: null,
-    battle_tag: "Aria#1111",
+    identity: { provider: "battlenet", handle: "Aria#1111" },
     sort_order: 0,
     participation: "pool",
-    roles: ["tank", "damage"],
+    roles: ["tank", "damage"].map((role) => ({ dimension: "player_role", role })),
     ranks: { tank: 3300, damage: 2700, support: 2900 },
-    rank_sources: { tank: "author", damage: "workspace", support: "ow" },
+    rank_sources: { tank: "author", damage: "workspace", support: "native" },
     author_ranks: { tank: 3300 },
+    away: false,
     ...overrides,
   };
 }
@@ -89,21 +96,29 @@ async function mount(
   value: CustomGamePlayer | null = row(),
   mixStats: MixMemberStats | null = null,
   lobbyCount = 1,
+  owner: MixOwner = OWNER,
 ) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   await act(async () => {
+    // The rank crests also ask for the current workspace's own grid, through the query cache.
     createRoot(container).render(
-      <PickupPlayerSheet
-        row={value}
-        mixStats={mixStats}
-        lobbyCount={lobbyCount}
-        canEdit
-        saving={false}
-        onOpenChange={onOpenChange}
-        onSave={onSave}
-        onRemove={onRemove}
-      />,
+      <QueryClientProvider client={new QueryClient()}>
+        <NextIntlClientProvider locale="en" messages={en}>
+          <PickupPlayerSheet
+            discipline="overwatch"
+            owner={owner}
+            row={value}
+            mixStats={mixStats}
+            lobbyCount={lobbyCount}
+            canEdit
+            saving={false}
+            onOpenChange={onOpenChange}
+            onSave={onSave}
+            onRemove={onRemove}
+          />
+        </NextIntlClientProvider>
+      </QueryClientProvider>,
     );
   });
   await act(async () => {
@@ -180,8 +195,9 @@ describe("PickupPlayerSheet ranks", () => {
     const [patch, rankChange] = onSave.mock.calls[0];
     expect(patch).toEqual({
       participation: "pool",
-      roles: ["tank", "damage"],
+      roles: ["tank", "damage"].map((role) => ({ dimension: "player_role", role })),
       is_flex: false,
+      away: false,
     });
     expect(rankChange).toEqual({ ranks: { damage: 3000 }, clear: [] });
   });
@@ -221,23 +237,81 @@ describe("PickupPlayerSheet ranks", () => {
     expect(scope.textContent).not.toContain("Rank for this mix");
   });
 
-  // balancer-service resolves a mix's ranks against the GLOBAL, OW-synced grid
-  // (`get_effective_division_grid(session, None)` -> the grid with
-  // `workspace_id IS NULL`), never the host workspace's. The mocked workspace
-  // grid above deliberately disagrees: it calls 3300 "Gold" where the OW ladder
-  // calls it "Diamond 2". Reading the workspace grid here renamed a number the
-  // backend had already fixed, so the crest and label disagreed with the mix
-  // the solver actually balanced.
-  it("labels ranks with the global OW ladder, not the workspace's grid", async () => {
+  // The sheet labels ranks on `owner.grid` (the owner game's ladder, see `buildMixOwner`) -- never another game's tiers.
+  it("labels ranks with the mix owner's grid", async () => {
     const scope = await mount();
 
-    expect(scope.textContent).toContain("Diamond 2");
+    // 3300 is "Gold" on the owner's three-tier grid, 2700 and 2900 are "Silver".
+    expect(scope.textContent).toContain("Gold");
+    expect(scope.textContent).toContain("Silver");
+    expect(scope.textContent).not.toContain("Diamond 2");
+  });
+
+  it("has no labels at all while the owner's grid is missing, instead of another game's", async () => {
+    const scope = await mount(row(), null, 1, { ...OWNER, grid: { tiers: [] } });
+
     expect(scope.textContent).not.toContain("Gold");
-    // The crest has to come off the same ladder as the label beside it; it used
-    // to fall back to the workspace grid and show Gold's icon under "Diamond 2".
-    const crests = [...scope.querySelectorAll("img")].map((img) => img.alt);
-    expect(crests).toContain("Diamond 2");
-    expect(crests).not.toContain("Gold");
+    expect(scope.textContent).not.toContain("Silver");
+    expect(scope.textContent).toContain("No rank yet");
+  });
+
+  it("edits a one-role game's rank alone and never sends Full flex", async () => {
+    const scope = await mount(
+      row({
+        identity: { provider: "steam", handle: "206464648" },
+        roles: null,
+        ranks: { agent: 2900 },
+        rank_sources: { agent: "native" },
+        author_ranks: {},
+        is_flex: true,
+      }),
+      null,
+      1,
+      { ...DEADLOCK_OWNER, grid: OWNER.grid },
+    );
+
+    // No role or Full flex control: the one switch left is Away, which every game has.
+    expect(
+      [...scope.querySelectorAll('[role="switch"]')].map((node) => node.getAttribute("aria-label")),
+    ).toEqual(["Away"]);
+    expect(scope.textContent).not.toContain("Roles and ranks");
+    // The heading names the rank alone.
+    expect([...scope.querySelectorAll("h3")].map((node) => node.textContent)).toContain("Rank");
+    await type(rankFields(scope)[0], "3100");
+    await click(findButton(scope, "Save"));
+
+    const [patch, rankChange] = onSave.mock.calls[0];
+    // A one-role game has no order to write: `null` is "every ranked role".
+    expect(patch).toEqual({ participation: "pool", roles: null, is_flex: false, away: false });
+    expect(rankChange).toEqual({ ranks: { agent: 3100 }, clear: [] });
+  });
+
+  // A stored `[]` (or a `null` with no rank yet) seats nobody once the first rank lands unless Save writes `null`:
+  // the balance would refuse the player with `missing_ranked_role`.
+  it.each<[string, CustomGamePlayer["roles"]]>([
+    ["no role order yet", null],
+    ["an empty role order", []],
+  ])("saves a one-role player's first rank with every role on, from %s", async (_case, roles) => {
+    const scope = await mount(
+      row({
+        identity: { provider: "steam", handle: "206464648" },
+        roles,
+        ranks: {},
+        rank_sources: {},
+        author_ranks: {},
+      }),
+      null,
+      1,
+      { ...DEADLOCK_OWNER, grid: OWNER.grid },
+    );
+
+    await type(rankFields(scope)[0], "2900");
+    expect(scope.textContent).not.toContain("balance will reject this mix");
+    await click(findButton(scope, "Save"));
+
+    const [patch, rankChange] = onSave.mock.calls[0];
+    expect(patch).toEqual({ participation: "pool", roles: null, is_flex: false, away: false });
+    expect(rankChange).toEqual({ ranks: { agent: 2900 }, clear: [] });
   });
 });
 
@@ -247,21 +321,21 @@ describe("PickupPlayerSheet priority", () => {
     // outranks damage). The order shown, and the order Save writes, must stay
     // exactly what the host stored.
     const scope = await mount(
-      row({ roles: ["damage", "tank"], ranks: { tank: 3300, damage: 2700, support: 2900 } }),
+      row({ roles: ["damage", "tank"].map((role) => ({ dimension: "player_role", role })), ranks: { tank: 3300, damage: 2700, support: 2900 } }),
     );
 
     expect(rankFields(scope).map((node) => node.value)).toEqual(["2700", "3300", "2900"]);
 
     await click(findButton(scope, "Save"));
     const [patch] = onSave.mock.calls[0];
-    expect(patch.roles).toEqual(["damage", "tank"]);
+    expect(patch.roles).toEqual(["damage", "tank"].map((role) => ({ dimension: "player_role", role })));
   });
 
   it("appends a role turned on to the end of the order, not a rank-sorted slot", async () => {
     // Support outranks both selected roles, but switching it on must not jump
     // it to the front.
     const scope = await mount(
-      row({ roles: ["tank", "damage"], ranks: { tank: 2000, damage: 2700, support: 4000 } }),
+      row({ roles: ["tank", "damage"].map((role) => ({ dimension: "player_role", role })), ranks: { tank: 2000, damage: 2700, support: 4000 } }),
     );
 
     const supportSwitch = scope.querySelector<HTMLElement>('[aria-label="Support for Aria#1111"]');
@@ -270,11 +344,11 @@ describe("PickupPlayerSheet priority", () => {
 
     await click(findButton(scope, "Save"));
     const [patch] = onSave.mock.calls[0];
-    expect(patch.roles).toEqual(["tank", "damage", "support"]);
+    expect(patch.roles).toEqual(["tank", "damage", "support"].map((role) => ({ dimension: "player_role", role })));
   });
 
   it("drops a role turned off from the order without touching the rest", async () => {
-    const scope = await mount(row({ roles: ["tank", "damage"] }));
+    const scope = await mount(row({ roles: ["tank", "damage"].map((role) => ({ dimension: "player_role", role })) }));
 
     const tankSwitch = scope.querySelector<HTMLElement>('[aria-label="Tank for Aria#1111"]');
     if (!tankSwitch) throw new Error("Tank switch not found");
@@ -282,7 +356,7 @@ describe("PickupPlayerSheet priority", () => {
 
     await click(findButton(scope, "Save"));
     const [patch] = onSave.mock.calls[0];
-    expect(patch.roles).toEqual(["damage"]);
+    expect(patch.roles).toEqual([{ dimension: "player_role", role: "damage" }]);
   });
 });
 
@@ -349,7 +423,7 @@ describe("PickupPlayerSheet mix record", () => {
     return {
       workspace_member_id: 7,
       display_name: null,
-      battle_tag: "Aria#1111",
+      identity: { provider: "battlenet", handle: "Aria#1111" },
       games: 20,
       wins: 12,
       losses: 8,
@@ -387,13 +461,13 @@ describe("PickupPlayerSheet mix record", () => {
 // a label every option would share once the letter is interpolated away.
 describe("PickupPlayerSheet lobby pin", () => {
   const pinOptions = (scope: ParentNode) => [
-    ...scope.querySelectorAll('[role="radiogroup"][aria-label="pinGroup"] [role="radio"]'),
+    ...scope.querySelectorAll('[role="radiogroup"][aria-label="Lobby for Aria#1111"] [role="radio"]'),
   ];
 
   it("offers no lobby pin while the mix runs one lobby", async () => {
     const scope = await mount(row());
 
-    expect(scope.querySelector('[role="radiogroup"][aria-label="pinGroup"]')).toBeNull();
+    expect(scope.querySelector('[role="radiogroup"][aria-label="Lobby for Aria#1111"]')).toBeNull();
   });
 
   it("offers Auto plus one option per lobby the mix actually runs", async () => {
@@ -436,5 +510,17 @@ describe("PickupPlayerSheet lobby pin", () => {
 
     expect(pinOptions(scope)[4].getAttribute("aria-checked")).toBe("true");
     expect(pinOptions(scope)[1].getAttribute("aria-checked")).toBe("false");
+  });
+});
+
+describe("PickupPlayerSheet away", () => {
+  it("marks a player away, written only on Save", async () => {
+    const scope = await mount();
+
+    await click(scope.querySelector('[role="switch"][aria-label="Away"]') as Element);
+    expect(onSave).not.toHaveBeenCalled();
+    await click(findButton(scope, "Save"));
+
+    expect(onSave.mock.calls[0][0]).toMatchObject({ away: true });
   });
 });

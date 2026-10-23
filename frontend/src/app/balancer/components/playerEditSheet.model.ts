@@ -1,18 +1,6 @@
 import type { PlayerRankHistoryPreview, PlayerRankHistoryPreviewEntry } from "@/components/balancer/workspace-helpers";
 import type { BalancerPlayerRoleEntry, BalancerRoleCode } from "@/types/balancer-admin.types";
 
-export const ROLE_OPTIONS: Array<{ value: BalancerRoleCode; label: string }> = [
-  { value: "tank", label: "Tank" },
-  { value: "damage", label: "Damage" },
-  { value: "support", label: "Support" }
-];
-
-export const ROLE_DISPLAY: Record<BalancerRoleCode, string> = {
-  tank: "Tank",
-  damage: "Damage",
-  support: "Support"
-};
-
 /** Which workspaces the "Load from history" preview reads, remembered per browser. */
 export const MULTIPLE_WORKSPACES_COOKIE = "aqt-history-multiple-workspaces";
 
@@ -80,23 +68,24 @@ export function applyHistoryPreviewToRoleEntries(
   return normalizeRoleEntries(Array.from(byRole.values()));
 }
 
-export function buildHistoryChangeText(
+/** What applying a history entry would do to the role: the `history.change.*` message the preview card reads. */
+export function historyChangeKind(
   currentEntry: BalancerPlayerRoleEntry | undefined,
   historyEntry: PlayerRankHistoryPreviewEntry
-): string {
+): "add" | "set" | "matches" | "replace" {
   if (!currentEntry) {
-    return `Will add this role with ${historyEntry.rank_value}.`;
+    return "add";
   }
 
   if (currentEntry.rank_value == null) {
-    return `Will set ${historyEntry.rank_value} on the existing role.`;
+    return "set";
   }
 
   if (currentEntry.rank_value === historyEntry.rank_value) {
-    return `Matches the current SR (${currentEntry.rank_value}).`;
+    return "matches";
   }
 
-  return `Current ${currentEntry.rank_value} -> new ${historyEntry.rank_value}.`;
+  return "replace";
 }
 
 /**

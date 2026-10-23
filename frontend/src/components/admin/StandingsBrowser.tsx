@@ -1,30 +1,26 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
-import type { ColumnDef } from "@tanstack/react-table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Lock, Pencil, RefreshCw, Trash2, Trophy } from "lucide-react";
+import { Lock } from "lucide-react";
 
-import { DataTable, createKebabColumn } from "@/components/data-table";
-import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
+import { DataTable } from "@/components/data-table";
 import { StandingsArrangeBoard } from "@/components/admin/StandingsArrangeBoard";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
-import { useFilters, type FilterDef } from "@/components/kit/useFilters";
+import { useFilters } from "@/components/kit/useFilters";
 import {
   TOURNAMENT_QUERY_PARAM,
   parseTournamentQueryParam
 } from "@/components/admin/tournament-filter";
-import TeamName from "@/components/TeamName";
 import { Button } from "@/components/ui/button";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Label } from "@/components/ui/label";
-import { NumberInput } from "@/components/ui/number-input";
 import { getTournamentWorkspaceQueryKeys, invalidateTournamentWorkspace } from "@/lib/tournament/workspace-query-keys";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useQueryParams } from "@/hooks/useQueryParams";
-import { hasUnsavedChanges } from "@/lib/form-change";
 import { notify } from "@/lib/notify";
 import { formatTiebreakOrder } from "@/lib/tournament/tiebreakers";
 import adminService from "@/services/admin.service";
@@ -35,33 +31,12 @@ import { EmptyNote } from "@/components/kit/EmptyNote";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 
+import { StandingEditDialog } from "./standings/StandingEditDialog";
+import { standingFilterDefs } from "./standings/filters";
+import { EMPTY_FORM, standingFormOf, standingScopeLabel } from "./standings/model";
+import { useStandingsColumns } from "./standings/useStandingsColumns";
+
 const PAGE_SIZE = 25;
-
-const EMPTY_FORM: StandingUpdateInput = {
-  points: 0,
-  win: 0,
-  draw: 0,
-  lose: 0,
-  buchholz: 0,
-  tb: 0
-};
-
-function standingFormOf(standing: Standings | null): StandingUpdateInput {
-  if (!standing) return { ...EMPTY_FORM };
-  return {
-    points: standing.points,
-    win: standing.win,
-    draw: standing.draw,
-    lose: standing.lose,
-    buchholz: standing.buchholz ?? 0,
-    tb: standing.tb ?? 0
-  };
-}
-
-/** The stage or stage item a standings row was computed for. */
-function standingScopeLabel(standing: Standings, unassignedLabel: string): string {
-  return standing.stage_item?.name ?? standing.stage?.name ?? unassignedLabel;
-}
 
 /**
  * The standings table, for one tournament or for a tournament picked with a
@@ -112,12 +87,6 @@ export function StandingsBrowser({
     enabled: tournamentId == null
   });
 
-  const tournamentQuery = useQuery({
-    queryKey: adminQueryKeys.tournament(scopeTournamentId),
-    queryFn: () => adminService.getTournament(scopeTournamentId!),
-    enabled: scopeTournamentId != null
-  });
-
   // The hub shell already holds this exact key, so mounting the tab costs no
   // request; realtime addresses it too (`tournament.standings`).
   const standingsQuery = useQuery({
@@ -147,38 +116,14 @@ export function StandingsBrowser({
     (stage) => stage.items
   );
 
-  const defs = useMemo<FilterDef[]>(() => {
-    const list: FilterDef[] = [];
-    if (tournamentId == null) {
-      list.push({
-        key: TOURNAMENT_QUERY_PARAM,
-        label: t("filters.tournament"),
-        kind: "single",
-        options: (tournamentsQuery.data?.results ?? []).map((entry) => ({
-          value: String(entry.id),
-          label: entry.name
-        }))
-      });
-    }
-    // Scoped to one stage there is nothing to pick: the stage is a pinned chip.
-    if (stageId == null && stageList.length > 0) {
-      list.push({
-        key: "stage",
-        label: t("filters.stage"),
-        kind: "single",
-        options: stageList.map((stage) => ({ value: String(stage.id), label: stage.name }))
-      });
-    }
-    if (stageItems.length > 0) {
-      list.push({
-        key: "group",
-        label: t("filters.group"),
-        kind: "single",
-        options: stageItems.map((item) => ({ value: String(item.id), label: item.name }))
-      });
-    }
-    return list;
-  }, [t, tournamentId, stageId, tournamentsQuery.data, stageList, stageItems]);
+  const defs = standingFilterDefs({
+    tournamentId,
+    stageId,
+    tournaments: tournamentsQuery.data?.results ?? [],
+    stages: stageList,
+    stageItems,
+    t
+  });
 
   const filters = useFilters(defs);
   const stageFilter = String(filters.values.stage ?? "");
@@ -244,145 +189,29 @@ export function StandingsBrowser({
     }
   });
 
-  const columns = useMemo<ColumnDef<Standings>[]>(
-    () => [
-      {
-        accessorKey: "position",
-        header: "#",
-        size: 72,
-        cell: ({ row }) => (
-          <div className="flex items-center gap-2">
-            {row.original.position === 1 ? (
-              <Trophy aria-hidden className="size-4 text-warning" />
-            ) : null}
-            <span className="font-bold tabular-nums">{row.original.position}</span>
-            {row.original.is_pinned ? (
-              <span title={t("pinnedPlace")} className="text-muted-foreground">
-                <Lock aria-hidden className="size-3.5" />
-                <span className="sr-only">{t("pinnedPlace")}</span>
-              </span>
-            ) : null}
-          </div>
-        )
-      },
-      {
-        accessorKey: "team",
-        header: t("columns.team"),
-        enableSorting: false,
-        cell: ({ row }) =>
-          row.original.team ? (
-            <TeamName team={row.original.team} size="xs" nameClassName="font-medium" />
-          ) : (
-            "—"
-          )
-      },
-      // Scoped to one stage, the stage itself is the pinned chip: the column only
-      // earns its place when the stage has groups to tell apart.
-      ...(stageId == null
-        ? [
-            {
-              id: "scope",
-              header: t("columns.stage"),
-              enableSorting: false,
-              cell: ({ row }) => (
-                <span className="text-sm">{standingScopeLabel(row.original, t("unassigned"))}</span>
-              )
-            } satisfies ColumnDef<Standings>
-          ]
-        : (scopedStage?.items.length ?? 0) > 1
-          ? [
-              {
-                id: "scope",
-                header: t("columns.group"),
-                enableSorting: false,
-                cell: ({ row }) => (
-                  <span className="text-sm">{row.original.stage_item?.name ?? "—"}</span>
-                )
-              } satisfies ColumnDef<Standings>
-            ]
-          : []),
-      {
-        accessorKey: "matches",
-        header: t("columns.matches"),
-        size: 72,
-        cell: ({ row }) => <span className="tabular-nums">{row.original.matches}</span>
-      },
-      {
-        accessorKey: "win",
-        header: t("winsShort"),
-        size: 64,
-        cell: ({ row }) => <span className="tabular-nums text-success">{row.original.win}</span>
-      },
-      {
-        accessorKey: "draw",
-        header: t("drawsShort"),
-        size: 64,
-        cell: ({ row }) => <span className="tabular-nums text-warning">{row.original.draw}</span>
-      },
-      {
-        accessorKey: "lose",
-        header: t("lossesShort"),
-        size: 64,
-        cell: ({ row }) => <span className="tabular-nums text-danger">{row.original.lose}</span>
-      },
-      {
-        accessorKey: "points",
-        header: t("columns.points"),
-        size: 80,
-        cell: ({ row }) => (
-          <span className="font-bold tabular-nums">{row.original.points.toFixed(1)}</span>
-        )
-      },
-      {
-        accessorKey: "buchholz",
-        header: t("columns.buchholz"),
-        size: 110,
-        // Median and full are separate tiebreakers, and a lone number reads as
-        // whichever one the organizer assumes. Show the pair, matching the
-        // public table.
-        cell: ({ row }) => (
-          <span className="text-sm tabular-nums" title={t("buchholzTitle")}>
-            {row.original.buchholz == null
-              ? "—"
-              : row.original.full_buchholz == null
-                ? row.original.buchholz.toFixed(2)
-                : `${row.original.buchholz.toFixed(2)} / ${row.original.full_buchholz.toFixed(2)}`}
-          </span>
-        )
-      },
-      {
-        accessorKey: "tb",
-        header: t("columns.tiebreak"),
-        size: 72,
-        cell: ({ row }) => (
-          <span className="text-sm tabular-nums">{row.original.tb != null ? row.original.tb : "—"}</span>
-        )
-      },
-      createKebabColumn<Standings>(
-        (row) => [
-          {
-            label: t("edit"),
-            icon: Pencil,
-            hidden: !canUpdate,
-            onSelect: () => {
-              updateMutation.reset();
-              setEditing(row);
-              setForm(standingFormOf(row));
-            }
-          },
-          {
-            label: t("delete"),
-            icon: Trash2,
-            destructive: true,
-            hidden: !canDelete,
-            onSelect: () => setPendingDelete(row)
-          }
-        ],
-        { rowLabel: (row) => t("rowLabel", { name: row.team?.name ?? t("team") }) }
-      )
-    ],
-    [t, canUpdate, canDelete, updateMutation, stageId, scopedStage]
+  // `updateMutation` is rebuilt on every state transition; `reset` is not, so the
+  // memoised `openEdit` hangs on the callback instead of the container.
+  const { reset: resetUpdateMutation } = updateMutation;
+
+  // The kebab column closes over this, so it needs an identity that only moves
+  // when its inputs do; the two setters never do.
+  const openEdit = useCallback(
+    (standing: Standings) => {
+      resetUpdateMutation();
+      setEditing(standing);
+      setForm(standingFormOf(standing));
+    },
+    [resetUpdateMutation, setEditing, setForm]
   );
+
+  const columns = useStandingsColumns({
+    canUpdate,
+    canDelete,
+    stageId,
+    scopedStage,
+    onEdit: openEdit,
+    onDelete: setPendingDelete
+  });
 
   if (workspaceId == null) {
     return (
@@ -392,41 +221,48 @@ export function StandingsBrowser({
     );
   }
 
+  const failedQuery = standingsQuery.isError
+    ? standingsQuery
+    : stagesQuery.isError
+      ? stagesQuery
+      : null;
+  if (failedQuery) {
+    return <PageStateCard state="error" onAction={() => void failedQuery.refetch()} />;
+  }
+
   const canRecalculate = canUpdate && scopeTournamentId != null;
+  const canSync = canAccessPermission("challonge.update", workspaceId) && scopeTournamentId != null;
   const arranging = view === "arrange" && scopeTournamentId != null;
 
   const toolbar = (
     <FilterBar
       defs={defs}
       filters={filters}
-      pinned={[
-        ...(tournamentId != null
-          ? [
-              {
-                key: TOURNAMENT_QUERY_PARAM,
-                label: t("pinnedTournament", { name: tournamentQuery.data?.name ?? `#${tournamentId}` })
-              }
-            ]
-          : []),
-        ...(stageId != null
-          ? [{ key: "stage", label: t("pinnedStage", { name: scopedStage?.name ?? `#${stageId}` }) }]
-          : [])
-      ]}
       trailing={
-        <>
-          {scopeTournamentId != null ? (
-            <ToggleGroup
-              type="single"
-              variant="pill"
-              size="sm"
-              value={view}
-              onValueChange={(next) => setView(next as "table" | "arrange")}
-              aria-label={t("view")}
-            >
-              <ToggleGroupItem value="table">{t("table")}</ToggleGroupItem>
-              <ToggleGroupItem value="arrange">{t("arrange")}</ToggleGroupItem>
-            </ToggleGroup>
-          ) : null}
+        scopeTournamentId != null ? (
+          <ToggleGroup
+            type="single"
+            variant="pill"
+            size="sm"
+            value={view}
+            onValueChange={(next) => {
+              if (next) setView(next as "table" | "arrange");
+            }}
+            aria-label={t("view")}
+          >
+            <ToggleGroupItem value="table">{t("table")}</ToggleGroupItem>
+            <ToggleGroupItem value="arrange">{t("arrange")}</ToggleGroupItem>
+          </ToggleGroup>
+        ) : null
+      }
+    />
+  );
+
+  return (
+    <div className="space-y-3">
+      {/* Actions on the whole table, not filters: above the filter surface. */}
+      {canRecalculate || canSync ? (
+        <div className="flex flex-wrap justify-end gap-2">
           {canRecalculate ? (
             <Button
               variant="outline"
@@ -434,28 +270,22 @@ export function StandingsBrowser({
               disabled={recalculateMutation.isPending}
               onClick={() => setRecalculateOpen(true)}
             >
-              <RefreshCw aria-hidden className="size-4" />
               {t("recalculate")}
             </Button>
           ) : null}
-          {canAccessPermission("challonge.update", workspaceId) && scopeTournamentId != null ? (
+          {canSync ? (
             <Button
               variant="outline"
               size="sm"
               disabled={syncMutation.isPending}
               onClick={() => syncMutation.mutate()}
             >
-              <RefreshCw aria-hidden className="size-4" />
+              {syncMutation.isPending ? <Spinner /> : null}
               {t("sync")}
             </Button>
           ) : null}
-        </>
-      }
-    />
-  );
-
-  return (
-    <div className="space-y-3">
+        </div>
+      ) : null}
       {arranging ? (
         <>
           {toolbar}
@@ -481,15 +311,7 @@ export function StandingsBrowser({
               ? t("pickTournament")
               : t("empty")
           }
-          onRowDoubleClick={
-            canUpdate
-              ? (row) => {
-                  updateMutation.reset();
-                  setEditing(row.original);
-                  setForm(standingFormOf(row.original));
-                }
-              : undefined
-          }
+          onRowDoubleClick={canUpdate ? (row) => openEdit(row.original) : undefined}
           renderMobileCard={(row) => (
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">
@@ -524,92 +346,18 @@ export function StandingsBrowser({
             value: formatTiebreakOrder(tiebreakOrder),
             valueText: (chunks) => <span className="font-medium text-foreground">{chunks}</span>
           })}
-          <span className="font-medium text-foreground">
-            {formatTiebreakOrder(tiebreakOrder)}
-          </span>
         </p>
       ) : null}
 
-      <EntityFormDialog
-        open={editing != null}
-        onOpenChange={(next) => {
-          if (!next) setEditing(null);
-        }}
-        title={t("edit")}
-        description={t("editDescription")}
+      <StandingEditDialog
+        editing={editing}
+        form={form}
+        onFormChange={setForm}
+        onClose={() => setEditing(null)}
         isSubmitting={updateMutation.isPending}
-        submittingLabel={t("updating")}
-        errorMessage={
-          updateMutation.isError
-            ? t("updateError", { message: updateMutation.error.message })
-            : undefined
-        }
-        isDirty={editing != null && hasUnsavedChanges(form, standingFormOf(editing))}
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (editing) updateMutation.mutate({ id: editing.id, data: form });
-        }}
-      >
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label htmlFor="standing-points">{t("points")}</Label>
-            <NumberInput
-              id="standing-points"
-              min={0}
-              value={form.points ?? 0}
-              onValueChange={(next) => setForm({ ...form, points: next ?? 0 })}
-            />
-          </div>
-          <div>
-            <Label htmlFor="standing-win">{t("wins")}</Label>
-            <NumberInput
-              id="standing-win"
-              integer
-              min={0}
-              value={form.win ?? 0}
-              onValueChange={(next) => setForm({ ...form, win: next ?? 0 })}
-            />
-          </div>
-          <div>
-            <Label htmlFor="standing-draw">{t("draws")}</Label>
-            <NumberInput
-              id="standing-draw"
-              integer
-              min={0}
-              value={form.draw ?? 0}
-              onValueChange={(next) => setForm({ ...form, draw: next ?? 0 })}
-            />
-          </div>
-          <div>
-            <Label htmlFor="standing-lose">{t("losses")}</Label>
-            <NumberInput
-              id="standing-lose"
-              integer
-              min={0}
-              value={form.lose ?? 0}
-              onValueChange={(next) => setForm({ ...form, lose: next ?? 0 })}
-            />
-          </div>
-          <div>
-            <Label htmlFor="standing-buchholz">{t("buchholzMedian")}</Label>
-            <NumberInput
-              id="standing-buchholz"
-              value={form.buchholz ?? 0}
-              onValueChange={(next) => setForm({ ...form, buchholz: next ?? 0 })}
-            />
-          </div>
-          <div>
-            <Label htmlFor="standing-tb">{t("headToHead")}</Label>
-            <NumberInput
-              id="standing-tb"
-              integer
-              min={0}
-              value={form.tb ?? 0}
-              onValueChange={(next) => setForm({ ...form, tb: next ?? 0 })}
-            />
-          </div>
-        </div>
-      </EntityFormDialog>
+        error={updateMutation.error}
+        onSave={updateMutation.mutate}
+      />
 
       <ConfirmDialog
         open={pendingDelete != null}

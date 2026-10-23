@@ -1,5 +1,4 @@
-import type { Metadata } from "next";
-
+import { getTranslations } from "next-intl/server";
 import { headers } from "next/headers";
 import workspaceService from "@/services/workspace.service";
 import { SITE_NAME, SITE_URL_OBJ, SITE_FAVICON } from "@/config/site";
@@ -11,13 +10,16 @@ export interface SiteMetadata {
   icon: string;
 }
 
-function platformDefaults(origin: string): SiteMetadata {
-  return {
-    name: SITE_NAME,
-    description: `${SITE_NAME} — Overwatch tournament results & stats.`,
-    origin,
-    icon: SITE_FAVICON
-  };
+// Game-neutral: the platform hosts every installed game, so its own SEO text
+// names none. A game name belongs to a selected game or an actual owner.
+async function platformDefaults(origin: string): Promise<SiteMetadata> {
+  let description = `${SITE_NAME} — community tournaments, brackets and player statistics.`;
+  try {
+    description = (await getTranslations("common"))("platformDescription", { siteName: SITE_NAME });
+  } catch {
+    // No request scope for translations (build time): the English default stands.
+  }
+  return { name: SITE_NAME, description, origin, icon: SITE_FAVICON };
 }
 
 /**
@@ -49,44 +51,21 @@ export async function resolveSiteMetadata(): Promise<SiteMetadata> {
 
     const wsId = h.get("x-owt-workspace-id");
     if (!wsId) {
-      return platformDefaults(origin);
+      return await platformDefaults(origin);
     }
 
     try {
       const ws = await workspaceService.getById(Number(wsId));
       return {
-        name: ws.seo_title ?? ws.name,
-        description: ws.seo_description ?? ws.description ?? `${ws.name} — tournaments`,
+        name: ws.seo_title || ws.name,
+        description: ws.seo_description || ws.description || `${ws.name} — tournaments`,
         origin,
-        icon: ws.icon_url ?? SITE_FAVICON
+        icon: ws.icon_url || SITE_FAVICON
       };
     } catch {
-      return platformDefaults(origin);
+      return await platformDefaults(origin);
     }
   } catch {
-    return platformDefaults(SITE_URL_OBJ.origin);
+    return await platformDefaults(SITE_URL_OBJ.origin);
   }
-}
-
-/**
- * Builds the standard section-page `generateMetadata()` result (OG tags,
- * canonical `metadataBase`) from a resolved title/description. Every
- * `(site)/*\/layout.tsx` section page shares this exact shape — only the
- * title/description text differs — so they call this instead of repeating it.
- */
-export async function buildSectionMetadata(title: string, description: string): Promise<Metadata> {
-  const { name, origin } = await resolveSiteMetadata();
-  return {
-    title,
-    description,
-    metadataBase: new URL(origin),
-    openGraph: {
-      title,
-      description,
-      url: origin,
-      type: "website",
-      siteName: name,
-      locale: "en_US"
-    }
-  };
 }

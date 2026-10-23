@@ -20,7 +20,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
-import type { Encounter, Match } from "@/types/encounter.types";
+import type { Encounter, EncounterTeam, Match } from "@/types/encounter.types";
 import type { Team } from "@/types/team.types";
 import type { StageSummary, StageType, Tournament } from "@/types/tournament.types";
 
@@ -54,10 +54,12 @@ vi.mock("next/link", () => ({
   default: ({
     href,
     children,
+    prefetch: _prefetch,
     ...rest
   }: {
     href: string;
     children: React.ReactNode;
+    prefetch?: boolean | null;
   } & React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
     <a href={href} {...rest}>
       {children}
@@ -95,12 +97,22 @@ function stage(id: number, name: string, order: number, stageType: StageType): S
     is_completed: true,
     ranking_preset: null,
     tiebreak_order: null,
-    scoring: { win: null, draw: null, loss: null },
+    scoring: {
+      win: null,
+      draw: null,
+      loss: null,
+      preset: null,
+      columns: null,
+      placement_points: null,
+      formula: null
+    },
     swiss_bye_points: null,
+    swiss_qualify_wins: null,
+    swiss_eliminate_losses: null,
     de_grand_final_type: "no_reset",
     seed_ranking: "slot",
-    best_of: { default: 3, by_round: {}, final: null },
-    ffa_scoring: { placement_points: [], score_points: 1, score_label: null },
+    best_of: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
+    has_custom_bracket: false,
     challonge_id: null,
     challonge_slug: null
   };
@@ -142,7 +154,7 @@ const TOURNAMENT: Tournament = {
   teams_count: 4,
   division_grid_version_id: null,
   division_grid_version: null,
-  roster_slots_json: null,
+  discipline: "overwatch",
   roster_shape: null,
   roster_locked_by_draft: null
 };
@@ -176,22 +188,45 @@ const DELTA = team(14, "Delta");
 function mapRow(id: number, encounterId: number, home: Team, away: Team): Match {
   return {
     id,
-    created_at: new Date(0),
+    created_at: "1970-01-01T00:00:00Z",
     updated_at: null,
-    home_team_id: home.id,
-    away_team_id: away.id,
-    score: { home: 2, away: 1 },
-    time: 680,
+    played_at: null,
+    workspace_id: 1,
+    discipline: "overwatch",
+    encounter_game_id: null,
+    participants: [seat(1, home, 0), seat(2, away, 0)].map((participation, index) => ({
+      encounter_team_id: participation.id,
+      slot: participation.slot,
+      source_position: index,
+      tournament_team_id: participation.team_id,
+      name: participation.name,
+      result: null,
+      team_facts: { score: index === 0 ? 2 : 1 }
+    })),
+    duration_s: 680,
     encounter_id: encounterId,
     map_id: 52,
     map_index: 1,
     log_name: "log.txt",
-    source: "log_parser",
-    code: null,
+    raw_status: null,
+    raw_available: false,
     map: null,
-    home_team: null,
-    away_team: null,
     encounter: null
+  };
+}
+
+/** The live seat a team holds in an encounter; `score` is its standing there. */
+function seat(slot: number, team: Team, score: number): EncounterTeam {
+  return {
+    id: team.id * 10 + slot,
+    slot,
+    team_id: team.id,
+    name: team.name,
+    seed: null,
+    score,
+    placement: null,
+    active: true,
+    team
   };
 }
 
@@ -204,8 +239,8 @@ function encounter(
   id: number,
   stageSummary: StageSummary,
   round: number,
-  home: Team,
-  away: Team,
+  one: Team,
+  two: Team,
   at: string,
   options: { group?: string; scheduled?: boolean } = {}
 ): Encounter {
@@ -214,10 +249,8 @@ function encounter(
     id,
     created_at: new Date(0),
     updated_at: null,
-    name: `${home.name} vs ${away.name}`,
-    home_team_id: home.id,
-    away_team_id: away.id,
-    score: { home: 2, away: 0 },
+    name: `${one.name} vs ${two.name}`,
+    slot_count: 2,
     round,
     best_of: 2,
     tournament_id: TOURNAMENT_ID,
@@ -228,15 +261,20 @@ function encounter(
     closeness: 6,
     has_logs: true,
     result_status: "confirmed",
+    result_source: "series_claim",
+    result_version: 1,
     scheduled_at: options.scheduled === true ? ended : null,
     started_at: ended,
     ended_at: ended,
+    played_at: null,
+    is_live: false,
+    is_final: false,
     current_map_index: null,
     confirmed_at: ended,
     sources: [],
-    matches: [mapRow(id * 10, id, home, away)],
-    home_team: home,
-    away_team: away,
+    matches: [mapRow(id * 10, id, one, two)],
+    games: [],
+    teams: [seat(1, one, 2), seat(2, two, 0)],
     tournament: TOURNAMENT,
     stage: { ...stageSummary, items: [] },
     stage_item: options.group
@@ -414,8 +452,9 @@ describe("tournament matches", () => {
     const live: Encounter = {
       ...encounter(506, PLAYOFFS, 3, ALPHA, BRAVO, "2025-09-01T11:00:00Z", { scheduled: true }),
       status: "in_progress",
-      score: { home: 1, away: 1 },
+      teams: [seat(1, ALPHA, 1), seat(2, BRAVO, 1)],
       ended_at: null,
+      is_live: true,
       confirmed_at: null
     };
     await render([...fixtures(true), live], "view=time");
@@ -443,7 +482,8 @@ describe("tournament matches", () => {
     const text = await render([]);
 
     expect(text).toContain(en.tournamentDetail.publicPages.matches.emptyTitle);
-    expect(headings()).toEqual([]);
+    // The state card's own title is the only heading: no stage or round grouping.
+    expect(headings()).toEqual([en.tournamentDetail.publicPages.matches.emptyTitle]);
     expect(segment()).toBeNull();
   });
 
@@ -451,7 +491,7 @@ describe("tournament matches", () => {
     const text = await render(fixtures(false), "team=999");
 
     expect(text).toContain(en.tournamentDetail.pageState.filteredEmpty.title);
-    expect(headings()).toEqual([]);
+    expect(headings()).toEqual([en.tournamentDetail.pageState.filteredEmpty.title]);
   });
 });
 

@@ -9,8 +9,6 @@ import {
   PermissionPicker,
   type PermissionCatalogEntry
 } from "@/components/admin/access/PermissionPicker";
-import { TONE_CLASS } from "@/components/kit/tone";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -20,10 +18,9 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
 import { rbacService } from "@/services/rbac.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import { accessQueryKeys } from "@/lib/access/query-keys";
 import { useTranslations } from "next-intl";
 
@@ -84,19 +81,16 @@ type DenyScope = "global" | number;
  * API keys, read as "what this account may NOT do".
  *
  * Collapsed by default: most accounts have none, and a six-row red panel on
- * every account buried the roles above it. Active denies stay visible as chips
- * while collapsed, so a restricted account never reads as unrestricted.
- *
- * The picker's signature carries no tone, so the danger reading comes from the
- * panel around it rather than from the control: a checked row here takes access
- * away, which is the opposite of every other picker on the screen and must not
- * look identical to it.
+ * every account buried the roles above it. Active denies stay listed while
+ * collapsed, so a restricted account never reads as unrestricted; open, the
+ * checked rows say it.
  */
 export function AccountRestrictions({
   userId,
   canEdit
 }: Readonly<{ userId: number; canEdit: boolean }>) {
   const t = useTranslations("adminAccess.restrictionsUi");
+  const tc = useTranslations("adminAccess.common");
   const queryClient = useQueryClient();
   const workspaces = useWorkspaceStore((state) => state.workspaces);
   const [open, setOpen] = useState(false);
@@ -149,7 +143,7 @@ export function AccountRestrictions({
   const scopeLabel = (workspaceId: number | null | undefined) =>
     workspaceId
       ? (workspaces.find((workspace) => workspace.id === workspaceId)?.name ??
-        `Workspace #${workspaceId}`)
+        tc("workspaceFallback", { id: workspaceId }))
       : t("global");
 
   return (
@@ -158,66 +152,63 @@ export function AccountRestrictions({
       open={open}
       onOpenChange={setOpen}
       summary={
-        deniesQuery.isLoading ? (
-          <Spinner className="size-3.5" />
-        ) : denies.length === 0 ? (
+        deniesQuery.isLoading ? undefined : denies.length === 0 ? (
           t("none")
         ) : (
           <span className="text-danger">{t("active", { count: denies.length })}</span>
         )
       }
       preview={
-        denies.length > 0 ? (
-            <ul className="flex flex-wrap gap-1.5" aria-label={t("activeLabel")}>
+        !open && denies.length > 0 ? (
+          <ul className="space-y-0.5 text-caption text-danger" aria-label={t("activeLabel")}>
             {denies.map((deny) => (
               <li key={`${deny.permission_id}-${deny.workspace_id ?? "global"}`}>
-                <Badge tone="danger" className="font-normal">
-                  <span className="font-mono">{deny.name}</span>
-                  <span className="opacity-80">· {scopeLabel(deny.workspace_id)}</span>
-                </Badge>
+                <span className="font-mono">{deny.name}</span> · {scopeLabel(deny.workspace_id)}
               </li>
             ))}
           </ul>
         ) : null
       }
     >
-      <div className={cn("space-y-2 rounded-lg border p-3", TONE_CLASS.danger)}>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <Label htmlFor={scopeId} className="text-xs text-muted-foreground">
-            {t("scope")}
-          </Label>
-          <Select
-            value={String(scope)}
-            onValueChange={(value) => setScope(value === "global" ? "global" : Number(value))}
-          >
-            <SelectTrigger id={scopeId} className="h-8 w-44 text-xs" disabled={!canEdit}>
-              <SelectValue placeholder={t("selectScope")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="global">
-                <span className="flex items-center gap-2">
-                  <Globe aria-hidden className="size-3.5" />
-                  {t("global")}
-                </span>
-              </SelectItem>
-              {workspaces.map((workspace) => (
-                <SelectItem key={workspace.id} value={String(workspace.id)}>
+      <div className="space-y-2">
+        {workspaces.length > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Label htmlFor={scopeId} className="text-xs text-muted-foreground">
+              {t("scope")}
+            </Label>
+            <Select
+              value={String(scope)}
+              onValueChange={(value) => setScope(value === "global" ? "global" : Number(value))}
+            >
+              <SelectTrigger id={scopeId} size="sm" className="w-44">
+                <SelectValue placeholder={t("selectScope")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="global">
                   <span className="flex items-center gap-2">
-                    <Building2 aria-hidden className="size-3.5" />
-                    {workspace.name}
+                    <Globe aria-hidden className="size-3.5" />
+                    {t("global")}
                   </span>
                 </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+                {workspaces.map((workspace) => (
+                  <SelectItem key={workspace.id} value={String(workspace.id)}>
+                    <span className="flex items-center gap-2">
+                      <Building2 aria-hidden className="size-3.5" />
+                      {workspace.name}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
 
         <p className="text-xs text-muted-foreground">
           {t("notice")}
         </p>
 
         {permissionsQuery.isLoading ? (
-          <Spinner className="size-4 text-muted-foreground" />
+          <Skeleton className="h-32 w-full" />
         ) : (
           <PermissionPicker
             mode="list"

@@ -24,6 +24,8 @@ import type { Tournament } from "@/types/tournament.types";
 
 import TeamRegistrationEntry from "./TeamRegistrationEntry";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
@@ -53,7 +55,6 @@ vi.mock("@/services/registration-team.service", () => ({
 vi.mock("@/services/me.service", () => ({
   default: { getSocialAccounts: async () => ({ id: 7, social_accounts: [] }) }
 }));
-vi.mock("@/services/hero.service", () => ({ default: { getAll: async () => ({ results: [] }) } }));
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), apiError: vi.fn() }
 }));
@@ -77,6 +78,7 @@ const FORM = {
   tournament_id: 84,
   workspace_id: 3,
   is_open: true,
+  discipline: "overwatch",
   version_id: 42,
   version_number: 1,
   subrole_catalog: SUBROLE_CATALOG,
@@ -94,7 +96,7 @@ const FORM = {
   }
 } as unknown as RegistrationForm;
 
-function tournament(slots: RosterSlotMap): Tournament {
+function tournament(slots: RosterSlotMap, discipline = "overwatch"): Tournament {
   const now = Date.now();
   return {
     id: 84,
@@ -111,8 +113,16 @@ function tournament(slots: RosterSlotMap): Tournament {
         ends_at: new Date(now + 86_400_000).toISOString()
       }
     ],
-    roster_slots_json: slots,
-    roster_shape: null
+    discipline,
+    roster_shape: {
+      dimension: discipline === "deadlock" ? "agent" : "player_role",
+      slots,
+      team_size: Object.values(slots).reduce((sum, count) => sum + (count ?? 0), 0),
+      flex_slots: slots.flex ?? 0,
+      has_role_slots: Object.keys(slots).some((code) => code !== "flex"),
+      draft_rounds: 0,
+      source: "tournament",
+    }
   } as unknown as Tournament;
 }
 
@@ -127,13 +137,13 @@ async function settle() {
   });
 }
 
-async function mount(slots: RosterSlotMap) {
+async function mount(slots: RosterSlotMap, discipline = "overwatch") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(
       <NextIntlClientProvider locale="en" messages={en}>
         <QueryClientProvider client={client}>
-          <TeamRegistrationEntry tournament={tournament(slots)} />
+          <TeamRegistrationEntry tournament={tournament(slots, discipline)} />
         </QueryClientProvider>
       </NextIntlClientProvider>
     );
@@ -159,11 +169,12 @@ async function openWizard() {
   await settle();
 }
 
-/** The slot codes the wizard offers, read off the radio group it renders. */
+/** The slot codes the wizard offers, read off the radio group its slot label names (Radix radios carry `value`). */
 function offeredSlots(): string[] {
-  return [...document.querySelectorAll<HTMLInputElement>('input[name="regteam-slot"]')].map(
-    (input) => input.value
+  const group = [...document.querySelectorAll('[role="radiogroup"]')].find(
+    (el) => document.getElementById(el.getAttribute("aria-labelledby") ?? "")?.textContent === en.registrationTeams.create.slotLabel
   );
+  return [...(group?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [])].map((radio) => radio.value);
 }
 
 /**
@@ -220,5 +231,31 @@ describe("founding a team on a role roster", () => {
     expect(offeredSlots()).toEqual(["tank", "damage", "support"]);
     // The first slot is preselected, and a role slot DOES fix the role step.
     expect(roleRows()).toEqual([en.rosterShape.slotCodes.tank]);
+  });
+});
+
+describe("founding a team in a one-role game", () => {
+  it("asks for neither a slot nor a role", async () => {
+    getForm.mockResolvedValue({
+      ...FORM,
+      discipline: "deadlock",
+      subrole_catalog: {},
+      form_schema: {
+        schema_version: 1,
+        sections: [
+          ...FORM.form_schema.sections,
+          {
+            key: "details",
+            title: "Details",
+            fields: [{ key: "public_notes", kind: "builtin", label: "Notes", required: false, visibility: "public", params: {} }]
+          }
+        ]
+      }
+    });
+    await mount({ agent: 6 }, "deadlock");
+    await openWizard();
+
+    expect(offeredSlots()).toEqual([]);
+    expect(document.body.textContent).not.toContain(en.registration.roles.matrix.hint);
   });
 });

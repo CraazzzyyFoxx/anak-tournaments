@@ -1,19 +1,22 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Search } from "lucide-react";
 
-import { CAPTION_CLASS, CARD_TITLE_CLASS, EYEBROW_CLASS } from "@/app/balancer/mix/pickup-chrome";
+import { CAPTION_CLASS, CARD_TITLE_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { DataPagination } from "@/components/ui/data-pagination";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { Input } from "@/components/ui/input";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ROLES, ROLE_LABELS } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { cn } from "@/lib/utils";
 import type { CustomGamePlayer } from "@/services/custom-game.service";
 
+import type { MixOwner } from "./pickup-lineup";
 import { MixLineupAside } from "./_components/MixLineupAside";
 import { RosterFilterBar } from "./_components/RosterFilterBar";
 import { RosterRowItem } from "./_components/RosterRowItem";
@@ -23,7 +26,10 @@ type PickupAddPlayersDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   workspaceId: number;
-  /** Workspace right: whether a new BattleTag can be added to the roster. */
+  discipline: string;
+  /** The mix owner's game: the rank columns, the full-lobby size and the grid the ranks are on. */
+  owner: MixOwner;
+  /** Workspace right: whether a new player handle can be added to the roster. */
   canEdit: boolean;
   /**
    * Whether the rank pickers write. Only the host's book decides this mix, and
@@ -65,6 +71,8 @@ export function PickupAddPlayersDialog({
   open,
   onOpenChange,
   workspaceId,
+  discipline,
+  owner,
   canEdit,
   canEditRanks,
   canWrite,
@@ -72,8 +80,13 @@ export function PickupAddPlayersDialog({
   rows,
   onTogglePlayer
 }: Readonly<PickupAddPlayersDialogProps>) {
+  const t = useTranslations("mixes.addPlayers");
+  const tMixes = useTranslations("mixes");
+  const tCommon = useTranslations("common");
+  const slotLabel = useSlotLabel(owner.ontology);
   const picker = useRosterPicker({
     workspaceId,
+    discipline,
     open,
     hostUserId,
     rows,
@@ -98,13 +111,22 @@ export function PickupAddPlayersDialog({
           className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-[color:var(--aqt-teal)]"
         />
         <header className="flex shrink-0 items-baseline gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-5 py-3.5 pr-12">
-          <DialogTitle className={cn(CARD_TITLE_CLASS, "tracking-label")}>Add players</DialogTitle>
-          <DialogDescription className={cn(CAPTION_CLASS, "min-w-0 truncate")}>
-            {picker.workspaceTotal == null
-              ? "Loading the workspace roster\u2026"
-              : `${picker.workspaceTotal} in this workspace \u00B7 ${
-                  canEditRanks ? "your ranks decide" : "the host's ranks decide"
-                }, workspace ranks fill the gaps`}
+          <DialogTitle className={CARD_TITLE_CLASS}>{tMixes("start.addPlayers")}</DialogTitle>
+          {/* A div, not the default <p>: the loading skeleton is a block element. */}
+          <DialogDescription asChild className={cn(CAPTION_CLASS, "min-w-0 truncate")}>
+            <div>
+              {picker.workspaceTotal == null ? (
+                <span role="status">
+                  <span className="sr-only">{t("loadingRoster")}</span>
+                  <Skeleton aria-hidden className="h-4 w-80 max-w-full" />
+                </span>
+              ) : (
+                t("summary", {
+                  total: picker.workspaceTotal,
+                  decider: canEditRanks ? "you" : "host"
+                })
+              )}
+            </div>
           </DialogDescription>
         </header>
 
@@ -122,18 +144,18 @@ export function PickupAddPlayersDialog({
                   value={picker.search}
                   onChange={(event) => picker.onSearchChange(event.target.value)}
                   onKeyDown={picker.onSearchKeyDown}
-                  placeholder={"Type a name or BattleTag \u2014 \u2191\u2193 to move, Enter to add"}
-                  aria-label="Search the workspace roster"
+                  placeholder={t("searchPlaceholder")}
+                  aria-label={t("searchLabel")}
                   autoComplete="off"
-                  className="h-11 rounded-xl border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] pl-10 pr-24 text-sm"
+                  className="h-11 rounded-xl border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] pl-10 pr-24"
                 />
                 <span
                   className={cn(
-                    EYEBROW_CLASS,
+                    eyebrowClass(),
                     "pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 tabular-nums"
                   )}
                 >
-                  {picker.foundCount == null ? "" : `${picker.foundCount} found`}
+                  {picker.foundCount == null ? "" : t("found", { count: picker.foundCount })}
                 </span>
               </div>
 
@@ -148,6 +170,7 @@ export function PickupAddPlayersDialog({
                 canEdit={canEdit}
                 canWrite={canWrite}
                 workspaceId={workspaceId}
+                discipline={discipline}
                 onTogglePlayer={onTogglePlayer}
               />
             </div>
@@ -156,19 +179,21 @@ export function PickupAddPlayersDialog({
                 host reads a rank column without a text label per row. */}
             <div className="flex shrink-0 items-center gap-2.5 border-y border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-1.5">
               <span aria-hidden="true" className="size-6 shrink-0" />
-              <span className={cn(EYEBROW_CLASS, "min-w-0 flex-1")}>Player</span>
-              <div aria-hidden="true" className="flex shrink-0 items-center gap-1.5">
-                {ROLES.map((role) => (
-                  <IconTooltip
-                    key={role.code}
-                    label={ROLE_LABELS[role.code]}
-                    hint="This host's rank for the role"
-                    className="size-8 items-center justify-center opacity-70"
-                  >
-                    <PlayerRoleIcon role={role.icon} size={14} decorative />
-                  </IconTooltip>
-                ))}
-              </div>
+              <Eyebrow className="min-w-0 flex-1">{tMixes("leaderboard.player")}</Eyebrow>
+              {owner.showsRoles ? (
+                <div aria-hidden="true" className="flex shrink-0 items-center gap-1.5">
+                  {owner.roles.map((role) => (
+                    <IconTooltip
+                      key={role}
+                      label={slotLabel(role)}
+                      hint={t("rankHint")}
+                      className="size-8 items-center justify-center opacity-70"
+                    >
+                      <PlayerRoleIcon role={role} ontology={owner.ontology} size={14} decorative />
+                    </IconTooltip>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-1.5">
@@ -181,9 +206,9 @@ export function PickupAddPlayersDialog({
               ) : rosterQuery.isError && pageData == null ? (
                 <PageStateCard
                   state="error"
-                  title="Unable to load the roster"
-                  description="Check your connection and try again."
-                  actionLabel="Retry"
+                  title={t("errorTitle")}
+                  description={tMixes("list.errorDescription")}
+                  actionLabel={tCommon("retry")}
                   onAction={() => void rosterQuery.refetch()}
                   className="px-4 py-10"
                 />
@@ -192,28 +217,29 @@ export function PickupAddPlayersDialog({
                   state={deferredSearch ? "filtered-empty" : "empty"}
                   title={
                     deferredSearch
-                      ? `Nobody matches \u201C${deferredSearch}\u201D`
+                      ? t("noMatch", { q: deferredSearch })
                       : picker.activeAuthorLabel != null
                         ? picker.usingMine
-                          ? "You haven't ranked anyone yet"
-                          : `${picker.activeAuthorLabel} hasn't ranked anyone yet`
-                        : "No players in this workspace yet"
+                          ? t("noneMine")
+                          : t("noneAuthor", { name: picker.activeAuthorLabel })
+                        : t("noneWorkspace")
                   }
                   description={
                     deferredSearch
-                      ? "Try a different name, or add the BattleTag above."
+                      ? t("noMatchHint")
                       : picker.activeAuthorLabel != null
-                        ? "Set a rank on a player in Everyone to add them here."
-                        : "Add a BattleTag above to start the roster this workspace balances from."
+                        ? t("noneRankedHint")
+                        : t("noneWorkspaceHint")
                   }
                   className="px-4 py-10"
                 />
               ) : (
-                <ul ref={listRef} className="space-y-0.5" aria-label="Workspace roster">
+                <ul ref={listRef} className="space-y-0.5" aria-label={t("rosterLabel")}>
                   {visible.map((row, index) => (
                     <RosterRowItem
                       key={row.memberId}
                       row={row}
+                      owner={owner}
                       isInMix={picker.inMix.has(row.memberId)}
                       isCursor={index === cursor}
                       canWrite={canWrite}
@@ -230,13 +256,15 @@ export function PickupAddPlayersDialog({
                 totalPages={picker.totalPages}
                 onPageChange={picker.setPage}
                 className="w-full"
-                summary={
+                leading={
                   pageData
                     ? pageData.total === 0
-                      ? "0 players"
-                      : `${(page - 1) * pageData.per_page + 1}\u2013${
-                          (page - 1) * pageData.per_page + visible.length
-                        } of ${pageData.total}`
+                      ? t("noPlayers")
+                      : t("range", {
+                          start: (page - 1) * pageData.per_page + 1,
+                          end: (page - 1) * pageData.per_page + visible.length,
+                          total: pageData.total
+                        })
                     : undefined
                 }
               />
@@ -246,6 +274,7 @@ export function PickupAddPlayersDialog({
           {/* ── The lineup ───────────────────────────────────────────────── */}
           <MixLineupAside
             rows={rows}
+            owner={owner}
             canWrite={canWrite}
             onTogglePlayer={onTogglePlayer}
             onDone={() => onOpenChange(false)}

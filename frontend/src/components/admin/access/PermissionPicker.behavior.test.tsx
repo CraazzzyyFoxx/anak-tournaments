@@ -93,7 +93,7 @@ describe("PermissionPicker", () => {
     const onChange = vi.fn();
     await mount(<PermissionPicker catalog={CATALOG} value={new Set()} onChange={onChange} />);
 
-    await click(document.querySelector('[aria-label="Toggle every match permission"]'));
+    await click(document.querySelector('[aria-label="All match permissions"]'));
 
     expect([...onChange.mock.calls[0][0]].sort()).toEqual(["match.read", "match.update"]);
   });
@@ -150,7 +150,7 @@ describe("PermissionPicker", () => {
     );
 
     expect(box("match.read")?.hasAttribute("disabled")).toBe(true);
-    expect(container.textContent).toContain("1/3 selected");
+    expect(container.textContent).toContain("1 of 3 selected");
   });
 
   it("offers narrowing and bulk selection only for a catalogue that needs it", async () => {

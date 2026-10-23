@@ -3,15 +3,21 @@
 import { ArrowDown, ArrowUp, MoreHorizontal, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
+import { RowButton } from "@/components/ui/row-button";
 import { cn } from "@/lib/utils";
 
-import { CARD_ROW_HEIGHT, GUTTER_WIDTH, type Side } from "../layout";
+import { sourceLabel } from "@/lib/bracket/view";
+import type { DuelSlot } from "@/lib/encounter/seats";
+
+import { CARD_FOOTER, CARD_FRAME, MatchGutter } from "../MatchCard";
+import { CARD_ROW_HEIGHT } from "../layout";
 import type { DraftMatch } from "./templateDraft";
 
 /** The output a click picked up, waiting for the slot it feeds. */
@@ -19,9 +25,6 @@ export interface ConnectSource {
   source: number;
   role: "winner" | "loser";
 }
-
-const PORT_BUTTON =
-  "flex h-5 w-5 items-center justify-center rounded border text-[10px] font-bold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]";
 
 interface TemplateMatchCardProps {
   match: DraftMatch;
@@ -31,9 +34,9 @@ interface TemplateMatchCardProps {
   showLoserPort: boolean;
   connecting: ConnectSource | null;
   onPort: (role: "winner" | "loser") => void;
-  onConnect: (slot: Side) => void;
-  onSeed: (slot: Side, seed: string) => void;
-  onClear: (slot: Side) => void;
+  onConnect: (slot: DuelSlot) => void;
+  onSeed: (slot: DuelSlot, seed: string) => void;
+  onClear: (slot: DuelSlot) => void;
   onMove: (direction: -1 | 1) => void;
   onDelete: () => void;
 }
@@ -61,25 +64,23 @@ export function TemplateMatchCard({
   // A match cannot feed itself, so its own rows are never targets.
   const targeting = connecting !== null && connecting.source !== match.id;
 
-  const slotRow = (side: Side) => {
-    const slot = match[side];
+  const slotRow = (slotNumber: DuelSlot) => {
+    const slot = match.slots[slotNumber - 1] ?? null;
     // Named by TEMPLATE id, which is what the card's own gutter and the
     // validator's problems say — the view's "W M3" hints count matches in play
     // order instead, and the two numberings disagree on any custom layout.
     const label =
       slot?.seed ??
-      (slot?.winner_of != null
-        ? `W M${slot.winner_of}`
-        : slot?.loser_of != null
-          ? `L M${slot.loser_of}`
-          : t("empty"));
+      (slot?.source_match != null
+        ? `${sourceLabel(slot.source_position)} M${slot.source_match}`
+        : t("empty"));
     // On screen the card's gutter says which match this row belongs to; an
     // accessible name has to carry it itself, so a listener hears
-    // "M3 home: L1" rather than a bare "L1".
-    const name = t("slotLabel", { id: match.id, side, state: slot === null ? t("empty").toLowerCase() : label });
+    // "M3 slot 1: L1" rather than a bare "L1".
+    const name = t("slotLabel", { id: match.id, slot: slotNumber, state: slot === null ? t("empty").toLowerCase() : label });
     const rowClass = cn(
-      "flex w-full items-center justify-between gap-2 px-2.5 text-left text-caption transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--aqt-teal)]",
-      side === "home" && "border-b border-[color:var(--aqt-border)]",
+      "flex items-center justify-between gap-2 px-2.5 text-caption",
+      slotNumber === 1 && "border-b border-[color:var(--aqt-border)]",
       slot === null
         ? "italic text-[color:var(--aqt-fg-faint)]"
         : "text-[color:var(--aqt-fg)]"
@@ -87,73 +88,67 @@ export function TemplateMatchCard({
 
     if (targeting) {
       return (
-        <button
-          type="button"
+        <RowButton
           aria-label={`${name} — ${t("connectHere")}`}
-          data-template-slot={`${match.id}-${side}`}
+          data-template-slot={`${match.id}-${slotNumber}`}
           data-connect-target=""
           className={cn(
             rowClass,
-            "bg-[color:color-mix(in_srgb,var(--aqt-teal)_16%,transparent)] ring-1 ring-inset ring-[color:var(--aqt-teal)]"
+            "bg-[color:color-mix(in_srgb,var(--aqt-teal)_16%,transparent)] ring-1 ring-inset ring-[color:var(--aqt-teal)] hover:bg-[color:color-mix(in_srgb,var(--aqt-teal)_24%,transparent)]"
           )}
           style={{ height: CARD_ROW_HEIGHT }}
-          onClick={() => onConnect(side)}
+          onClick={() => onConnect(slotNumber)}
         >
           <span className="truncate">{label}</span>
           <span className="shrink-0 text-label uppercase text-[color:var(--aqt-teal)]">{t("drop")}</span>
-        </button>
+        </RowButton>
       );
     }
 
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
-            type="button"
+          <RowButton
             aria-label={name}
-            data-template-slot={`${match.id}-${side}`}
-            className={cn(rowClass, "hover:bg-[color:var(--aqt-overlay-3)]")}
+            data-template-slot={`${match.id}-${slotNumber}`}
+            className={rowClass}
             style={{ height: CARD_ROW_HEIGHT }}
           >
             <span className="truncate">{label}</span>
-          </button>
+          </RowButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
           {availableSeeds.map((seed) => (
-            <DropdownMenuItem key={seed} onSelect={() => onSeed(side, seed)}>
+            <DropdownMenuItem key={seed} onSelect={() => onSeed(slotNumber, seed)}>
               {seed}
             </DropdownMenuItem>
           ))}
-          <DropdownMenuItem onSelect={() => onClear(side)}>{t("clear")}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onClear(slotNumber)}>{t("clear")}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     );
   };
 
   return (
-    <div className="relative flex h-full overflow-hidden rounded-[10px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] shadow-[0_10px_24px_rgba(0,0,0,0.28)]">
-      <div
-        className="flex shrink-0 flex-col items-center justify-center gap-0.5 border-r border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] leading-none text-[color:var(--aqt-fg-muted)]"
-        style={{ width: GUTTER_WIDTH }}
-      >
-        <span className="text-[9px] font-semibold tracking-label opacity-70">M</span>
-        <span className="text-caption font-bold tabular-nums">{match.id}</span>
-      </div>
+    <div className={cn(CARD_FRAME, "border-[color:var(--aqt-border)]")}>
+      <MatchGutter number={match.id} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {slotRow("home")}
-        {slotRow("away")}
+        {slotRow(1)}
+        {slotRow(2)}
 
-        <div className="flex flex-1 items-center justify-between gap-1.5 border-t border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] px-1.5">
+        <div className={cn(CARD_FOOTER, "flex-1")}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-xs"
+                className="text-[color:var(--aqt-fg-muted)]"
                 aria-label={t("matchActions", { id: match.id })}
-                className="flex items-center justify-center rounded p-0.5 text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
               >
-                <MoreHorizontal className="size-3.5" aria-hidden />
-              </button>
+                <MoreHorizontal aria-hidden />
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuItem onSelect={() => onMove(-1)}>
@@ -175,39 +170,41 @@ export function TemplateMatchCard({
 
       {/* The outputs, on the edge the connectors leave from. */}
       <div className="flex shrink-0 flex-col items-center justify-center gap-1 border-l border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-1">
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="icon-xs"
           data-template-port={`${match.id}-winner`}
           aria-pressed={connecting?.source === match.id && connecting.role === "winner"}
           aria-label={t("connectWinner", { id: match.id })}
           title={t("connectWinner", { id: match.id })}
           className={cn(
-            PORT_BUTTON,
-            connecting?.source === match.id && connecting.role === "winner"
-              ? "border-[color:var(--aqt-teal)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_22%,transparent)] text-[color:var(--aqt-teal)]"
-              : "border-[color:var(--aqt-border-2)] text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
+            connecting?.source === match.id &&
+              connecting.role === "winner" &&
+              "border-[color:var(--aqt-teal)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_22%,transparent)] text-[color:var(--aqt-teal)]"
           )}
           onClick={() => onPort("winner")}
         >
           W
-        </button>
+        </Button>
         {showLoserPort ? (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="icon-xs"
             data-template-port={`${match.id}-loser`}
             aria-pressed={connecting?.source === match.id && connecting.role === "loser"}
             aria-label={t("connectLoser", { id: match.id })}
             title={t("connectLoser", { id: match.id })}
             className={cn(
-              PORT_BUTTON,
-              connecting?.source === match.id && connecting.role === "loser"
-                ? "border-[color:var(--aqt-blue)] bg-[color:color-mix(in_srgb,var(--aqt-blue)_22%,transparent)] text-[color:var(--aqt-blue)]"
-                : "border-[color:var(--aqt-border-2)] text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
+              connecting?.source === match.id &&
+                connecting.role === "loser" &&
+                "border-[color:var(--aqt-blue)] bg-[color:color-mix(in_srgb,var(--aqt-blue)_22%,transparent)] text-[color:var(--aqt-blue)]"
             )}
             onClick={() => onPort("loser")}
           >
             L
-          </button>
+          </Button>
         ) : null}
       </div>
     </div>

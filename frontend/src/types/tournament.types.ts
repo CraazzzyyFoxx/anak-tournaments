@@ -1,9 +1,10 @@
 import { Team } from "@/types/team.types";
 import { Encounter } from "@/types/encounter.types";
 import { DivisionGridVersion } from "@/types/workspace.types";
-import type { RosterShape, RosterSlotMap } from "@/lib/roster/shape";
+import type { RosterShape } from "@/lib/roster/shape";
 import type { TournamentLink } from "@/types/stream.types";
 import type { DraftFormatSettings } from "@/types/draft.types";
+import type { RoleRef } from "@/lib/roster/role-ref";
 
 // ─── Enums ──────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,9 @@ export type StageItemType = "group" | "bracket_upper" | "bracket_lower" | "singl
 export type StageItemInputType = "final" | "tentative" | "empty";
 
 export type EncounterResultStatus = "none" | "pending_confirmation" | "confirmed" | "disputed";
+
+/** Which writer decided an encounter's standing; only a reopen changes anything but `games`. */
+export type EncounterResultSource = "games" | "series_claim" | "admin" | "import";
 
 
 // ─── Team group ─────────────────────────────────────────────────────────────
@@ -75,31 +79,52 @@ export type SeedRanking = "slot" | "avg_sr" | "total_sr" | "random";
  * A stage's series lengths. Precedence: `final` (an elimination stage's last
  * round) -> `by_round[round]` -> `default`. `by_round` keys are round numbers;
  * lower-bracket rounds are negative.
+ *
+ * Swiss only, over all of the above: `swiss_qualify` is a match where a team is
+ * one win from `swiss_qualify_wins`, `swiss_eliminate` one where a team is one
+ * loss from `swiss_eliminate_losses`; when both apply the longer one is played.
+ * `null` = the regular rule. The server decides which matches they are.
  */
 export interface StageBestOfConfig {
   default: number;
   by_round: Record<string, number>;
   final: number | null;
+  swiss_qualify: number | null;
+  swiss_eliminate: number | null;
 }
 
-/** One column an FFA game records. Mirrors `FfaColumn` of `ffa.types.ts`, which
- *  imports FROM this module — spelled out here rather than imported back. */
-export interface StageFfaColumn {
+/** One column a stage's games record per team. Mirrors `FfaColumn` of
+ *  `ffa.types.ts`, which imports FROM this module — spelled out here rather
+ *  than imported back. */
+interface StageScoringColumn {
   key: string;
   label: string;
   public: boolean;
   better: "higher" | "lower";
 }
 
-/** How an FFA league is scored, mirroring backend `FfaScoring`. */
-export interface StageFfaScoring {
-  /** What is entered per game, in table order. `[]` — places alone decide. */
-  columns: StageFfaColumn[];
+/** `wins` is a Bo-N series, `points` a lobby scored by the organizer's columns. */
+type StageScoringPreset = "wins" | "points";
+
+/**
+ * How a stage scores (backend `StageScoring`). `win`/`draw`/`loss` are what one
+ * encounter's result pays in the stage table (`null` = the tournament's points);
+ * the rest is the `scoring_rule` every encounter of the stage is played and
+ * ranked by. Every rule field is nullable and means "the preset's default".
+ */
+interface StageScoring {
+  win: number | null;
+  draw: number | null;
+  loss: number | null;
+  /** `null` = `points` for an ffa_league stage, `wins` everywhere else. */
+  preset: StageScoringPreset | null;
+  /** What is entered per game, in table order; `null` = the preset's columns. */
+  columns: StageScoringColumn[] | null;
   /** What place `i + 1` is worth; a shorter list scores the tail at zero. */
-  placement_points: number[];
+  placement_points: number[] | null;
   /** The expression a game's points are computed with, over the column keys
-   *  plus `place`, `place_pts` and the lobby size (teams). */
-  formula: string;
+   *  plus `place`, `place_pts` and the lobby size (teams); `null` = the preset's. */
+  formula: string | null;
 }
 
 /** The rules a stage is played and ranked by. */
@@ -108,14 +133,16 @@ export interface StageRegulation {
   ranking_preset: string | null;
   /** `null` = the preset's order. */
   tiebreak_order: string[] | null;
-  /** A `null` member inherits the tournament's points. */
-  scoring: { win: number | null; draw: number | null; loss: number | null };
+  scoring: StageScoring;
   /** `null` = a bye pays the win points. */
   swiss_bye_points: number | null;
+  /** Swiss: match wins + byes that qualify a team and stop pairing it; `null` = off. */
+  swiss_qualify_wins: number | null;
+  /** Swiss: losses that eliminate a team and stop pairing it; `null` = off. */
+  swiss_eliminate_losses: number | null;
   de_grand_final_type: "no_reset" | "with_reset";
   seed_ranking: SeedRanking;
   best_of: StageBestOfConfig;
-  ffa_scoring: StageFfaScoring;
 }
 
 export interface StageSummary extends StageRegulation {
@@ -204,6 +231,11 @@ export interface Tournament {
    * The in-app inbox gets them either way.
    */
   discord_dms_enabled: boolean;
+  /**
+   * Owner policy: an uploaded match log may become the official result of a
+   * game that has none yet. Off unless an organizer turned it on.
+   */
+  logs_official: boolean;
   phase_schedule: TournamentPhaseSchedule[];
   win_points: number;
   draw_points: number;
@@ -215,8 +247,9 @@ export interface Tournament {
   teams_count: number | null;
   division_grid_version_id: number | null;
   division_grid_version: DivisionGridVersion | null;
-  /** Tournament-level override of the roster shape; `null` = inherit. */
-  roster_slots_json: RosterSlotMap | null;
+  discipline: string;
+  /** Game identity provider resolved by the tournament's discipline. */
+  identity_provider: string;
   /** Draft format rule the wizard seeds every session with; `null` = snake. */
   draft_format_json: DraftFormatSettings | null;
   /** Resolved shape. `null` when the read did not opt into the entity. */
@@ -262,7 +295,7 @@ export interface TournamentFacets {
 
 
 type MapVetoSessionStatus = "active" | "completed" | "cancelled";
-type VetoSeedSource = "bracket_slot" | "standings" | "fallback_home" | "admin";
+type VetoSeedSource = "bracket_slot" | "standings" | "fallback_first_slot" | "admin";
 
 
 /**
@@ -286,11 +319,6 @@ export type VetoUnavailableReason =
    * organizer preview, not a live match. Resolves once the organizer
    * activates the stage (`Stage.is_published`). */
   | "bracket_preview";
-
-
-/** Side-agnostic step tokens stored on veto configs. */
-export type VetoSequenceToken =
-  "ban_first" | "ban_second" | "pick_first" | "pick_second" | "decider";
 
 /** Which pool shape a pick-ban config uses. Mirrors the backend `MapVetoMode`. */
 export type MapVetoMode = "pool" | "slots";
@@ -319,6 +347,9 @@ export interface Standings {
   /** The organizer pinned this row's `position`; it holds through any later
    *  result or recalculation. A pinned row is never part of a `tie_group`. */
   is_pinned: boolean;
+  /** A Swiss threshold's verdict, computed by the server (it counts byes, which
+   *  `win` does not); `null` = undecided or no threshold. Never derive it here. */
+  swiss_status: "qualified" | "eliminated" | null;
   tb: number | null;
   score_differential: number | null;
   ranking_context: Record<string, string | number | null> | null;
@@ -339,10 +370,26 @@ export interface Standings {
 // state builder. Design + semantics: docs/plans/2026-09-28-pick-ban-constructor.md.
 
 export type PickBanKind = "map" | "hero";
-export type PickBanAction = "ban" | "pick" | "protect";
-export type PickBanStepAction = PickBanAction | "decider";
+export type PickBanAction = "ban" | "pick" | "protect" | "side_pick";
+/** `assign` is a mix room's (spec §11.6): a captain gives each player one of the team's picked heroes. */
+export type PickBanStepAction = PickBanAction | "decider" | "assign";
+/** What a viewer may answer the current step with: an act's, or a mix captain's assignment (answered by submit). */
+export type PickBanAllowedAction = PickBanAction | "assign";
+/** Who answers a mix's member pick: the team's next player in pick order, or every player at once. */
+export type PickBanMemberMode = "next" | "each";
+
+/** One seated player of a mix match (`encounter.team_member`), in pick order. */
+export interface PickBanMember {
+  id: number;
+  encounter_team_id: number;
+  name: string;
+  /** The workspace member in this seat: ties it to the lineup seat and the viewer. */
+  workspace_member_id?: number;
+}
 export type PickBanEntryStatus = "available" | "picked" | "banned" | "protected";
-export type PickBanSide = "home" | "away";
+
+/** Who performed a board action: `team` names a participation, the rest are the engine, an organizer or a tiebreak. */
+type PickBanActorKind = "team" | "decider" | "admin" | "system";
 
 export interface PickBanEntry {
   id: number;
@@ -350,10 +397,14 @@ export interface PickBanEntry {
   round: number | null;
   order: number;
   action_index: number | null;
-  picked_by: "home" | "away" | "decider" | null;
-  protected_by: "home" | "away" | null;
+  picked_by_kind: PickBanActorKind | null;
+  /** The participation (`EncounterTeam.id`) that picked; set exactly when `picked_by_kind` is `team`. */
+  picked_by_team_id: number | null;
+  /** Whose hero a pick is (a mix player's seat, `PickBanMember.id`); null otherwise. */
+  picked_for_member_id: number | null;
+  protected_by_kind: PickBanActorKind | null;
+  protected_by_team_id: number | null;
   status: PickBanEntryStatus;
-  team_id: number | null;
   /** Set when this entry is an active ban carried over from an earlier round
    * (the ban's `lifetime` still covers this map). Fixed: never undone here. */
   carried_from_round: number | null;
@@ -374,20 +425,25 @@ export interface PickBanConstraint {
   params: Record<string, unknown>;
 }
 
+/**
+ * Who takes a step, before the encounter is known: `slot:<n>` names a seat of
+ * the card, `side:<code>` the participation that chose that side in an earlier
+ * `side_pick` of the round.
+ */
 export type PickBanActors =
   | "first"
   | "second"
   | "both"
-  | "home"
-  | "away"
   | "winner_prev"
   | "loser_prev"
-  | "system";
+  | "system"
+  | `slot:${number}`
+  | `side:${string}`;
 export type PickBanTimeoutPolicy = "random_fill" | "lock_draft" | "wait";
-export type PickBanStepTarget = "opponent_player";
+type PickBanStepTarget = "opponent_player";
 export type PickBanGenerator = "bracket" | "slot_veto";
 
-export interface PickBanDisputeRule {
+interface PickBanDisputeRule {
   enabled: boolean;
   /** How many times a revealed step may be reopened. */
   max: number;
@@ -413,6 +469,8 @@ export interface PickBanRulesetStep {
   dispute: PickBanDisputeRule;
   eligible: PickBanCondition;
   constraints: PickBanConstraint[];
+  /** A mix room's member pick; absent/null = the team picks. */
+  member?: PickBanMemberMode | null;
 }
 
 export interface PickBanRulesetPhase {
@@ -439,8 +497,10 @@ export interface PickBanResolvedStep {
   phase_id: string;
   step_id: string;
   action: PickBanStepAction;
-  /** `["system"]` for engine-resolved steps; `both` resolves to `[opener, other]`. */
-  sides: (PickBanSide | "system")[];
+  /** Participation ids in acting order; `[null]` for an engine-resolved step, `[]` while a `side:<code>` actor waits on its side pick. */
+  actors: (number | null)[];
+  /** The ruleset token the actors were resolved from; `null` for a step bound at round-open. */
+  actors_token: string | null;
   count: number;
   min: number;
   blind: boolean;
@@ -451,19 +511,28 @@ export interface PickBanResolvedStep {
   dispute: PickBanDisputeRule;
   eligible: PickBanCondition;
   constraints: PickBanConstraint[];
+  /** A mix room's member pick. Like `member_seats`, sent only when set: absent on a team step. */
+  member?: PickBanMemberMode | null;
+  /** `[participation, member seat]` per player a member step owes an answer from, in pick order. */
+  member_seats?: [number, number][];
 }
 
 export interface PickBanSubmissionItem {
   item_id: number;
   target_player_id: number | null;
+  /** An assignment's item: the player (`PickBanMember.id`) this hero is given to. */
+  member_id?: number | null;
 }
 
-export type PickBanSubmissionState = "draft" | "locked" | "revealed";
+type PickBanSubmissionState = "draft" | "locked" | "revealed";
 
 /** A submission the viewer may see: revealed ones, any of an open step, and the viewer's own drafts. */
 export interface PickBanSubmission {
   step_index: number;
-  side: PickBanSide | "system";
+  /** The participation that authored it. */
+  encounter_team_id: number;
+  /** The player a member step's answer is for; null for a team step. */
+  team_member_id: number | null;
   attempt: number;
   state: PickBanSubmissionState;
   items: PickBanSubmissionItem[];
@@ -473,11 +542,10 @@ export interface PickBanSubmission {
 export interface PickBanTarget {
   player_id: number;
   name: string;
-  role: "tank" | "damage" | "support" | "flex" | null;
-  sub_role: string | null;
+  role: RoleRef | null;
   is_substitution: boolean;
-  /** Resolved against the tournament's grid, like `Player.division`. */
-  division: number;
+  /** Resolved against the tournament's grid, like `Player.division`; `null` when unranked. */
+  division: number | null;
 }
 
 export interface PickBanStepProgress {
@@ -504,14 +572,13 @@ export interface PickBanSession {
   id: number;
   kind: PickBanKind;
   status: MapVetoSessionStatus;
-  first_side: "home" | "away" | null;
+  /** The participation (`EncounterTeam.id`) that opens the round in play. */
+  first_team_id: number | null;
   /** True once a result-dependent rotation needs `elect_opener` to proceed. */
   awaiting_choice: boolean;
-  /** Only the loser of the round that triggered `awaiting_choice` may `elect_opener`. */
-  pending_loser_side: "home" | "away" | null;
+  /** Only this participation, the loser of the round that triggered `awaiting_choice`, may `elect_opener`. */
+  pending_chooser_team_id: number | null;
   seed_source: VetoSeedSource;
-  home_seed: number | null;
-  away_seed: number | null;
   /**
    * The reserve item each in-play slot named, snapshotted when the session
    * was created — same string-keyed-by-position contract as
@@ -543,13 +610,22 @@ export type EncounterGameState =
   | "cancelled";
 
 /** Who put the accepted score on a game. A Match score is never one of them. */
-export type GameResultSource = "captain_agreement" | "admin" | "admin_log";
+type GameResultSource = "captain_agreement" | "admin" | "admin_log";
 
-/** One captain's independent claim of ONE game's score. */
-export interface PickBanGameReport {
-  side: "home" | "away";
-  home_score: number;
-  away_score: number;
+/**
+ * One participation's accepted numbers and side in one game (`EncounterGameTeamRead`).
+ * A game's lines are one per participation seated in it.
+ */
+interface EncounterGameTeam {
+  encounter_team_id: number;
+  /** The game's raw score (map rounds); null for a game that has none. */
+  score: number | null;
+  placement: number | null;
+  /** The stage's own columns for this participation; an absent key reads 0. */
+  column_values: Record<string, number>;
+  /** Discipline side code; null when the discipline has no sides. */
+  starting_side: string | null;
+  replay_code: string | null;
 }
 
 /**
@@ -562,32 +638,68 @@ export interface EncounterGame {
   position: number;
   map_id: number | null;
   state: EncounterGameState;
-  /** Both null until the game is `confirmed`. */
-  accepted_home_score: number | null;
-  accepted_away_score: number | null;
   result_source: GameResultSource | null;
   result_version: number;
   confirmed_at: string | null;
+  /** One line per participation seated in this game. */
+  teams: EncounterGameTeam[];
 }
 
-/** A game inside the room, which also sees the claims behind its state. */
-export interface PickBanGame extends EncounterGame {
-  /** Both sides' claims, home first. Empty until a captain reports. */
-  reports: PickBanGameReport[];
+/** One participation's numbers inside the room's game payload. */
+interface PickBanGameResult {
+  encounter_team_id: number;
+  score: number | null;
+  placement: number | null;
+  column_values: Record<string, number>;
+}
+
+/** One participation's independent claim of ONE game's numbers. */
+export interface PickBanGameClaim {
+  claimant_team_id: number;
+  /** The `game.result_version` the claim was made against. */
+  basis_version: number;
+  results: PickBanGameResult[];
 }
 
 /**
- * The series score as the backend counts it: wins over confirmed games, with
- * `played` counting positions that reached a result (a draw settles one
- * without a win). `official` is set only once the encounter is finalized —
- * until then the live count is all there is.
+ * A game as the pick-ban room serves it (`EncounterGameService.serialize`):
+ * the same position and state as `EncounterGame`, with the accepted numbers
+ * under `results` (one line per seated participation, score null until the
+ * game has an accepted result) and every filed claim under `claims`.
  */
-export interface PickBanSeries {
-  home_wins: number;
-  away_wins: number;
-  played: number;
-  complete: boolean;
-  official: { home_score: number; away_score: number } | null;
+export interface PickBanGame {
+  id: number;
+  position: number;
+  map_id: number | null;
+  state: EncounterGameState;
+  result_source: GameResultSource | null;
+  result_version: number;
+  confirmed_at: string | null;
+  results: PickBanGameResult[];
+  /** One per claimant, by participation id; empty until somebody claims. */
+  claims: PickBanGameClaim[];
+}
+
+/**
+ * What the confirmed games add up to, per participation (keyed by
+ * `EncounterTeam.id`, as a string): `ended` once the encounter's rule is
+ * settled on them, `games` how many positions reached a result.
+ */
+interface PickBanSeries {
+  ended: boolean;
+  games: number;
+  totals: Record<string, number>;
+  wins: Record<string, number>;
+  placements: Record<string, number>;
+}
+
+/** What one game's sides stand at, for a discipline that has any (both kinds' states carry it). */
+export interface PickBanStartingSides {
+  game_id: number;
+  /** The game's series position — the round its side step belongs to. */
+  position: number;
+  /** `EncounterTeam.id` (string) -> side code. */
+  sides: Record<string, string | null>;
 }
 
 /**
@@ -599,40 +711,50 @@ export interface PickBanSeries {
  * whether the affordance exists.
  */
 export interface PickBanUndo {
-  /** The side that already asked; null while nobody has, or once it landed. */
-  requested_by: "home" | "away" | null;
+  /** The participation that already asked; null while nobody has, or once it landed. */
+  requested_by_team_id: number | null;
   /** The resolved step the undo reopens. */
   step_index: number | null;
   /** Everything the undo reverts, in the order it was applied. */
   item_ids: number[];
   /** The reopened step's action. */
   action: PickBanAction | null;
-  /** The step's single acting side; null for a multi-side step. */
-  side: "home" | "away" | "decider" | null;
+  /** The step's single acting participation; null for a multi-actor step. */
+  encounter_team_id: number | null;
 }
 
 export interface PickBanState {
   session: PickBanSession | null;
   /** Set only when `session` is null — same contract as `EncounterMapPoolState.reason`. */
   reason?: VetoUnavailableReason;
-  /** Whether each side's captain has confirmed readiness to begin the
-   * encounter's pre-game phase — set regardless of `session`, so the room
-   * can render "waiting for the other captain" even before a session exists. */
-  readiness: { home: boolean; away: boolean };
+  /** Whether each participation's captain has confirmed readiness to begin the
+   * encounter's pre-game phase, keyed by `EncounterTeam.id` (as a string) — set
+   * regardless of `session`, so the room can render "waiting for the other
+   * captain" even before a session exists. */
+  readiness: Record<string, boolean>;
   sequence: PickBanResolvedStep[];
   pool: PickBanEntry[];
   /** Visible submissions: revealed ones, any of an open step, the viewer's own drafts. */
   submissions: PickBanSubmission[];
-  viewer_side: "home" | "away" | null;
+  /** The participation the viewer captains, or null for a spectator. */
+  viewer_team_id: number | null;
   viewer_can_act: boolean;
-  allowed_actions: PickBanAction[];
+  allowed_actions: PickBanAllowedAction[];
   current_step_index: number | null;
   current_step: PickBanResolvedStep | null;
   expected_action: PickBanStepAction | null;
-  /** Non-system sides of the current step that have not locked yet. */
-  acting_sides: PickBanSide[];
-  /** Per side of the current step; null when no step is in play. */
-  step_progress: Partial<Record<PickBanSide, PickBanStepProgress>> | null;
+  /** Participations of the current step that have not locked yet. */
+  acting_team_ids: number[];
+  /** A mix room's seated players in pick order; empty elsewhere. */
+  members: PickBanMember[];
+  /** Players who still owe the current member step a hero. */
+  acting_member_ids: number[];
+  /** Of those, whom the viewer may pick for: themselves first, then -- as captain -- teammates. */
+  viewer_member_ids: number[];
+  /** Per player (`PickBanMember.id` as a string): the heroes they may take now, Fearless applied. */
+  member_eligible: Record<string, number[]> | null;
+  /** Per participation (`EncounterTeam.id` as a string) of the current step; null when no step is in play. */
+  step_progress: Record<string, PickBanStepProgress> | null;
   /** ISO deadline of the current step's timer; null = no timer. */
   step_deadline: string | null;
   current_round: number | null;
@@ -641,9 +763,11 @@ export interface PickBanState {
   eligible: PickBanEligible | null;
   /** Why the viewer's current draft cannot be locked yet; empty = lockable. */
   draft_issues: string[];
-  /** Roster players per team when any resolved step targets a player. `home`
-   * are the home team's players — the ones the away side bans for. */
-  targets: { home: PickBanTarget[]; away: PickBanTarget[] } | null;
+  /** Roster players per participation (`EncounterTeam.id` as a string) when any
+   * resolved step targets a player — the players the OTHER participations ban for. */
+  targets: Record<string, PickBanTarget[]> | null;
+  /** The discipline's side codes in the order a `side_pick` indexes them; empty when it has none. */
+  sides: string[];
   dispute: PickBanDisputeState;
   /**
    * One entry per position of the series, `kind: "map"` only (a hero session
@@ -653,8 +777,10 @@ export interface PickBanState {
    * bans.
    */
   games?: PickBanGame[];
-  /** The live series score over those games, and the official one once set. */
+  /** What the confirmed games add up to so far. */
   series?: PickBanSeries;
+  /** One entry per game that has a side set; absent on the no-session state. */
+  starting_sides?: PickBanStartingSides[];
   undo: PickBanUndo;
 }
 
@@ -729,7 +855,7 @@ export interface PickBanLeafSpec {
   relative: boolean;
 }
 
-export interface PickBanConstraintSpec {
+interface PickBanConstraintSpec {
   type: string;
   params: PickBanParamSpec[];
   requires_target: boolean;
@@ -740,8 +866,16 @@ export interface PickBanPreset {
   kind: PickBanKind;
   modes: MapVetoMode[];
   ruleset: PickBanRuleset;
+  /**
+   * The `first_ban_rotation` the module's preset needs, outside the ruleset document. `null`: the preset leaves
+   * the organizer's rotation alone.
+   */
+  first_ban_rotation: PickBanFirstBanRotation | null;
+  /** A pickup mix may play it: a hero preset that bans no player on map 1 of a Bo1 (server-computed, spec §8.1). */
+  mix_eligible: boolean;
 }
 
+/** One discipline's constructor vocabulary: groups and presets are that game's, never another's. */
 export interface PickBanRulesCatalog {
   leaves: PickBanLeafSpec[];
   constraints: PickBanConstraintSpec[];
@@ -762,7 +896,7 @@ export interface PickBanRulesValidation {
   issues: PickBanRulesIssue[];
 }
 
-export interface PickBanPreviewMap {
+interface PickBanPreviewMap {
   map_index: number;
   /** null when no phase matches this map. */
   phase_id: string | null;

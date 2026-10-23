@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 
 import type { Team } from "@/types/team.types";
-import { Combobox, ComboboxCheck } from "@/components/kit/Combobox";
+import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
 import TeamName from "@/components/TeamName";
 import { CommandGroup, CommandItem } from "@/components/ui/command";
 
@@ -22,6 +22,7 @@ interface TeamComboboxProps {
   /** Accessible name when no visible `<Label htmlFor>` points at the trigger. */
   triggerAriaLabel?: string;
   triggerClassName?: string;
+  size?: "sm" | "default";
 }
 
 export function TeamCombobox({
@@ -35,7 +36,8 @@ export function TeamCombobox({
   allowClear = true,
   isTeamDisabled,
   triggerAriaLabel,
-  triggerClassName
+  triggerClassName,
+  size
 }: Readonly<TeamComboboxProps>) {
   const t = useTranslations("adminPeople.teamCombobox");
   const resolvedPlaceholder = placeholder ?? t("select");
@@ -63,6 +65,7 @@ export function TeamCombobox({
       label={selectedLabel}
       triggerAriaLabel={triggerAriaLabel}
       triggerClassName={triggerClassName}
+      size={size}
       disabled={disabled}
       searchValue={searchValue}
       onSearchValueChange={setSearchValue}

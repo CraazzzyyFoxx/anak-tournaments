@@ -15,3 +15,6 @@ export const MAX_AVATAR_BYTES = 5 * 1024 * 1024; // 5 MB
 export const ACHIEVEMENT_IMAGE_ACCEPT = "image/webp,image/png,image/jpeg,image/gif";
 export const MAX_ACHIEVEMENT_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
 export const ACHIEVEMENT_IMAGE_PREVIEW_CLASS = "h-16 w-16 rounded-lg object-cover border";
+
+/** Catalog (character, map, mode) images. Keep in sync with the backend `MAX_ASSET_SIZE`. */
+export const MAX_CATALOG_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB

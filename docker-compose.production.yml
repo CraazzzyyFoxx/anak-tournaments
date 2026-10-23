@@ -210,8 +210,9 @@ services:
   # app-service is headless: served by app-svc (rpc.app.*) behind the gateway.
   # The former HTTP `backend` service was decommissioned.
 
-  # parser-service HTTP decommissioned: parser is now a headless FastStream worker
-  # (parser-svc below), serving its domains as typed RPC behind the gateway.
+  # stats-service (formerly parser-service) is two headless FastStream processes from one image: stats-svc serves
+  # its domains as typed RPC behind the gateway, the public statistics, /users/* and achievement reads included;
+  # stats-worker runs every consumer and schedule, the cache.invalidated consumer included.
   # The bot uploads logs over RabbitMQ; the SSE log monitor moved to the WS hub.
 
   # realtime-service decommissioned: WebSockets are now served by the Go gateway
@@ -223,7 +224,10 @@ services:
   discord-worker:
     image: ghcr.io/craazzzyyfoxx/owt-discord:${IMAGE_TAG:-latest}
     logging: *log-rotate
+    # One Discord gateway session per token: see "Single replica" in
+    # backend/discord-service/README.md. Never --scale this service.
     deploy:
+      replicas: 1
       resources:
         limits:
           cpus: '0.25'
@@ -244,8 +248,6 @@ services:
       - OTLP_ENDPOINT=http://alloy:4317
       - OTEL_TRACES_SAMPLER=parentbased_traceidratio
       - OTEL_TRACES_SAMPLER_ARG=0.1
-      # Phase 1: validate tokens via the gateway -> identity-svc (overrides common.env).
-      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
       # Same root value the frontend builds NEXT_PUBLIC_SITE_URL from: the bot's
       # "link Discord" / settings buttons must land on the site people actually use.
       - PUBLIC_SITE_URL=${SITE_URL:-https://owt.craazzzyyfoxx.me}
@@ -335,32 +337,33 @@ services:
   # analytics-svc (rpc.analytics.* reads + job-control) behind the gateway; heavy ML
   # compute stays in analytics-worker (job queues).
 
-  parser-svc:
-    image: ghcr.io/craazzzyyfoxx/owt-parser:${IMAGE_TAG:-latest}
+  stats-svc:
+    image: ghcr.io/craazzzyyfoxx/owt-stats:${IMAGE_TAG:-latest}
     logging: *log-rotate
+    # Serves the public statistics, /users/* and achievement reads (the hottest anonymous traffic; cold compare reads
+    # run 20-30 s) since 2026-10-23, so it carries the read-path sizing app-svc had. Single event loop per process:
+    # raise the CPU ceiling AND scale replicas (`make prod-scale`) for real throughput.
     deploy:
       resources:
         limits:
-          cpus: '1.000'
-          memory: 512M
+          cpus: '2.00'
+          memory: 1G
         reservations:
-          cpus: '0.10'
-          memory: 128M
+          cpus: '0.75'
+          memory: 512M
     build:
       context: ./backend
       args:
-        APP_PATH: parser
-    command: faststream run serve:app
+        APP_PATH: stats
+    command: faststream run serve_rpc:app
     env_file:
       - ./backend/env/common.env
-      - ./backend/env/parser.env
+      - ./backend/env/stats.env
     environment:
       - TRACING_ENABLED=${TRACING_ENABLED:-true}
       - OTLP_ENDPOINT=http://alloy:4317
       - OTEL_TRACES_SAMPLER=parentbased_traceidratio
       - OTEL_TRACES_SAMPLER_ARG=0.1
-      # Phase 1: validate tokens via the gateway -> identity-svc (overrides common.env).
-      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
       - WORKER_METRICS_PORT=9100
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -376,11 +379,63 @@ services:
       proxy:
         condition: service_healthy
     volumes:
-      - ./logs/parser-svc:/logs
+      - ./logs/stats-svc:/logs
     networks:
       - app-network
+    # /health answers 200 only once the broker connection is up and every consumer of the process runs.
     healthcheck:
-      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9100/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: always
+
+  stats-worker:
+    image: ghcr.io/craazzzyyfoxx/owt-stats:${IMAGE_TAG:-latest}
+    logging: *log-rotate
+    deploy:
+      resources:
+        limits:
+          cpus: '1.000'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
+    build:
+      context: ./backend
+      args:
+        APP_PATH: stats
+    command: faststream run serve_worker:app
+    env_file:
+      - ./backend/env/common.env
+      - ./backend/env/stats.env
+    environment:
+      - TRACING_ENABLED=${TRACING_ENABLED:-true}
+      - OTLP_ENDPOINT=http://alloy:4317
+      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+      - OTEL_TRACES_SAMPLER_ARG=0.1
+      - WORKER_METRICS_PORT=9100
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      # OverFast runs on this host (/root/overfast-api behind the host HAProxy). Its public
+      # name resolves to a front on another box; pin it here so rank and catalog calls stay
+      # local. TLS still checks the real certificate.
+      - "overfast.craazzzyyfoxx.me:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      proxy:
+        condition: service_healthy
+    volumes:
+      - ./logs/stats-worker:/logs
+    networks:
+      - app-network
+    # /health answers 200 only once the broker connection is up and every consumer of the process runs.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9100/health', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -411,8 +466,6 @@ services:
       - OTLP_ENDPOINT=http://alloy:4317
       - OTEL_TRACES_SAMPLER=parentbased_traceidratio
       - OTEL_TRACES_SAMPLER_ARG=0.1
-      # Phase 1: validate tokens via the gateway -> identity-svc (overrides common.env).
-      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
       - WORKER_METRICS_PORT=9103
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -435,9 +488,11 @@ services:
   app-svc:
     image: ghcr.io/craazzzyyfoxx/owt-app:${IMAGE_TAG:-latest}
     logging: *log-rotate
-    # Hottest read/write path (all of /api/v1/core). Single event loop per
-    # process, so raise the CPU ceiling AND scale replicas (`make prod-scale`)
-    # for real throughput — the two are complementary.
+    # Sized when it served the public statistics and /users/* reads, which moved
+    # to stats-svc on 2026-10-23 (it still serves /users/{name}, the catalog and the
+    # workspace directory). Single event loop per process, so raise the CPU
+    # ceiling AND scale replicas (`make prod-scale`) for real throughput — the
+    # two are complementary.
     deploy:
       resources:
         limits:
@@ -459,8 +514,6 @@ services:
       - OTLP_ENDPOINT=http://alloy:4317
       - OTEL_TRACES_SAMPLER=parentbased_traceidratio
       - OTEL_TRACES_SAMPLER_ARG=0.1
-      # Validate tokens via the gateway -> identity-svc (overrides common.env).
-      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
       # Same root value the frontend builds NEXT_PUBLIC_SITE_URL from: the
       # links in notification DMs must land on the site people actually use.
       - PUBLIC_SITE_URL=${SITE_URL:-https://owt.craazzzyyfoxx.me}
@@ -510,8 +563,6 @@ services:
       - OTLP_ENDPOINT=http://alloy:4317
       - OTEL_TRACES_SAMPLER=parentbased_traceidratio
       - OTEL_TRACES_SAMPLER_ARG=0.1
-      # Phase 1: validate tokens via the gateway -> identity-svc (overrides common.env).
-      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
       # Same root value the frontend builds NEXT_PUBLIC_SITE_URL from: the mix
       # signup card's board button must land on the site people actually use.
       - PUBLIC_SITE_URL=${SITE_URL:-https://owt.craazzzyyfoxx.me}
@@ -564,8 +615,6 @@ services:
       - OTLP_ENDPOINT=http://alloy:4317
       - OTEL_TRACES_SAMPLER=parentbased_traceidratio
       - OTEL_TRACES_SAMPLER_ARG=0.1
-      # Phase 1: validate tokens via the gateway -> identity-svc (overrides common.env).
-      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
       - WORKER_METRICS_PORT=9106
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -615,8 +664,6 @@ services:
       - OTLP_ENDPOINT=http://alloy:4317
       - OTEL_TRACES_SAMPLER=parentbased_traceidratio
       - OTEL_TRACES_SAMPLER_ARG=0.1
-      # Validate tokens via the gateway -> identity-svc (overrides common.env).
-      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
       - WORKER_METRICS_PORT=9108
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -666,8 +713,6 @@ services:
       - OTLP_ENDPOINT=http://alloy:4317
       - OTEL_TRACES_SAMPLER=parentbased_traceidratio
       - OTEL_TRACES_SAMPLER_ARG=0.1
-      # Validate tokens via the gateway -> identity-svc (overrides common.env).
-      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
       - WORKER_METRICS_PORT=9111
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -726,7 +771,7 @@ services:
       dockerfile: prod.Dockerfile
       args:
         NEXT_PUBLIC_CACHE_POLICY: ${NEXT_PUBLIC_CACHE_POLICY}
-        NEXT_PUBLIC_SITE_NAME: ${SITE_NAME:-Overwatch Tournaments}
+        NEXT_PUBLIC_SITE_NAME: ${SITE_NAME:-OWT}
         NEXT_PUBLIC_SITE_URL: ${SITE_URL:-https://owt.craazzzyyfoxx.me}
         NEXT_PUBLIC_PLATFORM_ZONE: ${PLATFORM_ZONE:-owt.craazzzyyfoxx.me}
         NEXT_PUBLIC_COOKIE_PREFIX: ${COOKIE_PREFIX:-owt}
@@ -739,7 +784,7 @@ services:
         NEXT_PUBLIC_IMAGE_REMOTE_PATTERNS: ${NEXT_PUBLIC_IMAGE_REMOTE_PATTERNS:-https://d15f34w2p8l1cc.cloudfront.net/overwatch/**,https://img.clerk.com/**,https://cdn.discordapp.com/**,https://minio.craazzzyyfoxx.me/aqt/**,https://static.nl.craazzzyyfoxx.me/aqt/**,https://rustfs.craazzzyyfoxx.me/aqt/**,https://s3.twcstorage.ru/**,https://cdn.craazzzyyfoxx.me/**}
     environment:
       - NEXT_PUBLIC_SITE_URL=${SITE_URL:-https://owt.craazzzyyfoxx.me}
-      - NEXT_PUBLIC_SITE_NAME=${SITE_NAME:-Overwatch Tournaments}
+      - NEXT_PUBLIC_SITE_NAME=${SITE_NAME:-OWT}
       - NEXT_PUBLIC_PLATFORM_ZONE=${PLATFORM_ZONE:-owt.craazzzyyfoxx.me}
       - NEXT_PUBLIC_COOKIE_PREFIX=${COOKIE_PREFIX:-owt}
       - NEXT_PUBLIC_CACHE_POLICY=${NEXT_PUBLIC_CACHE_POLICY}
@@ -767,11 +812,9 @@ services:
 
   # ==========================================================================
   # Gateway architecture — part of the DEFAULT stack.
-  # The gateway is the single API entry point: backend services validate tokens
-  # through it (AUTH_SERVICE_URL=http://gateway:8080/api/auth is set on each
-  # consumer below) -> RPC -> identity-svc, and the gateway serves /api/* (typed
-  # RPC) + the WebSocket hub. nginx is the external edge (Kong removed) and
-  # routes pages straight to the frontend.
+  # The gateway is the single API entry point: it validates tokens (-> RPC ->
+  # identity-svc) and serves /api/* (typed RPC) + the WebSocket hub. nginx is
+  # the external edge (Kong removed) and routes pages straight to the frontend.
   #   TLS terminator -> nginx -> gateway -> RPC -> identity
   #                          \-> frontend
   # ==========================================================================
@@ -803,8 +846,6 @@ services:
       - OTLP_ENDPOINT=http://alloy:4317
       - OTEL_TRACES_SAMPLER=parentbased_traceidratio
       - OTEL_TRACES_SAMPLER_ARG=0.1
-      # Phase 1: validate tokens via the gateway -> identity-svc (overrides common.env).
-      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
       - WORKER_METRICS_PORT=9107
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -915,6 +956,10 @@ services:
       - "${APP_BIND:-127.0.0.1}:${APP_PORT}:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # Maintenance page and its switch files (nginx.conf, "Maintenance mode").
+      # A directory mount, unlike nginx.conf: files created or replaced on the
+      # host are visible at once, which is what `make maint-on|eta|off` rely on.
+      - ./nginx/maintenance:/etc/nginx/maintenance:ro
       # Structured JSON access log + error log, tailed by Promtail into Loki
       # (promtail mounts ./logs as /var/log/app). Mounting over /var/log/nginx
       # replaces the image's stdout symlinks with real files, so `docker logs
@@ -1000,7 +1045,7 @@ services:
       resources:
         limits:
           cpus: '0.50'
-          memory: 512M
+          memory: 1G
         reservations:
           cpus: '0.05'
           memory: 128M

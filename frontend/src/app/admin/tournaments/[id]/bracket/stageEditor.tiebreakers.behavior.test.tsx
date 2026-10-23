@@ -62,18 +62,30 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
   usePathname: () => "/admin/tournaments/84/bracket",
   useParams: () => ({ id: "84" }),
-  useSearchParams: () => new URLSearchParams("stage=10&section=tiebreakers")
+  useSearchParams: () => new URLSearchParams("stage=10")
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ href, children, ...rest }: { href: string; children: unknown }) => (
+  default: ({
+    href,
+    children,
+    prefetch: _prefetch,
+    ...rest
+  }: {
+    href: string;
+    children: unknown;
+    prefetch?: boolean | null;
+  }) => (
     <a href={href} {...rest}>
       {children as never}
     </a>
   )
 }));
 
-vi.mock("@/lib/tournament/workspace-query-keys", () => ({
+// Partial: the Settings page's bracket preview and round schedule observe
+// `useHubEncountersQuery`, which reads the real key factory from this module.
+vi.mock("@/lib/tournament/workspace-query-keys", async (importOriginal) => ({
+  ...((await importOriginal()) as object),
   invalidateTournamentWorkspace: vi.fn()
 }));
 
@@ -116,16 +128,21 @@ function roundRobinStage(): Stage {
     is_completed: false,
     ranking_preset: null,
     tiebreak_order: null,
-    scoring: { win: null, draw: null, loss: null },
-    swiss_bye_points: null,
-    de_grand_final_type: "no_reset",
-    seed_ranking: "slot",
-    best_of: { default: 3, by_round: {}, final: null },
-    ffa_scoring: {
+    scoring: {
+      win: null,
+      draw: null,
+      loss: null,
+      preset: "points",
       columns: [{ key: "score", label: "Счёт", public: true, better: "higher" }],
       placement_points: [],
       formula: "score"
     },
+    swiss_bye_points: null,
+    swiss_qualify_wins: null,
+    swiss_eliminate_losses: null,
+    de_grand_final_type: "no_reset",
+    seed_ranking: "slot",
+    best_of: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
     challonge_id: null,
     challonge_slug: null,
     items: []

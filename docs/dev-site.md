@@ -87,13 +87,27 @@ curl -sX POST -H 'Cookie: owtdev_refresh_token=x' https://<dev-host>/auth/refres
   production's app would invite production's bot). No `COMPOSE_PROFILES=telemetry`: the Alloy
   agent in `docker-compose.production.yml` pushes into production monitoring and is
   production-only.
-- `backend/env/*.env` — from the `.example` files, with `PLATFORM_ZONE`, `PROJECT_URL`,
-  `CORS_ORIGINS`, `GATEWAY_WS_ALLOWED_ORIGINS` and `OAUTH_REDIRECT` on the dev host,
+- `backend/env/*.env` — from the `.example` files, with `PLATFORM_ZONE`,
+  `GATEWAY_WS_ALLOWED_ORIGINS` and `OAUTH_REDIRECT` on the dev host,
   `SESSION_COOKIE_PREFIX=owtdev` in `gateway.env`, a
-  **dev-only** `JWT_SECRET_KEY`/`ACCESS_TOKEN_SERVICE`, and `POSTGRES_*` pointing at the dev
+  **dev-only** `JWT_SECRET_KEY`, and `POSTGRES_*` pointing at the dev
   database.
 - `proxy/xray.json` — the `proxy` sidecar's config, if outbound API calls need it. A dead
   outbound shows up as every Discord check answering `unknown`.
+
+## Home PostgreSQL resource limits
+
+On `home`, `db_postgres` is managed outside this repo by
+`/home/craazzzyyfoxx/postgres/docker-compose.yml`. The `postgres` service has
+`mem_limit: 8g` and `cpus: 4`, so container recreation retains both limits.
+Apply these limits to a running container without restarting PostgreSQL:
+
+```bash
+docker update --memory 8g --memory-swap 16g --cpus 4 db_postgres
+```
+
+The swap setting is RAM plus swap: 8 GiB RAM and up to 8 GiB additional swap,
+matching Compose's default when `memswap_limit` is unset.
 
 ## Deploy / update
 
@@ -103,8 +117,17 @@ docker compose -f docker-compose.production.yml build
 docker compose -f docker-compose.production.yml run --rm --no-deps -T app-svc \
     alembic upgrade head </dev/null
 make prod-discord-emoji    # the dev bot's own application emoji; skips what is already there
-make prod-up PROD_SCALE='app-svc=1 identity-svc=1 tournament-svc=1 frontend=1'
+NGINX_CONF_SHA=$(sha256sum nginx/nginx.conf | cut -c1-12) \
+docker compose -f docker-compose.production.yml up -d --wait --no-build \
+    --scale app-svc=1 --scale identity-svc=1 --scale tournament-svc=2 --scale frontend=2 \
+    proxy rabbitmq redis app-svc identity-svc tournament-svc stats-svc stats-worker balancer-svc \
+    analytics-svc analytics-worker stream-svc gateway frontend nginx
 ```
+
+Same replicas and limits as production `PROD_SIZE=small` (`PROD_SCALE_small` in the
+`Makefile`), minus `discord-worker` until its outbox is reviewed (see below) — which is why
+this is not `make prod-up`. `analytics-worker` takes `ANALYTICS_WORKER_CPUS`/`_MEMORY` from
+the box's `.env`.
 
 `discord-worker` runs with its own bot token, not production's. Reusing production's token
 would double-handle every Discord event. That also means its own application emoji: the dev
@@ -114,14 +137,73 @@ would share production's Helix rate-limit bucket.
 
 Tear down with `make prod-down`; the database survives it.
 
+## Building and heavy jobs
+
+Build images off-host, one at a time, importing the existing registry cache without publishing to
+it. Do not run the frontend compiler on an unstable dev server: the observed Turbopack build
+exceeded a 3 GiB builder limit; the successful off-host build used 2 CPUs / 6 GiB, not server resources.
+Transfer completed immutable images with a checksum and load them sequentially or throttle the
+input stream. Do not overlap image imports, database exports and receipt capture. Build-time
+memory requirements do not change the runtime ceilings above.
+
+For full-data evidence, use one read-only job/connection at a time: low client CPU/memory limits,
+`work_mem=16MB`, `hash_mem_multiplier=1`, JIT off and no parallel PostgreSQL workers. Lower only
+that job's verified database backend to nice 19 / idle I/O priority; never change other database
+processes or shared server settings. A receipt job may additionally cap its own backend's address
+space growth and must fail rather than waive a proof when that budget is exceeded. Decode the
+entire backup payload and verify its checksum before activation. Preserve any interrupted attempt;
+publish new evidence in a new directory instead of overwriting an immutable receipt.
+
 ## Refreshing the data
 
-The database is a restore of the production dump ([`backup-rustfs.md`](./backup-rustfs.md)),
-not a live replica: drop and recreate the dev database, then `pg_restore --no-owner --no-acl`
-the latest production dump into it.
+Restore the latest production dump into a **new isolated database**, not over the currently
+running dev database. For P4 the staged database is `owt_dev`; retain `anak_dev` for rollback.
+Check the dump's revision before choosing migration checkpoints:
+`pg_restore -a -t alembic_version -f - <dump>`.
 
-Check where a dump sits in the chain before restoring — `pg_restore -a -t alembic_version -f -
-<dump>` prints its revision, and that decides how many migrations `upgrade head` will run.
+With all writers to the staged database absent, apply the pinned migration source, complete
+the source/native reconciliation and publish the immutable receipt described in
+[`backend/README.md`](../backend/README.md#p4-statistics-cutover-stats01--stats01a).
+Keep the source dump/checksum, code revision, receipt, verification report and a final backup
+whose complete payload has been decoded successfully with `pg_restore --file=/dev/null`.
+Equal table counts alone are not a losslessness proof.
+
+### Isolate the dataset before activation
+
+- Use a new Compose project generation (`owt-dev-p4` for this cutover). Its project-owned
+  Redis/RabbitMQ volumes and network must be new, not external/shared. This retires old
+  cache payloads and ID-bearing queue/DLQ messages together without deleting them.
+  Keep the old project stopped, not removed; never attach its broker to the new database.
+- Give the new deployment its own S3 bucket (`owt-dev-p4-20261017` for this cutover), including
+  a public URL for that bucket. Reuse `scripts/configure_s3_policies.py`: only `avatars/*`
+  and `assets/*` are public. Verify an actual raw-object round trip and denied anonymous read.
+  Parser retention can delete objects; a separate database alone does not protect shared S3.
+  Historical raw references remain `unverified` until actual copied bytes are inspected.
+- Rotate the **dev-only** `JWT_SECRET_KEY` consistently for identity and gateway. Recreate
+  gateway too: it has an in-memory identity cache. Missing SQL sessions do not invalidate
+  otherwise valid access JWTs; old Redis refresh/RBAC responses cannot be reused.
+  A fresh project avoids flushing shared cache namespaces or deleting SID revocation flags.
+- Keep `discord-worker` stopped unless its restored outbox/destinations are separately reviewed;
+  a dev bot token is not a destination allowlist. Keep stream Twitch credentials absent.
+  `ENVIRONMENT=staging` is not a delivery sandbox. Disable automatic Challonge sync and
+  historical log reaping for this activation; these switches do not disable every scheduler.
+- Inventory all restored pending/failed `event_outbox` types, including delayed retries,
+  without exposing payloads. Do not falsely mark messages published or delete history to pass
+  a gate. After activation, normal dev schedulers may create legitimate audited changes.
+
+Only after proof and isolation: stop the old project, atomically install the paired database,
+S3, project and signing configuration, verify effective overrides, and start the explicitly
+selected new services. Do not use an unqualified `up` that also starts the Discord worker.
+Run at `PROD_SIZE=small` scale (see Deploy / update).
+
+Record the actual source commit, built/running image IDs, effective database/head, Compose
+project, bucket, backup SHA and receipt identity. Set backend `GIT_SHA` to the verified build
+revision; a floating `:dev` tag or the service's static version is not release evidence.
+Exercise real API and browser paths after readiness checks.
+
+Rollback is paired: stop the new project, restore the protected old environment files, then
+start the retained old containers against their old database, broker and cache volumes.
+Do not recreate them using the new dataset configuration.
 
 ## Verify
 
@@ -134,3 +216,37 @@ curl -s 'https://<dev-host>/api/v1/tournaments?page=1&per_page=2'    # data from
 A homepage that renders `/not-configured` means `PLATFORM_ZONE` is wrong (or missing) on one
 of the two sides — the frontend one is baked into the image, so it needs a rebuild, not a
 restart.
+
+## Local frontend against the dev site
+
+Run only `next dev` locally; everything behind `/api` is the dev site. In `frontend/.env.local`:
+
+```bash
+NEXT_INTERNAL_API_URL=https://<dev-host>     # next.config.mjs rewrites /api/* there; SSR fetches it
+NEXT_PUBLIC_COOKIE_PREFIX=owtdev             # the dev gateway's SESSION_COOKIE_PREFIX
+DEV_AUTH_EMAIL=dev-admin@<dev-host>
+DEV_AUTH_PASSWORD=<password>
+```
+
+OAuth cannot finish on localhost: `OAUTH_REDIRECT` is fixed to the dev host, which keeps the
+session on itself. With `DEV_AUTH_*` set, `/admin` without a session redirects to
+`/auth/dev-login` (`frontend/src/app/(site)/auth/dev-login/route.ts`). That route signs in through
+`POST /api/v1/auth/login` and sets the usual host-only cookies on `localhost`. From there it is an
+ordinary session: `/auth/refresh` rotates it for 30 days, and once it dies the next `/admin` load
+signs in again. Other pages: open `/auth/dev-login?next=/path`. The route answers 404 in a
+production build or without both variables, and on bad credentials it shows a plain error page
+(no redirect loop).
+
+The account is `dev-admin` (`auth.user`, superuser, password-only) in the dev database. A data
+refresh from a production dump drops it; recreate it:
+
+```bash
+curl -sX POST https://<dev-host>/api/v1/auth/register -H 'Content-Type: application/json' \
+    -d '{"email":"dev-admin@<dev-host>","username":"dev-admin","password":"<password>"}'
+docker exec db_postgres psql -U system -d owt_dev -c \
+    "UPDATE auth.\"user\" SET is_superuser = true, is_verified = true WHERE username = 'dev-admin'"
+```
+
+Realtime does not reach the dev site from localhost: the WebSocket goes to
+`ws://localhost:3000/api/v1/realtime/ws`, and `GATEWAY_WS_ALLOWED_ORIGINS` does not list
+`http://localhost:3000`.

@@ -3,11 +3,10 @@
 import { useId } from "react";
 import { useTranslations } from "next-intl";
 
-import { CollectionSettingsPanel, useCollectionSettings } from "@/components/admin/CollectionSettingsPanel";
+import { CollectionSettingsPanel, useCollectionSettings } from "@/components/kit/CollectionSettingsPanel";
 import { formatInterval } from "@/components/kit/format-time";
 import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { NumberInput } from "@/components/ui/number-input";
-import { Switch } from "@/components/ui/switch";
 import { useFormatter } from "@/lib/datetime/client";
 import type { StreamCollectionConfig } from "@/types/admin.types";
 
@@ -37,14 +36,7 @@ export function StreamSettingsPanel() {
   return (
     <CollectionSettingsPanel settings={settings}>
       {(form, patch) => (
-        <SettingGroup title={t("title")}>
-          <SettingRow htmlFor={`${ids}-enabled`} label={t("enabled")} hint={t("enabledHint")}>
-            <Switch
-              id={`${ids}-enabled`}
-              checked={form.enabled}
-              onCheckedChange={(enabled) => patch({ enabled })}
-            />
-          </SettingRow>
+        <SettingGroup id="collection" title={t("title")}>
           <SettingRow
             htmlFor={`${ids}-interval`}
             label={t("interval")}
@@ -61,7 +53,8 @@ export function StreamSettingsPanel() {
               max={3600}
               value={form.interval_seconds}
               onValueChange={(next) => patch({ interval_seconds: next ?? DEFAULTS.interval_seconds })}
-              className="h-8 w-28"
+              size="sm"
+              className="w-28"
             />
           </SettingRow>
           <SettingRow htmlFor={`${ids}-batch`} label={t("batch")} hint={t("batchHint")}>
@@ -72,7 +65,8 @@ export function StreamSettingsPanel() {
               max={100}
               value={form.batch_size}
               onValueChange={(next) => patch({ batch_size: next ?? DEFAULTS.batch_size })}
-              className="h-8 w-28"
+              size="sm"
+              className="w-28"
             />
           </SettingRow>
         </SettingGroup>

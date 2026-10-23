@@ -2,27 +2,18 @@ package app
 
 import "github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
 
-// MetadataAdminRoutes are the game-metadata admin CRUD endpoints (hero / map /
-// gamemode), relocated from parser-service into app-service (which already owns
-// the public reads). All require auth; the global "<entity>.<action>" permission
-// is enforced in the worker handler. Served under /api/v1/admin/* (the
-// frontend calls apiFetch("app", "admin/<entity>")).
+// MetadataAdminRoutes are the game-catalog admin CRUD endpoints
+// (catalog.entity, one surface by discipline and kind). All require auth;
+// superuser-only access is enforced in the worker handler.
 var MetadataAdminRoutes = []edge.RouteSpec{
-	// heroes
-	{Method: "GET", Pattern: "/api/v1/admin/heroes", Queue: "rpc.app.heroes.admin_list", AllQuery: true, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/admin/heroes", Queue: "rpc.app.heroes.admin_create", Body: true, Auth: edge.AuthRequired},
-	{Method: "PATCH", Pattern: "/api/v1/admin/heroes/{id}", Queue: "rpc.app.heroes.admin_update", IDParam: "id", Body: true, Auth: edge.AuthRequired},
-	{Method: "DELETE", Pattern: "/api/v1/admin/heroes/{id}", Queue: "rpc.app.heroes.admin_delete", IDParam: "id", Auth: edge.AuthRequired, Success: 204},
-	// maps
-	{Method: "GET", Pattern: "/api/v1/admin/maps", Queue: "rpc.app.maps.admin_list", AllQuery: true, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/admin/maps", Queue: "rpc.app.maps.admin_create", Body: true, Auth: edge.AuthRequired},
-	{Method: "PATCH", Pattern: "/api/v1/admin/maps/{id}", Queue: "rpc.app.maps.admin_update", IDParam: "id", Body: true, Auth: edge.AuthRequired},
-	{Method: "DELETE", Pattern: "/api/v1/admin/maps/{id}", Queue: "rpc.app.maps.admin_delete", IDParam: "id", Auth: edge.AuthRequired, Success: 204},
-	// gamemodes
-	{Method: "GET", Pattern: "/api/v1/admin/gamemodes", Queue: "rpc.app.gamemodes.admin_list", AllQuery: true, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/admin/gamemodes", Queue: "rpc.app.gamemodes.admin_create", Body: true, Auth: edge.AuthRequired},
-	{Method: "PATCH", Pattern: "/api/v1/admin/gamemodes/{id}", Queue: "rpc.app.gamemodes.admin_update", IDParam: "id", Body: true, Auth: edge.AuthRequired},
-	{Method: "DELETE", Pattern: "/api/v1/admin/gamemodes/{id}", Queue: "rpc.app.gamemodes.admin_delete", IDParam: "id", Auth: edge.AuthRequired, Success: 204},
+	// game catalog: one admin CRUD by discipline and kind (catalog.entity, D85).
+	{Method: "GET", Pattern: "/api/v1/admin/catalog/{discipline}/{kind}", Queue: "rpc.app.catalog.admin_list", Path: []string{"discipline", "kind"}, AllQuery: true, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/admin/catalog/{discipline}/{kind}", Queue: "rpc.app.catalog.admin_create", Path: []string{"discipline", "kind"}, Body: true, Auth: edge.AuthRequired},
+	{Method: "PATCH", Pattern: "/api/v1/admin/catalog/{discipline}/{kind}/{id}", Queue: "rpc.app.catalog.admin_update", IDParam: "id", Path: []string{"discipline", "kind"}, Body: true, Auth: edge.AuthRequired},
+	{Method: "DELETE", Pattern: "/api/v1/admin/catalog/{discipline}/{kind}/{id}", Queue: "rpc.app.catalog.admin_delete", IDParam: "id", Path: []string{"discipline", "kind"}, Auth: edge.AuthRequired, Success: 204},
+	// Read-only character list of one discipline for a workspace's achievement editor: gated on the workspace's
+	// achievement.create/update in the worker, so organizers (not only superusers) can pick a rule's character.
+	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/catalog/{discipline}/character", Queue: "rpc.app.catalog.workspace_characters", Path: []string{"workspace_id", "discipline"}, AllQuery: true, Auth: edge.AuthRequired},
 	// alias-miss queue: catalog names a match log used that no alias resolved.
 	// `attach` is a bespoke write rather than a PATCH on the entity's `aliases`
 	// so the browser never read-modify-writes the array (two admins would race)

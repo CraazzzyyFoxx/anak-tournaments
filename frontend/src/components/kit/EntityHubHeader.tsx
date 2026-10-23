@@ -6,7 +6,8 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
 import { StatusPill } from "@/components/kit/StatusPill";
-import type { Tone } from "@/components/kit/tone";
+import { Button } from "@/components/ui/button";
+import type { Tone } from "@/components/ui/tone";
 import { cn } from "@/lib/utils";
 
 export interface EntityHubHeaderProps {
@@ -16,6 +17,12 @@ export interface EntityHubHeaderProps {
   meta?: ReactNode[];
   actions?: ReactNode;
   backHref?: string;
+  /**
+   * The entity's own mark (a person's avatar, a team's logo), between the back
+   * link and the title. Placed beside the whole header instead, the back
+   * chevron ends up between the mark and the name it belongs to.
+   */
+  leading?: ReactNode;
   /**
    * Heading rank, and with it the title's size. `1` (default) is the header of
    * the screen; `2` is an entity nested in one that already owns the `<h1>` —
@@ -39,6 +46,7 @@ export function EntityHubHeader({
   meta,
   actions,
   backHref,
+  leading,
   level = 1
 }: Readonly<EntityHubHeaderProps>) {
   const t = useTranslations("kit.actions");
@@ -50,14 +58,13 @@ export function EntityHubHeader({
   return (
     <div className="flex flex-wrap items-start gap-3">
       {backHref ? (
-        <Link
-          href={backHref}
-        aria-label={t("back")}
-          className="mt-1 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <ChevronLeft aria-hidden className="size-4" />
-        </Link>
+        <Button asChild variant="ghost" size="icon-sm" className="mt-1 shrink-0 text-muted-foreground">
+          <Link href={backHref} aria-label={t("back")}>
+            <ChevronLeft aria-hidden />
+          </Link>
+        </Button>
       ) : null}
+      {leading ? <div className="shrink-0">{leading}</div> : null}
 
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">

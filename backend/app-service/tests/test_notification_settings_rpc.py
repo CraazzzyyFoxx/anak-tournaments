@@ -30,6 +30,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from cashews import cache  # noqa: E402
 
+from shared.models.division_grid.division_grid import (  # noqa: E402
+    DivisionGrid,
+    DivisionGridVersion,
+    WorkspaceDivisionGridDefault,
+)
 from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.identity.oauth import OAuthConnection  # noqa: E402
 from shared.models.identity.rbac import Permission, Role, UserPermissionDeny, role_permissions, user_roles  # noqa: E402
@@ -43,8 +48,8 @@ from shared.models.platform.notification import (  # noqa: E402
 )
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.services.discord_client import DiscordClient  # noqa: E402
+from shared.services.discord_errors import DiscordUnavailable  # noqa: E402
 from shared.services.notifications import NOTIFICATION_GROUPS  # noqa: E402
-from shared.services.subscriptions.providers.discord_role import DiscordUnavailable  # noqa: E402
 from shared.testing import install_postgres_type_shims  # noqa: E402
 from src import schemas  # noqa: E402
 from src.rpc import notifications as notifications_rpc  # noqa: E402
@@ -59,6 +64,9 @@ TABLES = (
     NotificationWorkspaceConfig.__table__,
     OAuthConnection.__table__,
     Workspace.__table__,
+    WorkspaceDivisionGridDefault.__table__,
+    DivisionGrid.__table__,
+    DivisionGridVersion.__table__,
     # The admin inspector's half: the account it names, the Discord messages
     # actually sent to it, and the four tables the unread count's audience
     # resolves through.

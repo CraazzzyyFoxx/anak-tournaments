@@ -29,7 +29,7 @@ A request reaches the gateway through nginx; the gateway resolves the presented 
 | RabbitMQ | Transport for all RPC, domain events and long-job queues |
 | Frontend (Next.js) | The site, on the same host and origin as the API |
 
-Domains are split across workers: tournaments, registration, brackets and pick/ban live in the tournament service; accounts, RBAC, keys and workspace domains in identity; public reads, statistics and catalogs in app; log parsing, ranks and achievements in parser; balancing and draft in balancer; analytics in analytics; stream live status in stream. For an integrator this is one HTTP contract, but the split explains why different parts of the API have different pacing and different failure modes.
+Domains are split across workers: tournaments, registration, brackets and pick/ban live in the tournament service; accounts, RBAC, keys and workspace domains in identity; catalogs, player identity and workspace administration in app; log parsing, ranks, achievements and the public statistics and player-statistics reads in stats; balancing and draft in balancer; analytics in analytics; stream live status in stream. For an integrator this is one HTTP contract, but the split explains why different parts of the API have different pacing and different failure modes.
 
 ## Multitenancy
 

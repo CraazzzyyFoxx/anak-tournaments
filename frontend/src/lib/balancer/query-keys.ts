@@ -13,6 +13,9 @@ export const balancerQueryKeys = {
   /** The workspace's saved form templates, offered by the tournament builder. */
   registrationFormTemplates: (workspaceId: KeyPart) =>
     ["admin", "registration-form-templates", workspaceId] as const,
+  /** One game's templates (`"all"`: every game's); prefixed by `registrationFormTemplates` for invalidation. */
+  registrationFormTemplateList: (workspaceId: KeyPart, discipline: string | null) =>
+    ["admin", "registration-form-templates", workspaceId, discipline ?? "all"] as const,
   registrations: (tournamentId: KeyPart) =>
     ["balancer-admin", "registrations", tournamentId] as const,
   sheetCatalog: (tournamentId: KeyPart) =>
@@ -23,7 +26,8 @@ export const balancerQueryKeys = {
   tournamentConfig: (tournamentId: KeyPart) =>
     ["balancer-admin", "tournament-config", tournamentId] as const,
   publicBalance: (tournamentId: KeyPart) => ["balancer-public", "balance", tournamentId] as const,
-  publicConfig: () => ["balancer-public", "config"] as const,
+  /** The public solver config of one game: its role weights are that game's. */
+  publicConfig: (discipline: KeyPart) => ["balancer-public", "config", discipline] as const,
   draftSetupPool: (tournamentId: KeyPart) =>
     ["balancer", "draft-setup-pool", tournamentId] as const,
   tournamentSummary: (tournamentId: KeyPart) =>

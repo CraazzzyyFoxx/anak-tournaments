@@ -1,12 +1,13 @@
 "use client";
 
-import { ShieldCheck, UserRoundCheck, X } from "lucide-react";
+import { ShieldCheck, X } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -15,11 +16,10 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { TONE_CLASS } from "@/components/kit/tone";
 import { resolveDivisionFromRank } from "@/lib/divisions/grid";
-import { getRoleIconName, ROLE_ACCENT } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import type { RosterShape } from "@/lib/roster/shape";
-import { cn } from "@/lib/utils";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { DraftRole } from "@/types/draft.types";
 import type { DivisionGrid } from "@/types/workspace.types";
@@ -40,6 +40,8 @@ interface DraftCaptainsStepProps {
   divisionGrid: DivisionGrid;
   /** The shape the draft seats captains into: which roles have a slot at all. */
   rosterShape: Pick<RosterShape, "slots" | "has_role_slots">;
+  /** The owner game's role dictionary: names and glyphs of the roles a captain can be seated on. */
+  ontology: RoleOntology | null;
 }
 
 export function DraftCaptainsStep({
@@ -48,9 +50,11 @@ export function DraftCaptainsStep({
   value,
   onChange,
   divisionGrid,
-  rosterShape
+  rosterShape,
+  ontology
 }: Readonly<DraftCaptainsStepProps>) {
   const t = useTranslations("draftAdmin");
+  const slotLabel = useSlotLabel(ontology);
   const tAdmin = useTranslations("adminTournament.draft");
 
   const poolById = useMemo(
@@ -88,7 +92,7 @@ export function DraftCaptainsStep({
   const renderRank = (rank: number | null, size: number) => {
     const division = resolveDivisionFromRank(divisionGrid, rank);
     return (
-      <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-xs tabular-nums text-muted-foreground">
+      <span className="inline-flex shrink-0 items-center gap-1.5 text-xs tabular-nums text-muted-foreground">
         {division != null && (
           <DivisionIcon
             division={division}
@@ -97,28 +101,23 @@ export function DraftCaptainsStep({
             height={size}
           />
         )}
-        {rank ?? "—"}
+        {rank}
       </span>
     );
   };
 
   return (
     <div className="@container space-y-5">
-      <div
+      <Card
+        variant="flat"
         role="status"
-        className={cn(
-          "sticky top-2 z-10 flex items-center justify-between rounded-xl border px-4 py-3 shadow-sm backdrop-blur",
-          TONE_CLASS[value.ids.length === teamCount ? "success" : "warning"]
-        )}
+        className="sticky top-2 z-10 flex items-center justify-between px-4 py-3"
       >
-        <div className="flex items-center gap-3">
-          <UserRoundCheck className="h-5 w-5" aria-hidden />
-          <span className="text-sm font-medium">{t("captainsSelected")}</span>
-        </div>
+        <span className="text-sm font-medium">{t("captainsSelected")}</span>
         <strong className="tabular-nums">
           {value.ids.length} / {teamCount}
         </strong>
-      </div>
+      </Card>
 
       <div className="grid gap-5 @3xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <CaptainPoolPicker
@@ -127,6 +126,7 @@ export function DraftCaptainsStep({
           teamCount={teamCount}
           onToggle={toggle}
           divisionGrid={divisionGrid}
+          ontology={ontology}
         />
 
         <div className="@container space-y-3">
@@ -144,7 +144,7 @@ export function DraftCaptainsStep({
                 if (!row || !registration) return null;
                 const seat = captainSeat(registration, value.roles[id], rosterShape);
                 return (
-                  <div key={id} className="min-w-0 rounded-xl border border-border/70 bg-card p-3">
+                  <Card key={id} variant="flat" className="min-w-0 p-3">
                     <div className="flex items-center gap-2">
                       <span className="min-w-0 flex-1 truncate text-sm font-medium tabular-nums">
                         {index + 1}. {row.label}
@@ -159,18 +159,14 @@ export function DraftCaptainsStep({
                           onValueChange={(role) => setRole(id, role as DraftRole)}
                         >
                           <SelectTrigger
+                            size="sm"
                             className="h-7 w-auto shrink-0 gap-1 px-1.5"
                             aria-label={t("captainRoleFor", { name: row.label })}
-                            title={seat.role ? t(`roles.${seat.role}`) : undefined}
+                            title={seat.role ? slotLabel(seat.role) : undefined}
                           >
                             <SelectValue>
                               {seat.role && (
-                                <PlayerRoleIcon
-                                  role={getRoleIconName(seat.role)}
-                                  size={14}
-                                  color={ROLE_ACCENT[seat.role]}
-                                  decorative
-                                />
+                                <PlayerRoleIcon role={seat.role} ontology={ontology} size={14} decorative />
                               )}
                             </SelectValue>
                           </SelectTrigger>
@@ -178,15 +174,10 @@ export function DraftCaptainsStep({
                             {seat.options.map((role) => (
                               <SelectItem key={role} value={role}>
                                 <span className="inline-flex items-center gap-2">
-                                  <PlayerRoleIcon
-                                    role={getRoleIconName(role)}
-                                    size={14}
-                                    color={ROLE_ACCENT[role]}
-                                    decorative
-                                  />
-                                  {t(`roles.${role}`)}
-                                  <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                                    {captainSeat(registration, role, rosterShape).rank ?? "—"}
+                                  <PlayerRoleIcon role={role} ontology={ontology} size={14} decorative />
+                                  {slotLabel(role)}
+                                  <span className="text-xs tabular-nums text-muted-foreground">
+                                    {captainSeat(registration, role, rosterShape).rank}
                                   </span>
                                 </span>
                               </SelectItem>
@@ -196,13 +187,7 @@ export function DraftCaptainsStep({
                       ) : (
                         <span className="flex shrink-0 items-center gap-1">
                           {(seat.role ? [seat.role] : row.roles).map((role) => (
-                            <PlayerRoleIcon
-                              key={role}
-                              role={getRoleIconName(role)}
-                              size={14}
-                              color={ROLE_ACCENT[role]}
-                              label={t(`roles.${role}`)}
-                            />
+                            <PlayerRoleIcon key={role} role={role} ontology={ontology} size={14} label={slotLabel(role)} />
                           ))}
                         </span>
                       )}
@@ -220,7 +205,8 @@ export function DraftCaptainsStep({
                     </div>
                     <Input
                       id={`team-name-${id}`}
-                      className="mt-2 h-8"
+                      size="sm"
+                      className="mt-2"
                       placeholder={t("teamName")}
                       aria-label={tAdmin("teamNameFor", { label: row.label, teamName: t("teamName") })}
                       value={value.teamNames[id] ?? ""}
@@ -231,7 +217,7 @@ export function DraftCaptainsStep({
                         })
                       }
                     />
-                  </div>
+                  </Card>
                 );
               })}
             </div>

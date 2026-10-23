@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.core import enums  # noqa: E402
 from shared.core.errors import BaseAPIException  # noqa: E402
+from shared.models.encounter import ScoringRule  # noqa: E402
 from shared.models.platform.outbox import EventOutbox  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import (  # noqa: E402
@@ -40,6 +41,16 @@ from shared.models.tournament import (  # noqa: E402
 )
 from src import schemas  # noqa: E402
 from src.services.admin.stage import stage_service  # noqa: E402
+
+
+def _wins_rule(workspace_id: int) -> ScoringRule:
+    """The duel preset every stage of this fixture is scored by."""
+    return ScoringRule(
+        workspace_id=workspace_id,
+        preset="wins",
+        game_formula="win",
+        end_formula="games >= best_of or max_wins * 2 > best_of",
+    )
 
 
 async def _seed(session: Any) -> SimpleNamespace:
@@ -59,9 +70,21 @@ async def _seed(session: Any) -> SimpleNamespace:
         Team(tournament_id=tournament.id, name=f"{name} {suffix}", balancer_name=f"{name}-{suffix}") for name in names
     ]
     session.add_all(teams)
-    groups = Stage(tournament_id=tournament.id, name="Groups", stage_type=enums.StageType.ROUND_ROBIN, order=1)
+    # Every stage carries its own ``encounter.scoring_rule``: the column is NOT
+    # NULL and a duel stage's rule is the ``wins`` preset (D51).
+    groups = Stage(
+        tournament_id=tournament.id,
+        name="Groups",
+        stage_type=enums.StageType.ROUND_ROBIN,
+        order=1,
+        scoring_rule=_wins_rule(workspace.id),
+    )
     playoffs = Stage(
-        tournament_id=tournament.id, name="Playoffs", stage_type=enums.StageType.SINGLE_ELIMINATION, order=2
+        tournament_id=tournament.id,
+        name="Playoffs",
+        stage_type=enums.StageType.SINGLE_ELIMINATION,
+        order=2,
+        scoring_rule=_wins_rule(workspace.id),
     )
     session.add_all([groups, playoffs])
     await session.flush()
@@ -90,6 +113,7 @@ async def _seed(session: Any) -> SimpleNamespace:
     return SimpleNamespace(
         workspace_id=workspace.id,
         tournament_id=tournament.id,
+        groups=groups.id,
         group_a=group_a.id,
         group_b=group_b.id,
         bracket=bracket.id,
@@ -194,3 +218,26 @@ def test_a_team_cannot_move_into_another_stage(db_session) -> None:
     refused, group_a = asyncio.run(_run())
     assert refused.status_code == 400
     assert group_a == [(1, "a1"), (2, "a2"), (3, "a3"), (5, "a4")]
+
+
+def test_seeding_answers_with_the_inputs_it_stored(db_session) -> None:
+    """The response is the reseeded stage, not the one loaded before the wipe."""
+
+    async def _run() -> tuple:
+        seeded = await _seed(db_session)
+        try:
+            stage = await stage_service.seed_teams(db_session, seeded.groups, sorted(seeded.names)[:3])
+            returned = sorted((inp.id, inp.team_id) for item in stage.items for inp in item.inputs)
+            stored = await db_session.execute(
+                sa.select(StageItemInput.id, StageItemInput.team_id)
+                .join(StageItem, StageItem.id == StageItemInput.stage_item_id)
+                .where(StageItem.stage_id == seeded.groups)
+                .order_by(StageItemInput.id)
+            )
+            return returned, [tuple(row) for row in stored.all()]
+        finally:
+            await _drop(db_session, seeded)
+
+    returned, stored = asyncio.run(_run())
+    assert len(stored) == 3
+    assert returned == stored

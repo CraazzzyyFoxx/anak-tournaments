@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
+import Image from "@/components/ui/image";
 
 import { cn } from "@/lib/utils";
 import type { Achievement } from "@/types/achievement.types";
+
+import { ACHIEVEMENT_ART_SLUGS } from "./achievementArtSlugs";
 
 interface AchievementArtProps {
   achievement: Pick<Achievement, "name" | "slug" | "image_url">;
@@ -18,20 +20,21 @@ interface AchievementArtProps {
 }
 
 /**
- * Badge art with a designed fallback. Rules without an uploaded image fall back
- * to `/achievements/<slug>.webp`, and that file often does not exist (the path
- * then hits the `/achievements/[id]` route and errors), so a failed load
- * swaps in a monogram panel tinted by the nearest `--rar` (`.aqt-rar-*`)
- * instead of leaving a broken image with spilled alt text.
+ * Badge art with a designed fallback. A rule without an uploaded image uses
+ * `/achievements/<slug>.webp` only when that file ships (`ACHIEVEMENT_ART_SLUGS`);
+ * every other rule -- and any image that fails to load -- gets a monogram panel
+ * tinted by the nearest `--rar` (`.aqt-rar-*`), never a request for a file that
+ * is not there or a broken image with spilled alt text.
  */
 export function AchievementArt({ achievement, sizes, className, imgClassName, alt = "" }: AchievementArtProps) {
-  const src = achievement.image_url ?? `/achievements/${achievement.slug}.webp`;
+  const src =
+    achievement.image_url ??
+    (ACHIEVEMENT_ART_SLUGS.has(achievement.slug) ? `/achievements/${achievement.slug}.webp` : null);
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  const failed = failedSrc === src;
 
   return (
     <span className={cn("relative block overflow-hidden bg-[color:var(--aqt-card-2)] [container-type:inline-size]", className)}>
-      {failed ? (
+      {src === null || failedSrc === src ? (
         <span
           aria-hidden
           className="absolute inset-0 grid place-items-center font-onest font-bold uppercase leading-none text-[40cqw]"

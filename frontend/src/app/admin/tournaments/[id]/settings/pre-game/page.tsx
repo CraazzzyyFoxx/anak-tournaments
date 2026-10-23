@@ -3,21 +3,11 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { AlertTriangle } from "lucide-react";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { MasterDetail } from "@/components/kit/MasterDetail";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
@@ -40,8 +30,9 @@ import {
   type PreGameScope,
   type PreGameStep
 } from "./pre-game-scope";
-import { useHeroesCatalog } from "@/hooks/useHeroesCatalog";
-import { useMapsCatalog } from "@/hooks/useMapsCatalog";
+import { useCatalogEntities } from "@/hooks/useCatalogEntities";
+import { useGameDescriptors } from "@/hooks/useGameDescriptors";
+import { useKindLabel } from "@/hooks/useKindLabel";
 
 export default function PreGameSettingsPage() {
   return (
@@ -49,8 +40,12 @@ export default function PreGameSettingsPage() {
       section="pre-game"
       description={useTranslations("adminTournament.screenDescriptions")("preGame")}
     >
-      {({ tournamentId, workspaceId }) => (
-        <PreGamePhase tournamentId={tournamentId} workspaceId={workspaceId} />
+      {({ tournamentId, workspaceId, tournament }) => (
+        <PreGamePhase
+          tournamentId={tournamentId}
+          workspaceId={workspaceId}
+          discipline={tournament.discipline}
+        />
       )}
     </SettingsSectionPage>
   );
@@ -58,8 +53,9 @@ export default function PreGameSettingsPage() {
 
 function PreGamePhase({
   tournamentId,
-  workspaceId
-}: Readonly<{ tournamentId: number; workspaceId: number }>) {
+  workspaceId,
+  discipline
+}: Readonly<{ tournamentId: number; workspaceId: number; discipline: string }>) {
   const t = useTranslations("pickBan.admin");
   const queryClient = useQueryClient();
   const { canAccessPermission } = usePermissions();
@@ -91,32 +87,58 @@ function PreGamePhase({
   });
   const configs = useMemo(() => configsQuery.data?.configs ?? [], [configsQuery.data]);
 
-  // One catalogue query per kind, both gated on the kind on screen.
-  const mapsQuery = useMapsCatalog({ withGamemode: true, enabled: kind === "map" });
-  const heroesQuery = useHeroesCatalog({ enabled: kind === "hero" });
+  // One catalogue query per kind of the tournament's own game, both gated on the kind on screen.
+  const mapsQuery = useCatalogEntities(discipline, "map", { enabled: kind === "map" });
+  const heroesQuery = useCatalogEntities(discipline, "character", { enabled: kind === "hero" });
+  // A game whose maps belong to no mode (Deadlock's Midtown hosts all of them) names a match's mode apart from its
+  // map, so its pool may hold modes too. A game that files each map under a mode (Overwatch) says it through the map.
+  const descriptor = useGameDescriptors().get(discipline);
+  const kindLabel = useKindLabel();
+  const offersModes =
+    kind === "map" &&
+    descriptor != null &&
+    "mode" in descriptor.kinds &&
+    mapsQuery.data != null &&
+    mapsQuery.data.every((map) => map.parent_id == null);
+  const modesQuery = useCatalogEntities(discipline, "mode", { enabled: offersModes });
 
   const catalogue = useMemo<CatalogueItem[]>(() => {
     if (kind === "map") {
+      // Maps and modes share the pool, so each is filed under its kind for the picker's group filter.
+      const mapGroup = offersModes && descriptor ? kindLabel(descriptor, "map") : null;
       // Off-rotation maps (a retired brawl-only map) are not something an
       // organizer bans or picks in a ranked series.
-      return (mapsQuery.data ?? [])
-        .filter((map) => map.in_competitive !== false)
+      const maps = (mapsQuery.data ?? [])
+        .filter((map) => map.attrs.in_competitive !== false)
         .map((map) => ({
           id: map.id,
           name: map.name,
-          group: map.gamemode?.name ?? null,
+          group: map.parent?.name ?? mapGroup,
           imageSrc: map.image_path ?? null
         }));
+      if (!offersModes || !descriptor) return maps;
+      const modeGroup = kindLabel(descriptor, "mode");
+      return [
+        ...maps,
+        ...(modesQuery.data ?? []).map((mode) => ({
+          id: mode.id,
+          name: mode.name,
+          group: modeGroup,
+          imageSrc: mode.image_path ?? null,
+          isMode: true
+        }))
+      ];
     }
     return (heroesQuery.data ?? []).map((hero) => ({
       id: hero.id,
       name: hero.name,
-      group: hero.type ?? hero.role ?? null,
+      group: typeof hero.attrs.class === "string" ? hero.attrs.class : null,
       imageSrc: hero.image_path ?? null
     }));
-  }, [kind, mapsQuery.data, heroesQuery.data]);
+  }, [kind, mapsQuery.data, heroesQuery.data, modesQuery.data, offersModes, descriptor, kindLabel]);
 
-  const catalogueLoading = kind === "map" ? mapsQuery.isPending : heroesQuery.isPending;
+  const catalogueLoading =
+    kind === "map" ? mapsQuery.isPending || (offersModes && modesQuery.isPending) : heroesQuery.isPending;
 
   const stages = useMemo(() => stagesQuery.data ?? [], [stagesQuery.data]);
   const stagesById = useMemo(() => new Map(stages.map((stage) => [stage.id, stage])), [stages]);
@@ -157,18 +179,14 @@ function PreGamePhase({
   const hrefFor = (target: PreGameScope) =>
     `${basePath}?scope=${encodePreGameScope(target)}&kind=${kind}&step=${step}`;
 
-
-  if (configsQuery.isError) {
+  const failedQuery = configsQuery.isError ? configsQuery : stagesQuery.isError ? stagesQuery : null;
+  if (failedQuery) {
     return (
-      <Alert variant="destructive">
-        <AlertTriangle aria-hidden className="size-4" />
-        <AlertDescription className="flex flex-wrap items-center gap-3">
-          <span>{t("loadFailed")}</span>
-          <Button type="button" size="sm" variant="outline" onClick={() => configsQuery.refetch()}>
-            {t("retry")}
-          </Button>
-        </AlertDescription>
-      </Alert>
+      <PageStateCard
+        state="error"
+        title={t("loadFailed")}
+        onAction={() => void failedQuery.refetch()}
+      />
     );
   }
 
@@ -179,27 +197,26 @@ function PreGamePhase({
   return (
     <div className="flex flex-col gap-4">
       {/* Map veto and hero bans are two independent configs per scope, so the
-          kind is part of what is being edited, not a filter over one list —
+          kind is part of what is being edited, not a filter over one list,
           and the tree's inherited/overridden markers only mean anything for
-          one of them at a time. A `Select`, not a tab row: the step tabs below
-          are this screen's tabs. */}
-      <div className="flex items-center gap-2">
-        <Label htmlFor="pre-game-kind" className="text-xs text-muted-foreground">
-          {t("kindLabel")}
-        </Label>
-        <Select value={kind} onValueChange={(next) => setParams({ kind: next })}>
-          <SelectTrigger id="pre-game-kind" className="w-56">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PRE_GAME_KINDS.map((value) => (
-              <SelectItem key={value} value={value}>
-                {t(value === "map" ? "kindMap" : "kindHero")}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+          one of them at a time. */}
+      <ToggleGroup
+        type="single"
+        variant="pill"
+        size="sm"
+        className="self-start"
+        value={kind}
+        onValueChange={(next) => {
+          if (next) setParams({ kind: next });
+        }}
+        aria-label={t("kindLabel")}
+      >
+        {PRE_GAME_KINDS.map((value) => (
+          <ToggleGroupItem key={value} value={value}>
+            {t(value === "map" ? "kindMap" : "kindHero")}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
 
       <MasterDetail
         listWidth={260}
@@ -217,6 +234,7 @@ function PreGamePhase({
           scope == null ? null : (
             <PreGameEditor
               tournamentId={tournamentId}
+              discipline={discipline}
               scope={scope}
               kind={kind}
               step={step}

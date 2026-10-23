@@ -3,12 +3,11 @@
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { Gavel, ListChecks, Pencil, Upload } from "lucide-react";
 
 import { AuditTrailButton } from "@/components/kit/AuditTrailSheet";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
-import TeamName from "@/components/TeamName";
+import { InspectorField, InspectorSection } from "@/components/kit/InspectorField";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { TournamentLogUploadDialog } from "@/components/logs/TournamentLogUploadDialog";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
@@ -16,12 +15,15 @@ import { pregameRoomHref } from "@/lib/encounter/pregame-room";
 import adminService from "@/services/admin.service";
 import type { AdminMatchRow } from "@/types/admin.types";
 import type { Encounter } from "@/types/encounter.types";
-
-import { EncounterStatusCell, InspectorField } from "./EncounterCells";
+import { reportOf, scoreline } from "@/lib/encounter/reports";
+import { scoreLine } from "@/lib/encounter/detail";
+import { mapWithModeName } from "@/lib/catalog/mode";
+import { isLobby, seatsBySlot } from "@/lib/encounter/seats";
 
 /**
  * What the row detail adds to the table: the captains' filings and the maps a
- * parser has already read, both fetched only for the row actually open.
+ * parser has already read, both fetched only for the row actually open. The
+ * row's own columns (score, status, result, logs) are not repeated here.
  */
 export function EncounterInspectorPanel({
   encounter,
@@ -32,7 +34,6 @@ export function EncounterInspectorPanel({
 }>) {
   const t = useTranslations("adminMatches.encounters");
   const commonT = useTranslations("adminMatches.common");
-  const reportsT = useTranslations("adminMatches.reports");
   const reportsQuery = useQuery({
     queryKey: encounterQueryKeys.reportsByEncounter(encounter.id, workspaceId),
     queryFn: () =>
@@ -55,88 +56,62 @@ export function EncounterInspectorPanel({
       })
   });
 
+  const seats = seatsBySlot(encounter.teams);
+  const seatIds = seats.map((seat) => seat.id);
+
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <InspectorField label={t("teams")}>
-          <span className="flex items-center gap-1.5">
-            <TeamName team={encounter.home_team} fallback={commonT("unknown")} size="xs" />
-            <span className="text-muted-foreground">{t("vs")}</span>
-            <TeamName team={encounter.away_team} fallback={commonT("unknown")} size="xs" />
-          </span>
-        </InspectorField>
-        <InspectorField label={t("score")}>
-          <span className="font-mono tabular-nums">
-            {encounter.score.home} &ndash; {encounter.score.away}
-          </span>
-        </InspectorField>
-        <InspectorField label={t("status")}>
-          <EncounterStatusCell status={encounter.status} />
-        </InspectorField>
-        <InspectorField label={t("result")}>{t(`resultStatus.${encounter.result_status}`)}</InspectorField>
-        <InspectorField label={t("bestOf")}>
-          <span className="tabular-nums">{encounter.best_of}</span>
-        </InspectorField>
-        <InspectorField label={t("logs")}>{encounter.has_logs ? t("attached") : t("none")}</InspectorField>
-      </div>
+      <InspectorField label={t("bestOf")}>
+        <span className="tabular-nums">{encounter.best_of}</span>
+      </InspectorField>
 
-      <section className="rounded-xl border border-border/60 p-3">
-        <p className={EYEBROW_CLASS}>{t("captainReports")}</p>
+      <InspectorSection title={t("captainReports")}>
         {reportsQuery.isLoading ? (
-          <p className="mt-2 text-xs text-muted-foreground">{t("loading")}</p>
+          <Skeleton className="h-10 w-full" />
         ) : reportRow == null ? (
-          <p className="mt-2 text-xs text-muted-foreground">
-            {t("noCaptainReport")}
-          </p>
+          <p className="text-xs text-muted-foreground">{t("noCaptainReport")}</p>
         ) : (
-          <ul className="mt-2 space-y-1 text-sm">
-            {(
-              [
-                [reportsT("home"), reportRow.home_report],
-                [reportsT("away"), reportRow.away_report]
-              ] as const
-            ).map(([side, report]) => (
-              <li key={side} className="flex items-center gap-2">
-                <span className="w-12 text-xs uppercase text-muted-foreground">{side}</span>
-                {report ? (
-                  <>
-                    <span className="font-mono tabular-nums">
-                      {report.home_score} &ndash; {report.away_score}
-                    </span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {report.reporter_name ?? commonT("unknown")}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-xs italic text-muted-foreground">{commonT("noReport")}</span>
-                )}
-              </li>
-            ))}
+          <ul className="space-y-1 text-sm">
+            {seats.map((seat) => {
+              const report = reportOf(reportRow.reports, seat.id);
+              return (
+                <li key={seat.id} className="flex items-center gap-2">
+                  <span className="w-24 truncate text-xs text-muted-foreground" title={seat.name}>
+                    {seat.name}
+                  </span>
+                  {report ? (
+                    <>
+                      <span className="tabular-nums">{scoreline(report.results, seatIds)}</span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {report.reporter_name ?? commonT("unknown")}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">{commonT("noReport")}</span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
-      </section>
+      </InspectorSection>
 
-      <section className="rounded-xl border border-border/60 p-3">
-        <p className={EYEBROW_CLASS}>{t("parsedMaps", { count: parsedMapsQuery.data?.total ?? 0 })}</p>
+      <InspectorSection title={t("parsedMaps", { count: parsedMapsQuery.data?.total ?? 0 })}>
         {parsedMapsQuery.isLoading ? (
-          <p className="mt-2 text-xs text-muted-foreground">{t("loading")}</p>
+          <Skeleton className="h-10 w-full" />
         ) : (parsedMapsQuery.data?.results.length ?? 0) === 0 ? (
-          <p className="mt-2 text-xs text-muted-foreground">
-            {t("noParsedMap")}
-          </p>
+          <p className="text-xs text-muted-foreground">{t("noParsedMap")}</p>
         ) : (
-          <ul className="mt-2 space-y-1 text-sm">
+          <ul className="space-y-1 text-sm">
             {(parsedMapsQuery.data?.results ?? []).map((map: AdminMatchRow) => (
               <li key={map.id} className="flex items-center justify-between gap-2">
-                <span className="truncate">{map.map_name}</span>
-                <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                  {map.home_score}&ndash;{map.away_score}
-                </span>
+                <span className="truncate">{mapWithModeName(map.map, map.mode)}</span>
+                <span className="text-xs tabular-nums text-muted-foreground">{scoreLine(map.participants)}</span>
               </li>
             ))}
           </ul>
         )}
-      </section>
+      </InspectorSection>
     </div>
   );
 }
@@ -164,20 +139,16 @@ export function EncounterInspectorActions({
   const t = useTranslations("adminMatches.encounters");
   return (
     <>
-      {encounter.format === "ffa" ? null : (
+      {isLobby(encounter) ? null : (
         <Button asChild variant="outline" size="sm">
           {/* Readiness, the veto and the per-map reports all live in the room,
               and the organizer controls there are the same ones a captain
               cannot reach. */}
-          <Link href={pregameRoomHref(encounter.tournament_id, encounter.id, returnTo)}>
-            <ListChecks aria-hidden className="size-3.5" />
-            {t("openRoom")}
-          </Link>
+          <Link href={pregameRoomHref(encounter.tournament_id, encounter.id, returnTo)}>{t("openRoom")}</Link>
         </Button>
       )}
       {canUpdate ? (
         <Button variant="outline" size="sm" onClick={() => onEdit(encounter)}>
-          <Pencil aria-hidden className="size-3.5" />
           {t("edit")}
         </Button>
       ) : null}
@@ -189,7 +160,6 @@ export function EncounterInspectorActions({
           onUploaded={onUploaded}
           trigger={
             <Button variant="outline" size="sm">
-              <Upload aria-hidden className="size-3.5" />
               {t("uploadLog")}
             </Button>
           }
@@ -202,7 +172,6 @@ export function EncounterInspectorActions({
           <Link
             href={`${reportsHref}${reportsHref.includes("?") ? "&" : "?"}search=${encodeURIComponent(encounter.name)}&id=${encounter.id}`}
           >
-            <Gavel aria-hidden className="size-3.5" />
             {t("resolve")}
           </Link>
         </Button>

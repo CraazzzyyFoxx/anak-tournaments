@@ -1,10 +1,13 @@
+import type { ReactNode } from "react";
 import { getTranslations } from "next-intl/server";
 import userService from "@/services/user.service";
 import { User } from "@/types/user.types";
 import type { StatsScope } from "@/lib/site/stats-scope";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import MatchesTable, { type MatchesFilters } from "@/app/(site)/users/components/matches/MatchesTable";
 import type { StageStats } from "@/app/(site)/users/components/matches/MatchesSidebars";
+import { USER_ENCOUNTER_ENTITIES } from "@/app/(site)/users/components/shared/encounter-perspective";
 
 const EMPTY_STAGES: StageStats = {
   group: { w: 0, l: 0 },
@@ -25,12 +28,21 @@ export const UserEncountersPage = async ({
   user,
   page,
   filters,
-  scope
+  scope,
+  discipline,
+  summaryGame,
+  sidebarTabs
 }: {
   user: User;
   page: number;
   filters?: MatchesFilters;
   scope: StatsScope;
+  /** One game, or `null` for every game (the list is cross-game; rows mark their game). */
+  discipline: string | null;
+  /** The game the (game-bound) matches summary is read in: the page's game, or the per-game tab's under all games. */
+  summaryGame: string | null;
+  /** The per-game tabs over the summary under "all games". */
+  sidebarTabs?: ReactNode;
 }) => {
   const perPage = 15;
   const t = await getTranslations();
@@ -43,21 +55,22 @@ export const UserEncountersPage = async ({
     [encounters, summary] = await Promise.all([
       userService.getUserEncounters(
         user.id,
+        discipline,
         page,
         perPage,
         undefined,
         undefined,
-        undefined,
+        USER_ENCOUNTER_ENTITIES,
         filters,
         scope
       ),
-      userService.getUserMatchesSummary(user.id, scope).catch(() => null)
+      summaryGame === null
+        ? Promise.resolve(null)
+        : userService.getUserMatchesSummary(user.id, summaryGame, scope).catch(() => null)
     ]);
   } catch {
     return (
-      <div className="aqt-player rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)] px-6 py-10 text-center text-caption text-[color:var(--aqt-fg-muted)]">
-        {t("users.matches.loadError")}
-      </div>
+      <PageStateCard state="error" description={t("users.matches.loadError")} className="aqt-player" />
     );
   }
 
@@ -70,6 +83,8 @@ export const UserEncountersPage = async ({
       selfUserId={user.id}
       opponents={summary?.opponents ?? []}
       stages={summary?.stages ?? EMPTY_STAGES}
+      allGames={discipline === null}
+      sidebarTabs={sidebarTabs}
     />
   );
 };

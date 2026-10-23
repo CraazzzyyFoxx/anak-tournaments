@@ -72,6 +72,10 @@ EPHEMERAL_HOSTS = frozenset({"127.0.0.1", "localhost"})
 EPHEMERAL_PORT = "55432"
 EPHEMERAL_DB = "anak_test"
 
+#: The revision before ``legacy01``. Cutover-tooling proofs (preflight/reconcile, stats01 receipts) read the legacy
+#: storage ``legacy01`` drops, so they stop here instead of at head.
+BEFORE_LEGACY_DROP = "rank01"
+
 _ensured = False
 _skip_reason: str | None = None
 
@@ -159,6 +163,7 @@ def _docker_compose_up() -> bool:
 def _alembic_upgrade() -> None:
     env = os.environ.copy()
     env["DATABASE_URL"] = postgres_psycopg_url()
+    env["OWT_APPLY_LEGACY_DROP"] = "1"  # an ephemeral test database: its legacy rows are fixtures, never history
     subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=str(BACKEND_ROOT),
@@ -213,8 +218,7 @@ def ensure_test_postgres() -> None:
 def create_test_async_engine(**kwargs: Any) -> AsyncEngine:
     """Throwaway engine for ``IsolatedAsyncioTestCase`` after :func:`ensure_test_postgres`.
 
-    Uses the psycopg async dialect (same URL the balancer IsolatedAsyncioTestCase
-    files used before this helper) and ``NullPool`` so connections cannot outlive
+    Uses the psycopg async dialect and ``NullPool`` so connections cannot outlive
     the per-test event loop. ``connect_timeout`` is the libpq/psycopg knob;
     asyncpg callers should keep using :func:`real_db_sessionmaker`.
     """

@@ -152,56 +152,12 @@
   flex-wrap: wrap;
 }
 
-.aqt-tn .tn-btn {
-  appearance: none;
-  cursor: pointer;
-  font-family: inherit;
-  border: 1px solid var(--tn-border);
-  background: var(--aqt-overlay-2);
-  color: var(--fg-muted);
-  font-weight: 600;
-  font-size: var(--text-caption);
-  padding: 8px 12px;
-  border-radius: 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  transition: 0.15s;
-}
-
-.aqt-tn .tn-btn:hover {
-  background: var(--aqt-overlay-3);
-  color: var(--tn-fg);
-}
-
-.aqt-tn .tn-btn.primary {
-  background: color-mix(in srgb, var(--teal) 14%, transparent);
-  border-color: color-mix(in srgb, var(--teal) 30%, transparent);
-  color: var(--teal);
-}
-
-.aqt-tn .tn-btn.primary:hover {
-  background: color-mix(in srgb, var(--teal) 20%, transparent);
-}
-
-.aqt-tn .tn-btn .kbd {
-  font-family: var(--mono);
-  font-size: var(--text-label);
-  color: var(--fg-faint);
-  background: var(--aqt-overlay-3);
-  padding: 1px 5px;
-  border-radius: 4px;
-}
-
-/* ── Filters bar ── */
+/* ── Filters bar (the participants toolbar; its surface is `Card variant="flat"`) ── */
 .aqt-tn .filters {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  background: var(--tn-card);
-  border: 1px solid var(--tn-border);
-  border-radius: 12px;
   padding: 10px;
 }
 
@@ -215,48 +171,6 @@
   }
 }
 
-.aqt-tn .filter-search {
-  position: relative;
-  flex: 1;
-  min-width: 200px;
-  max-width: 300px;
-  margin-left: auto;
-}
-
-.aqt-tn .filter-search input {
-  width: 100%;
-  background: var(--aqt-overlay-2);
-  border: 1px solid var(--tn-border);
-  color: var(--tn-fg);
-  border-radius: 8px;
-  height: 32px;
-  padding: 0 12px 0 32px;
-  /* 16px below the sm breakpoint: iOS Safari zooms the page when a focused
-     input renders smaller than that. */
-  font-size: 16px;
-  outline: none;
-  font-family: inherit;
-}
-
-@media (min-width: 640px) {
-  .aqt-tn .filter-search input {
-    font-size: var(--text-caption);
-  }
-}
-
-.aqt-tn .filter-search input:focus-visible {
-  border-color: var(--aqt-teal);
-  box-shadow: 0 0 0 2px hsl(0 0% 100% / 0.04);
-}
-
-.aqt-tn .filter-search svg {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--fg-faint);
-}
-
 .aqt-tn .filter-sort {
   display: inline-flex;
   align-items: center;
@@ -264,11 +178,21 @@
   background: var(--aqt-overlay-2);
   border: 1px solid var(--tn-border);
   color: var(--fg-muted);
-  font-size: var(--text-label);
-  font-weight: 500;
   padding: 7px 12px;
   border-radius: 8px;
   cursor: pointer;
+}
+
+/* Phone toolbar: the chips scroll on their own line, search and Columns share
+   the next. Every control is 40px; the 32px desktop row is under the touch
+   minimum. `> button` is the Columns popover trigger. */
+@media (max-width: 639px) {
+  .aqt-tn .filters .aqt-filter-chip,
+  .aqt-tn .filters input[type="search"],
+  .aqt-tn .filters .filter-sort,
+  .aqt-tn .filters > button {
+    height: 40px;
+  }
 }
 
 /* ── Section heading ── */
@@ -618,11 +542,6 @@
 .aqt-tn .feat-foot .right {
   display: flex;
   gap: 8px;
-}
-
-.aqt-tn .feat-foot .tn-btn {
-  padding: 6px 11px;
-  font-size: var(--text-label);
 }
 
 .aqt-tn .feat-card.small .feat-name {
@@ -1401,6 +1320,12 @@
 .aqt-tn .st-status.tie {
   background: color-mix(in srgb, var(--amber) 14%, transparent);
   color: var(--amber);
+}
+
+/* A team a Swiss threshold eliminated keeps its place in the table, read as done. */
+.aqt-tn table.st tr.swiss-out .st-rank,
+.aqt-tn table.st tr.swiss-out .st-team .nm {
+  color: var(--fg-dim);
 }
 
 .aqt-tn .st-cut {

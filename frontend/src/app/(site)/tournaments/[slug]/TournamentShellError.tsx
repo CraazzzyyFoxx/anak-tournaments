@@ -13,6 +13,7 @@ export default function TournamentShellError() {
     <div className="aqt-tn">
       <PageStateCard
         state="error"
+        headingLevel={1}
         title={t("common.loadError")}
         onAction={() => router.refresh()}
       />

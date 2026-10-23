@@ -5,62 +5,32 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Check, CircleAlert, Lock, LogIn } from "lucide-react";
 
+import { EmptyNote } from "@/components/kit/EmptyNote";
 import { owtButton } from "@/components/site/owt-button";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { usePermissions } from "@/hooks/usePermissions";
 import { ApiError, getApiErrorMessage } from "@/lib/api/error";
 import { getCurrentPathForAuthRedirect } from "@/lib/auth/redirect";
 import { PLATFORM_ZONE } from "@/lib/site/host";
 import { cn } from "@/lib/utils";
+import { SLUG_MAX_LENGTH, suggestSlug, validateSlug } from "@/lib/workspace/slug";
 import workspaceService from "@/services/workspace.service";
 import { useAuthModalStore } from "@/stores/auth-modal.store";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
-/**
- * Slugs the platform keeps for itself — the resolved
- * `backend/app-service/src/services/workspace/service.py` `RESERVED_SLUGS`
- * (`RESERVED_SUBDOMAINS` plus the platform's own top-level routes). There is no
- * availability endpoint, so the client can only answer "is this a legal
- * address"; "is it free" arrives as the create call's refusal.
- */
-const RESERVED: Record<string, true> = {
-  www: true,
-  api: true,
-  auth: true,
-  admin: true,
-  app: true,
-  assets: true,
-  static: true,
-  cdn: true,
-  mail: true,
-  ws: true,
-  docs: true,
-  status: true,
-  support: true
-};
-
-const SLUG_RE = /^[a-z0-9_-]+$/;
-const EDGE_RE = /^[-_]|[-_]$/;
-
 type HelpKind = "neutral" | "ok" | "err";
 
-const INPUT_SHELL =
-  "flex h-12 min-w-0 items-center rounded-[var(--aqt-radius-sm)] border " +
-  "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-3.5 " +
-  "transition-[border-color,background-color] duration-150 " +
-  "focus-within:border-[color:var(--aqt-teal)] focus-within:bg-[color:var(--aqt-overlay-3)] " +
-  "focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[color:var(--aqt-teal)]";
-
-const INPUT_FIELD =
-  "h-full min-w-0 w-full flex-1 border-0 bg-transparent text-base leading-none text-[color:var(--aqt-fg)] " +
-  "outline-none placeholder:text-[color:var(--aqt-fg-dim)]";
-
 /**
- * The create form of the organizer page (mock `.create`).
+ * The create form of the organizer page (mock `.create`), and step 1 of the
+ * admin's workspace wizard: on success it continues at step 2 of
+ * `/admin/workspaces/new`.
  *
  * It mirrors what `POST /api/v1/workspaces` takes: a name and the PLATFORM
- * address `<zone>/workspace/<slug>`. Subdomain, custom domain and colours are
- * settings after creation, so the form must not promise them.
+ * address `<zone>/workspace/<slug>`. There is no availability endpoint, so the
+ * client can only answer "is this a legal address" (`validateSlug`); "is it
+ * free" arrives as the create call's refusal.
  */
 export function CreateForm() {
   const t = useTranslations("getWorkspace.create");
@@ -72,6 +42,8 @@ export function CreateForm() {
 
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
+  // Set once the slug is typed by hand; until then it follows the name.
+  const [slugTouched, setSlugTouched] = useState(false);
   const [pending, setPending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   // What the server said about one specific slug — dropped as soon as the
@@ -83,18 +55,15 @@ export function CreateForm() {
   // Allow-by-default capability, revoked per account through negative RBAC.
   const revoked = Boolean(user) && isDenied("workspace.self_create");
 
+  const slugProblem = validateSlug(slug);
   const help: { kind: HelpKind; msg: string } =
     serverSlug && serverSlug.slug === slug
       ? { kind: "err", msg: t(`slug.${serverSlug.kind}`, { slug }) }
-      : checkSlug(slug);
-
-  function checkSlug(value: string): { kind: HelpKind; msg: string } {
-    if (!value) return { kind: "neutral", msg: t("slug.hint") };
-    if (!SLUG_RE.test(value)) return { kind: "err", msg: t("slug.format") };
-    if (EDGE_RE.test(value)) return { kind: "err", msg: t("slug.edges") };
-    if (RESERVED[value]) return { kind: "err", msg: t("slug.reserved", { slug: value }) };
-    return { kind: "ok", msg: t("slug.ok") };
-  }
+      : slugProblem === "empty"
+        ? { kind: "neutral", msg: t("slug.hint") }
+        : slugProblem
+          ? { kind: "err", msg: t(`slug.${slugProblem}`, { slug, max: SLUG_MAX_LENGTH }) }
+          : { kind: "ok", msg: t("slug.ok") };
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -111,7 +80,8 @@ export function CreateForm() {
       // The switcher list and the workspace cookie are stale the moment a
       // workspace exists that was not in them.
       void fetchWorkspaces();
-      router.push(`/admin/workspaces/${workspace.id}/general`);
+      // Step 1 of the wizard is done; the rest of the setup continues there.
+      router.push(`/admin/workspaces/new?id=${workspace.id}&step=profile`);
     } catch (error) {
       setPending(false);
       // The backend answers with machine codes for the two policy refusals and
@@ -132,15 +102,9 @@ export function CreateForm() {
 
   if (revoked) {
     return (
-      <div className="mt-7 flex max-w-[620px] items-start gap-3 rounded-xl border border-dashed border-[color:var(--aqt-border-2)] p-[18px] text-body text-[color:var(--aqt-fg-muted)]">
-        <Lock className="mt-0.5 size-4 shrink-0 text-[color:var(--aqt-rose)]" aria-hidden />
-        <div>
-          <b className="mb-0.5 block font-semibold text-[color:var(--aqt-fg)]">
-            {t("revoked.title")}
-          </b>
-          {t("revoked.hint")}
-        </div>
-      </div>
+      <EmptyNote icon={Lock} title={t("revoked.title")} tone="danger" className="mt-7 max-w-[620px]">
+        {t("revoked.hint")}
+      </EmptyNote>
     );
   }
 
@@ -153,54 +117,59 @@ export function CreateForm() {
     >
       <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
         <div className="min-w-0">
-          <label htmlFor="ws-name" className="mb-2 block text-body font-medium text-[color:var(--aqt-fg)]">
+          <label
+            htmlFor="ws-name"
+            className="mb-2 block text-body font-medium text-[color:var(--aqt-fg)]"
+          >
             {t("name")}
           </label>
-          <div className={INPUT_SHELL}>
-            <input
-              id="ws-name"
-              name="name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder={t("namePlaceholder")}
-              autoComplete="off"
-              required
-              className={INPUT_FIELD}
-            />
-          </div>
+          <Input
+            id="ws-name"
+            name="name"
+            variant="surface"
+            value={name}
+            onChange={(event) => {
+              setName(event.target.value);
+              if (!slugTouched) setSlug(suggestSlug(event.target.value));
+            }}
+            placeholder={t("namePlaceholder")}
+            autoComplete="off"
+            required
+          />
         </div>
         <div className="min-w-0">
-          <label htmlFor="ws-slug" className="mb-2 block text-body font-medium text-[color:var(--aqt-fg)]">
+          <label
+            htmlFor="ws-slug"
+            className="mb-2 block text-body font-medium text-[color:var(--aqt-fg)]"
+          >
             {t("address")}
           </label>
-          <div
-            className={cn(
-              INPUT_SHELL,
-              help.kind === "err" &&
-                "border-[color:var(--aqt-rose)] focus-within:border-[color:var(--aqt-rose)] focus-within:outline-[color:var(--aqt-rose)]"
-            )}
-          >
-            <input
-              id="ws-slug"
-              name="slug"
-              value={slug}
-              // Typing a name with spaces is the common first move; the mock
-              // turns it into an address as you type instead of refusing it.
-              onChange={(event) => setSlug(event.target.value.toLowerCase().replace(/\s+/g, "-"))}
-              placeholder="funny-cup"
-              spellCheck={false}
-              autoComplete="off"
-              required
-              aria-describedby="slug-preview slug-help"
-              aria-invalid={help.kind === "err"}
-              className={cn(INPUT_FIELD, "font-mono")}
-            />
-          </div>
+          <Input
+            id="ws-slug"
+            name="slug"
+            variant="surface"
+            value={slug}
+            // Typing a name with spaces is the common first move; the mock
+            // turns it into an address as you type instead of refusing it.
+            // Clearing the field hands it back to the name.
+            onChange={(event) => {
+              const next = event.target.value.toLowerCase().replace(/\s+/g, "-");
+              setSlug(next);
+              setSlugTouched(next !== "");
+            }}
+            placeholder="funny-cup"
+            spellCheck={false}
+            autoComplete="off"
+            required
+            aria-describedby="slug-preview slug-help"
+            aria-invalid={help.kind === "err"}
+          />
           <p
             id="slug-preview"
             className="mt-2 font-mono text-caption leading-relaxed text-[color:var(--aqt-fg-dim)] [overflow-wrap:anywhere]"
           >
-            {PLATFORM_ZONE}/workspace/<span className="text-[color:var(--aqt-fg-muted)]">{slug}</span>
+            {PLATFORM_ZONE}/workspace/
+            <span className="text-[color:var(--aqt-fg-muted)]">{slug}</span>
           </p>
           <p
             id="slug-help"
@@ -215,13 +184,23 @@ export function CreateForm() {
             )}
           >
             {help.kind === "ok" ? <Check className="mt-0.5 size-3.5 shrink-0" aria-hidden /> : null}
-            {help.kind === "err" ? <CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden /> : null}
+            {help.kind === "err" ? (
+              <CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            ) : null}
             <span>{help.msg}</span>
           </p>
         </div>
       </div>
       <div className="flex flex-col items-start gap-3">
-        <button type="submit" disabled={pending} aria-busy={pending} className={owtButton({ variant: "primary", size: "lg" })}>
+        {/* owtButton carries the whole marketing look; Button only supplies the element. */}
+        <Button
+          type="submit"
+          variant={null}
+          size={null}
+          disabled={pending}
+          aria-busy={pending}
+          className={owtButton({ variant: "primary", size: "lg" })}
+        >
           {user ? (
             t("submit")
           ) : (
@@ -230,8 +209,10 @@ export function CreateForm() {
               {t("submitSignedOut")}
             </>
           )}
-        </button>
-        <small className="max-w-[38rem] text-pretty text-caption leading-relaxed text-[color:var(--aqt-fg-dim)]">{t("note")}</small>
+        </Button>
+        <small className="max-w-[38rem] text-pretty text-caption leading-relaxed text-[color:var(--aqt-fg-dim)]">
+          {t("note")}
+        </small>
       </div>
       {formError ? (
         <p role="alert" className="text-body leading-relaxed text-[color:var(--aqt-rose-text)]">

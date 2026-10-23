@@ -10,11 +10,10 @@ team_entities/player_entities; only the nested .player is entity-gated).
 from __future__ import annotations
 
 import importlib
-import os
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 
-os.environ.setdefault("DEBUG", "true")
+from shared.schemas.role import RoleRef
 
 team_flows = importlib.import_module("src.services.team.flows")
 
@@ -26,9 +25,7 @@ def _player(*, workspace_member_player_id: int) -> SimpleNamespace:
             "created_at": None,
             "updated_at": None,
             "name": "Roster Player",
-            "sub_role": None,
             "rank": 1500,
-            "role": "damage",
             "tournament_id": 7,
             "team_id": 9,
             "is_newcomer": False,
@@ -38,6 +35,7 @@ def _player(*, workspace_member_player_id: int) -> SimpleNamespace:
             "workspace_member_id": 555,
         },
         rank=1500,
+        role_ref=RoleRef(dimension="player_role", role="damage"),
         workspace_member=SimpleNamespace(player_id=workspace_member_player_id),
         tournament=None,
         team=None,

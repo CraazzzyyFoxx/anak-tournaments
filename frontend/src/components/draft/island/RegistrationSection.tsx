@@ -3,12 +3,16 @@
 import { useTranslations } from "next-intl";
 
 import { AnswerValue } from "@/components/forms/AnswerValue";
+import type { LadderedOntology } from "@/lib/roster/ontology";
 import type { DraftPlayer } from "@/types/draft.types";
 
 const EYEBROW = "text-label font-semibold text-[color:var(--aqt-fg-muted)]";
 
 /** Public registration answers and the organizer's notes: the card's Information view. */
-export function RegistrationSection({ player }: Readonly<{ player: DraftPlayer }>) {
+export function RegistrationSection({
+  player,
+  ontology
+}: Readonly<{ player: DraftPlayer; ontology: LadderedOntology | null }>) {
   const t = useTranslations("draftRedesign");
   const notes = player.notes?.trim() ? player.notes : null;
   // Every public answer with the field's CURRENT label and kind — no form schema needed here.
@@ -36,6 +40,7 @@ export function RegistrationSection({ player }: Readonly<{ player: DraftPlayer }
                     value={entry.value}
                     kind={entry.type}
                     labels={{ yes: t("customFieldYes"), no: t("customFieldNo") }}
+                    ontology={ontology}
                   />
                 </dd>
               </div>

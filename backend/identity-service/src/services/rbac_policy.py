@@ -1,19 +1,19 @@
 """RBAC authorization policy — the guards, none of the data access.
 
 Pure predicate/raise decisions over an already-loaded ``AuthUser``. Three
-different scoping shapes exist deliberately and each emits its own message; the
-admin surface has shipped them long enough that the strings are part of the
-contract, so they are reproduced rather than unified.
+different scoping shapes exist deliberately and each emits its own message:
+the strings are part of the admin client's contract, so they are not unified.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.identity.rbac import Permission, Role
-from src import models
+from src.schemas.auth import permission_key
 
 
 class RbacPolicy:
@@ -33,23 +33,6 @@ class RbacPolicy:
     DENY_PROTECTED_RESOURCES = frozenset({"*", "role", "permission", "auth_user"})
 
     @staticmethod
-    def actor_label(user: models.AuthUser) -> str | None:
-        """Snapshot of the actor's display name at the moment of the action.
-
-        identity-svc resolves ``current_user`` from the bearer token before any
-        flow runs, so this is a live row rather than an id lifted off an
-        envelope: the label is a true snapshot and keeps the row readable after
-        the account is deleted.
-        """
-        return user.username or user.email
-
-    @staticmethod
-    def permission_key(resource: str, action: str) -> str:
-        if resource == "*" and action == "*":
-            return "admin.*"
-        return f"{resource}.{action}"
-
-    @staticmethod
     def has_global(user: models.AuthUser, resource: str, action: str) -> bool:
         return bool(getattr(user, "is_superuser", False)) or user.has_permission(resource, action)
 
@@ -62,7 +45,7 @@ class RbacPolicy:
     @staticmethod
     def effective_permissions(user: models.AuthUser) -> list[str]:
         keys = {
-            RbacPolicy.permission_key(permission.resource, permission.action)
+            permission_key(permission.resource, permission.action)
             for role in user.roles
             if role.workspace_id is None
             for permission in role.permissions
@@ -78,8 +61,7 @@ class RbacPolicy:
         """Require an exact global ``resource.action`` grant.
 
         Deliberately has no superuser shortcut: ``has_permission`` already grants
-        one for admin-equivalent holders, and the check this replaces never
-        consulted ``is_superuser`` either.
+        one for admin-equivalent holders.
         """
         if not user.has_permission(resource, action):
             raise HTTPException(
@@ -152,14 +134,13 @@ class RbacPolicy:
         permissions: Sequence[Permission],
         workspace_id: int | None,
     ) -> None:
-        """Privilege-ceiling guard (review M / RBAC): an actor may only
-        create/update/assign a role whose permission set is a SUBSET of the
-        permissions the actor themselves effectively holds.
-        Without this, ``role.create`` + ``role.update`` (or a workspace ``role.*``)
-        would let a limited operator mint or hand out a role more powerful than
-        their own — a straightforward privilege escalation. Superusers (and, via
-        ``has_*_permission``, global-admin-equivalent holders / workspace wildcard
-        owners) bypass, since they already hold everything.
+        """Privilege ceiling: a role an actor creates, updates or assigns may only
+        carry permissions the actor effectively holds in that scope.
+
+        Without it ``role.create`` + ``role.update`` (or a workspace ``role.*``)
+        would let a limited operator mint a role more powerful than their own.
+        Superusers (and, via ``has_*_permission``, global-admin-equivalent
+        holders / workspace wildcard owners) bypass, since they hold everything.
         """
         if getattr(user, "is_superuser", False):
             return
@@ -173,7 +154,7 @@ class RbacPolicy:
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=(
                         "Permission denied: cannot grant a role carrying a permission you do not "
-                        f"hold ({self.permission_key(permission.resource, permission.action)})"
+                        f"hold ({permission_key(permission.resource, permission.action)})"
                     ),
                 )
 

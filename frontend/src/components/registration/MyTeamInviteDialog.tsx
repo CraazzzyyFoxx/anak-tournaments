@@ -2,26 +2,21 @@
 
 import { Copy } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useRef } from "react";
+import { useId, useRef } from "react";
 
+import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { notify } from "@/lib/notify";
 import { buildInviteLink } from "@/lib/registration/invite-link";
-import { cn } from "@/lib/utils";
+import { roleOf } from "@/lib/roster/role-ref";
+import type { RoleOntology } from "@/lib/roster/ontology";
 
 import type { MyTeamInviteController } from "./useMyTeamInvite";
-
-const OPTION_CLASS =
-  "block rounded-lg border px-3 py-1.5 text-sm transition-colors peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[color:var(--aqt-teal)]";
-const OPTION_SELECTED_CLASS =
-  "border-[color:var(--aqt-accent)] bg-[color:color-mix(in_srgb,var(--aqt-accent)_12%,transparent)]";
-const OPTION_IDLE_CLASS = "border-[color:var(--aqt-border)] hover:bg-muted/40";
-const OPTION_LABEL_CLASS =
-  "block cursor-pointer active:scale-[0.96] transition-transform duration-150 ease-out";
 
 interface MyTeamInviteDialogProps {
   invite: MyTeamInviteController;
@@ -34,6 +29,11 @@ interface MyTeamInviteDialogProps {
   /** Any roster write in flight, from the card's own pending set. */
   busy: boolean;
   slotLabel: (code: string) => string;
+  /** The owner game's scoped ontology, for a free agent's role glyphs; `null` while it loads. */
+  ontology: RoleOntology | null;
+  /** `false` in a one-role game: every slot is that role, so the invite asks none (`invite.slot` already holds it)
+   *  and a free agent's role glyphs would repeat it on every row. */
+  showsSlots: boolean;
 }
 
 export default function MyTeamInviteDialog({
@@ -42,11 +42,14 @@ export default function MyTeamInviteDialog({
   benchOpen,
   busy,
   slotLabel,
+  ontology,
+  showsSlots,
 }: Readonly<MyTeamInviteDialogProps>) {
   const t = useTranslations("registrationTeams");
   const tCommon = useTranslations("common");
   const { issuedToken } = invite;
   const searchRef = useRef<HTMLInputElement>(null);
+  const id = useId();
 
   return (
     <Dialog open={invite.open && canEditRoster} onOpenChange={invite.setOpen}>
@@ -79,63 +82,46 @@ export default function MyTeamInviteDialog({
             {/* Two named modes, not one dialog that silently becomes a link
                 when nobody is selected: the two invites differ in who can use
                 them, and that choice must be made on purpose. */}
-            <fieldset className="grid gap-1.5">
-              <legend className="text-sm font-medium">{t("invite.modeLabel")}</legend>
-              <div className="flex flex-wrap gap-2">
+            <div className="grid gap-1.5">
+              <p id={`${id}-mode`} className="text-sm font-medium">
+                {t("invite.modeLabel")}
+              </p>
+              <RadioGroup
+                aria-labelledby={`${id}-mode`}
+                value={invite.mode}
+                onValueChange={(mode) => invite.selectMode(mode as MyTeamInviteController["mode"])}
+                className="flex flex-wrap gap-2"
+              >
                 {(["link", "targeted"] as const).map((mode) => (
-                  <label key={mode} className={OPTION_LABEL_CLASS}>
-                    <input
-                      type="radio"
-                      name="invite-mode"
-                      value={mode}
-                      checked={invite.mode === mode}
-                      onChange={() => invite.selectMode(mode)}
-                      className="peer sr-only"
-                    />
-                    <span
-                      className={cn(
-                        OPTION_CLASS,
-                        invite.mode === mode ? OPTION_SELECTED_CLASS : OPTION_IDLE_CLASS
-                      )}
-                    >
-                      {mode === "link" ? t("invite.modeLink") : t("invite.modeAccount")}
-                    </span>
-                  </label>
+                  <RadioGroupItem key={mode} value={mode} variant="card">
+                    {mode === "link" ? t("invite.modeLink") : t("invite.modeAccount")}
+                  </RadioGroupItem>
                 ))}
-              </div>
+              </RadioGroup>
               <p className="text-xs text-[color:var(--aqt-fg-muted)]">
                 {invite.mode === "link" ? t("invite.modeLinkHint") : t("invite.modeAccountHint")}
               </p>
-            </fieldset>
+            </div>
 
-            <fieldset className="grid gap-1.5">
-              <legend className="text-sm font-medium">{t("invite.slotLabel")}</legend>
-              <div className="flex flex-wrap gap-2">
-                {invite.selectableSlots.map((code) => {
-                  const selected = invite.slot === code;
-                  return (
-                    <label key={code} className={OPTION_LABEL_CLASS}>
-                      <input
-                        type="radio"
-                        name="invite-slot"
-                        value={code}
-                        checked={selected}
-                        onChange={() => invite.setSlot(code)}
-                        className="peer sr-only"
-                      />
-                      <span
-                        className={cn(
-                          OPTION_CLASS,
-                          selected ? OPTION_SELECTED_CLASS : OPTION_IDLE_CLASS
-                        )}
-                      >
-                        {slotLabel(code)}
-                      </span>
-                    </label>
-                  );
-                })}
+            {showsSlots ? (
+              <div className="grid gap-1.5">
+                <p id={`${id}-slot`} className="text-sm font-medium">
+                  {t("invite.slotLabel")}
+                </p>
+                <RadioGroup
+                  aria-labelledby={`${id}-slot`}
+                  value={invite.slot ?? ""}
+                  onValueChange={invite.setSlot}
+                  className="flex flex-wrap gap-2"
+                >
+                  {invite.selectableSlots.map((code) => (
+                    <RadioGroupItem key={code} value={code} variant="card">
+                      {slotLabel(code)}
+                    </RadioGroupItem>
+                  ))}
+                </RadioGroup>
               </div>
-            </fieldset>
+            ) : null}
 
             {benchOpen && (
               <Label className="flex items-center gap-2 text-sm">
@@ -198,49 +184,37 @@ export default function MyTeamInviteDialog({
                   <p className="text-xs text-[color:var(--aqt-fg-muted)]">{t("picker.noMatch")}</p>
                 )}
                 {invite.matchingAgents.length > 0 && (
-                  <fieldset>
-                    <legend className="sr-only">{t("picker.label")}</legend>
-                    <ul className="grid max-h-48 gap-1 overflow-y-auto">
-                      {invite.matchingAgents.map((agent) => {
-                        const selected = invite.targetRegistrationId === agent.registration_id;
-                        return (
-                          <li key={agent.registration_id}>
-                            <label className={OPTION_LABEL_CLASS}>
-                              <input
-                                type="radio"
-                                name="invite-target-agent"
-                                value={agent.registration_id}
-                                checked={selected}
-                                onChange={() =>
-                                  invite.setTargetRegistrationId(agent.registration_id)
-                                }
-                                className="peer sr-only"
-                              />
-                              <span
-                                className={cn(
-                                  "flex w-full flex-wrap items-center gap-2 rounded-lg border px-3 py-1.5 text-left text-sm transition-colors",
-                                  "peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[color:var(--aqt-teal)]",
-                                  selected ? OPTION_SELECTED_CLASS : OPTION_IDLE_CLASS
-                                )}
-                              >
-                                <span className="truncate">{agent.primary_handle}</span>
-                                {/* Roles on the row: the captain is filling one specific
-                                    slot and should spot a tank without opening a profile. */}
-                                {agent.roles.map((role) => (
-                                  <span
-                                    key={role}
-                                    className="rounded-full border border-[color:var(--aqt-border-2)] px-2 py-0.5 text-label text-[color:var(--aqt-fg-muted)]"
-                                  >
-                                    {slotLabel(role)}
-                                  </span>
-                                ))}
-                              </span>
-                            </label>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </fieldset>
+                  <RadioGroup
+                    aria-label={t("picker.label")}
+                    value={invite.targetRegistrationId == null ? "" : String(invite.targetRegistrationId)}
+                    onValueChange={(registrationId) =>
+                      invite.setTargetRegistrationId(Number(registrationId))
+                    }
+                    className="max-h-48 gap-1 overflow-y-auto"
+                  >
+                    {invite.matchingAgents.map((agent) => (
+                      <RadioGroupItem
+                        key={agent.registration_id}
+                        value={String(agent.registration_id)}
+                        variant="card"
+                        className="flex w-full flex-wrap items-center gap-2"
+                      >
+                        <span className="truncate">{agent.primary_handle}</span>
+                        {/* Roles on the row: the captain is filling one specific
+                            slot and should spot a tank without opening a profile. */}
+                        {showsSlots &&
+                          agent.roles.map((role) => (
+                            <PlayerRoleIcon
+                              key={`${role.dimension}:${role.role}`}
+                              role={{ dimension: role.dimension, role: roleOf(role) }}
+                              ontology={ontology}
+                              label={slotLabel(roleOf(role))}
+                              size={16}
+                            />
+                          ))}
+                      </RadioGroupItem>
+                    ))}
+                  </RadioGroup>
                 )}
               </div>
             )}

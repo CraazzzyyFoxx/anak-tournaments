@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
 import { useCookieConsentStore } from "@/stores/cookie-consent.store";
 
 /**
@@ -13,8 +14,8 @@ export default function CookieSettingsButton({ className }: Readonly<{ className
   const reopen = useCookieConsentStore((state) => state.reopen);
 
   return (
-    <button type="button" className={className} onClick={reopen}>
+    <Button variant="link" size="inline" className={className} onClick={reopen}>
       {t("legal.cookieConsent.manage")}
-    </button>
+    </Button>
   );
 }

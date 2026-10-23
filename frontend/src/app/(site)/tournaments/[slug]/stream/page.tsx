@@ -6,15 +6,10 @@ type TournamentPublicStreamPageProps = {
 };
 
 /**
- * Server component for the tournament id and the shared overview, but with NO
- * stream prefetch.
- *
- * Every field this page renders — live/offline, viewer counts, uptime — is
- * wrong by the time the HTML reaches the reader, and the page is a video player
- * that cannot exist before hydration anyway. Baking a viewer count into a
- * cached-at-the-edge document would be a worse answer than an empty rail that
- * fills in a moment. The shell owns the same `tournamentQueryKeys.streams`
- * entry for its dock, so the read starts once for the whole page regardless.
+ * Server component for the tournament id and the shared overview; no prefetch
+ * of its own. The streams this page renders are the shell's: the layout's
+ * overview boundary seeds `tournamentQueryKeys.streams` for the broadcast dock
+ * and the nav's Stream tab, and this view reads that same entry.
  */
 export default async function TournamentPublicStreamPage({
   params

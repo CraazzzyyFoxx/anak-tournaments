@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { ChevronDown, ChevronUp, ExternalLink, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
 
 export interface InspectorProps {
@@ -26,20 +28,6 @@ export interface InspectorProps {
 
 /** `lg` in `globals.css`'s `@theme` — the width at which the panel fits beside a table. */
 const PANEL_MEDIA_QUERY = "(min-width: 1024px)";
-
-function useIsWideViewport(): boolean {
-  const [isWide, setIsWide] = useState(false);
-
-  useEffect(() => {
-    const query = window.matchMedia(PANEL_MEDIA_QUERY);
-    const sync = () => setIsWide(query.matches);
-    sync();
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
-  }, []);
-
-  return isWide;
-}
 
 /** Arrow keys must not steal caret movement inside a field in the inspector. */
 function isTextEntry(target: EventTarget | null): boolean {
@@ -70,7 +58,7 @@ export function Inspector({
   openHref
 }: Readonly<InspectorProps>) {
   const t = useTranslations("kit.actions");
-  const isWide = useIsWideViewport();
+  const isWide = useMediaQuery(PANEL_MEDIA_QUERY);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const isOpen = openId !== null;
 
@@ -147,24 +135,18 @@ export function Inspector({
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
         {onPrev ? (
-          <Button variant="ghost" size="icon" className="size-7" aria-label={t("previousRow")} onClick={onPrev}>
-            <ChevronUp aria-hidden className="size-4" />
+          <Button variant="ghost" size="icon-sm" aria-label={t("previousRow")} onClick={onPrev}>
+            <ChevronUp aria-hidden />
           </Button>
         ) : null}
         {onNext ? (
-          <Button variant="ghost" size="icon" className="size-7" aria-label={t("nextRow")} onClick={onNext}>
-            <ChevronDown aria-hidden className="size-4" />
+          <Button variant="ghost" size="icon-sm" aria-label={t("nextRow")} onClick={onNext}>
+            <ChevronDown aria-hidden />
           </Button>
         ) : null}
         {showClose ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7"
-            aria-label={t("closeInspector")}
-            onClick={onClose}
-          >
-            <X aria-hidden className="size-4" />
+          <Button variant="ghost" size="icon-sm" aria-label={t("closeInspector")} onClick={onClose}>
+            <X aria-hidden />
           </Button>
         ) : null}
       </div>
@@ -209,16 +191,11 @@ export function Inspector({
   }
 
   return (
-    <aside
-      aria-label={t("rowInspector")}
-      data-inspector-mode="panel"
-      className={cn(
-        "flex max-h-[calc(100dvh-6rem)] flex-col overflow-hidden rounded-xl border border-border bg-card",
-        "sticky top-16 animate-in fade-in slide-in-from-right-2 duration-150 motion-reduce:animate-none"
-      )}
-    >
-      {renderHeader(true)}
-      {body}
-    </aside>
+    <Card asChild variant="flat" className="sticky top-16 flex max-h-[calc(100dvh-6rem)] flex-col overflow-hidden">
+      <aside aria-label={t("rowInspector")} data-inspector-mode="panel">
+        {renderHeader(true)}
+        {body}
+      </aside>
+    </Card>
   );
 }

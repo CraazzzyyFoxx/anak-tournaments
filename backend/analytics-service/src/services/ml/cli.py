@@ -5,7 +5,11 @@ Subcommands:
 - ``train --cutoff <tid>``        — train every active model kind.
 - ``infer --tournament <tid>``    — run inference for one tournament.
 - ``backfill --from N --to M``    — inference sweep over a range.
-- ``backtest --window K``         — Phase-6 rolling backtest.
+- ``backtest --window K``         — rolling backtest.
+
+The tournament owns its discipline: ``--discipline`` is optional and rejected when it contradicts the tournament
+named by ``--cutoff`` (train, backtest) or ``--tournament`` (infer). ``backfill`` narrows the sweep to it; a
+``backtest`` without ``--cutoff`` needs it to say which game's latest tournaments to score.
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ import sys
 from collections.abc import Sequence
 
 from src.core import db
+from src.core.analytics_exports import tournament_discipline
 
 from .inference.backfill import backfill_range
 from .inference.runner import run_for_tournament
@@ -34,6 +39,7 @@ def _parse_model_kinds(value: str | None) -> list[str] | None:
 
 async def _cmd_train(args: argparse.Namespace) -> int:
     async with db.async_session_maker() as session:
+        await tournament_discipline(session, int(args.cutoff), explicit=args.discipline)
         summary = await train_all_models(
             session,
             cutoff_tournament_id=int(args.cutoff),
@@ -47,6 +53,7 @@ async def _cmd_train(args: argparse.Namespace) -> int:
 
 async def _cmd_infer(args: argparse.Namespace) -> int:
     async with db.async_session_maker() as session:
+        await tournament_discipline(session, int(args.tournament), explicit=args.discipline)
         summary = await run_for_tournament(
             session,
             int(args.tournament),
@@ -65,13 +72,13 @@ async def _cmd_backfill(args: argparse.Namespace) -> int:
             to_tournament_id=int(args.to_id),
             workspace_id=args.workspace_id,
             model_kinds=_parse_model_kinds(args.models),
+            discipline=args.discipline,
         )
     print(json.dumps(summary, indent=2, default=str))
     return 0
 
 
 async def _cmd_backtest(args: argparse.Namespace) -> int:
-    # Phase 6 implementation wires this to training/backtest.py.
     from .training.backtest import backtest_service
 
     async with db.async_session_maker() as session:
@@ -80,9 +87,10 @@ async def _cmd_backtest(args: argparse.Namespace) -> int:
             window=int(args.window),
             cutoff_tournament_id=int(args.cutoff) if args.cutoff else None,
             workspace_id=args.workspace_id,
+            discipline=args.discipline,
         )
         if getattr(args, "persist", True):
-            await backtest_service.persist_backtest_summary(session, report)
+            await backtest_service.persist_backtest_summary(session, report, discipline=report["discipline"])
     if args.output:
         with open(args.output, "w", encoding="utf-8") as fh:
             json.dump(report, fh, indent=2, default=str)
@@ -97,6 +105,11 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Limit operations to a single workspace",
+    )
+    parser.add_argument(
+        "--discipline",
+        default=None,
+        help="Game code; derived from the tournament, rejected when it contradicts it",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 

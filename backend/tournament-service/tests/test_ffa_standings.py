@@ -12,7 +12,6 @@ gets a row, and every row is a GROUP row (``buchholz`` set, never NULL).
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,12 +21,11 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 standings_service = importlib.import_module("src.services.standings.service")
 
 from shared.core.enums import StageType  # noqa: E402
-from shared.domain.ffa_scoring import FfaGameLine  # noqa: E402
+from shared.domain.encounter_scoring import GameLine  # noqa: E402
 from tests._stage_regulation import stage_regulation  # noqa: E402
 
 #: Places pay 10/6/4/2 and every kill pays 1 -- enough for two teams to reach
@@ -69,9 +67,14 @@ def _item(team_ids: list[int], *, item_id: int = 147) -> SimpleNamespace:
     )
 
 
-def _game(rows: list[tuple[int, int, int, int]]) -> tuple[FfaGameLine, ...]:
+def _game(rows: list[tuple[int, int, int, int]]) -> tuple[GameLine, ...]:
     return tuple(
-        FfaGameLine(team_id=team_id, placement=placement, stats={"kills": kills, "deaths": deaths})
+        GameLine(
+            encounter_team_id=team_id,
+            score=None,
+            placement=placement,
+            values={"kills": kills, "deaths": deaths},
+        )
         for team_id, placement, kills, deaths in rows
     )
 
@@ -153,7 +156,7 @@ class FfaStageStandingsTests(TestCase):
 
         standings = standings_service._build_ffa_stage_standings(_tournament(), stage, item, [], GAMES)
 
-        # ``buchholz IS NULL`` is how app-service and parser-service spot a
+        # ``buchholz IS NULL`` is how app-service and stats-service spot a
         # playoff row; an ffa league is a group stage, so 0.0, never NULL.
         self.assertEqual([0.0] * 4, [row.buchholz for row in standings])
         self.assertEqual([None] * 4, [row.full_buchholz for row in standings])

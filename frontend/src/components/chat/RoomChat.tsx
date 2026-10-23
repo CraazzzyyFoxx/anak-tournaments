@@ -5,14 +5,7 @@ import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 import { useId, useState, type KeyboardEvent } from "react";
 
-import {
-  Conversation,
-  ConversationContent,
-  ConversationEmptyState,
-  ConversationScrollButton
-} from "@/components/ai-elements/conversation";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { Button } from "@/components/ui/button";
 import { Dock } from "@/components/ui/dock";
 import {
@@ -23,13 +16,6 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger
 } from "@/components/ui/context-menu";
-import {
-  Message,
-  MessageAvatar,
-  MessageContent,
-  MessageGroup,
-  MessageHeader
-} from "@/components/ui/message";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
@@ -38,6 +24,14 @@ import type { ChatRoomDescriptor } from "@/lib/realtime/chat-rooms";
 import { notify } from "@/lib/notify";
 import type { ChatMessage } from "@/types/chat.types";
 
+import { Bubble, BubbleContent } from "./bubble";
+import {
+  Conversation,
+  ConversationContent,
+  ConversationEmptyState,
+  ConversationScrollButton
+} from "./conversation";
+import { Message, MessageAvatar, MessageContent, MessageGroup, MessageHeader } from "./message";
 import { MAX_CHAT_LENGTH, useRoomChat } from "./useRoomChat";
 
 /** Show the counter only once the cap is in sight. */
@@ -71,15 +65,6 @@ function streaks(messages: ChatMessage[]): ChatMessage[][] {
     else grouped.push([message]);
   }
   return grouped;
-}
-
-/**
- * One letter for the avatar. A BattleTag's discriminator (`Fox#2130`) is not
- * part of the name, and the first letter of a Cyrillic nickname is a code point
- * rather than a `charAt`.
- */
-function initial(name: string): string {
-  return [...name.replace(/#.*$/u, "").trim()][0]?.toUpperCase() ?? "?";
 }
 
 /**
@@ -194,10 +179,12 @@ export function RoomChat({
           </label>
         ) : null
       }
-      // Taller than the default dock and capped by the viewport, so the
-      // transcript scrolls inside the panel instead of running off the screen
-      // on a laptop.
-      className="@container/panel h-[min(32rem,calc(100dvh-6rem))] w-[min(22rem,calc(100vw-2rem))]"
+      // Taller than the default dock and capped by the viewport (less any
+      // command bar the dock stands on), so the transcript scrolls inside the
+      // panel instead of running off the screen on a laptop. On a phone the
+      // panel is full width, so it keeps to the lower 40% and leaves the
+      // room's own controls above it reachable while it is open.
+      className="@container/panel h-[min(32rem,40dvh)] w-[min(22rem,calc(100vw-2rem))] sm:h-[min(32rem,calc(100dvh-6rem-var(--overlay-bar-h,0px)))]"
     >
       <div className="flex min-h-0 flex-1 flex-col">
         {/* `Conversation` is the stick-to-bottom scroller and already sets
@@ -229,16 +216,11 @@ export function RoomChat({
                               avatar the group shows. */}
                         <MessageAvatar>
                           {index === streak.length - 1 ? (
-                            <Avatar className="size-8">
-                              {message.author_avatar_url ? (
-                                // Decorative: the author's name is right
-                                // above it, so alt text would only repeat.
-                                <AvatarImage src={message.author_avatar_url} alt="" />
-                              ) : null}
-                              <AvatarFallback className="text-xs font-semibold">
-                                {initial(message.author_name)}
-                              </AvatarFallback>
-                            </Avatar>
+                            // Decorative: the author's name is right above it.
+                            <PlayerAvatar
+                              user={{ name: message.author_name, avatar_url: message.author_avatar_url }}
+                              size={32}
+                            />
                           ) : null}
                         </MessageAvatar>
                         <MessageContent>
@@ -380,7 +362,7 @@ export function RoomChat({
                 aria-describedby={remaining <= COUNTER_AT ? `${hintId} ${counterId}` : hintId}
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={onKeyDown}
-                className="min-h-[2.75rem] resize-none border-0 bg-transparent text-base shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 sm:text-sm"
+                className="min-h-[2.75rem] resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
               />
               <div className="flex items-end justify-between gap-2 px-2 pb-2">
                 <p id={hintId} className="sr-only">

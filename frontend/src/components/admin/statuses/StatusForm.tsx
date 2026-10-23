@@ -1,20 +1,15 @@
 "use client";
 
 import { createElement, useId, useMemo, useState } from "react";
-import { Check, ChevronsUpDown, Pipette } from "lucide-react";
+import { Pipette } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import StatusMetaBadge from "@/components/status/StatusMetaBadge";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList
-} from "@/components/ui/command";
+import { ColorSwatch } from "@/components/ui/color-swatch";
+import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
+import { CommandGroup, CommandItem } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -94,8 +89,8 @@ function StatusColorPicker({
   const [open, setOpen] = useState(false);
   const triggerId = useId();
   const hexId = useId();
-  // `<input type="color">` and the swatch preview both need a literal hex; the
-  // DOM API cannot take a CSS variable. Data-shaped, not chrome — exempt.
+  // The swatch previews need a literal hex; the DOM API cannot take a CSS
+  // variable. Data-shaped, not chrome — exempt.
   const normalizedValue = normalizeHexColor(value) || "#94a3b8";
 
   return (
@@ -112,11 +107,11 @@ function StatusColorPicker({
           >
             <span className="flex min-w-0 items-center gap-3">
               <span
-                className="size-5 shrink-0 rounded-md border border-border shadow-sm"
+                className="size-5 shrink-0 rounded-md border border-border"
                 style={{ backgroundColor: normalizedValue }}
                 aria-hidden
               />
-              <span className="truncate font-mono text-xs uppercase">
+              <span className={cn("truncate text-xs", normalizeHexColor(value) && "font-mono")}>
                 {normalizeHexColor(value) || t("default")}
               </span>
             </span>
@@ -128,7 +123,7 @@ function StatusColorPicker({
           className="z-[60] w-[var(--radix-popover-trigger-width)] min-w-[var(--radix-popover-trigger-width)] space-y-4"
         >
           <div className="space-y-2">
-            <p className={EYEBROW_CLASS} id={`${triggerId}-presets`}>
+            <p className={eyebrowClass("muted")} id={`${triggerId}-presets`}>
               {t("presets")}
             </p>
             <div
@@ -139,13 +134,12 @@ function StatusColorPicker({
               {STATUS_COLOR_PRESETS.map((color) => {
                 const selected = normalizeHexColor(value).toLowerCase() === color.toLowerCase();
                 return (
-                  <button
+                  <Button
                     key={color}
                     type="button"
-                    className={cn(
-                      "h-8 w-8 shrink-0 rounded-md border border-border transition hover:border-[color:var(--aqt-border-3)]",
-                      selected && "ring-2 ring-ring ring-offset-2 ring-offset-background"
-                    )}
+                    variant="outline"
+                    size="icon"
+                    className={cn(selected && "ring-2 ring-ring ring-offset-2 ring-offset-background")}
                     style={{ backgroundColor: color }}
                     onClick={() => onChange(color)}
                     aria-pressed={selected}
@@ -157,17 +151,14 @@ function StatusColorPicker({
           </div>
 
           <div className="space-y-2">
-            <p className={EYEBROW_CLASS}>{t("custom")}</p>
+            <p className={eyebrowClass("muted")}>{t("custom")}</p>
             <div className="flex items-center gap-2">
-              <span className="flex h-10 w-12 items-center justify-center rounded-md border border-input bg-background shadow-sm">
-                <input
-                  type="color"
-                  className="size-6 cursor-pointer rounded-md border border-border bg-transparent p-0"
-                  aria-label={t("pickCustom")}
-                  value={normalizedValue}
-                  onChange={(event) => onChange(event.target.value)}
-                />
-              </span>
+              <ColorSwatch
+                value={normalizeHexColor(value)}
+                fallback={normalizedValue}
+                label={t("pickCustom")}
+                onChange={onChange}
+              />
               <Label htmlFor={hexId} className="sr-only">
                 {t("hexCode")}
               </Label>
@@ -178,7 +169,7 @@ function StatusColorPicker({
                 value={value}
                 onChange={(event) => onChange(normalizeHexColor(event.target.value))}
                 placeholder="#38bdf8"
-                className="font-mono uppercase"
+                className="font-mono"
               />
             </div>
           </div>
@@ -268,63 +259,41 @@ export function StatusForm({
         </div>
         <div className="space-y-2">
           <Label htmlFor={`${fieldId}-icon`}>{t("icon")}</Label>
-          <Popover open={iconPickerOpen} onOpenChange={setIconPickerOpen} modal={false}>
-            <PopoverTrigger asChild>
-              <Button
-                id={`${fieldId}-icon`}
-                variant="outline"
-                role="combobox"
-                aria-haspopup="listbox"
-                aria-expanded={iconPickerOpen}
-                className="w-full justify-between"
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  {selectedIcon}
-                  <span className="truncate">{selectedIconSlug}</span>
-                </span>
-                <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" aria-hidden />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              className="z-[60] w-[var(--radix-popover-trigger-width)] min-w-[var(--radix-popover-trigger-width)] p-0"
-              align="start"
-            >
-              <Command>
-                <CommandInput placeholder={t("searchIcons")} />
-                <CommandList className="max-h-64">
-                  <CommandEmpty>{t("noIconMatches")}</CommandEmpty>
-                  <CommandGroup>
-                    {STATUS_ICON_OPTIONS.map(({ slug, Icon }) => (
-                      <CommandItem
-                        key={slug}
-                        value={slug}
-                        onSelect={(nextSlug) => {
-                          onChange({ ...value, icon_slug: nextSlug });
-                          setIconPickerOpen(false);
-                        }}
-                      >
-                        <span className="flex min-w-0 items-center gap-2">
-                          <Icon
-                            className="size-4"
-                            aria-hidden
-                            style={value.icon_color ? { color: value.icon_color } : undefined}
-                          />
-                          <span className="truncate">{slug}</span>
-                        </span>
-                        <Check
-                          aria-hidden
-                          className={cn(
-                            "ml-auto size-4",
-                            value.icon_slug === slug ? "opacity-100" : "opacity-0"
-                          )}
-                        />
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
+          <Combobox
+            id={`${fieldId}-icon`}
+            open={iconPickerOpen}
+            onOpenChange={setIconPickerOpen}
+            label={
+              <span className="flex min-w-0 items-center gap-2">
+                {selectedIcon}
+                <span className="truncate">{selectedIconSlug}</span>
+              </span>
+            }
+            labelTitle={selectedIconSlug}
+            searchPlaceholder={t("searchIcons")}
+            emptyMessage={t("noIconMatches")}
+          >
+            <CommandGroup>
+              {STATUS_ICON_OPTIONS.map(({ slug, Icon }) => (
+                <CommandItem
+                  key={slug}
+                  value={slug}
+                  onSelect={(nextSlug) => {
+                    onChange({ ...value, icon_slug: nextSlug });
+                    setIconPickerOpen(false);
+                  }}
+                >
+                  <Icon
+                    className="size-4"
+                    aria-hidden
+                    style={value.icon_color ? { color: value.icon_color } : undefined}
+                  />
+                  <span className="min-w-0 flex-1 truncate">{slug}</span>
+                  <ComboboxCheck selected={value.icon_slug === slug} />
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </Combobox>
         </div>
         <StatusColorPicker
           value={value.icon_color}
@@ -368,9 +337,7 @@ export function StatusForm({
       ) : null}
       <div className="space-y-2">
         <p className="text-sm font-medium">{t("preview")}</p>
-        <div className="rounded-lg border p-3">
-          <StatusMetaBadge meta={previewMeta} fallbackValue="preview" />
-        </div>
+        <StatusMetaBadge meta={previewMeta} fallbackValue="preview" />
       </div>
     </div>
   );

@@ -17,6 +17,14 @@ export interface UseQueryParamsOptions {
    * that no longer exists.
    */
   resetOnChange?: string[];
+  /**
+   * Write the URL with the History API instead of the router. Next syncs
+   * `useSearchParams` from a native `pushState`/`replaceState` without a
+   * server round trip, so the change lands in the same tick — right for
+   * client-only state such as an open inspector row. Leave it off wherever a
+   * server component reads `searchParams` and must re-render.
+   */
+  shallow?: boolean;
 }
 
 /**
@@ -31,7 +39,8 @@ export interface UseQueryParamsOptions {
  */
 export function useQueryParams({
   mode = "replace",
-  resetOnChange = ["page"]
+  resetOnChange = ["page"],
+  shallow = false
 }: UseQueryParamsOptions = {}) {
   const router = useRouter();
   const pathname = usePathname();
@@ -58,10 +67,13 @@ export function useQueryParams({
 
       const query = next.toString();
       const url = query ? `${pathname}?${query}` : pathname;
-      if (mode === "push") router.push(url);
+      if (shallow) {
+        if (mode === "push") window.history.pushState(null, "", url);
+        else window.history.replaceState(null, "", url);
+      } else if (mode === "push") router.push(url);
       else router.replace(url, { scroll: false });
     },
-    [mode, pathname, resetOnChange, router, searchParams]
+    [mode, pathname, resetOnChange, router, searchParams, shallow]
   );
 
   return { searchParams, setParams };

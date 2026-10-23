@@ -5,8 +5,8 @@ import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AccountSection } from "@/components/admin/access/AccountCard";
-import { EmptyNote } from "@/components/kit/EmptyNote";
 import { formatDate, formatRelative } from "@/components/kit/format-time";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { accessQueryKeys } from "@/lib/access/query-keys";
@@ -45,7 +45,9 @@ type NotificationMessageKey =
   | "inviteAnswered"
   | "removedFromTeam"
   | "teamDisbanded"
-  | "teamRejected";
+  | "teamRejected"
+  | "mixBanRoom"
+  | "mixDraft";
 
 const KIND_LABELS: Record<string, NotificationMessageKey> = {
   "check_in.opened": "checkInOpened",
@@ -58,7 +60,9 @@ const KIND_LABELS: Record<string, NotificationMessageKey> = {
   "team_invite.answered": "inviteAnswered",
   "team.kicked": "removedFromTeam",
   "team.disbanded": "teamDisbanded",
-  "team.rejected": "teamRejected"
+  "team.rejected": "teamRejected",
+  "mix.ban_room_opened": "mixBanRoom",
+  "mix.draft_started": "mixDraft"
 };
 
 /**
@@ -98,18 +102,20 @@ export function AccountNotifications({
   return (
     <AccountSection
       title={tc("notifications")}
-      summary={data ? `${data.unread_count} unread` : undefined}
+      summary={data ? t("unreadCount", { count: data.unread_count }) : undefined}
     >
       {query.isLoading ? (
         <Skeleton className="h-24 w-full" />
       ) : !data ? (
-        <p className="text-xs text-muted-foreground">{t("loadError")}</p>
+        <PageStateCard
+          state="error"
+          title={t("loadError")}
+          onAction={() => void query.refetch()}
+        />
       ) : (
         <div className="space-y-3">
           {!data.discord_linked ? (
-            <EmptyNote size="sm" tone="warning">
-              {t("noDiscord")}
-            </EmptyNote>
+            <p className="text-caption text-muted-foreground">{t("noDiscord")}</p>
           ) : null}
 
           <div role="group" aria-label={t("discordDms")} className="space-y-1">
@@ -172,7 +178,7 @@ export function AccountNotifications({
                     delivery.workspace_id == null
                       ? null
                       : (workspaces.find((candidate) => candidate.id === delivery.workspace_id)
-                          ?.name ?? `Workspace #${delivery.workspace_id}`);
+                          ?.name ?? tc("workspaceFallback", { id: delivery.workspace_id }));
                   return (
                     <li key={delivery.id} className="flex items-baseline gap-2 text-xs">
                       <span className="min-w-0 flex-1 truncate">

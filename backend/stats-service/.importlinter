@@ -1,0 +1,95 @@
+[importlinter]
+root_packages =
+    src
+include_external_packages = True
+
+[importlinter:contract:rpc-no-sql]
+name = RPC transport owns no SQLAlchemy
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    src.rpc
+forbidden_modules =
+    sqlalchemy
+
+[importlinter:contract:domain-is-pure]
+name = domain/ stays free of sessions and transport
+type = forbidden
+source_modules =
+    src.domain
+forbidden_modules =
+    src.services
+    src.rpc
+    src.core.db
+    sqlalchemy
+
+[importlinter:contract:services-dont-import-rpc]
+name = services never import rpc
+type = forbidden
+source_modules =
+    src.services
+forbidden_modules =
+    src.rpc
+
+# ----------------------------------------------------------------------------
+# The public read surface (statistics, /users/*, achievement reads).
+#
+# Layers (high -> low):
+#   - achievement_reads: aggregates user/encounter/tournament behaviour
+#   - user: cross-domain player reads
+#   - hero, map, statistics: leaf domains
+# ----------------------------------------------------------------------------
+[importlinter:contract:read-services-layers]
+name = public read services layered hierarchy
+type = layers
+layers =
+    achievement_reads
+    user
+    hero | map | statistics
+containers =
+    src.services
+ignore_imports =
+    # ---- Known debt: map -> hero ----
+    src.services.map.service -> src.services.hero.queries
+    src.services.map.service -> src.services.hero.service
+
+    # ---- Known debt: lower layers reaching into user ----
+    src.services.map.service -> src.services.user.service
+
+# rpc/*.py decodes parameters, gates permissions and calls one service; it never reaches a query class directly.
+[importlinter:contract:rpc-goes-through-read-services]
+name = RPC transport must orchestrate via services, never query classes
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    src.rpc
+forbidden_modules =
+    src.services.user.queries
+    src.services.hero.queries
+    src.services.statistics.queries
+    src.services.achievement_reads.queries
+
+# Private mappers / query packages stay inside their domain: each consumer of tournament-flow data owns its own.
+[importlinter:contract:user-privates]
+name = user/ private modules belong to user/
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    src.services.statistics
+    src.services.hero
+    src.services.map
+forbidden_modules =
+    src.services.user.queries
+    src.services.user._mappers
+
+[importlinter:contract:achievement-reads-privates]
+name = achievement_reads/ private modules belong to achievement_reads/
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    src.services.user
+    src.services.statistics
+    src.services.hero
+    src.services.map
+forbidden_modules =
+    src.services.achievement_reads._mappers

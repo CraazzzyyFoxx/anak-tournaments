@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import functools
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, overload
 
 import sqlalchemy as sa
 
-from shared.domain import division_rank, ow_ladder
+from shared.disciplines import discipline, fallback_ladder
+from shared.domain import division_rank
 
 if TYPE_CHECKING:
     from shared.models.division_grid import DivisionGridVersion
@@ -20,8 +23,8 @@ class DivisionTier:
     rank_min: int
     rank_max: int | None
     icon_url: str
-    ow_rank_min: int | None = None
-    ow_rank_max: int | None = None
+    native_rank_min: int | None = None
+    native_rank_max: int | None = None
 
 
 @dataclass(frozen=True)
@@ -29,46 +32,42 @@ class DivisionGrid:
     version_id: int | None
     tiers: tuple[DivisionTier, ...]
 
-    def resolve_division(self, rank: int) -> DivisionTier:
+    @overload
+    def resolve_division(self, rank: int) -> DivisionTier: ...
+    @overload
+    def resolve_division(self, rank: int | None) -> DivisionTier | None: ...
+    def resolve_division(self, rank: int | None) -> DivisionTier | None:
         return division_rank.resolve_tier_for_rank(self, rank)  # type: ignore[return-value]
 
-    def resolve_division_number(self, rank: int) -> int:
+    @overload
+    def resolve_division_number(self, rank: int) -> int: ...
+    @overload
+    def resolve_division_number(self, rank: int | None) -> int | None: ...
+    def resolve_division_number(self, rank: int | None) -> int | None:
         return division_rank.resolve_division_for_rank(self, rank)
 
     def resolve_rank_from_division(self, division_number: int) -> int | None:
         return division_rank.resolve_rank_for_division(self, division_number)
 
-    def resolve_division_from_ow_rank(self, ow_rank: int) -> DivisionTier | None:
-        """Find the tier whose ow_rank_min/ow_rank_max range contains ow_rank.
+    def resolve_division_from_native_rank(self, native_rank: int) -> DivisionTier | None:
+        """Find the tier whose native range (``native_rank_min``/``native_rank_max``) contains the value.
 
-        The pair is treated as an unordered interval: admins enter the top
-        divisions high→low (e.g. "Ultimate 1 → Ultimate 3"), which stores
-        ow_rank_min > ow_rank_max. Comparing against ``min``/``max`` of the pair
-        keeps those tiers matching instead of silently dropping the highest
-        ranks.
-
-        When **no** tier carries an explicit OW range (the common case: the grid
-        was cloned from the default OW2 scale and the admin never filled the OW
-        mapping), the OW ``rank_value`` is assumed to already live on the grid's
-        native scale — the parser's default division→rank_value mapping is
-        SR-aligned exactly like the default grid — and is resolved by plain
-        ``rank_min``/``rank_max`` containment instead of being dropped. As soon
-        as at least one tier is explicitly configured the admin owns the
-        mapping: unconfigured tiers stay unreachable and a rank outside every
-        configured range returns None.
+        The bounds are unordered: admins may enter a band high-to-low. When no tier carries an explicit native
+        range, the value is assumed to already live on the grid's scale and resolves by ``rank_min``/``rank_max``.
+        Once any tier is configured, unconfigured tiers stay unreachable and values outside every range return None.
         """
         configured = False
         for tier in self.tiers:
-            if tier.ow_rank_min is None or tier.ow_rank_max is None:
+            if tier.native_rank_min is None or tier.native_rank_max is None:
                 continue
             configured = True
-            low = min(tier.ow_rank_min, tier.ow_rank_max)
-            high = max(tier.ow_rank_min, tier.ow_rank_max)
-            if low <= ow_rank <= high:
+            low = min(tier.native_rank_min, tier.native_rank_max)
+            high = max(tier.native_rank_min, tier.native_rank_max)
+            if low <= native_rank <= high:
                 return tier
         if configured or not self.tiers:
             return None
-        return self.resolve_division(ow_rank)
+        return self.resolve_division(native_rank)
 
     @property
     def max_division(self) -> int:
@@ -94,8 +93,8 @@ class DivisionGrid:
                     rank_min=int(t.rank_min),
                     rank_max=int(t.rank_max) if t.rank_max is not None else None,
                     icon_url=str(t.icon_url),
-                    ow_rank_min=int(t.ow_rank_min) if getattr(t, "ow_rank_min", None) is not None else None,
-                    ow_rank_max=int(t.ow_rank_max) if getattr(t, "ow_rank_max", None) is not None else None,
+                    native_rank_min=int(t.native_rank_min) if getattr(t, "native_rank_min", None) is not None else None,
+                    native_rank_max=int(t.native_rank_max) if getattr(t, "native_rank_max", None) is not None else None,
                 )
             )
 
@@ -120,11 +119,9 @@ class DivisionGrid:
 
 
 def _build_default_grid() -> DivisionGrid:
-    """The in-code fallback grid, derived from :data:`shared.domain.ow_ladder.LADDER`.
+    """The registry's fallback ladder, for reads that name no discipline.
 
-    Tiers come out top-first, which for this grid is already descending by
-    ``rank_min`` — the order :meth:`DivisionGrid.from_version` produces for a
-    stored grid, so both paths hand callers the same ordering.
+    A discipline-scoped read never falls back to another game's ladder. Tiers are descending by rank, as in stored grids.
     """
     tiers = tuple(
         DivisionTier(
@@ -136,12 +133,95 @@ def _build_default_grid() -> DivisionGrid:
             rank_max=tier.rank_max,
             icon_url=tier.icon_url,
         )
-        for tier in ow_ladder.iter_tiers()
+        for tier in fallback_ladder()
     )
     return DivisionGrid(version_id=None, tiers=tiers)
 
 
 DEFAULT_GRID: DivisionGrid = _build_default_grid()
+
+
+@functools.cache
+def ladder_grid(discipline_code: str) -> DivisionGrid | None:
+    """The discipline's own native ladder, or no in-code grid for a game without one."""
+    ladder = discipline(discipline_code).native_ladder
+    if not ladder:
+        return None
+    if ladder is fallback_ladder():
+        return DEFAULT_GRID
+    return DivisionGrid(
+        version_id=None,
+        tiers=tuple(
+            DivisionTier(
+                id=None,
+                slug=tier.slug,
+                number=tier.number,
+                name=tier.name,
+                rank_min=tier.rank_min,
+                rank_max=tier.rank_max,
+                icon_url=tier.icon_url,
+            )
+            for tier in ladder
+        ),
+    )
+
+
+def canonical_tier_number(tier: DivisionTier, source_grid: DivisionGrid, ladder: DivisionGrid) -> int:
+    """``tier`` of ``source_grid`` as a division number on ``ladder`` (the game's native ladder).
+
+    A tier with a native range lands on the ladder tier holding the range's midpoint; any other is placed
+    proportionally by its position between the source grid's first and last division.
+    """
+    if tier.native_rank_min is not None and tier.native_rank_max is not None:
+        low = min(int(tier.native_rank_min), int(tier.native_rank_max))
+        high = max(int(tier.native_rank_min), int(tier.native_rank_max))
+        return ladder.resolve_division((low + high) // 2).number
+
+    n_min, n_max = source_grid.min_division, source_grid.max_division
+    m_min, m_max = ladder.min_division, ladder.max_division
+    if n_max <= n_min:
+        return m_min
+    frac = (tier.number - n_min) / (n_max - n_min)
+    return int(round(m_min + frac * (m_max - m_min)))
+
+
+def canonical_division_number(source_grid: DivisionGrid, rank: int | None, ladder: DivisionGrid) -> int | None:
+    """``rank`` on ``source_grid`` as a division number on ``ladder``; no rank (NULL) has no division."""
+    if rank is None:
+        return None
+    return canonical_tier_number(source_grid.resolve_division(int(rank)), source_grid, ladder)
+
+
+def stamp_canonical_numbers(tiers: Sequence[Any], discipline: str) -> None:
+    """Set ``canonical_number`` on every tier of one grid version: its division on the game's native ladder.
+
+    ``tiers`` is the version's full tier set (stored rows or look-alikes with ``number``/``rank_min``/``rank_max``/
+    ``native_rank_min``/``native_rank_max``); a game without a native ladder stores ``None``.
+    """
+    ladder = ladder_grid(discipline)
+    if ladder is None:
+        for tier in tiers:
+            tier.canonical_number = None
+        return
+    source = DivisionGrid(
+        version_id=None,
+        tiers=tuple(
+            DivisionTier(
+                id=None,
+                slug=None,
+                number=int(tier.number),
+                name="",
+                rank_min=int(tier.rank_min),
+                rank_max=None if tier.rank_max is None else int(tier.rank_max),
+                icon_url="",
+                native_rank_min=None if tier.native_rank_min is None else int(tier.native_rank_min),
+                native_rank_max=None if tier.native_rank_max is None else int(tier.native_rank_max),
+            )
+            for tier in tiers
+        ),
+    )
+    for tier, runtime in zip(tiers, source.tiers, strict=True):
+        tier.canonical_number = canonical_tier_number(runtime, source, ladder)
 
 
 def load_runtime_grid(
@@ -154,7 +234,8 @@ def division_case_expr(
     rank_column: sa.ColumnElement[int],
     grid: DivisionGrid,
 ) -> sa.Case:
-    whens: list[tuple[sa.ColumnElement[bool], int]] = []
+    """``rank``'s division number on ``grid``; ranks below every band land on the floor tier, NULL stays NULL."""
+    whens: list[tuple[sa.ColumnElement[bool], Any]] = [(rank_column.is_(None), sa.null())]
     for tier in grid.tiers:
         if tier.rank_max is None:
             condition = rank_column >= tier.rank_min
@@ -250,9 +331,25 @@ def division_filter_predicates(
         return preds
 
     rank_min, rank_max = bounds
-    preds = []
-    if rank_min is not None:
-        preds.append(rank_column >= rank_min)
+    # A NULL rank has no division: the floor tier's open lower bound must not let it in.
+    preds = [rank_column >= rank_min if rank_min is not None else rank_column.is_not(None)]
     if rank_max is not None:
         preds.append(rank_column <= rank_max)
     return preds
+
+
+def normalize_native_ranks_to_grid(
+    raw_by_user: Mapping[int, Mapping[str, int]],
+    grid: DivisionGrid,
+) -> dict[int, dict[str, int]]:
+    """Place native ranks on ``grid``: each becomes the ``rank_min`` of the tier whose native range holds it.
+
+    A value outside every configured tier is dropped, so callers leave it ``None`` and compute no spurious delta.
+    """
+    out: dict[int, dict[str, int]] = {}
+    for user_id, by_role in raw_by_user.items():
+        for role, native_rank in by_role.items():
+            tier = grid.resolve_division_from_native_rank(native_rank)
+            if tier is not None:
+                out.setdefault(user_id, {})[role] = tier.rank_min
+    return out

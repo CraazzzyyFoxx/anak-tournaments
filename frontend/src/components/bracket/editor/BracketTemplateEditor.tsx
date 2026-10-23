@@ -4,10 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
+import { tint } from "@/lib/colors";
 import { cn } from "@/lib/utils";
 import type { StageType } from "@/types/tournament.types";
 
+import { HEADER_CHIP } from "../BracketCanvas";
 import { buildLayout, CARD_HEIGHT, CARD_WIDTH, PADDING_Y } from "../layout";
 import { useBracketViewport } from "../useBracketViewport";
 import { TemplateMatchCard, type ConnectSource } from "./TemplateMatchCard";
@@ -20,9 +23,6 @@ import {
 
 /** Room to the right of the tree for the two "+ round" buttons. */
 const ADD_COLUMN_WIDTH = 132;
-
-const ADD_BUTTON =
-  "inline-flex items-center gap-1 rounded-full border border-dashed border-[color:var(--aqt-border-2)] px-2 py-0.5 text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-muted)] transition-colors hover:border-[color:var(--aqt-teal)] hover:text-[color:var(--aqt-teal)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]";
 
 interface BracketTemplateEditorProps {
   draft: Draft;
@@ -126,7 +126,7 @@ export function BracketTemplateEditor({
                 data-edge-kind={edge.kind}
                 d={edge.path}
                 stroke={
-                  edge.kind === "loser" ? "color-mix(in srgb, var(--aqt-blue) 70%, transparent)" : "hsl(0 0% 100% / 0.22)"
+                  edge.kind === "loser" ? tint("var(--aqt-blue)", 70) : "hsl(0 0% 100% / 0.22)"
                 }
                 strokeWidth={2}
                 strokeDasharray={edge.kind === "loser" ? "5 4" : undefined}
@@ -142,7 +142,7 @@ export function BracketTemplateEditor({
               className="absolute flex items-center gap-1.5"
               style={{ left: header.x, top: header.y, width: CARD_WIDTH }}
             >
-              <span className="inline-flex items-center gap-2 rounded-full border border-[color:var(--aqt-border-2)] bg-[hsl(0_0%_0%/0.55)] px-2.5 py-0.5 text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
+              <span className={cn(HEADER_CHIP, "gap-2")}>
                 <span
                   aria-hidden
                   className="h-2 w-2 rounded-full"
@@ -150,26 +150,28 @@ export function BracketTemplateEditor({
                 />
                 {header.label}
               </span>
-              <button
+              <Button
                 type="button"
+                variant="dashed"
+                size="xs"
                 aria-label={t("addMatchTo", { label: header.label })}
                 data-add-match={header.round}
-                className={ADD_BUTTON}
                 onClick={() => dispatch({ type: "addMatch", round: header.round })}
               >
-                <Plus className="size-3" aria-hidden />
+                <Plus aria-hidden />
                 {t("match")}
-              </button>
+              </Button>
             </div>
           ))}
 
           {/* "+ round" at the end of each section. On the upper one it inserts
               BEFORE the final, which is by definition the last positive round. */}
           <div className="absolute" style={{ left: layout.width, top: PADDING_Y }}>
-            <button
+            <Button
               type="button"
+              variant="dashed"
+              size="xs"
               aria-label={t("addUpperRound")}
-              className={cn(ADD_BUTTON, "whitespace-nowrap")}
               onClick={() =>
                 dispatch(
                   finalRound > 0
@@ -178,19 +180,20 @@ export function BracketTemplateEditor({
                 )
               }
             >
-              <Plus className="size-3" aria-hidden />
+              <Plus aria-hidden />
               {t("upperRound")}
-            </button>
+            </Button>
           </div>
           {isDE ? (
             <div
               className="absolute"
               style={{ left: layout.width, top: lowerHeaderY ?? PADDING_Y + 28 }}
             >
-              <button
+              <Button
                 type="button"
+                variant="dashed"
+                size="xs"
                 aria-label={t("addLowerRound")}
-                className={cn(ADD_BUTTON, "whitespace-nowrap")}
                 onClick={() =>
                   dispatch({
                     type: "addMatch",
@@ -198,9 +201,9 @@ export function BracketTemplateEditor({
                   })
                 }
               >
-                <Plus className="size-3" aria-hidden />
+                <Plus aria-hidden />
                 {t("lowerRound")}
-              </button>
+              </Button>
             </div>
           ) : null}
 

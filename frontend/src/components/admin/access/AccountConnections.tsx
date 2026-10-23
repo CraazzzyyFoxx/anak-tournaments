@@ -3,13 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Link2, Unlink } from "lucide-react";
 
 import { AccountSection, invalidateAccount } from "@/components/admin/access/AccountCard";
-import { ProviderBadge } from "@/components/admin/OAuthProviderBadge";
-import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
+import { ProviderMark } from "@/components/admin/OAuthProviderMark";
+import { UserSearchCombobox } from "@/components/kit/ServerSearchCombobox";
 import { StatusPill } from "@/components/kit/StatusPill";
 import { Button } from "@/components/ui/button";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { accessQueryKeys } from "@/lib/access/query-keys";
 import { getSingleLinkedPlayer } from "@/lib/auth/profile-links";
@@ -30,7 +30,7 @@ export function AccountLinkedPlayer({
 }: Readonly<{
   account: AuthAdminUser;
   canManage: boolean;
-  /** Off on the person's own page, where the link would point at itself. */
+  /** Off when the reader may not open People: the player id is shown instead. */
   canOpenPerson: boolean;
 }>) {
   const t = useTranslations("adminAccess.connectionsUi");
@@ -41,7 +41,7 @@ export function AccountLinkedPlayer({
 
   const link = useMutation({
     mutationFn: (playerId: number) =>
-      rbacService.assignLinkedPlayer(account.id, { player_id: playerId, is_primary: true }),
+      rbacService.assignLinkedPlayer(account.id, { player_id: playerId }),
     onSuccess: async () => {
       await invalidateAccount(queryClient);
       setPicked(null);
@@ -68,15 +68,12 @@ export function AccountLinkedPlayer({
             {canOpenPerson ? (
               <Link
                 href={`/admin/people/${linkedPlayer.player_id}`}
-                className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                className="text-xs text-primary hover:underline"
               >
-                <ExternalLink aria-hidden className="size-3" />
                 {tc("openPeople")}
               </Link>
             ) : (
-              <p className="font-mono text-xs tabular-nums text-muted-foreground">
-                #{linkedPlayer.player_id}
-              </p>
+              <p className="text-xs tabular-nums text-muted-foreground">#{linkedPlayer.player_id}</p>
             )}
           </div>
           {canManage ? (
@@ -87,7 +84,6 @@ export function AccountLinkedPlayer({
               disabled={unlink.isPending}
               onClick={() => unlink.mutate(linkedPlayer.player_id)}
             >
-              <Unlink aria-hidden className="size-3.5" />
               {tc("unlink")}
             </Button>
           ) : null}
@@ -97,7 +93,7 @@ export function AccountLinkedPlayer({
           <div className="min-w-0 flex-1">
             <UserSearchCombobox
               value={picked?.id}
-              selectedName={picked?.name}
+              selectedLabel={picked?.name}
               placeholder={tc("findPlayer")}
               searchPlaceholder={tc("searchPlayerIdentity")}
               onSelect={(user) => setPicked(user ?? null)}
@@ -105,11 +101,9 @@ export function AccountLinkedPlayer({
           </div>
           <Button
             variant="outline"
-            className="h-10"
             disabled={picked == null || link.isPending}
             onClick={() => picked && link.mutate(picked.id)}
           >
-            <Link2 aria-hidden className="size-3.5" />
             {tc("link")}
           </Button>
         </div>
@@ -138,9 +132,11 @@ export function AccountSignInMethods({ userId }: Readonly<{ userId: number }>) {
   const [now] = useState(() => Date.now());
 
   return (
-    <AccountSection title={tc("signInMethods")} summary={query.data ? connections.length : undefined}>
+    <AccountSection title={tc("signInMethods")}>
       {query.isLoading ? (
         <Skeleton className="h-12 w-full" />
+      ) : query.isError ? (
+        <PageStateCard state="error" onAction={() => void query.refetch()} />
       ) : connections.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           {t("noOauth")}
@@ -153,7 +149,7 @@ export function AccountSignInMethods({ userId }: Readonly<{ userId: number }>) {
               new Date(connection.token_expires_at).getTime() < now;
             return (
               <li key={connection.id} className="flex items-center gap-2">
-                <ProviderBadge provider={connection.provider} />
+                <ProviderMark provider={connection.provider} />
                 <span className="min-w-0 flex-1 truncate text-sm">
                   {connection.username}
                   {connection.email ? (
@@ -161,10 +157,7 @@ export function AccountSignInMethods({ userId }: Readonly<{ userId: number }>) {
                   ) : null}
                 </span>
                 {expired ? (
-                  <StatusPill
-                    tone="warning"
-                    title={t("expiredTitle")}
-                  >
+                  <StatusPill tone="warning" title={t("expiredTitle")}>
                     {t("tokenExpired")}
                   </StatusPill>
                 ) : null}

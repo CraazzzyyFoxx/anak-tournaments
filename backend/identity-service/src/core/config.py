@@ -15,11 +15,6 @@ class Settings(BaseServiceSettings):
         case_sensitive=False,
         extra="ignore",
     )
-
-    # Application overrides
-    project_name: str = "Authentication Service"
-    port: int = 8001
-
     # JWT Authentication
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
@@ -39,18 +34,9 @@ class Settings(BaseServiceSettings):
     SERVICE_TOKEN_ISSUER: str = "auth-service"
     SERVICE_TOKEN_AUDIENCE: str = "internal"
 
-    @field_validator("SERVICE_CLIENTS", mode="before")
+    @field_validator("SERVICE_CLIENTS", "SERVICE_SCOPES", mode="before")
     @classmethod
-    def _parse_service_clients(cls, v):
-        if v in (None, ""):
-            return {}
-        if isinstance(v, str):
-            return json.loads(v)
-        return v
-
-    @field_validator("SERVICE_SCOPES", mode="before")
-    @classmethod
-    def _parse_service_scopes(cls, v):
+    def _parse_json_mapping(cls, v):
         if v in (None, ""):
             return {}
         if isinstance(v, str):
@@ -79,18 +65,28 @@ class Settings(BaseServiceSettings):
     BATTLENET_CLIENT_SECRET: str | None = None
     BATTLENET_REGION: str = "eu"
 
-    # The ONE fixed OAuth callback URL registered with every provider (Discord,
-    # Twitch, Battle.net). Always the platform apex -- NEVER derived from the
-    # request's originating host/subdomain, since providers only allow a
-    # static, pre-registered redirect_uri. The originating host, post-auth
-    # redirect path, and action ("login"/"link") instead travel inside the
-    # signed ``state`` (see ``oauth_state.OAuthStateCodec``),
-    # so the callback can send the user back to the tenant subdomain that
-    # started the flow.
+    # Riot Sign-On (RSO). The PUUID is the OAuth subject; account-v1 ``accounts/me`` on this regional cluster gives the
+    # Riot ID. Off until Riot approves the production client.
+    RIOT_OAUTH_ENABLED: bool = False
+    RIOT_CLIENT_ID: str | None = None
+    RIOT_CLIENT_SECRET: str | None = None
+    RIOT_ACCOUNT_CLUSTER: str = "europe"
+
+    # Steam OpenID 2.0. No client credentials: Steam verifies its own assertion (``check_authentication``), the
+    # claimed SteamID64 is the subject. Only the return URL (``OAUTH_REDIRECT``) is needed.
+    STEAM_OAUTH_ENABLED: bool = False
+    # Steam Web API key (``GetPlayerSummaries``) for persona names and avatars. Unset, the same summaries come from
+    # deadlock-api's keyless cache, which may lag Steam by months for someone who does not play Deadlock.
+    STEAM_WEB_API_KEY: str | None = None
+
+    # The one OAuth callback URL registered with every provider: always the
+    # platform apex, never derived from the request host, because providers only
+    # accept a static pre-registered redirect_uri. The originating host, post-auth
+    # redirect path and action ("login"/"link") travel in the signed ``state``
+    # (``oauth_state.OAuthStateCodec``) so the callback can return to the tenant.
     OAUTH_REDIRECT: str | None = None
     OAUTH_STATE_EXPIRE_MINUTES: int = 10
 
-    # Redis
     REDIS_URL: str = "redis://localhost:6379"
 
     # Messaging (headless RPC over RabbitMQ)

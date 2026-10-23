@@ -1,10 +1,8 @@
 """Namespaced Redis access with an explicit degradation contract.
 
 Every Redis-backed store in this service (RBAC cache, revoked-session list,
-refresh idempotency, cross-domain tickets, OAuth state nonces) shared the same
-five-line ``try: get_redis() ... except (RedisError, OSError, RuntimeError):
-log and carry on`` block. It lives here once, expressed as the two postures
-those stores actually need:
+refresh idempotency, cross-domain tickets, OAuth state nonces) goes through here,
+under one of two postures:
 
 * **fail-soft** (``get_json``/``put_json``/``drop``/``take_json``) — Redis is an
   optimization; an outage costs a DB round trip or a shorter-lived guarantee,
@@ -129,7 +127,7 @@ class RedisStore:
         return bool(claimed)
 
     async def has(self, suffix: str | int) -> bool:
-        """Fails open (False): absence of proof is not proof of absence."""
+        """Whether the key is set; fails open (False) when Redis is unavailable."""
         if not suffix:
             return False
         try:

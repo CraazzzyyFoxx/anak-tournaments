@@ -3,7 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 from shared.core.enums import StageItemInputType, StageItemType, StageType
-from src.schemas.stage import FfaScoring, GrandFinalType, SeedRankingValue, StageBestOf, StageScoring
+from src.schemas.stage import GrandFinalType, SeedRankingValue, StageBestOf, StageScoring
 
 __all__ = (
     "StageCreate",
@@ -30,18 +30,19 @@ class StageCreate(BaseModel):
     tiebreak_order: list[str] | None = None
     scoring: StageScoring = Field(default_factory=StageScoring)
     swiss_bye_points: float | None = None
+    swiss_qualify_wins: int | None = Field(default=None, ge=1)
+    swiss_eliminate_losses: int | None = Field(default=None, ge=1)
     de_grand_final_type: GrandFinalType = "no_reset"
     seed_ranking: SeedRankingValue = "slot"
     best_of: StageBestOf = Field(default_factory=StageBestOf)
-    ffa_scoring: FfaScoring = Field(default_factory=FfaScoring)
     challonge_id: int | None = None
     challonge_slug: str | None = None
 
 
 class StageUpdate(BaseModel):
     """A partial edit: only the fields sent change (the service reads
-    ``exclude_unset``). ``scoring``, ``best_of`` and ``ffa_scoring`` are each
-    replaced as a whole. The non-nullable regulation fields carry a default only
+    ``exclude_unset``). ``scoring`` and ``best_of`` are each replaced as a
+    whole. The non-nullable regulation fields carry a default only
     so that an explicit ``null`` is refused instead of written."""
 
     name: str | None = None
@@ -55,10 +56,11 @@ class StageUpdate(BaseModel):
     tiebreak_order: list[str] | None = None
     scoring: StageScoring = Field(default_factory=StageScoring)
     swiss_bye_points: float | None = None
+    swiss_qualify_wins: int | None = Field(default=None, ge=1)
+    swiss_eliminate_losses: int | None = Field(default=None, ge=1)
     de_grand_final_type: GrandFinalType = "no_reset"
     seed_ranking: SeedRankingValue = "slot"
     best_of: StageBestOf = Field(default_factory=StageBestOf)
-    ffa_scoring: FfaScoring = Field(default_factory=FfaScoring)
 
 
 class StageItemCreate(BaseModel):
@@ -115,10 +117,10 @@ class StageItemInputUpdate(BaseModel):
 
 
 class MergeGroupStagesRequest(BaseModel):
-    """Merge legacy one-group stages into one grouped stage.
+    """Merge one-group stages into one grouped stage.
 
     ``source_stage_ids`` are removed after their stage_items and stage-scoped
-    references are moved under the target stage from the route path.
+    references are moved under the target stage named by the path.
     """
 
     source_stage_ids: list[int] = Field(min_length=1)

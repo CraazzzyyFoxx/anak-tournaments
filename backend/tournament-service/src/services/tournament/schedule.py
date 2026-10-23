@@ -12,10 +12,11 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import TournamentPhaseScheduleRepository, TournamentRepository
-from src import models, schemas
+from src import schemas
 from src.services.tournament.events import STRUCTURE_RESOURCES, publish_tournament_invalidation
 
 _TOURNAMENT_LOAD = (
@@ -62,9 +63,9 @@ class TournamentScheduleService:
         await publish_tournament_invalidation(session, tournament_id, STRUCTURE_RESOURCES)
         await session.commit()
 
-        # Fresh read (pattern of admin transition_status); populate_existing forces
-        # the eager ``phase_schedule`` relationship past the identity-map hit
-        # (expire_on_commit=False) so it reflects the new rows.
+        # Fresh read: populate_existing forces the eager ``phase_schedule``
+        # relationship past the identity-map hit (expire_on_commit=False) so it
+        # reflects the new rows.
         refreshed = await self.tournament_repo.get(
             session, tournament_id, options=_TOURNAMENT_LOAD, populate_existing=True
         )

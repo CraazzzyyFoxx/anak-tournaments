@@ -1,6 +1,6 @@
 import contextlib
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
@@ -26,8 +26,6 @@ __all__ = [
 
 
 class Base(DeclarativeBase):
-    entity_name: str = "unknown"
-
     def to_dict(self):
         return {c.name: getattr(self, c.name, None) for c in self.__table__.columns}
 
@@ -162,19 +160,19 @@ def _unique_prepared_statement_name() -> str:
     return f"__asyncpg_{uuid.uuid4()}__"
 
 
-def _register_statement_timeout(engine: AsyncEngine, statement_timeout: int) -> None:
-    """Apply ``statement_timeout`` per-transaction via ``SET LOCAL``.
+def _register_session_settings(engine: AsyncEngine, settings: Mapping[str, str]) -> None:
+    """Apply ``settings`` per-transaction, as ``SET LOCAL`` would.
 
-    Behind pgBouncer transaction pooling the timeout cannot be delivered as an
-    asyncpg startup parameter (pgBouncer ignores or rejects it), so it is set at
-    the start of every transaction, where ``SET LOCAL`` scopes it to that
-    transaction only.
+    Behind pgBouncer transaction pooling they cannot be delivered as asyncpg
+    startup parameters (pgBouncer ignores or rejects them), so they are set at
+    the start of every transaction, scoped to that transaction only. One
+    ``set_config(..., true)`` call per setting, in a single round trip.
     """
-    timeout_ms = int(statement_timeout)
+    calls = ", ".join(f"set_config('{name}', '{value}', true)" for name, value in settings.items())
 
     @event.listens_for(engine.sync_engine, "begin")
-    def _set_statement_timeout(conn: Any) -> None:
-        conn.exec_driver_sql(f"SET LOCAL statement_timeout = {timeout_ms}")
+    def _set_session_settings(conn: Any) -> None:
+        conn.exec_driver_sql(f"SELECT {calls}")
 
 
 def create_database(
@@ -189,6 +187,7 @@ def create_database(
     connect_timeout: float = 10.0,
     statement_timeout: int = 30000,
     pgbouncer: bool = False,
+    session_settings: Mapping[str, str] | None = None,
 ) -> DatabaseEngines:
     """Factory for creating database engine + session maker pairs.
 
@@ -202,6 +201,9 @@ def create_database(
         pool_use_lifo: Prefer recently-used connections to reduce stale idle sockets.
         connect_timeout: Seconds to wait while opening a new asyncpg connection.
         statement_timeout: Query timeout in milliseconds (0 to disable).
+        session_settings: Extra Postgres settings for every session of this
+            engine (e.g. planner knobs); applied the same way as
+            ``statement_timeout``.
         pgbouncer: Configure for connecting through pgBouncer in transaction
             pooling mode. Disables asyncpg prepared-statement caching, uses
             unique prepared-statement names, and applies ``statement_timeout``
@@ -229,11 +231,14 @@ def create_database(
         "pool_pre_ping": pool_pre_ping,
         "pool_use_lifo": pool_use_lifo,
     }
+    settings = dict(session_settings or {})
+    if statement_timeout > 0:
+        settings["statement_timeout"] = str(statement_timeout)
     if pgbouncer:
         connect_args["prepared_statement_cache_size"] = 0
         connect_args["prepared_statement_name_func"] = _unique_prepared_statement_name
-    elif statement_timeout > 0:
-        connect_args["server_settings"] = {"statement_timeout": str(statement_timeout)}
+    elif settings:
+        connect_args["server_settings"] = settings
 
     async_engine = create_async_engine(
         url=async_url,
@@ -241,8 +246,8 @@ def create_database(
         **engine_kwargs,
     )
 
-    if pgbouncer and statement_timeout > 0:
-        _register_statement_timeout(async_engine, statement_timeout)
+    if pgbouncer and settings:
+        _register_session_settings(async_engine, settings)
 
     async_session = async_sessionmaker(async_engine, class_=ResilientAsyncSession, expire_on_commit=False)
 
@@ -272,15 +277,10 @@ class _HasDbSettings(Protocol):
     db_pgbouncer: bool
 
 
-def create_database_from_settings(settings: _HasDbSettings) -> DatabaseEngines:
-    """``create_database`` reading its nine pool knobs off a service's settings.
-
-    Every service's ``src/core/db.py`` called ``create_database(...)`` with the
-    same nine ``config.settings.db_*`` keyword arguments, copy-pasted
-    byte-for-byte across all eight services. This is the single source of
-    truth for that wiring; each service's ``core/db.py`` now just calls this
-    and re-exports the resulting engine/session-maker.
-    """
+def create_database_from_settings(
+    settings: _HasDbSettings, *, session_settings: Mapping[str, str] | None = None
+) -> DatabaseEngines:
+    """``create_database`` reading its nine pool knobs off a service's settings."""
     return create_database(
         async_url=settings.db_url_asyncpg,
         pool_size=settings.db_pool_size,
@@ -292,4 +292,5 @@ def create_database_from_settings(settings: _HasDbSettings) -> DatabaseEngines:
         connect_timeout=settings.db_connect_timeout,
         statement_timeout=settings.db_statement_timeout,
         pgbouncer=settings.db_pgbouncer,
+        session_settings=session_settings,
     )

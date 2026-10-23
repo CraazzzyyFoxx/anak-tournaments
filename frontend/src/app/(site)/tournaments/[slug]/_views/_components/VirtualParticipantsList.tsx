@@ -5,13 +5,14 @@ import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
 
 import RankHistory from "@/components/RankHistory";
 import { cn } from "@/lib/utils";
 import type { Registration } from "@/types/registration.types";
 
 import styles from "../../TournamentDetail.module.css";
-import type { ColumnDefinition } from "./participantsColumns.model";
+import { IDENTITY_COLUMN_ID, type ColumnDefinition } from "./participantsColumns.model";
 import { isMandatoryParticipantColumnId } from "./participants-url-state";
 
 const ESTIMATED_ROW_HEIGHT = 56;
@@ -36,7 +37,7 @@ const COLUMN_TRACKS = {
   icon: { min: 6.75, grow: 0.5 },
 } as const;
 
-/** Fixed expander track; matches `.participantExpander`'s 2.25rem hit area. */
+/** Fixed expander track; holds the 2.25rem `icon` button. */
 const EXPANDER_TRACK_REM = 3;
 
 function orderedColumns(
@@ -53,8 +54,8 @@ function orderedColumns(
   // The identity column stays leftmost: the grid gives the first track its
   // wide minmax and the mobile card layout promotes cell 0 to the title row.
   return [
-    ...display.filter((column) => column.id === "identity_battlenet"),
-    ...display.filter((column) => column.id !== "identity_battlenet"),
+    ...display.filter((column) => column.id === IDENTITY_COLUMN_ID),
+    ...display.filter((column) => column.id !== IDENTITY_COLUMN_ID),
   ];
 }
 
@@ -128,6 +129,8 @@ interface VirtualParticipantsListProps {
   visibleColumns: ColumnDefinition[];
   expandedIds: ReadonlySet<number>;
   onToggleExpanded: (registrationId: number) => void;
+  /** The tournament's game: rank history is resolved for it. */
+  discipline: string;
 }
 
 const VirtualParticipantsList = memo(function VirtualParticipantsList({
@@ -136,6 +139,7 @@ const VirtualParticipantsList = memo(function VirtualParticipantsList({
   visibleColumns,
   expandedIds,
   onToggleExpanded,
+  discipline,
 }: VirtualParticipantsListProps) {
   const t = useTranslations();
   const findMode = useFindInPageMode();
@@ -283,27 +287,22 @@ const VirtualParticipantsList = memo(function VirtualParticipantsList({
                         chevron carry open/closed, and the details region below
                         borrows this name via `aria-labelledby`, so a toggling
                         "Collapse" here would name the region "Collapse". */}
-                    <button
+                    <Button
                       aria-controls={detailsId}
                       aria-expanded={expanded}
                       aria-label={t("registration.myCard.details")}
-                      className={styles.participantExpander}
+                      className={cn(styles.participantExpander, "text-[color:var(--aqt-fg-dim)]")}
                       id={expanderId}
                       onClick={(event) => {
                         onToggleExpanded(registration.id);
                         if (expanded) event.currentTarget.focus();
                       }}
+                      size="icon"
                       type="button"
+                      variant="ghost"
                     >
-                      <span className={styles.participantExpanderLabel}>
-                        {t("registration.myCard.details")}
-                      </span>
-                      {expanded ? (
-                        <ChevronUp aria-hidden="true" className="size-4" />
-                      ) : (
-                        <ChevronDown aria-hidden="true" className="size-4" />
-                      )}
-                    </button>
+                      {expanded ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+                    </Button>
                   </div>
                 </div>
 
@@ -319,9 +318,9 @@ const VirtualParticipantsList = memo(function VirtualParticipantsList({
                           {t("tournamentDetail.rankHistory")}
                         </div>
                         {registration.user_id != null ? (
-                          <RankHistory userId={registration.user_id} />
+                          <RankHistory userId={registration.user_id} discipline={discipline} />
                         ) : (
-                          <RankHistory battleTag={registration.primary_handle} />
+                          <RankHistory battleTag={registration.primary_handle} discipline={discipline} />
                         )}
                       </div>
                       <div className={styles.participantHiddenFields}>

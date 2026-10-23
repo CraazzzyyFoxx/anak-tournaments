@@ -12,7 +12,6 @@ Regression anchors for the 2026-08 accuracy audit:
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -26,9 +25,11 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "analytics-service"))
 
-os.environ["DEBUG"] = "false"
 
-standings_v2 = importlib.import_module("src.services.ml.models.standings_v2")
+from tests.ow_analytics import exports as ow_exports  # noqa: E402
+from tests.ow_analytics import module as ow_module  # noqa: E402
+
+standings_v2 = ow_module("models.standings_v2")
 match_quality_runner = importlib.import_module("src.services.ml.inference.match_quality_runner")
 
 
@@ -92,6 +93,7 @@ class TrainStandingsV2Tests(TestCase):
         result = standings_v2.train_standings_v2(
             _synthetic_frame(800, seed=1),
             val_df=_synthetic_frame(200, seed=2),
+            devices=("cpu",),
         )
 
         self.assertEqual(list(standings_v2.STANDINGS_FEATURE_ORDER), result.model.feature_order)
@@ -106,7 +108,7 @@ class TrainStandingsV2Tests(TestCase):
         self.assertTrue(np.all((proba >= 0.0) & (proba <= 1.0)))
 
     def test_learns_the_mu_gap_direction(self) -> None:
-        result = standings_v2.train_standings_v2(_synthetic_frame(1200, seed=4, nan_mu_share=0.0))
+        result = standings_v2.train_standings_v2(_synthetic_frame(1200, seed=4, nan_mu_share=0.0), devices=("cpu",))
 
         probe = _synthetic_frame(400, seed=5, nan_mu_share=0.0)
         proba = result.model.predict_proba(probe)
@@ -123,7 +125,10 @@ class MatchQualityWinProbabilityTests(IsolatedAsyncioTestCase):
 
     async def test_no_algorithm_row_stays_neutral(self) -> None:
         p = await match_quality_runner._standings_win_probability(
-            self._session(algorithm_id=None), pd.DataFrame({"encounter_id": [1]})
+            self._session(algorithm_id=None),
+            pd.DataFrame({"encounter_id": [1]}),
+            discipline="overwatch",
+            exports=ow_exports,
         )
         self.assertIsNone(p)
 
@@ -140,9 +145,11 @@ class MatchQualityWinProbabilityTests(IsolatedAsyncioTestCase):
                 "load_active_artifact",
                 AsyncMock(return_value=SimpleNamespace(storage_uri="s3://x")),
             ),
-            patch.object(match_quality_runner, "load_artifact", return_value=_Stub()),
+            patch.object(match_quality_runner, "load_artifact_or_none", return_value=_Stub()),
         ):
-            p = await match_quality_runner._standings_win_probability(self._session(), encounters)
+            p = await match_quality_runner._standings_win_probability(
+                self._session(), encounters, discipline="overwatch", exports=ow_exports
+            )
 
         assert p is not None
         self.assertEqual(8, len(p))
@@ -155,9 +162,12 @@ class MatchQualityWinProbabilityTests(IsolatedAsyncioTestCase):
                 "load_active_artifact",
                 AsyncMock(return_value=SimpleNamespace(storage_uri="s3://gone")),
             ),
-            patch.object(match_quality_runner, "load_artifact", side_effect=FileNotFoundError),
+            patch.object(match_quality_runner, "load_artifact_or_none", return_value=None),
         ):
             p = await match_quality_runner._standings_win_probability(
-                self._session(), pd.DataFrame({"encounter_id": [1]})
+                self._session(),
+                pd.DataFrame({"encounter_id": [1]}),
+                discipline="overwatch",
+                exports=ow_exports,
             )
         self.assertIsNone(p)

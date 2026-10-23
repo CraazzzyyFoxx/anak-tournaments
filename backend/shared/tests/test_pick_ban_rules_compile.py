@@ -105,6 +105,7 @@ def test_step_ids_are_unique_and_id_shaped():
         },
         kind="hero",
         mode="pool",
+        discipline="overwatch",
     )
 
 
@@ -192,13 +193,15 @@ def test_converted_configs_validate_clean():
             no_repeat_scope="encounter",
             unique_attribute="role",
         )
-        assert pbr.validate_ruleset(ruleset.to_json(), kind=kind, mode=mode) == []
+        # A hero pick needs a game that fields a hero once per match (spec §11.2); Overwatch fields one per team.
+        discipline = "deadlock" if kind == "hero" else "overwatch"
+        assert pbr.validate_ruleset(ruleset.to_json(), kind=kind, mode=mode, discipline=discipline) == []
 
 
 # ── phase selection ─────────────────────────────────────────────────────────
 
 
-ANTI = pbr.PRESETS_BY_ID["hero_anti_one_trick"].ruleset
+ANTI = {preset.id: preset for preset in pbr.presets_for("overwatch")}["hero_anti_one_trick"].ruleset
 
 
 @pytest.mark.parametrize(("round_number", "phase_id"), [(1, "map1"), (2, "map2plus"), (5, "map2plus")])
@@ -225,45 +228,65 @@ def test_first_matching_phase_wins():
 
 def test_no_phase_matches_resolves_to_no_steps():
     assert pbr.select_phase(ANTI, pbr.RoundCtx(round=0, best_of=5, kind="hero")) is None
-    assert pbr.resolve_round(ANTI, kind="hero", round=0, start_index=0, opener="home", best_of=5) == []
+    assert (
+        pbr.resolve_round(ANTI, kind="hero", round=0, start_index=0, participants=SEATS, opener=SLOT1, best_of=5) == []
+    )
 
 
 # ── actor resolution ────────────────────────────────────────────────────────
 
 
+#: Participation ids: the resolved actor vocabulary (§13.4), slot 1 and slot 2.
+SLOT1, SLOT2 = 11, 22
+SEATS = (SLOT1, SLOT2)
+
+
 @pytest.mark.parametrize(
     ("actors", "prev", "expected"),
     [
-        ("first", None, ["away"]),
-        ("second", None, ["home"]),
-        ("both", None, ["away", "home"]),
-        ("home", None, ["home"]),
-        ("away", None, ["away"]),
-        ("system", None, ["system"]),
-        ("winner_prev", "home", ["home"]),
-        ("loser_prev", "home", ["away"]),
-        # No previous round, or a drawn one: fall back to first/second.
-        ("winner_prev", None, ["away"]),
-        ("loser_prev", None, ["home"]),
-        ("winner_prev", "draw", ["away"]),
-        ("loser_prev", "draw", ["home"]),
+        ("first", None, [SLOT2]),
+        ("second", None, [SLOT1]),
+        ("both", None, [SLOT2, SLOT1]),
+        # The pre-slot spelling, still read off a stored document.
+        ("home", None, [SLOT1]),
+        ("away", None, [SLOT2]),
+        ("slot:1", None, [SLOT1]),
+        ("slot:2", None, [SLOT2]),
+        ("system", None, [None]),
+        ("winner_prev", SLOT1, [SLOT1]),
+        ("loser_prev", SLOT1, [SLOT2]),
+        # No previous round, or a drawn one (no winner): fall back to
+        # first/second.
+        ("winner_prev", None, [SLOT2]),
+        ("loser_prev", None, [SLOT1]),
     ],
 )
-def test_resolve_sides(actors, prev, expected):
-    assert pbr.resolve_sides(actors, opener="away", prev_outcome=prev) == expected
+def test_resolve_actors(actors, prev, expected):
+    assert pbr.resolve_actors(actors, participants=SEATS, opener=SLOT2, prev_winner=prev) == expected
+
+
+def test_a_side_actor_needs_the_side_pick_that_assigned_it():
+    assert pbr.resolve_actors("side:attack", participants=SEATS, opener=SLOT1, sides={"attack": SLOT2}) == [SLOT2]
+    with pytest.raises(ValueError, match="before any step assigned side"):
+        pbr.resolve_actors("side:attack", participants=SEATS, opener=SLOT1)
+
+
+def test_a_slot_outside_the_card_is_refused():
+    with pytest.raises(ValueError, match="does not seat"):
+        pbr.resolve_actors("slot:3", participants=SEATS, opener=SLOT1)
 
 
 # ── resolve_round ───────────────────────────────────────────────────────────
 
 
 def test_resolve_round_inherits_timer_and_fills_min():
-    steps = pbr.resolve_round(ANTI, kind="hero", round=2, start_index=7, opener="away", best_of=5)
+    steps = pbr.resolve_round(ANTI, kind="hero", round=2, start_index=7, participants=SEATS, opener=SLOT2, best_of=5)
     (step,) = steps
     assert step.index == 7
     assert step.round == 2
     assert step.phase_id == "map2plus"
     assert step.step_id == "perplayer5"
-    assert step.sides == ["away", "home"]
+    assert step.actors == [SLOT2, SLOT1]
     assert step.count == 5
     assert step.min == 5  # null inherits count
     assert step.timer_seconds == 90  # inherited from the ruleset
@@ -272,25 +295,36 @@ def test_resolve_round_inherits_timer_and_fills_min():
 
 
 def test_resolve_round_bracket_generator_matches_the_v1_sequence():
-    ruleset = pbr.PRESETS_BY_ID["map_bracket"].ruleset
-    steps = pbr.resolve_round(ruleset, kind="map", round=None, start_index=0, opener="home", best_of=3, pool_size=7)
+    ruleset = pbr.GENERIC_PRESETS_BY_ID["map_bracket"].ruleset
+    steps = pbr.resolve_round(
+        ruleset, kind="map", round=None, start_index=0, participants=SEATS, opener=SLOT1, best_of=3, pool_size=7
+    )
     tokens = pbr.build_sequence_for_best_of(3, 7)
     assert len(steps) == len(tokens)
     assert [step.action for step in steps] == ["ban", "ban", "pick", "pick", "decider"]
-    assert [step.sides for step in steps] == [["home"], ["away"], ["home"], ["away"], ["system"]]
+    assert [step.actors for step in steps] == [[SLOT1], [SLOT2], [SLOT1], [SLOT2], [None]]
     assert all(step.round is None for step in steps)
 
 
 def test_resolve_round_slot_generator_uses_fixed_rotation_per_round():
-    ruleset = pbr.PRESETS_BY_ID["map_slot_veto"].ruleset
-    first = pbr.resolve_round(ruleset, kind="map", round=1, start_index=0, opener="home", best_of=3, candidate_count=3)
+    ruleset = pbr.GENERIC_PRESETS_BY_ID["map_slot_veto"].ruleset
+    first = pbr.resolve_round(
+        ruleset, kind="map", round=1, start_index=0, participants=SEATS, opener=SLOT1, best_of=3, candidate_count=3
+    )
     second = pbr.resolve_round(
-        ruleset, kind="map", round=2, start_index=len(first), opener="away", best_of=3, candidate_count=3
+        ruleset,
+        kind="map",
+        round=2,
+        start_index=len(first),
+        participants=SEATS,
+        opener=SLOT2,
+        best_of=3,
+        candidate_count=3,
     )
     # The opener already rotates per round; the generator itself must not rotate
     # again, or the two rotations would cancel out.
-    assert [step.sides for step in first] == [["home"], ["away"], ["system"]]
-    assert [step.sides for step in second] == [["away"], ["home"], ["system"]]
+    assert [step.actors for step in first] == [[SLOT1], [SLOT2], [None]]
+    assert [step.actors for step in second] == [[SLOT2], [SLOT1], [None]]
     assert [step.index for step in second] == [3, 4, 5]
 
 
@@ -309,10 +343,63 @@ def test_hero_round_drops_a_decider_step():
             ],
         }
     )
-    steps = pbr.resolve_round(ruleset, kind="hero", round=1, start_index=0, opener="home", best_of=1)
+    steps = pbr.resolve_round(ruleset, kind="hero", round=1, start_index=0, participants=SEATS, opener=SLOT1, best_of=1)
     assert [step.action for step in steps] == ["ban"]
 
 
 def test_resolved_step_round_trips_through_json():
-    (step,) = pbr.resolve_round(ANTI, kind="hero", round=1, start_index=0, opener="home", best_of=5)
+    (step,) = pbr.resolve_round(ANTI, kind="hero", round=1, start_index=0, participants=SEATS, opener=SLOT1, best_of=5)
+    assert pbr.ResolvedStep.from_json(step.to_json()) == step
+
+
+# ── member steps (spec §11.6 R4-1, R4-2) ─────────────────────────────────────
+
+MEMBERS = {SLOT1: (101, 102, 103), SLOT2: (201, 202, 203)}
+
+
+def _member_steps(*steps: dict) -> list[pbr.ResolvedStep]:
+    ruleset = pbr.parse_ruleset({"version": 2, "phases": [{"id": "main", "steps": list(steps)}]})
+    return pbr.resolve_round(
+        ruleset, kind="hero", round=1, start_index=0, participants=SEATS, opener=SLOT1, members=MEMBERS
+    )
+
+
+def test_next_steps_go_to_each_teams_members_in_pick_order():
+    steps = _member_steps(
+        {"id": "p1", "action": "pick", "actors": "first", "member": "next"},
+        {"id": "p2", "action": "pick", "actors": "second", "member": "next"},
+        {"id": "p3", "action": "pick", "actors": "both", "member": "next"},
+    )
+    assert [step.member_seats for step in steps] == [[(SLOT1, 101)], [(SLOT2, 201)], [(SLOT1, 102), (SLOT2, 202)]]
+    assert steps[0].answers == [(SLOT1, 101)]
+
+
+def test_an_each_step_owes_every_member_of_its_teams():
+    (step,) = _member_steps({"id": "all", "action": "pick", "actors": "both", "member": "each"})
+    assert step.answers == [(SLOT1, 101), (SLOT1, 102), (SLOT1, 103), (SLOT2, 201), (SLOT2, 202), (SLOT2, 203)]
+
+
+def test_a_side_bound_member_step_gets_its_member_once_its_side_does():
+    (resolved,) = _member_steps({"id": "p", "action": "pick", "actors": "first", "member": "next"})
+    waiting = resolved.model_copy(update={"actors": [], "actors_token": "side:blue", "member_seats": []})
+    assert pbr.bind_members([waiting], MEMBERS)[0].member_seats == []
+
+    (bound,) = pbr.bind_members([waiting.model_copy(update={"actors": [SLOT2]})], MEMBERS)
+
+    assert bound.member_seats == [(SLOT2, 201)]
+    assert bound.unbound().member_seats == []
+    assert pbr.ResolvedStep.from_json(bound.to_json()) == bound
+
+
+def test_team_steps_store_no_member_keys():
+    # R-F4a: a ruleset and a session of team steps only stay byte-compatible with readers that predate member picks.
+    ruleset = pbr.parse_ruleset(
+        {"version": 2, "phases": [{"id": "main", "steps": [{"id": "b", "action": "ban", "actors": "first"}]}]}
+    )
+    (stored,) = ruleset.to_json()["phases"][0]["steps"]
+    assert "member" not in stored
+    assert pbr.parse_ruleset(ruleset.to_json()) == ruleset
+
+    (step,) = pbr.resolve_round(ruleset, kind="hero", round=1, start_index=0, participants=SEATS, opener=SLOT1)
+    assert {"member", "member_seats"}.isdisjoint(step.to_json())
     assert pbr.ResolvedStep.from_json(step.to_json()) == step

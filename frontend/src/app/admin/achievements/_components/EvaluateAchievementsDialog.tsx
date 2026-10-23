@@ -1,21 +1,11 @@
 "use client";
 
-import { Play } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-
-import { TournamentCombobox } from "@/components/admin/TournamentCombobox";
-import { Badge } from "@/components/ui/badge";
+import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
+import { TournamentCombobox } from "@/components/tournaments/TournamentCombobox";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { AchievementCategory, AchievementRule } from "@/types/admin.types";
@@ -25,11 +15,11 @@ import { groupRulesByCategory } from "../achievement-form.model";
 
 /**
  * Picks the scope of an evaluation run. An empty selection means "everything",
- * which is why the count reads "all" rather than "0 selected".
+ * which is why the count reads "all" rather than "0 selected". Mounted only
+ * while open.
  */
 export function EvaluateAchievementsDialog({
-  open,
-  onOpenChange,
+  onClose,
   tournaments,
   rules,
   tournamentId,
@@ -39,8 +29,7 @@ export function EvaluateAchievementsDialog({
   onRun,
   isRunning,
 }: Readonly<{
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onClose: () => void;
   tournaments: Tournament[];
   rules: AchievementRule[];
   tournamentId?: number;
@@ -69,100 +58,92 @@ export function EvaluateAchievementsDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{t("evaluateDialog.title")}</DialogTitle>
-          <DialogDescription>
-            {t("evaluateDialog.description")}
-          </DialogDescription>
-        </DialogHeader>
+    <EntityFormDialog
+      open
+      onOpenChange={(next) => !next && onClose()}
+      title={t("evaluateDialog.title")}
+      description={t("evaluateDialog.description")}
+      onSubmit={onRun}
+      submitLabel={t("evaluation.run")}
+      submittingLabel={t("common.evaluating")}
+      isSubmitting={isRunning}
+    >
+      <div className="space-y-2">
+        <Label htmlFor="eval-tournament">{t("evaluateDialog.tournamentOptional")}</Label>
+        <TournamentCombobox
+          id="eval-tournament"
+          tournaments={tournaments}
+          value={tournamentId}
+          onValueChange={onTournamentChange}
+          placeholder={t("evaluateDialog.allTournaments")}
+          variant="default"
+          size="default"
+        />
+      </div>
 
-        <div className="space-y-4">
-          {/* Tournament selector */}
-          <div className="space-y-2">
-            <Label htmlFor="eval-tournament">{t("evaluateDialog.tournamentOptional")}</Label>
-            <TournamentCombobox
-              id="eval-tournament"
-              tournaments={tournaments}
-              value={tournamentId}
-              onSelect={(t) => onTournamentChange(t?.id)}
-              placeholder={t("evaluateDialog.allTournaments")}
-            />
-          </div>
-
-          {/* Achievement selection by category */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium">
-                {t.rich("evaluateDialog.achievementSelection", {
-                  count: selectedRuleIds.size,
-                  num: (chunks) => <span className="tabular-nums text-muted-foreground">{chunks}</span>,
-                })}
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onSelectedRuleIdsChange(new Set(rules.map((r) => r.id)))}
-                >
-                  {t("evaluateDialog.selectAll")}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onSelectedRuleIdsChange(new Set())}
-                >
-                  {t("evaluateDialog.clear")}
-                </Button>
-              </div>
-            </div>
-            <ScrollArea className="h-[50vh] rounded border p-3">
-              <div className="space-y-3">
-                {Object.entries(rulesByCategory).map(([category, categoryRules]) => {
-                  const allChecked = categoryRules.every((r) => selectedRuleIds.has(r.id));
-                  const someChecked = categoryRules.some((r) => selectedRuleIds.has(r.id));
-                  return (
-                    <div key={category}>
-                      <div className="flex items-center gap-2 mb-1">
-                        <Checkbox
-                          checked={allChecked ? true : someChecked ? "indeterminate" : false}
-                          onCheckedChange={(checked) => toggleCategory(category, !!checked)}
-                          aria-label={t("evaluateDialog.selectEvery", { category: t(`common.categoryValues.${category as AchievementCategory}`) })}
-                        />
-                        <span className="text-sm font-medium">{t(`common.categoryValues.${category as AchievementCategory}`)}</span>
-                        <Badge variant="secondary" className="text-xs tabular-nums">{categoryRules.length}</Badge>
-                      </div>
-                      <div className="ml-6 grid grid-cols-2 gap-1">
-                        {categoryRules.map((rule) => (
-                          <label key={rule.id} className="flex items-center gap-2 text-xs cursor-pointer">
-                            <Checkbox
-                              checked={selectedRuleIds.has(rule.id)}
-                              onCheckedChange={(checked) => toggleRule(rule.id, !!checked)}
-                              aria-label={t("evaluateDialog.evaluate", { name: rule.name })}
-                            />
-                            <span className="truncate">{rule.slug}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </ScrollArea>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium">
+            {t.rich("evaluateDialog.achievementSelection", {
+              count: selectedRuleIds.size,
+              num: (chunks) => <span className="tabular-nums text-muted-foreground">{chunks}</span>,
+            })}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onSelectedRuleIdsChange(new Set(rules.map((r) => r.id)))}
+            >
+              {t("evaluateDialog.selectAll")}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onSelectedRuleIdsChange(new Set())}
+            >
+              {t("evaluateDialog.clear")}
+            </Button>
           </div>
         </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {t("evaluateDialog.cancel")}
-          </Button>
-          <Button onClick={onRun} disabled={isRunning}>
-            <Play className={`mr-2 h-4 w-4 ${isRunning ? "animate-spin" : ""}`} aria-hidden />
-            {isRunning ? t("common.evaluating") : t("evaluation.run")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <ScrollArea className="h-[50vh] rounded border p-3">
+          <div className="space-y-3">
+            {Object.entries(rulesByCategory).map(([category, categoryRules]) => {
+              const allChecked = categoryRules.every((r) => selectedRuleIds.has(r.id));
+              const someChecked = categoryRules.some((r) => selectedRuleIds.has(r.id));
+              return (
+                <div key={category}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Checkbox
+                      checked={allChecked ? true : someChecked ? "indeterminate" : false}
+                      onCheckedChange={(checked) => toggleCategory(category, !!checked)}
+                      aria-label={t("evaluateDialog.selectEvery", { category: t(`common.categoryValues.${category as AchievementCategory}`) })}
+                    />
+                    <span className="text-sm font-medium">
+                      {t(`common.categoryValues.${category as AchievementCategory}`)}{" "}
+                      <span className="tabular-nums text-muted-foreground">({categoryRules.length})</span>
+                    </span>
+                  </div>
+                  <div className="ml-6 grid grid-cols-2 gap-1">
+                    {categoryRules.map((rule) => (
+                      <label key={rule.id} className="flex items-center gap-2 text-xs cursor-pointer">
+                        <Checkbox
+                          checked={selectedRuleIds.has(rule.id)}
+                          onCheckedChange={(checked) => toggleRule(rule.id, !!checked)}
+                          aria-label={t("evaluateDialog.evaluate", { name: rule.name })}
+                        />
+                        <span className="truncate">{rule.slug}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </ScrollArea>
+      </div>
+    </EntityFormDialog>
   );
 }

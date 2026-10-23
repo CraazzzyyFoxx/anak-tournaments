@@ -10,7 +10,9 @@ import {
   type ReactNode,
 } from "react";
 
-import type { Hero } from "@/types/hero.types";
+import { catalogEntity } from "@/test/catalog";
+import { DEADLOCK_METADATA, OW_METADATA } from "@/test/discipline-metadata";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { RolesParams } from "@/types/forms.types";
 import type { SubroleCatalog } from "@/types/registration.types";
 
@@ -24,12 +26,16 @@ import {
   type RoleSelections,
 } from "./types";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
+const ROLE_CODES = ["tank", "damage", "support"];
+
 const testWindow = new Window({ url: "http://localhost:3000/", width: 720, height: 900 });
 const previousGlobals = new Map<PropertyKey, PropertyDescriptor | undefined>();
 
 vi.mock("next-intl", () => ({
   useLocale: () => "en",
-  useTranslations: () => (key: string) => key,
+  useTranslations: () => Object.assign((key: string) => key, { has: () => false }),
 }));
 vi.mock("next/image", () => ({
   // eslint-disable-next-line @next/next/no-img-element -- test stand-in, never shipped
@@ -61,8 +67,9 @@ vi.mock("@/components/ui/popover", () => ({
     const { open, setOpen } = useContext(PopoverCtx);
     return cloneElement(children, { onClick: () => setOpen(!open) });
   },
-  PopoverContent: ({ children }: { children: ReactNode }) =>
-    useContext(PopoverCtx).open ? <div>{children}</div> : null,
+  // The picker's own name is forwarded: it is what a screen reader announces for the opened roster.
+  PopoverContent: ({ children, "aria-label": label }: { children: ReactNode; "aria-label"?: string }) =>
+    useContext(PopoverCtx).open ? <div aria-label={label}>{children}</div> : null,
 }));
 // Radix passes the root's `disabled` down to the trigger through context; the
 // stand-in has to do the same or a disabled specialization cell looks enabled.
@@ -104,21 +111,16 @@ for (const [key, value] of Object.entries({
 const { createRoot } = await import("react-dom/client");
 const RoleStep = (await import("./RoleStep")).default;
 
-const HEROES: Hero[] = [
+const HEROES: CatalogEntityRead[] = [
   ["reinhardt", "tank"],
   ["dva", "tank"],
   ["genji", "damage"],
   ["ashe", "damage"],
   ["ana", "support"],
   ["kiriko", "support"],
-].map(([slug, role], index) => ({
-  id: index + 1,
-  slug,
-  name: slug,
-  role,
-  type: role,
-  image_path: `/heroes/${slug}.png`,
-}) as unknown as Hero);
+].map(([slug, role], index) =>
+  catalogEntity({ id: index + 1, slug, name: slug, attrs: { class: role }, image_path: `/heroes/${slug}.png` })
+);
 
 const CATALOG: SubroleCatalog = {
   tank: [{ slug: "main-tank", label: "Main tank" }],
@@ -140,7 +142,7 @@ function paramsFor(flexMode: FlexMode): RolesParams {
 
 let container = testWindow.document.createElement("div");
 let root = createRoot(container as unknown as Element);
-let latest: RoleSelections = createRoleSelections();
+let latest: RoleSelections = createRoleSelections(ROLE_CODES);
 
 function Harness({
   flexMode = "optional" as FlexMode,
@@ -150,18 +152,19 @@ function Harness({
   initial?: RoleSelections;
 }) {
   const [selections, setSelections] = useState<RoleSelections>(
-    initial ?? createRoleSelections(flexMode),
+    initial ?? createRoleSelections(ROLE_CODES, flexMode),
   );
   // The matrix speaks `RoleSelections`; the stored answer is `RoleInput[]`.
   // Converting at the boundary keeps these cases written in the vocabulary
   // they assert in, and exercises the round trip on every interaction.
   return (
     <RoleStep
+      ontology={OW_METADATA}
       params={paramsFor(flexMode)}
       subroleCatalog={CATALOG}
-      value={fromRoleSelections(selections)}
+      value={fromRoleSelections(ROLE_CODES, selections)}
       onChange={(next) => {
-        const restored = toRoleSelections(next);
+        const restored = toRoleSelections(ROLE_CODES, next);
         latest = restored;
         setSelections(restored);
       }}
@@ -175,7 +178,7 @@ function mount(flexMode: FlexMode = "optional", initial?: RoleSelections) {
   container = testWindow.document.createElement("div");
   testWindow.document.body.appendChild(container);
   root = createRoot(container as unknown as Element);
-  latest = initial ?? createRoleSelections(flexMode);
+  latest = initial ?? createRoleSelections(ROLE_CODES, flexMode);
   act(() => root.render(<Harness flexMode={flexMode} initial={initial} />));
 }
 
@@ -260,21 +263,18 @@ describe("RoleStep", () => {
 });
 
 describe("RoleStep flex hero roster", () => {
-  it("offers only the row's own heroes, flex or not", () => {
-    // Flex used to widen every row to the full roster, a leftover from the
-    // layout where flex had ONE hero block instead of one per role. Picks are
-    // submitted under the row's role, so Ana as a tank pick is a 422 the moment
-    // the submission stops being flex.
+  it("offers the whole roster on every row: a character's class is never read as a role", () => {
+    // Picks are validated against the owner game's characters, not against the role they are filed
+    // under, so Ana is as legal a tank pick as Reinhardt and no row narrows by class.
     mount();
     click('[role="radio"]', MAIN.tank - 1); // tank → fallback; a skipped row is locked
-    expect(roster(0)).toEqual(["reinhardt", "dva"]);
+    const everyone = roster(0);
+    expect([...everyone].sort()).toEqual(["ana", "ashe", "dva", "genji", "kiriko", "reinhardt"]);
 
     click("[aria-pressed]", 0); // flex preset — every role main
     expect(isFlexSelection(latest)).toBe(true);
-
-    expect(roster(0)).toEqual(["reinhardt", "dva"]);
-    expect(roster(1)).toEqual(["genji", "ashe"]);
-    expect(roster(2)).toEqual(["ana", "kiriko"]);
+    expect(roster(1)).toEqual(everyone);
+    expect(roster(2)).toEqual(everyone);
   });
 
   it("locks the specialization and hero cells of a skipped role", () => {
@@ -319,15 +319,10 @@ describe("RoleStep flex hero roster", () => {
     expect(Object.values(latest).filter((entry) => entry.priority === "main")).toHaveLength(0);
   });
 
-  it("keeps a stale cross-class pick in the roster so it can be removed", () => {
-    // An existing flex registration may carry one: the backend accepted it while
-    // the submission was flex. Filtering it out of the roster would leave it
-    // selected and unreachable, and the next non-flex submit would 422 on it.
-    const loaded = createRoleSelections("optional");
+  it("keeps a cross-class pick selectable and removable", () => {
+    const loaded = createRoleSelections(ROLE_CODES, "optional");
     loaded.tank = { ...loaded.tank, priority: "main", topHeroes: ["ana"] };
     mount("optional", loaded);
-
-    expect(roster(0)).toEqual(["reinhardt", "dva", "ana"]);
 
     click(HERO_TRIGGER, 0);
     click('button[title="ana"]');
@@ -404,7 +399,7 @@ describe("RoleStep all-roles mode", () => {
 
   it("stays reachable by keyboard while nothing is chosen", () => {
     // With no checked radio every tabIndex would be -1 and the only control of
-    // the mode would fall out of the tab order.
+    // the mode would fall out of the tab order: the first option keeps the stop.
     mount("all_roles");
 
     expect(container.querySelectorAll('[role="radio"][tabindex="0"]').length).toBe(1);
@@ -446,4 +441,55 @@ afterAll(() => {
     if (descriptor) Object.defineProperty(globalThis, key, descriptor);
     else Reflect.deleteProperty(globalThis, key);
   }
+});
+
+describe("RoleStep in a one-role game", () => {
+  /** The trigger's role-free name: the one row is the game's one role, so "for Agent" says nothing. */
+  const NO_ROLE_TRIGGER = 'button[aria-label="registration.roles.matrix.heroesLabelNoRole"]';
+
+  function mountOneRole(subroleCatalog: SubroleCatalog = {}) {
+    container = testWindow.document.createElement("div");
+    testWindow.document.body.appendChild(container);
+    root = createRoot(container as unknown as Element);
+    act(() =>
+      root.render(
+        <RoleStep
+          ontology={DEADLOCK_METADATA}
+          params={paramsFor("optional")}
+          subroleCatalog={subroleCatalog}
+          value={[{ role: "agent", is_primary: true }]}
+          onChange={() => {}}
+          allHeroes={HEROES}
+          lockedRole="agent"
+        />,
+      ),
+    );
+  }
+
+  it("asks for the top heroes alone: no role name, column head, hint or flex preset", () => {
+    mountOneRole();
+
+    expect(container.querySelectorAll(NO_ROLE_TRIGGER)).toHaveLength(1);
+    expect(container.textContent).not.toContain("Agent");
+    expect(container.textContent).not.toContain("registration.roles.matrix.hint");
+    expect(container.textContent).not.toContain("registration.roles.matrix.columnRole");
+  });
+
+  it("names no role in the opened hero picker either", () => {
+    mountOneRole();
+    click(NO_ROLE_TRIGGER);
+
+    const picker = container.querySelector('[aria-label="registration.roles.matrix.heroesPickerLabelNoRole"]');
+    expect(picker).not.toBeNull();
+    expect(picker?.textContent).toContain("registration.roles.topHeroes.title");
+    expect(picker?.textContent).toContain("registration.roles.topHeroes.descNoRole");
+    expect(picker?.textContent).not.toContain("Agent");
+  });
+
+  it("names the specialization select without the role it belongs to", () => {
+    mountOneRole({ agent: [{ slug: "frontline", label: "Frontline" }] });
+
+    expect(container.querySelectorAll('button[aria-label="registration.roles.specialization"]')).toHaveLength(1);
+    expect(container.querySelector('[aria-label="registration.roles.roleSpecialization"]')).toBeNull();
+  });
 });

@@ -38,15 +38,20 @@ export default function TeamsDraftPage() {
     queryFn: () => draftService.getTournamentBoard(tournamentId),
     enabled: Number.isFinite(tournamentId) && tournamentId > 0
   });
-  const phases = useDraftPhases(boardQuery.data?.session?.status ?? null);
+  const sessionStatus = boardQuery.data?.session?.status ?? null;
+  const phases = useDraftPhases(sessionStatus);
 
   if (tournamentQuery.isLoading) {
     return tabFallback;
   }
 
+  // A live or paused session renders the control room, whose status hero
+  // already says where the draft is: the strip would be a second readout.
+  const controlRoom = sessionStatus === "live" || sessionStatus === "paused";
+
   return (
     <div className="space-y-4">
-      <PhaseStrip phases={phases} />
+      {controlRoom ? null : <PhaseStrip phases={phases} />}
       <DraftSessionDashboard
         tournamentId={tournamentId}
         canManage={canAccessPermission("team.create", workspaceId)}

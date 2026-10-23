@@ -5,7 +5,9 @@ import { useId } from "react";
 import { ArrowRight, Check } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { SettingRow } from "@/components/kit/SettingRow";
 import { Button } from "@/components/ui/button";
+import { FilterChip } from "@/components/ui/filter-chip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -15,13 +17,14 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { ROLES, ROLE_LABELS } from "@/lib/roster/roles";
-import { cn } from "@/lib/utils";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
 import type { RolesParams } from "@/types/forms.types";
 
 /** One workspace `PlayerSubRole` row, with the id its chip is keyed by. */
-export interface CatalogEntry {
+interface CatalogEntry {
   id: number;
   slug: string;
   label: string;
@@ -55,41 +58,6 @@ export function rolesParamsOf(params: Record<string, unknown>): RolesParams {
 }
 
 /**
- * One switch setting: what it is and why on the left, the control on the right.
- *
- * Shared with `FieldEditor` — the question panel and this params editor are one
- * surface to the organizer, and two copies of the row is how their label sizes
- * and hint spacing start to drift.
- */
-export function SwitchRow({
-  id,
-  label,
-  hint,
-  checked,
-  onCheckedChange,
-  disabled = false
-}: Readonly<{
-  id: string;
-  label: string;
-  hint?: string;
-  checked: boolean;
-  onCheckedChange: (next: boolean) => void;
-  disabled?: boolean;
-}>) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <div className="min-w-0">
-        <Label htmlFor={id} className="text-xs">
-          {label}
-        </Label>
-        {hint ? <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p> : null}
-      </div>
-      <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
-    </div>
-  );
-}
-
-/**
  * Everything the `roles` builtin decides: role composition, the flex rule, the
  * sub-roles this tournament offers and the top-heroes pickers.
  *
@@ -105,39 +73,47 @@ export function RolesParamsEditor({
   params,
   onChange,
   catalog,
+  ontology,
   catalogLoading = false
 }: Readonly<{
   params: RolesParams;
   onChange: (next: RolesParams) => void;
   catalog: SubroleCatalogByRole;
+  /** The tournament owner's role dictionary: which roles carry a sub-role row, and their names. `null` while it loads. */
+  ontology: RoleOntology | null;
   catalogLoading?: boolean;
 }>) {
   const t = useTranslations("registrationFormAdmin.roles");
   const tSub = useTranslations("registrationFormAdmin.subroles");
+  const slotLabel = useSlotLabel(ontology);
   const ids = useId();
 
   return (
     <div className="grid gap-4">
       <div className="grid gap-3">
-        <SwitchRow
-          id={`${ids}-primary`}
-          label={t("primaryRequired")}
-          checked={params.primary_required}
-          onCheckedChange={(primary_required) => onChange({ ...params, primary_required })}
-        />
-        <SwitchRow
-          id={`${ids}-additional`}
-          label={t("additionalRequired")}
-          checked={params.additional_required}
-          onCheckedChange={(additional_required) => onChange({ ...params, additional_required })}
-        />
-        <SwitchRow
-          id={`${ids}-flex`}
-          label={t("flexAllowed")}
-          hint={t("flexAllowedHint")}
-          checked={params.flex_allowed}
-          onCheckedChange={(flex_allowed) => onChange({ ...params, flex_allowed })}
-        />
+        <div>
+          <SettingRow htmlFor={`${ids}-primary`} label={t("primaryRequired")}>
+            <Switch
+              id={`${ids}-primary`}
+              checked={params.primary_required}
+              onCheckedChange={(primary_required) => onChange({ ...params, primary_required })}
+            />
+          </SettingRow>
+          <SettingRow htmlFor={`${ids}-additional`} label={t("additionalRequired")}>
+            <Switch
+              id={`${ids}-additional`}
+              checked={params.additional_required}
+              onCheckedChange={(additional_required) => onChange({ ...params, additional_required })}
+            />
+          </SettingRow>
+          <SettingRow htmlFor={`${ids}-flex`} label={t("flexAllowed")} hint={t("flexAllowedHint")}>
+            <Switch
+              id={`${ids}-flex`}
+              checked={params.flex_allowed}
+              onCheckedChange={(flex_allowed) => onChange({ ...params, flex_allowed })}
+            />
+          </SettingRow>
+        </div>
         <div className="grid gap-1.5">
           <Label htmlFor={`${ids}-mode`} className="text-xs">
             {t("flexMode")}
@@ -177,11 +153,11 @@ export function RolesParamsEditor({
           </Button>
         </div>
 
-        {ROLES.map((role) => {
+        {registrationRoles(ontology).map((role) => {
           const options = catalog[role.code] ?? [];
           const selection = params.subroles[role.code];
           const allSlugs = options.map((option) => option.slug);
-          const roleLabel = ROLE_LABELS[role.code] ?? role.display;
+          const roleLabel = slotLabel(role.code);
 
           return (
             <div key={role.code} className="grid gap-1.5">
@@ -200,10 +176,9 @@ export function RolesParamsEditor({
                 {options.map((option) => {
                   const offered = selection === undefined || selection.includes(option.slug);
                   return (
-                    <button
+                    <FilterChip
                       key={option.id}
-                      type="button"
-                      aria-pressed={offered}
+                      active={offered}
                       title={offered ? tSub("chipOffered") : tSub("chipHidden")}
                       onClick={() => {
                         const effective = selection ?? allSlugs;
@@ -215,23 +190,25 @@ export function RolesParamsEditor({
                           subroles: { ...params.subroles, [role.code]: next }
                         });
                       }}
-                      className={cn(
-                        "inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                        offered
-                          ? "border-primary/30 bg-primary/10 text-primary"
-                          : "border-border/60 text-muted-foreground hover:text-foreground"
-                      )}
                     >
                       {offered && <Check className="size-3" aria-hidden />}
                       {option.label}
-                    </button>
+                    </FilterChip>
                   );
                 })}
-                {options.length === 0 && (
-                  <span className="text-xs text-muted-foreground">
-                    {catalogLoading ? tSub("loading") : tSub("emptyRole", { role: roleLabel })}
-                  </span>
-                )}
+                {options.length === 0 &&
+                  (catalogLoading ? (
+                    <div role="status" className="flex gap-1.5">
+                      <span className="sr-only">{tSub("loading")}</span>
+                      {[0, 1, 2].map((chip) => (
+                        <Skeleton key={chip} aria-hidden className="h-8 w-16 rounded-lg" />
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      {tSub("emptyRole", { role: roleLabel })}
+                    </span>
+                  ))}
               </div>
             </div>
           );
@@ -239,24 +216,27 @@ export function RolesParamsEditor({
       </div>
 
       <div className="grid gap-3 border-t pt-4">
-        <SwitchRow
-          id={`${ids}-heroes`}
-          label={t("topHeroesEnabled")}
-          hint={t("topHeroesHint")}
-          checked={params.top_heroes.enabled}
-          onCheckedChange={(enabled) =>
-            onChange({ ...params, top_heroes: { ...params.top_heroes, enabled } })
-          }
-        />
-        <SwitchRow
-          id={`${ids}-heroes-required`}
-          label={t("topHeroesRequired")}
-          checked={params.top_heroes.required}
-          disabled={!params.top_heroes.enabled}
-          onCheckedChange={(required) =>
-            onChange({ ...params, top_heroes: { ...params.top_heroes, required } })
-          }
-        />
+        <div>
+          <SettingRow htmlFor={`${ids}-heroes`} label={t("topHeroesEnabled")} hint={t("topHeroesHint")}>
+            <Switch
+              id={`${ids}-heroes`}
+              checked={params.top_heroes.enabled}
+              onCheckedChange={(enabled) =>
+                onChange({ ...params, top_heroes: { ...params.top_heroes, enabled } })
+              }
+            />
+          </SettingRow>
+          <SettingRow htmlFor={`${ids}-heroes-required`} label={t("topHeroesRequired")}>
+            <Switch
+              id={`${ids}-heroes-required`}
+              checked={params.top_heroes.required}
+              disabled={!params.top_heroes.enabled}
+              onCheckedChange={(required) =>
+                onChange({ ...params, top_heroes: { ...params.top_heroes, required } })
+              }
+            />
+          </SettingRow>
+        </div>
         <div className="grid gap-1.5">
           <Label htmlFor={`${ids}-heroes-max`} className="text-xs">
             {t("topHeroesMax")}

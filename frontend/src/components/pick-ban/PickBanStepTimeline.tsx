@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -29,7 +30,6 @@ import {
   stepRoundGroups,
   stepSubmissions,
   stepSummary,
-  type PickBanSide,
   type PickBanStepSummary
 } from "./pick-ban-model";
 import { PickBanRoundLabel, type PickBanItemLike } from "./PickBanGrid";
@@ -50,7 +50,11 @@ interface PickBanStepTimelineProps {
    */
   currentRound: number | null;
   itemsById: Record<number, PickBanItemLike | undefined>;
-  sideName: (side: PickBanSide) => string;
+  /** The room's side labels in `state.sides` order: a `side_pick` step's item is an index into them. */
+  sideLabels: string[];
+  teamName: (teamId: number) => string;
+  /** A mix player's name: a member step names whose pick it is (spec §11.6 R4-11). */
+  memberName: (memberId: number) => string;
   /** Drives the "who goes first" line under the Steps title. */
   session: PickBanSession;
 }
@@ -63,7 +67,9 @@ export function PickBanStepTimeline({
   isComplete,
   currentRound,
   itemsById,
-  sideName,
+  sideLabels,
+  teamName,
+  memberName,
   session
 }: Readonly<PickBanStepTimelineProps>) {
   const t = useTranslations("pickBan.room");
@@ -84,8 +90,10 @@ export function PickBanStepTimeline({
       .flatMap((submission) => submission.items);
     // Who acts is a different sentence per shape, not a team name slotted into
     // one: "Both teams ban" / "{team} bans" / "Random ban".
-    const shape = summary.system ? "system" : summary.sides.length > 1 ? "both" : "side";
+    const shape = summary.system ? "system" : summary.actors.length > 1 ? "both" : "side";
     const headlineKey = `step.${shape}.${summary.action}` as const;
+    // A `next` step is one player's pick: name them, not their team.
+    const pickFor = resolved.member === "next" ? resolved.member_seats?.[0]?.[1] : undefined;
 
     const Icon = done
       ? Check
@@ -116,7 +124,7 @@ export function PickBanStepTimeline({
           className={cn(
             "h-4 w-4 shrink-0",
             done
-              ? "text-[color:var(--aqt-support)]"
+              ? "text-[color:var(--aqt-positive)]"
               : current
                 ? "text-[color:var(--aqt-teal)]"
                 : "text-[color:var(--aqt-fg-faint)]"
@@ -126,26 +134,30 @@ export function PickBanStepTimeline({
           className={cn(
             "inline-flex items-center gap-1 font-medium",
             summary.action === "ban" ? "text-[color:var(--aqt-rose)]" : null,
-            summary.action === "pick" ? "text-[color:var(--aqt-support)]" : null,
+            summary.action === "pick" ? "text-[color:var(--aqt-positive)]" : null,
             summary.action === "protect" ? "text-[color:var(--aqt-amber)]" : null
           )}
         >
           {summary.action === "ban" ? <Ban className="h-3.5 w-3.5" aria-hidden /> : null}
           {summary.action === "protect" ? <Shield className="h-3.5 w-3.5" aria-hidden /> : null}
-          {t(headlineKey, {
-            team: summary.sides.length === 1 ? sideName(summary.sides[0]) : ""
-          })}
+          {pickFor != null
+            ? t("step.member.pick", { member: memberName(pickFor) })
+            : t(headlineKey, {
+                team: summary.actors.length === 1 ? teamName(summary.actors[0]) : ""
+              })}
           {summary.action === "decider" ? (
             <TooltipProvider delayDuration={150}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button
+                  <Button
                     type="button"
-                    className="inline-flex text-[color:var(--aqt-fg-faint)] outline-none hover:text-[color:var(--aqt-teal)] focus-visible:text-[color:var(--aqt-teal)]"
+                    variant="ghost"
+                    size="icon-xs"
+                    className="text-[color:var(--aqt-fg-faint)] hover:bg-transparent hover:text-[color:var(--aqt-teal)] focus-visible:text-[color:var(--aqt-teal)]"
                     aria-label={t("steps.deciderHint")}
                   >
-                    <Info className="h-3.5 w-3.5" aria-hidden />
-                  </button>
+                    <Info aria-hidden />
+                  </Button>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-[16rem] text-xs">
                   {t("steps.deciderHint")}
@@ -155,9 +167,19 @@ export function PickBanStepTimeline({
           ) : null}
         </span>
         <StepMeta summary={summary} />
+        {resolved.member === "each" ? (
+          <span className="text-xs text-[color:var(--aqt-fg-muted)]">{t("step.eachPlayer")}</span>
+        ) : null}
         {taken.length > 0 ? (
           <span className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1">
             {taken.map((item, position) => {
+              if (summary.action === "side_pick") {
+                return (
+                  <span key={`side-${item.item_id}-${position}`} className="text-xs font-semibold">
+                    {sideLabels[item.item_id] ?? `#${item.item_id}`}
+                  </span>
+                );
+              }
               const name =
                 itemsById[item.item_id]?.name ?? t(`${kind}.itemNumber`, { id: item.item_id });
               return (
@@ -181,11 +203,11 @@ export function PickBanStepTimeline({
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base">{t("steps.title")}</CardTitle>
-        {session.first_side ? (
+        {session.first_team_id != null ? (
           <p className="flex items-center gap-2 text-sm text-[color:var(--aqt-fg-muted)]">
             <Flag className="h-4 w-4 shrink-0 text-[color:var(--aqt-teal)]" aria-hidden />
             <span>
-              {t("firstBanner", { team: sideName(session.first_side) })}{" "}
+              {t("firstBanner", { team: teamName(session.first_team_id) })}{" "}
               <span className="text-[color:var(--aqt-fg-dim)]">
                 ({t(`seedSource.${session.seed_source}`)})
               </span>

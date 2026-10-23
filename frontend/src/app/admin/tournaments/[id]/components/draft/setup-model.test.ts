@@ -258,9 +258,9 @@ describe("draft setup model", () => {
     const registration = {
       id: 9,
       roles: [
-        { role: "tank", is_active: true, is_primary: true, priority: 0, rank_value: 2000 },
-        { role: "damage", is_active: true, is_primary: false, priority: 1, rank_value: 3500 },
-        { role: "support", is_active: false, is_primary: false, priority: 2, rank_value: 4200 }
+        { role: { dimension: "player_role", role: "tank" }, is_active: true, is_primary: true, priority: 0, rank_value: 2000 },
+        { role: { dimension: "player_role", role: "damage" }, is_active: true, is_primary: false, priority: 1, rank_value: 3500 },
+        { role: { dimension: "player_role", role: "support" }, is_active: false, is_primary: false, priority: 2, rank_value: 4200 }
       ]
     } as unknown as AdminRegistration;
 

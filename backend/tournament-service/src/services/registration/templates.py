@@ -11,6 +11,10 @@ Names are unique per workspace, case-insensitively. The database says so --
 lower(name))`` -- but this module checks first anyway, so the ordinary collision
 answers a structured 409 instead of letting an ``IntegrityError`` escape as a
 500. The ``IntegrityError`` is caught too, for the race the read cannot close.
+
+A template belongs to one game (``discipline``): created for a game the workspace runs, never moved to another
+(409 ``template_discipline_immutable``), applied only to that game's tournaments (409
+``template_discipline_mismatch``), and a snapshot of a tournament's form takes the tournament's game.
 """
 
 from __future__ import annotations
@@ -21,11 +25,12 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.domain.forms import FormSchema
-from shared.repository import RegistrationFormTemplateRepository
-from src import models
+from shared.repository import RegistrationFormTemplateRepository, WorkspaceRepository
+from shared.services.ontology import assert_discipline_enabled
 from src.schemas.registration_form import (
     RegistrationFormTemplateUpsert,
     RegistrationFormUpsert,
@@ -64,14 +69,16 @@ class RegistrationFormTemplateService:
 
     def __init__(self) -> None:
         self.template_repo = RegistrationFormTemplateRepository()
+        self.workspace_repo = WorkspaceRepository()
 
     async def list(
         self,
         session: AsyncSession,
         *,
         workspace_id: int,
-    ) -> Sequence[models.BalancerRegistrationFormTemplate]:
-        return await self.template_repo.list_for_workspace(session, workspace_id)
+        discipline: str | None = None,
+    ) -> Sequence[models.RegistrationFormTemplate]:
+        return await self.template_repo.list_for_workspace(session, workspace_id, discipline=discipline)
 
     async def create(
         self,
@@ -80,12 +87,24 @@ class RegistrationFormTemplateService:
         workspace_id: int,
         body: RegistrationFormTemplateUpsert,
         actor_user_id: int | None,
-    ) -> models.BalancerRegistrationFormTemplate:
+    ) -> models.RegistrationFormTemplate:
         """Store a new named schema. Commits internally."""
         name = _clean_name(body.name)
+        if body.discipline is None:
+            raise _fail(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "discipline_required",
+                "A template belongs to one game",
+                field="discipline",
+            )
+        workspace = await self.workspace_repo.get(session, workspace_id)
+        if workspace is None:
+            raise _fail(status.HTTP_404_NOT_FOUND, "workspace_not_found", "Workspace not found")
+        assert_discipline_enabled(workspace, body.discipline)
         await self._ensure_name_free(session, workspace_id=workspace_id, name=name)
-        template = models.BalancerRegistrationFormTemplate(
+        template = models.RegistrationFormTemplate(
             workspace_id=workspace_id,
+            discipline=body.discipline,
             name=name,
             schema_json=body.form_schema.model_dump(mode="json"),
             created_by=actor_user_id,
@@ -107,7 +126,7 @@ class RegistrationFormTemplateService:
         template_id: int,
         body: RegistrationFormTemplateUpsert,
         actor_user_id: int | None,
-    ) -> models.BalancerRegistrationFormTemplate:
+    ) -> models.RegistrationFormTemplate:
         """Rename and/or replace a template's questions. Commits internally.
 
         ``actor_user_id`` is taken for symmetry with :meth:`create`; the row
@@ -115,6 +134,13 @@ class RegistrationFormTemplateService:
         that was.
         """
         template = await self._require(session, workspace_id, template_id)
+        if body.discipline is not None and body.discipline != template.discipline:
+            raise _fail(
+                status.HTTP_409_CONFLICT,
+                "template_discipline_immutable",
+                f"This template belongs to {template.discipline!r}; its game cannot change",
+                field="discipline",
+            )
         name = _clean_name(body.name)
         await self._ensure_name_free(session, workspace_id=workspace_id, name=name, excluding=template.id)
         template.name = name
@@ -142,7 +168,7 @@ class RegistrationFormTemplateService:
         tournament_id: int,
         template_id: int,
         actor_user_id: int | None,
-    ) -> models.BalancerRegistrationForm:
+    ) -> models.RegistrationForm:
         """Copy a template's questions onto a tournament's form. Commits internally.
 
         A plain schema save: ``apply_schema`` dedupes on canonical JSON, so
@@ -151,6 +177,13 @@ class RegistrationFormTemplateService:
         invisible to the other.
         """
         template = await self._require(session, workspace_id, template_id)
+        tournament_discipline = await self._tournament_discipline(session, tournament_id)
+        if template.discipline != tournament_discipline:
+            raise _fail(
+                status.HTTP_409_CONFLICT,
+                "template_discipline_mismatch",
+                f"Template is for {template.discipline!r}, the tournament is {tournament_discipline!r}",
+            )
         schema = FormSchema.model_validate(template.schema_json)
 
         form = await form_service.get_form(session, tournament_id)
@@ -176,11 +209,12 @@ class RegistrationFormTemplateService:
         tournament_id: int,
         name: str,
         actor_user_id: int | None,
-    ) -> models.BalancerRegistrationFormTemplate:
+    ) -> models.RegistrationFormTemplate:
         """Snapshot a tournament form's CURRENT questions under a new name.
 
         A snapshot, not a link: the template keeps what the form asked at this
-        moment, and the form moving on afterwards leaves it alone.
+        moment, and the form moving on afterwards leaves it alone. The template
+        takes the tournament's game.
         """
         form = await form_service.get_form(session, tournament_id)
         if form is None:
@@ -192,8 +226,17 @@ class RegistrationFormTemplateService:
         return await self.create(
             session,
             workspace_id=workspace_id,
-            body=RegistrationFormTemplateUpsert(name=name, form_schema=form_service.schema_of(form)),
+            body=RegistrationFormTemplateUpsert(
+                name=name,
+                discipline=await self._tournament_discipline(session, tournament_id),
+                form_schema=form_service.schema_of(form),
+            ),
             actor_user_id=actor_user_id,
+        )
+
+    async def _tournament_discipline(self, session: AsyncSession, tournament_id: int) -> str:
+        return str(
+            await session.scalar(sa.select(models.Tournament.discipline).where(models.Tournament.id == tournament_id))
         )
 
     async def _require(
@@ -201,7 +244,7 @@ class RegistrationFormTemplateService:
         session: AsyncSession,
         workspace_id: int,
         template_id: int,
-    ) -> models.BalancerRegistrationFormTemplate:
+    ) -> models.RegistrationFormTemplate:
         """The template, scoped to the workspace the caller was authorized against
         -- a bare id lookup would let one workspace edit another's."""
         template = await self.template_repo.get_for_workspace(session, workspace_id, template_id)
@@ -218,9 +261,9 @@ class RegistrationFormTemplateService:
         excluding: int | None = None,
     ) -> None:
         clashing = await session.scalar(
-            sa.select(models.BalancerRegistrationFormTemplate.id).where(
-                models.BalancerRegistrationFormTemplate.workspace_id == workspace_id,
-                sa.func.lower(models.BalancerRegistrationFormTemplate.name) == name.lower(),
+            sa.select(models.RegistrationFormTemplate.id).where(
+                models.RegistrationFormTemplate.workspace_id == workspace_id,
+                sa.func.lower(models.RegistrationFormTemplate.name) == name.lower(),
             )
         )
         if clashing is not None and clashing != excluding:

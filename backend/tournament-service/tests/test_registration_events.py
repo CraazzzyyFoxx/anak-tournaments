@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,7 +11,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 # Patch targets must be the module that OWNS these functions (lifecycle), not the
 # `admin` facade: the lifecycle functions resolve collaborators from their own
@@ -59,7 +57,7 @@ class RegistrationEventOutboxTests(IsolatedAsyncioTestCase):
         enqueue_approved.assert_awaited_once_with(session, registration)
         self.assertLess(calls.index("enqueue"), calls.index("commit"))
 
-    async def test_reject_registration_enqueues_event_before_commit(self) -> None:
+    async def test_reject_registration_notifies_before_commit(self) -> None:
         calls: list[str] = []
         registration = SimpleNamespace(
             id=8,
@@ -74,8 +72,8 @@ class RegistrationEventOutboxTests(IsolatedAsyncioTestCase):
         )
         session = SimpleNamespace(commit=AsyncMock(side_effect=lambda: calls.append("commit")))
 
-        async def fake_enqueue(_session, _registration):
-            calls.append("enqueue")
+        async def fake_notify(_session, _registration):
+            calls.append("notify")
 
         with (
             patch.object(
@@ -85,13 +83,13 @@ class RegistrationEventOutboxTests(IsolatedAsyncioTestCase):
             ),
             patch.object(
                 registration_service,
-                "enqueue_registration_rejected",
-                AsyncMock(side_effect=fake_enqueue),
-            ) as enqueue_rejected,
+                "notify_registration_rejected",
+                AsyncMock(side_effect=fake_notify),
+            ) as notify_rejected,
         ):
             result = await registration_service.lifecycle_service.reject_registration(session, 8, reviewed_by=99)
 
         self.assertIs(result, registration)
         self.assertEqual("rejected", registration.status)
-        enqueue_rejected.assert_awaited_once_with(session, registration)
-        self.assertLess(calls.index("enqueue"), calls.index("commit"))
+        notify_rejected.assert_awaited_once_with(session, registration)
+        self.assertLess(calls.index("notify"), calls.index("commit"))

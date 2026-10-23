@@ -25,7 +25,7 @@ SCAN_ROOTS = (
     "balancer-service",
     "discord-service",
     "identity-service",
-    "parser-service",
+    "stats-service",
     "stream-service",
     "tournament-service",
     "analytics-service",
@@ -35,26 +35,32 @@ SCAN_ROOTS = (
 DIRECT_WRITE_RE = re.compile(
     r"session\.(?:add|add_all|delete|merge)\(|await session\.get\(|sa\.(?:insert|update|delete)\("
 )
+#: ``from sqlalchemy import update`` followed by a bare ``update(Model)`` is the same write
+#: spelled so that the pattern above cannot see it.
+_BARE_WRITE_IMPORT_RE = re.compile(r"^from sqlalchemy import [^\n]*\b(?:insert|update|delete)\b", re.M)
+_BARE_WRITE_CALL_RE = re.compile(r"(?<![\w.])(?:insert|update|delete)\(")
+
+
+def _has_direct_write(text: str) -> bool:
+    if DIRECT_WRITE_RE.search(text):
+        return True
+    return bool(_BARE_WRITE_IMPORT_RE.search(text) and _BARE_WRITE_CALL_RE.search(text))
+
 
 #: Deliberate non-CRUD access. Adding an entry needs a reason of this kind, not
 #: convenience.
 APPROVED_DIRECT_WRITE_FILES = {
+    # Profile merge: set-based repoints of arbitrary reference tables from the source player to the target.
+    "app-service/src/services/admin/user_merge.py",
     "analytics-service/src/services/analytics/flows.py",
     "analytics-service/src/services/ml/inference/match_quality_runner.py",
     "analytics-service/src/services/ml/inference/player_anomaly_runner.py",
     "analytics-service/src/services/ml/inference/runner.py",
-    "parser-service/src/services/achievement/engine/runner.py",
-    # Bulk executemany ingest, not CRUD: one parsed match log yields thousands
-    # of kill-feed/event rows, and a per-row repository create would turn a
-    # single INSERT..VALUES into a round trip each. Generic over the model on
-    # purpose -- the caller passes whichever log table the parsed frame belongs
-    # to.
-    "parser-service/src/services/match_logs/flows.py",
+    "stats-service/src/services/achievement/engine/runner.py",
     "shared/messaging/outbox.py",
     "shared/rbac/bootstrap.py",
-    "shared/services/bracket/advancement.py",
-    "shared/services/bracket/usability.py",
-    "shared/services/division_grid/access.py",
+    "tournament-service/src/services/bracket/advancement.py",
+    "tournament-service/src/services/bracket/usability.py",
     # Append-only event journal, not CRUD: the realtime rail writes one
     # WorkspaceEvent row per staged event from the session's own before_commit
     # hook, which is where the row has to be created for it to ride the
@@ -68,15 +74,15 @@ APPROVED_DIRECT_WRITE_FILES = {
     # row either; "delete" is an ``expires_at`` stamp, which DOES go through
     # ``NotificationRepository.retire``.
     "shared/services/notifications.py",
-    "shared/services/stage_refs.py",
+    "tournament-service/src/services/challonge/stage_refs.py",
     # Replacing a delete-orphan collection, not CRUD: ``_apply_seeding`` is a
     # deliberately SYNCHRONOUS helper whose delete half is a collection
     # ``remove``; the insert half is the matching ``session.add``. An async
     # repository create would make the whole seeding path async to move one
     # line.
     "tournament-service/src/services/admin/stage_common.py",
-    "shared/services/team_export/materialization.py",
-    "shared/services/team_export/service.py",
+    "balancer-service/src/services/team_export/materialization.py",
+    "balancer-service/src/services/team_export/service.py",
     "tournament-service/src/services/admin/encounter.py",
     "tournament-service/src/services/admin/stage.py",
     "tournament-service/src/services/admin/team.py",
@@ -87,16 +93,7 @@ APPROVED_DIRECT_WRITE_FILES = {
 #: Direct writes that predate their repository and are owed one. Every entry is a
 #: line to delete, not a pattern to copy: a new file belongs here only if the same
 #: change also explains why the repository method cannot exist yet.
-PENDING_REPOSITORY_MIGRATION = {
-    "identity-service/src/services/auth.py",
-    "identity-service/src/services/auth_users.py",
-    "identity-service/src/services/oauth_accounts.py",
-    "identity-service/src/services/rbac_admin.py",
-    "identity-service/src/services/sessions.py",
-    "tournament-service/src/services/encounter/captain.py",
-    "tournament-service/src/services/encounter/pick_ban_session.py",
-    "tournament-service/src/services/scrim/service.py",
-}
+PENDING_REPOSITORY_MIGRATION: set[str] = set()
 
 _EXEMPT = APPROVED_DIRECT_WRITE_FILES | PENDING_REPOSITORY_MIGRATION
 
@@ -108,14 +105,14 @@ def _iter_python_files() -> list[Path]:
         if not root.exists():
             continue
         files.extend(
-            path for path in root.rglob("*.py") if "tests" not in path.parts and "__pycache__" not in path.parts
+            path for path in root.rglob("*.py") if not {"tests", "testing", "scripts", "__pycache__"} & set(path.parts)
         )
     return files
 
 
 def _writes_directly(relative: str) -> bool:
     path = BACKEND_ROOT / relative
-    return path.exists() and bool(DIRECT_WRITE_RE.search(path.read_text(encoding="utf-8")))
+    return path.exists() and _has_direct_write(path.read_text(encoding="utf-8"))
 
 
 def test_new_direct_db_writes_go_through_shared_repositories() -> None:
@@ -124,7 +121,7 @@ def test_new_direct_db_writes_go_through_shared_repositories() -> None:
         relative = path.relative_to(BACKEND_ROOT).as_posix()
         if relative.startswith("shared/repository/") or relative in _EXEMPT:
             continue
-        if DIRECT_WRITE_RE.search(path.read_text(encoding="utf-8")):
+        if _has_direct_write(path.read_text(encoding="utf-8")):
             offenders.append(relative)
 
     assert offenders == []

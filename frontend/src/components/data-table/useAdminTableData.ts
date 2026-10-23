@@ -19,6 +19,9 @@ export interface AdminTableDataOptions<TData>
   filters: AdminTableFilters;
 }
 
+/** One instance, so a loading table's "no rows yet" keeps its identity across renders. */
+const EMPTY_RESULTS: never[] = [];
+
 /**
  * The two data modes behind one shape: server mode runs the caller's query for
  * the current page, client mode narrows the rows it was handed.
@@ -64,11 +67,17 @@ export function useAdminTableData<TData>({
     );
   }, [rows, search, columns]);
 
-  const data: PaginatedResponse<TData> = dataQuery.data ?? { results: [], total: 0, page: 1, per_page: pageSize };
+  // One object per query result: `onPageRowsChange` hands it on from an effect keyed on it.
+  const data = useMemo<PaginatedResponse<TData>>(
+    () => dataQuery.data ?? { results: EMPTY_RESULTS, total: 0, page: 1, per_page: pageSize },
+    [dataQuery.data, pageSize]
+  );
 
   return {
     data,
     clientRows,
+    /** No rows have ever been shown: the body draws a skeleton, not the empty state. */
+    isInitialLoading: isClientMode ? isLoading : dataQuery.isLoading,
     /** A refetch behind an already-rendered page, or the caller's own client-mode fetch. */
     isRefreshing: isClientMode ? isLoading : dataQuery.isFetching && !dataQuery.isLoading
   };

@@ -1,20 +1,9 @@
 """Whether self-service registration is open — the single source of truth.
 
-Registration openness used to be a conjunction of three knobs across two owners::
-
-    form.is_open                                   # BalancerRegistrationForm
-    AND not is_finished_for_status(status)
-    AND ( (status == REGISTRATION AND is_within_phase_window(REGISTRATION, ...))
-          OR tournament.allow_late_registration )  # Tournament
-
-Two of those three are gone. ``form.is_open`` was a second open/closed switch
-standing beside the schedule, and the tournament's own *phase* no longer
-participates at all: a window reaching past the LIVE start keeps registration
-open by itself, so openness never has to consult ``status`` except as a floor.
-
-What remains is the ``REGISTRATION`` row of ``tournament_phase_schedule`` plus one
-override: ``Tournament.allow_late_registration``, which lifts ``ends_at`` and
-nothing else.
+Openness is the ``REGISTRATION`` row of ``tournament_phase_schedule`` plus one
+override, ``Tournament.allow_late_registration``, which lifts ``ends_at`` and
+nothing else. The tournament's status only matters as a terminal floor: a window
+reaching past the LIVE start keeps registration open by itself.
 
 Three deliberate properties
 ---------------------------
@@ -22,30 +11,25 @@ Three deliberate properties
 ``tournament_state.is_within_phase_window``, whose documented contract is that a
 missing row "spans the whole phase". That contract is load-bearing for
 ``is_check_in_window_active``, so it is NOT changed — the inversion lives here,
-for registration only. Without the inversion the default would flip from closed
-(``is_open`` defaulted to ``false``) to open, and a freshly created tournament
-would accept registrations before its form was configured.
+for registration only, so a freshly created tournament does not accept
+registrations before its form is configured.
 
 **Terminal statuses are a floor, not a knob.** COMPLETED/ARCHIVED is always
 closed regardless of the window, so a mis-set ``ends_at`` can never reopen an
 archived tournament.
 
-**The late-registration override lifts ``ends_at`` ONLY.** It is deliberately the
-narrowest knob that still does the job — admit latecomers without editing away
-the intended closing time, which is the one thing an ``ends_at`` edit cannot do
-(it destroys the very date the organizer wants to keep on the page). It therefore
-does NOT open a tournament with no REGISTRATION row (that would flip a fresh
-tournament's default to open and defeat the inversion above), does NOT open one
-whose window has not started yet (*late* means after the end, never before the
-start), and cannot beat the terminal floor. ``allow_late`` is a REQUIRED argument
-rather than a defaulted one: a caller holding only ``(status, schedule)`` cannot
-know the flag, and defaulting it to ``False`` would silently answer "closed" for
-exactly the tournaments this override exists to keep open.
+**The late-registration override lifts ``ends_at`` ONLY.** It admits latecomers
+while keeping the announced closing time intact. It therefore does NOT open a
+tournament with no REGISTRATION row (that would defeat the inversion above),
+does NOT open one whose window has not started yet (*late* means after the end,
+never before the start), and cannot beat the terminal floor. ``allow_late`` is a
+REQUIRED argument rather than a defaulted one: a caller holding only
+``(status, schedule)`` cannot know the flag, and defaulting it to ``False`` would
+silently answer "closed" for exactly the tournaments this override exists to
+keep open.
 
 Both a Python predicate and a SQL clause are provided because openness is read
-both per-tournament and inside aggregate queries in three different services
-(dashboard readiness, dashboard counts, subscription-collection targeting,
-subscription-config preview).
+both per-tournament and inside aggregate queries.
 """
 
 from __future__ import annotations
@@ -56,7 +40,7 @@ from datetime import UTC, datetime
 import sqlalchemy as sa
 
 from shared.core.enums import TournamentStatus
-from shared.core.tournament_state import PhaseScheduleEntry, is_finished_for_status
+from shared.core.tournament_state import PhaseScheduleEntry, as_utc, is_finished_for_status
 from shared.models.tournament.tournament import Tournament, TournamentPhaseSchedule
 
 __all__ = (
@@ -76,9 +60,8 @@ def is_registration_window_open(
 ) -> bool:
     """``True`` while ``now`` is inside the REGISTRATION row's window.
 
-    Deliberately takes the status, schedule and flag rather than a ``Tournament``
-    so it can be unit-tested without a mapped instance, and so callers holding
-    only a projection can use it.
+    Takes the status, schedule and flag rather than a ``Tournament`` so callers
+    holding only a projection can use it.
     """
     if is_finished_for_status(status):
         return False
@@ -89,12 +72,12 @@ def is_registration_window_open(
         return False
 
     moment = now or datetime.now(UTC)
-    starts_at = _as_utc(entry.starts_at)
+    starts_at = as_utc(entry.starts_at)
     if starts_at > moment:
         return False
     if entry.ends_at is None or allow_late:
         return True
-    return moment <= _as_utc(entry.ends_at)
+    return moment <= as_utc(entry.ends_at)
 
 
 def is_registration_late(
@@ -123,7 +106,7 @@ def is_registration_late(
         return False
 
     moment = now or datetime.now(UTC)
-    return _as_utc(entry.starts_at) <= moment and moment > _as_utc(entry.ends_at)
+    return as_utc(entry.starts_at) <= moment and moment > as_utc(entry.ends_at)
 
 
 def registration_open_clause(now: datetime | None = None) -> sa.ColumnElement[bool]:
@@ -186,9 +169,3 @@ def registration_late_clause(now: datetime | None = None) -> sa.ColumnElement[bo
         Tournament.status.notin_([TournamentStatus.COMPLETED, TournamentStatus.ARCHIVED]),
         past_end,
     )
-
-
-def _as_utc(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)

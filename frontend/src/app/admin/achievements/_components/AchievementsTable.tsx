@@ -1,36 +1,19 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { ColumnDef } from "@tanstack/react-table";
 import { useTranslations } from "next-intl";
-import {
-  CheckCircle,
-  CircleOff,
-  Eye,
-  EyeOff,
-  MoreHorizontal,
-  Pencil,
-  Play,
-  TestTube,
-  Trash2,
-} from "lucide-react";
+import { CircleOff } from "lucide-react";
 
-import { DataTable, columnMeta } from "@/components/data-table";
+import { DataTable, columnMeta, createKebabColumn } from "@/components/data-table";
 import { StatusIcon } from "@/components/admin/StatusIcon";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import adminService from "@/services/admin.service";
 import { achievementQueryKeys } from "@/lib/achievements/query-keys";
+import { ALL_DISCIPLINES } from "@/lib/site/discipline-scope";
+import { RowGameLabel, gameColumn } from "@/components/workspace/game-column";
 import type { AchievementRule } from "@/types/admin.types";
 
 import { countLeafConditions } from "../achievement-form.model";
-import { IconLabel, categoryIcon, grainIcon, scopeIcon } from "../achievement-meta";
 
 export interface AchievementsTableActions {
   canUpdate: boolean;
@@ -43,32 +26,37 @@ export interface AchievementsTableActions {
   onDelete: (rule: AchievementRule) => void;
 }
 
-/** The paged rule catalog. Every row action is decided by the page, not here. */
+/**
+ * The paged rule catalog: one game's, or every game's (`discipline: null`) with a "Game" column when `showGame`
+ * (spec §6.1, §6.10). `toolbar` is the page's filter bar, next to the search. Every row action is decided by the
+ * page, not here.
+ */
 export function AchievementsTable({
   workspaceId,
+  discipline,
+  showGame,
+  toolbar,
   actions,
-}: Readonly<{ workspaceId: number; actions: AchievementsTableActions }>) {
+}: Readonly<{
+  workspaceId: number;
+  discipline: string | null;
+  showGame: boolean;
+  toolbar?: ReactNode;
+  actions: AchievementsTableActions;
+}>) {
   const t = useTranslations("adminAchievements");
-  const listKey = achievementQueryKeys.adminList(workspaceId);
+  const tGame = useTranslations("common.discipline");
+  const listKey = achievementQueryKeys.adminList(workspaceId, discipline ?? ALL_DISCIPLINES);
 
-  const columns: ColumnDef<AchievementRule>[] = [
-    {
-      accessorKey: "id",
-      header: t("common.id"),
-      size: 60,
-      cell: ({ row }) => <span className="tabular-nums">{row.original.id}</span>,
-    },
+  const base: ColumnDef<AchievementRule>[] = [
     {
       accessorKey: "enabled",
-      header: t("common.action"),
+      header: t("common.enabled"),
       size: 80,
       meta: columnMeta<AchievementRule>({ align: "center" }),
+      // Enabled is the norm: only the exception is marked.
       cell: ({ row }) =>
-        row.original.enabled ? (
-          <StatusIcon icon={CheckCircle} label={t("common.on")} variant="success" />
-        ) : (
-          <StatusIcon icon={CircleOff} label={t("common.off")} variant="muted" />
-        ),
+        row.original.enabled ? null : <StatusIcon icon={CircleOff} label={t("common.disabled")} variant="muted" />,
     },
     { accessorKey: "slug", header: t("common.slug"), size: 180 },
     { accessorKey: "name", header: t("common.name") },
@@ -76,100 +64,72 @@ export function AchievementsTable({
       accessorKey: "category",
       header: t("common.category"),
       size: 120,
-      cell: ({ row }) => (
-        <IconLabel icon={categoryIcon(row.original.category)} label={t(`common.categoryValues.${row.original.category}`)} />
-      ),
+      cell: ({ row }) => t(`common.categoryValues.${row.original.category}`),
     },
     {
       accessorKey: "scope",
       header: t("common.scope"),
       size: 120,
-      cell: ({ row }) => (
-        <IconLabel icon={scopeIcon(row.original.scope)} label={t(`common.scopeValues.${row.original.scope}`)} />
-      ),
+      meta: columnMeta<AchievementRule>({ category: "meta" }),
+      cell: ({ row }) => t(`common.scopeValues.${row.original.scope}`),
     },
     {
       accessorKey: "grain",
       header: t("common.grain"),
       size: 140,
-      cell: ({ row }) => (
-        <IconLabel icon={grainIcon(row.original.grain)} label={t(`common.grainValues.${row.original.grain}`)} />
-      ),
+      meta: columnMeta<AchievementRule>({ category: "meta" }),
+      cell: ({ row }) => t(`common.grainValues.${row.original.grain}`),
     },
     {
       accessorKey: "rule_version",
       header: t("common.version"),
       size: 50,
+      meta: columnMeta<AchievementRule>({ category: "meta", defaultHidden: true }),
       cell: ({ row }) => <span className="tabular-nums">{row.original.rule_version}</span>,
     },
     {
       id: "conditions_count",
-      header: t("condition.addCondition"),
+      header: t("common.conditions"),
       size: 90,
       enableSorting: false,
+      meta: columnMeta<AchievementRule>({ category: "meta" }),
       accessorFn: (row) => countLeafConditions(row.condition_tree),
       cell: ({ getValue }) => <span className="tabular-nums">{getValue<number>()}</span>,
     },
-    {
-      id: "actions",
-      size: 50,
-      cell: ({ row }) => {
-        const rule = row.original;
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button aria-label={t("listActionsFor", { slug: rule.slug })} variant="ghost" size="icon">
-                <MoreHorizontal className="h-4 w-4" aria-hidden />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>{t("list.actions")}</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => actions.onOpen(rule)}>
-                <Eye className="mr-2 h-4 w-4" aria-hidden />
-                {t("list.viewDetails")}
-              </DropdownMenuItem>
-              {actions.canUpdate && (
-                <DropdownMenuItem onClick={() => actions.onEdit(rule)}>
-                  <Pencil className="mr-2 h-4 w-4" aria-hidden />
-                  {t("list.edit")}
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem onClick={() => actions.onTest(rule)}>
-                <TestTube className="mr-2 h-4 w-4" aria-hidden />
-                {t("list.test")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => actions.onEvaluate(rule)}>
-                <Play className="mr-2 h-4 w-4" aria-hidden />
-                {t("list.evaluateOne")}
-              </DropdownMenuItem>
-              {actions.canUpdate && (
-                <DropdownMenuItem onClick={() => actions.onToggle(rule)}>
-                  {rule.enabled ? (
-                    <><EyeOff className="mr-2 h-4 w-4" aria-hidden />{t("list.disable")}</>
-                  ) : (
-                    <><Eye className="mr-2 h-4 w-4" aria-hidden />{t("list.enable")}</>
-                  )}
-                </DropdownMenuItem>
-              )}
-              {actions.canUpdate && actions.canDelete && <DropdownMenuSeparator />}
-              {actions.canDelete && (
-                <DropdownMenuItem onClick={() => actions.onDelete(rule)} className="text-destructive">
-                  <Trash2 className="mr-2 h-4 w-4" aria-hidden />
-                  {t("list.deleteAchievement")}
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        );
-      },
-    },
+    createKebabColumn<AchievementRule>(
+      (rule) => [
+        { label: t("list.viewDetails"), onSelect: () => actions.onOpen(rule) },
+        { label: t("list.edit"), onSelect: () => actions.onEdit(rule), hidden: !actions.canUpdate },
+        { label: t("list.test"), onSelect: () => actions.onTest(rule) },
+        { label: t("list.evaluateOne"), onSelect: () => actions.onEvaluate(rule) },
+        {
+          label: rule.enabled ? t("list.disable") : t("list.enable"),
+          onSelect: () => actions.onToggle(rule),
+          hidden: !actions.canUpdate,
+        },
+        {
+          label: t("list.deleteAchievement"),
+          onSelect: () => actions.onDelete(rule),
+          destructive: true,
+          hidden: !actions.canDelete,
+        },
+      ],
+      { rowLabel: (rule) => rule.slug }
+    ),
   ];
+
+  // After enabled, slug and name: the game names the rule before its category.
+  const columns = showGame
+    ? [...base.slice(0, 3), gameColumn<AchievementRule>(tGame("column"), (rule) => rule.discipline), ...base.slice(3)]
+    : base;
 
   return (
     <DataTable
+      // A game change lands on page 1: the game's own list is a new result set.
+      filterKey={discipline ?? ALL_DISCIPLINES}
       queryKey={(page, search, pageSize, sf, sd) => [...listKey, page, search, pageSize, sf, sd]}
       queryFn={async (page, search, pageSize, sortField, sortDir) =>
-        adminService.getAchievementRules(workspaceId, {
+        adminService.getAchievementRules(workspaceId, discipline, {
           page,
           per_page: pageSize,
           search: search || undefined,
@@ -178,9 +138,25 @@ export function AchievementsTable({
         })
       }
       columns={columns}
+      columnsStorageKey="admin-achievements"
       searchPlaceholder={t("list.search")}
+      toolbar={toolbar}
       emptyMessage={t("list.empty")}
       onRowClick={(row) => actions.onOpen(row.original)}
+      // The first three columns (enabled, slug, name) leave no room for the game; the card names the rule, its game
+      // under "all games", its slug, and only the exceptional state.
+      renderMobileCard={(row) => (
+        <div className="min-w-0 flex-1 space-y-0.5">
+          <p className="truncate text-sm font-medium">{row.original.name}</p>
+          {showGame ? (
+            <RowGameLabel code={row.original.discipline} className="flex text-xs text-muted-foreground" />
+          ) : null}
+          <p className="truncate font-mono text-xs text-muted-foreground">{row.original.slug}</p>
+          {row.original.enabled ? null : (
+            <StatusIcon icon={CircleOff} label={t("common.disabled")} variant="muted" />
+          )}
+        </div>
+      )}
     />
   );
 }

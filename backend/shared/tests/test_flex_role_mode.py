@@ -31,9 +31,11 @@ def test_all_roles_resolves_to_all_roles():
 
 
 def test_the_default_form_is_optional():
-    """``default_schema()`` asks the ``roles`` builtin with no params at all, so the
+    """The default schema asks the ``roles`` builtin with no params at all, so the
     catalog defaults decide -- and the catalog default must stay ``optional``."""
-    form = SimpleNamespace(current_version=SimpleNamespace(schema_json=default_schema().model_dump(mode="json")))
+    form = SimpleNamespace(
+        current_version=SimpleNamespace(schema_json=default_schema("battlenet").model_dump(mode="json"))
+    )
     assert flex_role_mode(form) == "optional"
 
 

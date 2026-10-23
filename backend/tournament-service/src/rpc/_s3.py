@@ -1,10 +1,9 @@
 """The single S3 client shared by every tournament-service RPC subscriber.
 
-Replaces the route-time ``Depends(get_s3)`` (``request.app.state.s3``): the
-worker has no FastAPI app state, so the client is constructed once from the
-shared S3 settings and started lazily. ``start()`` only allocates an
-aiobotocore session (no network I/O), so the first request that needs S3 can
-start it without a serve.py startup hook.
+The worker has no app state, so the client is constructed once from the shared
+S3 settings and started lazily. ``start()`` only allocates an aiobotocore
+session (no network I/O), so the first request that needs S3 can start it
+without a serve.py startup hook.
 
 Module-level on purpose — one client per process. Import ``get_s3`` here rather
 than building a second ``S3Client`` in a new subscriber module.

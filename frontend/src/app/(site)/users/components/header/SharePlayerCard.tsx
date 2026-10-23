@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Share2, Download, Link2, Check, Copy } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -12,17 +13,20 @@ import {
   DialogTitle,
   DialogTrigger
 } from "@/components/ui/dialog";
-import type { PlayerRoleTint } from "@/lib/roster/player-role";
 import { initials } from "@/lib/utils";
-import type { FormResult } from "@/app/(site)/users/components/shared/atoms";
+import type { FormResult } from "@/components/profile/atoms";
 import type { Translate } from "@/app/(site)/users/components/shared/list-utils";
 
 /** Serializable data needed to render the shareable player card. */
 export interface ShareCardData {
   name: string;
   tag: string | null;
+  /** The primary role's name in the profile's game, or `null` with no assigned role. */
   role: string | null;
-  roleTint: PlayerRoleTint | null;
+  /** That role's presentation colour (a CSS colour from the game's ontology), or `null`: no role tint. */
+  roleColor: string | null;
+  /** The game's role colours in declared order (the top bar); empty → the brand accent. */
+  spectrum: string[];
   division: number | null;
   winrate: number | null;
   avgPlacement: number | null;
@@ -32,9 +36,6 @@ export interface ShareCardData {
   mapsTotal: number;
   form: FormResult[];
 }
-
-const BTN =
-  "inline-flex h-8 items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.03)] px-2.5 text-caption font-semibold text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-fg)] disabled:opacity-50";
 
 const CARD_W = 1200;
 const CARD_H = 630;
@@ -98,10 +99,6 @@ interface Palette {
   fgMuted: string;
   fgFaint: string;
   teal: string;
-  tank: string;
-  damage: string;
-  support: string;
-  flex: string;
   emerald: string;
   rose: string;
   amber: string;
@@ -116,7 +113,7 @@ function drawCard(
   profileUrl: string,
   t: Translate
 ) {
-  const roleColor = card.roleTint ? C[card.roleTint] : C.teal;
+  const roleColor = card.roleColor ?? C.teal;
   // The card is rasterised for public sharing, so every glyph on it has to be
   // in the viewer's locale. Canvas has no text transform — uppercase here.
   const roleLabel = (card.role ?? t("users.profile.share.rolePlayer")).toUpperCase();
@@ -145,7 +142,7 @@ function drawCard(
   ctx.restore();
 
   // role-tinted corner wash (only when the player has an assigned role)
-  if (card.roleTint) {
+  if (card.roleColor) {
     const wash = ctx.createRadialGradient(150, -40, 40, 150, -40, 720);
     wash.addColorStop(0, roleColor);
     wash.addColorStop(1, "transparent");
@@ -158,9 +155,8 @@ function drawCard(
 
   // spectrum top bar
   const spectrum = ctx.createLinearGradient(0, 0, CARD_W, 0);
-  spectrum.addColorStop(0, C.tank);
-  spectrum.addColorStop(0.5, C.damage);
-  spectrum.addColorStop(1, C.support);
+  const stops = card.spectrum.length > 0 ? card.spectrum : [C.teal];
+  stops.forEach((color, index) => spectrum.addColorStop(stops.length > 1 ? index / (stops.length - 1) : 0, color));
   ctx.fillStyle = spectrum;
   ctx.fillRect(0, 0, CARD_W, 6);
 
@@ -361,10 +357,6 @@ const SharePlayerCard = ({ card }: SharePlayerCardProps) => {
         fgMuted: token("--aqt-fg-muted"),
         fgFaint: token("--aqt-fg-faint"),
         teal: token("--aqt-teal"),
-        tank: token("--aqt-tank"),
-        damage: token("--aqt-damage"),
-        support: token("--aqt-support"),
-        flex: token("--aqt-flex"),
         emerald: token("--aqt-emerald"),
         rose: token("--aqt-rose"),
         amber: token("--aqt-amber")
@@ -433,9 +425,11 @@ const SharePlayerCard = ({ card }: SharePlayerCardProps) => {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger className={BTN} title={t("users.profile.toolbar.share")}>
-        <Share2 size={13} aria-hidden />
-        {t("users.profile.toolbar.share")}
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" title={t("users.profile.toolbar.share")}>
+          <Share2 aria-hidden />
+          {t("users.profile.toolbar.share")}
+        </Button>
       </DialogTrigger>
       <DialogContent className="max-w-[680px] border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)]">
         <DialogHeader>
@@ -457,18 +451,18 @@ const SharePlayerCard = ({ card }: SharePlayerCardProps) => {
         />
 
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          <button type="button" onClick={handleCopyImage} className={BTN}>
-            {copyState === "img" ? <Check size={13} aria-hidden /> : <Copy size={13} aria-hidden />}
+          <Button variant="outline" size="sm" onClick={handleCopyImage}>
+            {copyState === "img" ? <Check aria-hidden /> : <Copy aria-hidden />}
             {copyState === "img" ? t("users.profile.toolbar.imageCopied") : t("users.profile.toolbar.copyImage")}
-          </button>
-          <button type="button" onClick={handleDownload} className={BTN}>
-            {copyState === "download" ? <Check size={13} aria-hidden /> : <Download size={13} aria-hidden />}
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleDownload}>
+            {copyState === "download" ? <Check aria-hidden /> : <Download aria-hidden />}
             {copyState === "download" ? t("users.profile.toolbar.downloaded") : t("users.profile.toolbar.download")}
-          </button>
-          <button type="button" onClick={handleCopyLink} className={BTN} title={t("users.profile.toolbar.copyLink")}>
-            {copyState === "link" ? <Check size={13} aria-hidden /> : <Link2 size={13} aria-hidden />}
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleCopyLink} title={t("users.profile.toolbar.copyLink")}>
+            {copyState === "link" ? <Check aria-hidden /> : <Link2 aria-hidden />}
             {copyState === "link" ? t("users.profile.toolbar.copied") : t("users.profile.toolbar.copyLinkShort")}
-          </button>
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

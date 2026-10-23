@@ -2,8 +2,9 @@ import { describe, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import type { RosterShape } from "@/lib/roster/shape";
+import { DEADLOCK_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
-import type { DraftFormatSettings, DraftSession } from "@/types/draft.types";
+import type { DraftFeasibility, DraftFormatSettings, DraftSession } from "@/types/draft.types";
 import type { DivisionGrid } from "@/types/workspace.types";
 
 import { DraftCaptainsStep } from "./DraftCaptainsStep";
@@ -11,6 +12,8 @@ import { DraftConfigStep } from "./DraftConfigStep";
 import { DraftHistoryPanel } from "./DraftHistoryPanel";
 import { DraftFormatFields } from "./DraftFormatFields";
 import { DraftOrderStep } from "./DraftOrderStep";
+import { DraftPoolStep } from "./DraftPoolStep";
+import { DraftReadyStep } from "./DraftReadyStep";
 import type { DraftSetupConfig } from "./setup-types";
 
 const SESSIONS = vi.hoisted(
@@ -31,15 +34,24 @@ const SESSIONS = vi.hoisted(
 // instead of a copy string, and the formatter is pinned so the row is stable.
 vi.mock("next-intl", () => ({
   useLocale: () => "en",
-  useTranslations: () => (key: string, values?: Record<string, unknown>) =>
-    values ? `${key}:${JSON.stringify(values)}` : key
+  useTranslations: () =>
+    Object.assign(
+      (key: string, values?: Record<string, unknown>) => (values ? `${key}:${JSON.stringify(values)}` : key),
+      { has: () => false }
+    )
 }));
 vi.mock("@/lib/datetime/client", () => ({
   useFormatter: () => ({ dateTime: () => "1 Feb 2026, 10:00" })
 }));
 
 vi.mock("@tanstack/react-query", () => ({
-  useQuery: () => ({ data: SESSIONS, isLoading: false, isError: false, refetch: () => {} }),
+  // The sessions read; the rank crests' workspace read (`["admin-workspace", id]`) has nothing loaded.
+  useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => ({
+    data: queryKey[0] === "admin-workspace" ? undefined : SESSIONS,
+    isLoading: false,
+    isError: false,
+    refetch: () => {}
+  }),
   useMutation: () => ({ mutate: () => {}, isPending: false }),
   useQueryClient: () => ({ invalidateQueries: async () => {} })
 }));
@@ -76,7 +88,7 @@ function registration(id: number, roles: string[], rank: number | null): AdminRe
     deleted_at: null,
     balancer_status_meta: { excludes_from_balancer: false },
     roles: roles.map((role, index) => ({
-      role,
+      role: { dimension: "player_role", role },
       is_active: true,
       is_primary: index === 0,
       priority: index,
@@ -107,21 +119,22 @@ describe("draft config step", () => {
       value={CONFIG}
       onChange={() => {}}
       rosterShape={SHAPE}
+      ontology={OW_METADATA}
       format={SNAKE}
       tournamentId={5}
     />
   );
 
   test("renders the pick-time presets as one segmented control, not four loose buttons", () => {
-    // Pick time and overtime are the two `role=group` widgets here; the format
+    // Pick time and overtime are the two labelled radiogroups here; the format
     // is the tournament's and only named, never edited.
-    expect(html.match(/<div[^>]*role="group"[^>]*aria-labelledby[^>]*>/g) ?? []).toHaveLength(2);
+    expect(html.match(/<div[^>]*role="radiogroup"[^>]*aria-labelledby[^>]*>/g) ?? []).toHaveLength(2);
     for (const seconds of [30, 45, 60, 90]) {
       expect(html).toContain(`>${seconds}s</button>`);
     }
-    // One pressed preset per group (45s pick time, overtime off), and the
+    // One checked preset per group (45s pick time, overtime off), and the
     // free-form fields are labelled as custom overrides, not extra presets.
-    expect(html.match(/aria-pressed="true"/g) ?? []).toHaveLength(2);
+    expect(html.match(/role="radio" aria-checked="true"/g) ?? []).toHaveLength(2);
     expect(html).toContain('for="draft-pick-time"');
     expect(html).toContain("customPickTime");
   });
@@ -142,13 +155,14 @@ describe("draft config step", () => {
     // A flex-only shape renders the flex glyph plus its screen-reader label; the
     // visible text is the count, never "5 Flex".
     expect(html).toContain("<svg");
-    expect(html).toContain("roles.flex");
-    expect(html).not.toContain("5 roles.flex");
+    expect(html).toContain(">flex<");
+    expect(html).not.toContain("5 flex");
   });
 
   test("names the tournament's format read-only and links to where it is set", () => {
     expect(html).toContain("formats.snake.title");
-    expect(html).not.toContain('role="radiogroup"');
+    // The other formats are never offered here: the wizard does not edit it.
+    expect(html).not.toContain("formats.linear.title");
     expect(html).toContain('href="/admin/tournaments/5/settings/draft"');
   });
 });
@@ -194,6 +208,7 @@ describe("draft captains step", () => {
       onChange={() => {}}
       divisionGrid={TOURNAMENT_GRID}
       rosterShape={ROLE_SHAPE}
+      ontology={OW_METADATA}
     />
   );
 
@@ -219,13 +234,14 @@ describe("draft captains step", () => {
 
   test("renders each candidate's roles as glyphs and the rank as a division icon", () => {
     // Roles used to be text badges; they are icons now, announced by role name.
-    expect(html).toContain('aria-label="roles.tank"');
-    expect(html).toContain('aria-label="roles.damage"');
-    expect(html).toContain('aria-label="roles.support"');
-    // Ranked candidates carry a division image; the unranked one still shows a dash.
+    expect(html).toContain('aria-label="Tank"');
+    expect(html).toContain('aria-label="Damage"');
+    expect(html).toContain('aria-label="Support"');
+    // Ranked candidates carry a division image; the unranked one shows nothing,
+    // never a dash placeholder.
     expect(html).toContain("<img");
     expect(html).toContain("3800");
-    expect(html).toContain("—");
+    expect(html).not.toContain("—");
   });
 
   test("resolves divisions on the tournament's grid, not the global OW ladder", () => {
@@ -297,14 +313,95 @@ describe("draft history panel", () => {
     expect(html).toContain("statuses.cancelled");
   });
 
-  test("blocks deleting an in-flight draft and allows it for a terminal one", () => {
-    const live = html.slice(html.indexOf(session(12)), html.indexOf(session(11)));
-    const cancelled = html.slice(html.indexOf(session(11)));
+  test("offers one actions menu per session instead of a row of buttons", () => {
+    // The menu content (and whether Delete is offered) is portalled on open;
+    // the behavior suite opens it. Statically, each row has exactly one trigger.
+    expect(html.match(/aria-haspopup="menu"/g) ?? []).toHaveLength(2);
+    expect(html).not.toContain("history.delete");
+  });
+});
 
-    expect(live).toContain("history.cancelFirst");
-    expect(live).toContain('disabled=""');
-    expect(cancelled).toContain("history.delete");
-    expect(cancelled).not.toContain("history.cancelFirst");
-    expect(cancelled).not.toContain('disabled=""');
+describe("draft ready step", () => {
+  const readySession = { id: 3, roster_shape: SHAPE, rounds: 4, pick_time_seconds: 45 } as unknown as DraftSession;
+  const render = (feasibility: Pick<DraftFeasibility, "is_feasible"> | null, failed = false) =>
+    renderToStaticMarkup(
+      <DraftReadyStep
+        tournamentId={5}
+        session={readySession}
+        feasibility={feasibility as DraftFeasibility | null}
+        feasibilityFailed={failed}
+        onRetryFeasibility={() => {}}
+        pending={false}
+        onStart={() => {}}
+        onReseed={() => {}}
+      />
+    );
+
+  test("keeps Start visible and disabled until feasibility says the draft can start", () => {
+    // Start is the only control here that can be disabled while nothing is pending.
+    for (const [feasibility, disabled] of [
+      [null, true],
+      [{ is_feasible: false }, true],
+      [{ is_feasible: true }, false]
+    ] as const) {
+      const html = render(feasibility);
+      expect(html).toContain("startDraft");
+      expect(html.includes('disabled=""')).toBe(disabled);
+    }
+    expect(render(null)).toContain("checkingFeasibility");
+    expect(render(null)).not.toContain("notReadyToStart");
+  });
+
+  test("names the failed feasibility check as Start's reason and offers a retry", () => {
+    const html = render(null, true);
+    expect(html).not.toContain("checkingFeasibility");
+    expect(html).toContain("retry");
+    expect(html.includes('disabled=""')).toBe(true);
+    const describedBy = /aria-describedby="([^"]+)"/.exec(html)?.[1];
+    const reasonAt = html.indexOf(`id="${describedBy}"`);
+    expect(reasonAt).toBeGreaterThan(-1);
+    expect(html.slice(reasonAt, html.indexOf("</p>", reasonAt))).toContain("loadFailed");
+  });
+});
+
+describe("draft pool step", () => {
+  /** One role short, with the server's deficit for it: the strip and both lines say who is missing. */
+  const render = (ontology: typeof OW_METADATA, role: string) =>
+    renderToStaticMarkup(
+      <DraftPoolStep
+        readiness={{
+          requiredPlayers: 12,
+          actualPlayers: 10,
+          missingRanks: 0,
+          missingAccounts: 0,
+          excludedPlayers: 0,
+          roleCoverage: { [role]: 10 },
+          blockers: [`role_shortage:${role}`]
+        }}
+        feasibility={{ is_feasible: false, slot_deficits: [{ slot_code: role, unmatched_slots: 2 }] } as unknown as DraftFeasibility}
+        loading={false}
+        failed={false}
+        onRetry={() => {}}
+        teamCount={2}
+        maxTeamCount={1}
+        pinned
+        onTeamCountChange={() => {}}
+        ontology={ontology}
+      />
+    );
+
+  test("names the role short of players in a game with roles", () => {
+    const html = render(OW_METADATA, "tank");
+    expect(html).toContain("roleCoverage");
+    expect(html).toContain('blockers.role_shortage:{&quot;role&quot;:&quot;Tank&quot;}');
+    expect(html).toContain('roleDeficit:{&quot;role&quot;:&quot;Tank&quot;,&quot;count&quot;:2}');
+  });
+
+  test("counts seats, never the role, in a one-role game", () => {
+    const html = render(DEADLOCK_METADATA, "agent");
+    expect(html).not.toMatch(/agent/i);
+    expect(html).not.toContain("roleCoverage");
+    expect(html).toContain("blockers.seat_shortage");
+    expect(html).toContain('seatDeficit:{&quot;count&quot;:2}');
   });
 });

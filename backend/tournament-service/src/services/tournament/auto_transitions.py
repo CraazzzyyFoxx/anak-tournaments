@@ -9,7 +9,7 @@ Candidates are picked with a coarse SQL filter (enabled + source status + any
 due schedule row), then each is re-locked ``FOR UPDATE SKIP LOCKED`` in its own
 session and re-checked with the precise pure helper ``next_due_status`` before
 transitioning — one transaction per tournament, so a failure in one never
-aborts the loop (pattern of ``sync_due_google_sheet_feeds``).
+aborts the loop.
 """
 
 from datetime import UTC, datetime
@@ -19,9 +19,9 @@ import sqlalchemy as sa
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from shared import models
 from shared.core import tournament_state
 from shared.core.enums import TournamentStatus
-from src import models
 from src.services.admin.tournament import tournament_service as admin_tournament_service
 
 __all__ = ("run_due_transitions",)

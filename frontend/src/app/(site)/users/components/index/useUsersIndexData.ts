@@ -5,9 +5,13 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import userService from "@/services/user.service";
 import { userQueryKeys } from "@/lib/users/query-keys";
+import { ALL_DISCIPLINES } from "@/lib/site/discipline-scope";
 import { useCurrentWorkspaceId } from "@/hooks/useCurrentWorkspace";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import type { DisciplineMetadata } from "@/types/discipline.types";
 import type { UserCatalogResponse, UserOverviewResponse, UserOverviewStats } from "@/types/user.types";
 
+import { roleFilterOf } from "./users-index.model";
 import type { UsersIndexParams } from "./useUsersIndexParams";
 
 export interface UsersIndexData {
@@ -20,13 +24,24 @@ export interface UsersIndexData {
   availableLetters: Set<string>;
   /** `workspace_id` every read on this page is pinned to. */
   workspaceId: number | "all" | null;
+  /** The game every read is in; `null` under "all games" (every read spans the scope's games). */
+  discipline: string | null;
+  /** That game's role dictionary (names and glyphs); `null` while it loads. */
+  ontology: RoleOntology | null;
 }
 
 /**
- * The three reads behind the index. Only the view on screen pays for its own
- * list — the stats strip is shared by both, so it always runs.
+ * The three reads behind the index: in one game (`discipline`), or across every game of the scope (`null`, once
+ * `resolved`). Nothing is read until the scope is resolved. Only the view on screen pays for its own list — the
+ * stats strip is shared by both, so it always runs. A previous result is kept on screen while a filter changes,
+ * never across games.
  */
-export function useUsersIndexData(params: UsersIndexParams): UsersIndexData {
+export function useUsersIndexData(
+  params: UsersIndexParams,
+  discipline: string | null,
+  metadata: DisciplineMetadata | null,
+  resolved: boolean
+): UsersIndexData {
   const currentWorkspaceId = useCurrentWorkspaceId();
   const { page, perPage, query, sort, order, role, divisions, hasLogs, minEncounters, letter, view, scope } =
     params;
@@ -35,10 +50,20 @@ export function useUsersIndexData(params: UsersIndexParams): UsersIndexData {
   const workspaceId = scope === "all" ? "all" : currentWorkspaceId;
   // Query keys take scalars only, and the array identity changes every render.
   const divisionsKey = divisions.join(",");
+  // Every index key carries the game (or "all") at position 2.
+  const game = discipline ?? ALL_DISCIPLINES;
+  const sameGame = <T,>(previous: T | undefined, previousQuery: { queryKey: readonly unknown[] } | undefined) =>
+    previousQuery?.queryKey[2] === game ? previous : undefined;
+  // A role chip needs the game's rated dimension: such a read waits for the metadata rather than running unfiltered.
+  const roleFilter = roleFilterOf(metadata, role);
+  const ready = resolved && (role === undefined || roleFilter !== undefined);
+  // A game without a grid on this axis refuses all three reads alike; the index shows `MissingGridNotice` for it.
+  const meta = { rendersGridRefusal: true };
 
   const overviewQuery = useQuery({
     queryKey: userQueryKeys.overview(
       workspaceId,
+      game,
       page,
       perPage,
       query,
@@ -49,54 +74,64 @@ export function useUsersIndexData(params: UsersIndexParams): UsersIndexData {
       hasLogs,
       minEncounters
     ),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       userService.getUsersOverview({
+        discipline,
         page,
         perPage,
         sort,
         order,
         query: query || undefined,
-        role,
+        role: roleFilter,
         divisions,
         hasLogs,
         minEncounters,
-        workspaceId
+        workspaceId,
+        signal
       }),
-    placeholderData: (previousData) => previousData,
+    placeholderData: sameGame,
+    meta,
     staleTime: 30_000,
-    enabled: view === "table"
+    enabled: view === "table" && ready
   });
 
   const statsQuery = useQuery({
-    queryKey: userQueryKeys.overviewStats(workspaceId, query, role, divisionsKey, hasLogs),
-    queryFn: () =>
+    queryKey: userQueryKeys.overviewStats(workspaceId, game, query, role, divisionsKey, hasLogs),
+    queryFn: ({ signal }) =>
       userService.getUsersOverviewStats({
+        discipline,
         query: query || undefined,
-        role,
+        role: roleFilter,
         divisions,
         hasLogs,
-        workspaceId
+        workspaceId,
+        signal
       }),
-    placeholderData: (previousData) => previousData,
-    staleTime: 30_000
+    placeholderData: sameGame,
+    meta,
+    staleTime: 30_000,
+    enabled: ready
   });
 
   const catalogQuery = useQuery({
-    queryKey: userQueryKeys.overviewCatalog(workspaceId, query, role, divisionsKey, hasLogs, letter),
-    queryFn: () =>
+    queryKey: userQueryKeys.overviewCatalog(workspaceId, game, query, role, divisionsKey, hasLogs, letter),
+    queryFn: ({ signal }) =>
       userService.getUsersCatalog({
+        discipline,
         query: query || undefined,
-        role,
+        role: roleFilter,
         // A pinned letter is the "show more" affordance: one bucket, deeper.
         perLetter: letter ? 48 : 12,
         hasLogs,
         letter,
         maxLetters: 27,
-        workspaceId
+        workspaceId,
+        signal
       }),
-    placeholderData: (previousData) => previousData,
+    placeholderData: sameGame,
+    meta,
     staleTime: 30_000,
-    enabled: view === "catalog"
+    enabled: view === "catalog" && ready
   });
 
   const data = overviewQuery.data;
@@ -116,5 +151,15 @@ export function useUsersIndexData(params: UsersIndexParams): UsersIndexData {
     [catalogQuery.data]
   );
 
-  return { overviewQuery, statsQuery, catalogQuery, maxPage, range, availableLetters, workspaceId };
+  return {
+    overviewQuery,
+    statsQuery,
+    catalogQuery,
+    maxPage,
+    range,
+    availableLetters,
+    workspaceId,
+    discipline,
+    ontology: metadata
+  };
 }

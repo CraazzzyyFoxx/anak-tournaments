@@ -10,7 +10,7 @@ Never commit them — not to `docs/`, `docs/plans/`, `docs/superpowers/` or anyw
 
 - **Before any UI work — a page, a component, a row, a label — read [`frontend/DESIGN.md`](frontend/DESIGN.md).** It is the design system: tokens, type roles, the components to reuse, the layout patterns. Its chip policy (§4) is strict: a chip only for a filter, a lifecycle status, a colour key or a count; every other fact is plain text.
 - Don't run `next build` for testing; `next lint` is enough.
-- Never use native `<select>`/`<option>`. Always use the component-library select (`@/components/ui/select`: `Select`, `SelectTrigger`, `SelectValue`, `SelectContent`, `SelectItem`).
+- Never use native `<button>`, `<input>`, `<select>`/`<option>` or `<textarea>` outside `frontend/src/components/ui/`. Use the library primitives (`Button`, `Input`, `NumberInput`, `TimeInput`, `Textarea`, `SearchField`, `Select`/`SelectTrigger`/`SelectItem`, `Checkbox`, `Switch`, `RadioGroup`, `ToggleGroup`, `FilterChip`, `Tabs`); if none fits, extend `components/ui/` instead of hand-rolling. Never set `text-*`, `font-*` or `h-8`/`h-9` on a control — pick its `size` (`frontend/DESIGN.md` §3, Control text).
 
 <!-- CODEGRAPH_START -->
 ## CodeGraph

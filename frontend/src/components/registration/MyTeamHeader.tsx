@@ -30,7 +30,9 @@ interface MyTeamHeaderProps {
    *  `team_already_exported`, so offering the control would be a dead end. */
   logoEditable: boolean;
   logoBusy: boolean;
-  tSlot: SlotLabelTranslator;
+  slotLabel: SlotLabelTranslator;
+  /** `false` in a one-role game: the shortfall is a count of players, every open place being that role. */
+  showsSlots: boolean;
   onRename: (name: string) => void;
   onUploadLogo: (file: File) => void;
   onDeleteLogo: () => void;
@@ -46,7 +48,8 @@ export default function MyTeamHeader({
   busy,
   logoEditable,
   logoBusy,
-  tSlot,
+  slotLabel,
+  showsSlots,
   onRename,
   onUploadLogo,
   onDeleteLogo,
@@ -106,7 +109,8 @@ export default function MyTeamHeader({
                 value={draftName}
                 onChange={(event) => setDraftName(event.target.value)}
                 aria-label={t("rename.save")}
-                className="h-8 min-w-0"
+                size="sm"
+                className="min-w-0"
               />
               <Button
                 type="submit"
@@ -125,7 +129,9 @@ export default function MyTeamHeader({
           <p className="text-xs text-[color:var(--aqt-fg-muted)]">
             {team.is_complete
               ? t("list.complete")
-              : t("list.shortfall", { slots: formatShortfall(team.open_slots, tSlot) })}
+              : showsSlots
+                ? t("list.shortfall", { slots: formatShortfall(team.open_slots, slotLabel) })
+                : t("list.shortfallCount", { count: starterCapacity - starterCount })}
           </p>
           {typeof team.checked_in_count === "number" && (team.check_in_total ?? 0) > 0 && (
             <p className="text-xs text-[color:var(--aqt-fg-muted)]">

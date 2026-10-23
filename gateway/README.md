@@ -26,7 +26,7 @@ world.
   RPC as `data["identity"]`; WebSocket handshakes additionally validate a session JWT locally
   against the shared HS256 secret. See [Authentication](#authentication).
 - **RPC dispatch** — typed request/reply RPC over RabbitMQ to `rpc.<service>.*` workers
-  (`app`, `identity`, `tournament`, `parser`, `balancer`, `analytics`), with `reply_to` +
+  (`app`, `identity`, `tournament`, `stats`, `balancer`, `analytics`), with `reply_to` +
   `correlation_id`, an `x-deadline-ms` deadline, and a per-queue in-flight bulkhead
   (`GATEWAY_RPC_MAX_INFLIGHT`) that sheds with a 503 when a queue is saturated.
 - **Realtime hub** — a Redis→WebSocket hub at `/ws` and `/api/v1/realtime/ws`, replaying
@@ -35,6 +35,10 @@ world.
   the in-flight job. Replay and its subscription acknowledgement occupy one atomic job before
   live events. Queue overflow or the 2-second frame write deadline disconnects a slow peer without
   blocking Redis event processing; revoked topic frames still queued are discarded before writing.
+  The topic ACL runs at subscribe time and again whenever it may have changed: on
+  `realtime:user:{id}:rbac` the gateway drops that user's cached workspace memberships and
+  re-checks every topic their live connections hold (a removed member gets `forbidden` and stops
+  receiving the workspace); on `chat.visibility_changed` it re-checks that chat room's subscribers.
   Response-cache invalidation runs before WebSocket notification.
 - **Response cache** — an in-process, in-memory cache of anonymous public reads
   (`respcache`, default 30s TTL), invalidated by workers' Redis pub/sub.
@@ -49,7 +53,7 @@ world.
 
 ```
 internet → nginx :80 ─┬─ /api/*, /ws, /api/v1/realtime/ws, /health → gateway :8080 →
-                      │      ├─ RPC over RabbitMQ → headless workers (rpc.app.* / rpc.identity.* / rpc.tournament.* / rpc.parser.* / rpc.balancer.* / rpc.analytics.*)
+                      │      ├─ RPC over RabbitMQ → headless workers + the discord bot (rpc.app.* / rpc.identity.* / rpc.tournament.* / rpc.stats.* / rpc.balancer.* / rpc.analytics.* / rpc.discord.*)
                       │      └─ /ws + /api/v1/realtime/ws → Redis→WebSocket hub (replay from realtime.workspace_event)
                       └─ everything else (pages, /_next/*, /bff/*, /api/health) → frontend :3000
 ```
@@ -105,7 +109,10 @@ REST routes read the credential from the `Authorization` header only
 
 `internal/principal` calls `rpc.identity.validate_token` — the gateway is not an auth authority,
 it only caches the verdict (30s TTL, concurrent misses for one credential collapsed by
-singleflight). identity-svc is the single place that branches on credential type; both branches
+singleflight). The TTL is a backstop: identity-svc publishes `realtime:user:{id}:rbac` whenever
+it drops a user's cached RBAC (membership, role, deny, merge), and the resolver — a leg of the
+realtime fan-out — evicts every token it cached for that user, so grants and revocations apply on
+the next request. identity-svc is the single place that branches on credential type; both branches
 return the same payload shape, which the gateway injects as `data["identity"]` and the workers
 rehydrate into an `AuthUser`.
 
@@ -117,6 +124,14 @@ vocabulary the endpoints are checked against — so a key is authorized by the o
 check, with no key-specific branch in any worker. A key can never outrank its owner, never
 reaches a second workspace, and a key with no scopes can do nothing. See
 [`../backend/ARCHITECTURE.md`](../backend/ARCHITECTURE.md) § "Two credentials, one branch".
+
+### Canonical ingest relay
+
+`POST /api/v1/stats/matches` is served by `internal/stats/ingest.go`, not the generic dispatcher: the dispatcher decodes
+the body into a map and re-marshals it, which would change the bytes the backend hashes for idempotency. The relay
+resolves the key itself, requires `application/json`, caps the body at 25 MiB (`413 match_document_too_large`) and
+forwards the original bytes base64-encoded next to the identity. `GET /api/v1/stats/ingest-jobs/{id}` is an ordinary
+route.
 
 ### Session-only surfaces
 
@@ -181,7 +196,7 @@ Under `internal/`:
 | `openapi` / `apidocs` | Scalar API docs |
 | `db` | pgx Postgres pool |
 
-Per-domain route tables live under `internal/{tournament,app,parser,balancer,identity,analytics}`.
+Per-domain route tables live under `internal/{tournament,app,stats,balancer,identity,analytics}`.
 
 The gateway reads Postgres **read-only** (ACL / workspace membership, event replay,
 custom-domain resolution), uses Redis for the realtime bus + cache-invalidation + active-user

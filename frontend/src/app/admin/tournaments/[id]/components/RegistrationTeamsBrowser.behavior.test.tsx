@@ -22,6 +22,8 @@ import { ApiError } from "@/lib/api/error";
 import type { RegistrationTeam } from "@/types/registration-team.types";
 import { RegistrationTeamsBrowser } from "./RegistrationTeamsBrowser";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
@@ -35,12 +37,17 @@ const PATH = `/admin/tournaments/${TOURNAMENT_ID}/registration/teams`;
 let currentSearch = "";
 let rerender: (() => void) | null = null;
 
-const replace = vi.fn((url: string) => {
-  const query = url.includes("?") ? url.slice(url.indexOf("?")) : "";
+// Every URL write re-renders from the new `useSearchParams` in the app — the
+// router's `replace` and, through Next's History patch, the inspector's native
+// `replaceState`. Both land here as "write `window.history`, poke the harness".
+const replace = vi.fn((url: string) => window.history.replaceState(null, "", url));
+const nativeReplaceState = window.history.replaceState.bind(window.history);
+window.history.replaceState = (data, unused, url) => {
+  const query = String(url).includes("?") ? String(url).slice(String(url).indexOf("?")) : "";
   currentSearch = query;
-  window.history.replaceState(null, "", `${PATH}${query}`);
+  nativeReplaceState(data, unused, `${PATH}${query}`);
   rerender?.();
-});
+};
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace, push: vi.fn(), prefetch: vi.fn() }),
@@ -166,7 +173,7 @@ function Harness() {
   useEffect(() => {
     rerender = () => force((value) => value + 1);
   }, []);
-  return <RegistrationTeamsBrowser tournamentId={TOURNAMENT_ID} workspaceId={WORKSPACE_ID} />;
+  return <RegistrationTeamsBrowser tournamentId={TOURNAMENT_ID} workspaceId={WORKSPACE_ID} discipline="overwatch" />;
 }
 
 async function mount(search = "") {
@@ -322,9 +329,13 @@ describe("RegistrationTeamsBrowser", () => {
     // server's English `shortfall` string.
     expect(scope.textContent).toContain("Still needed: 1× Damage, 2× Support");
     expect(scope.textContent).not.toContain("1x damage");
-    expect(scope.textContent).toContain("Roster complete");
+    // One status per row, and only one that wants attention: the forming team
+    // says so, the complete one says only that its admission is pending.
+    expect(row(scope, "Team Alpha")?.textContent).toContain("Forming");
+    expect(row(scope, "Team Beta")?.textContent).toContain("Pending");
+    expect(row(scope, "Team Beta")?.textContent).not.toContain("Roster complete");
     expect(row(scope, "Team Alpha")?.textContent).toContain("Nyx");
-    expect(row(scope, "Team Alpha")?.textContent).toContain("Starters: 1 of 4");
+    expect(row(scope, "Team Alpha")?.textContent).toContain("1/4");
     // One read serves every filter below, so terminal teams are already here.
     expect(listAdmin).toHaveBeenCalledTimes(1);
     expect(listAdmin).toHaveBeenCalledWith(TOURNAMENT_ID, { includeTerminal: true });
@@ -339,7 +350,7 @@ describe("RegistrationTeamsBrowser", () => {
     const scope = await mount();
 
     await click(scope.querySelector("button[aria-label='Add filter']"));
-    await click(commandItem("State"));
+    await click(commandItem("Status"));
     await click(commandItem("Rejected and disbanded"));
 
     // A filter that lives in component state cannot be linked; this one is the URL.
@@ -421,7 +432,7 @@ describe("RegistrationTeamsBrowser", () => {
     expect(buttonWithText(scope, "Add selected teams")).toBeUndefined();
   });
 
-  it("keeps the export result and every skipped team on screen after the toast", async () => {
+  it("reports the export and every skipped team, with its reason, in a dismissible alert", async () => {
     exportRegistered.mockResolvedValue({
       removed_teams: 0,
       imported_teams: 1,
@@ -434,10 +445,17 @@ describe("RegistrationTeamsBrowser", () => {
     await click(buttonWithText(scope, "Add selected teams"));
     await click(buttonWithText(confirmDialog()!, "Add selected teams"));
 
-    // A toast expires; an organizer must still be able to see which team did not
-    // go, and why.
-    expect(scope.textContent).toContain("Teams added: 1");
-    expect(scope.textContent).toContain("Team Gamma: roster incomplete");
+    const report = [...scope.querySelectorAll("[role='status']")].find((node) =>
+      node.textContent?.includes("Teams added")
+    );
+    expect(report?.textContent).toContain("Teams added: 1.");
+    expect(report?.textContent).toContain("Team Gamma: roster incomplete");
+    // One report per result: the alert, not a toast beside it.
+    expect(notifySuccess).not.toHaveBeenCalled();
+    expect(notifyInfo).not.toHaveBeenCalled();
+
+    await click(scope.querySelector("button[aria-label='Dismiss the export result']"));
+    expect(scope.textContent).not.toContain("Team Gamma: roster incomplete");
   });
 
   it("refuses to reject a team without a reason its captain can read", async () => {
@@ -501,7 +519,7 @@ describe("RegistrationTeamsBrowser", () => {
     await click(row(scope, "Team Alpha"));
 
     // Row detail is the inspector, and it is addressable.
-    expect(new URL(replace.mock.calls.at(-1)![0], "http://x").searchParams.get("id")).toBe("1");
+    expect(new URLSearchParams(window.location.search).get("id")).toBe("1");
 
     const inspector = document.body.querySelector("aside[aria-label='Row inspector']");
     expect(inspector?.textContent).toContain("Pending");
@@ -576,13 +594,14 @@ describe("RegistrationTeamsBrowser", () => {
     expect(placeMemberAdmin).not.toHaveBeenCalled();
   });
 
-  it("renames a team from the inspector", async () => {
+  it("renames a team from its row", async () => {
     const scope = await mount();
-    await click(row(scope, "Team Alpha"));
 
-    const inspector = document.body.querySelector("aside[aria-label='Row inspector']")!;
-    await type(inspector.querySelector("#name-1") as HTMLInputElement, "Wolves");
-    await click(buttonWithText(inspector, "Rename"));
+    await click(menuItem(await rowMenu(scope, "Team Alpha"), "Rename"));
+    const dialog = formDialog()!;
+    const field = dialog.querySelector("input") as HTMLInputElement;
+    await type(field, "Wolves");
+    await submit(dialog);
 
     expect(renameAdmin).toHaveBeenCalledWith(TOURNAMENT_ID, 1, "Wolves");
   });

@@ -1,16 +1,16 @@
 import { flexRender, type Cell, type Row } from "@tanstack/react-table";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { TableCell } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/components/data-table/host";
 import { ADMIN_ACTION_COLUMN_ID, ALIGN_CLASS, ALIGN_FLEX_CLASS, RESPONSIVE_CLASS, readColumnMeta } from "@/components/data-table/columns";
 import { HighlightMatch } from "@/components/data-table/HighlightMatch";
 import type { ColumnLayout } from "@/components/data-table/column-layout";
-import type { RowSelectionGestures } from "@/components/data-table/useRowSelectionGestures";
+import type { RowHandlers } from "@/components/data-table/body-rows";
 
 export interface BodyCellContext<TData> {
-  i18n: (key: string, values?: Record<string, unknown>) => string;
   layout: ColumnLayout<TData>;
   /** Vertical padding for the current density. */
   cellPadding: string;
@@ -28,13 +28,15 @@ export interface LeadingCellContext<TData> {
   cellAlign: "top" | "middle";
   enableRowSelection: boolean;
   hasExpandedDetail: boolean;
-  gestures: RowSelectionGestures<TData>;
+  selected: boolean;
+  expanded: boolean;
+  handlers: RowHandlers<TData>;
 }
 
 /** The narrow first column: expand chevron and/or selection checkbox. */
 export function renderLeadingCell<TData>(
   row: Row<TData>,
-  { i18n, layout, cellPadding, cellAlign, enableRowSelection, hasExpandedDetail, gestures }: LeadingCellContext<TData>
+  { i18n, layout, cellPadding, cellAlign, enableRowSelection, hasExpandedDetail, selected, expanded, handlers }: LeadingCellContext<TData>
 ) {
   return (
     <TableCell
@@ -53,26 +55,24 @@ export function renderLeadingCell<TData>(
     >
       <div className="flex items-center gap-1.5">
         {hasExpandedDetail ? (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-sm"
             onClick={row.getToggleExpandedHandler()}
-            aria-expanded={row.getIsExpanded()}
-            aria-label={row.getIsExpanded() ? i18n("collapseDetails") : i18n("expandDetails")}
-            className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground"
+            aria-expanded={expanded}
+            aria-label={expanded ? i18n("collapseDetails") : i18n("expandDetails")}
+            className="-m-1 shrink-0 text-muted-foreground hover:text-foreground"
           >
-            {row.getIsExpanded() ? (
-              <ChevronDown aria-hidden className="size-4" />
-            ) : (
-              <ChevronRight aria-hidden className="size-4" />
-            )}
-          </button>
+            {expanded ? <ChevronDown aria-hidden /> : <ChevronRight aria-hidden />}
+          </Button>
         ) : null}
         {enableRowSelection && row.getCanSelect() ? (
           <Checkbox
-            checked={row.getIsSelected()}
+            checked={selected}
             onCheckedChange={(checked) => row.toggleSelected(checked === true)}
-            onPointerDown={gestures.checkboxPointerDown(row)}
-            onClick={gestures.checkboxClick}
+            onPointerDown={(event) => handlers.checkboxPointerDown(event, row)}
+            onClick={handlers.checkboxClick}
             className="touch-none"
             aria-label={i18n("selectRow", { id: row.id })}
           />
@@ -93,8 +93,12 @@ export function renderBodyCell<TData>(
   const isFirstColumn = index === 0 && !hasLeadingColumn;
   const isLastColumn = index === count - 1;
   const columnMeta = readColumnMeta<TData>(cell.column.columnDef.meta);
-  const align = columnMeta.align ?? (isActionColumn ? "right" : "left");
+  const cellProps = columnMeta.onCell?.(cell.row.original);
+  const align = cellProps?.align ?? columnMeta.align ?? (isActionColumn ? "right" : "left");
   const sticky = layout.stickyCell(cell.column.id, layout.getColumnStyle(cell.column));
+  const value = columnMeta.ellipsis ? cell.getValue() : undefined;
+  // Only a primitive reads the same as a tooltip; anything else would say "[object Object]".
+  const title = typeof value === "string" || typeof value === "number" ? String(value) : undefined;
   const content =
     search && !isActionColumn && !customCellIds.has(cell.column.id) ? (
       <HighlightMatch text={String(cell.getValue() ?? "")} query={search} />
@@ -108,18 +112,20 @@ export function renderBodyCell<TData>(
       className={cn(
         "text-sm",
         cellPadding,
-        cellAlign === "top" ? "align-top" : "align-middle",
+        (columnMeta.valign ?? cellAlign) === "top" ? "align-top" : "align-middle",
         isFirstColumn && "pl-4 text-muted-foreground",
         isLastColumn && "pr-4",
         layout.edgePadding(cell.column.id),
-        isActionColumn && "whitespace-nowrap",
+        (isActionColumn || columnMeta.nowrap) && "whitespace-nowrap",
         columnMeta.numeric && "tabular-nums",
         ALIGN_CLASS[align],
         RESPONSIVE_CLASS[columnMeta.responsive ?? "always"],
         columnMeta.className,
         sticky.className,
+        cellProps?.className,
       )}
-      style={sticky.style}
+      style={cellProps?.style ? { ...sticky.style, ...cellProps.style } : sticky.style}
+      title={cellProps?.title}
     >
       {isActionColumn ? (
         // The kebab gates its own visibility (hover, focus-within, touch);
@@ -131,11 +137,23 @@ export function renderBodyCell<TData>(
         // paints straight over the next column unless something hides it.
         // `truncate` also buys the ellipsis; stacked cells keep stacking (their
         // rows are block/flex children, which `nowrap` does not join up).
-        <div className="min-w-0 truncate">{content}</div>
+        <div className={cn("min-w-0", columnMeta.ellipsis === false ? "whitespace-normal break-words" : "truncate")} title={title}>
+          {content}
+        </div>
       ) : (
         // `text-center` on the <td> does not centre a Tooltip/icon
         // (inline-flex trigger inside a full-width cell). Match the header flex.
-        <div className={cn("flex w-full items-center overflow-hidden", ALIGN_FLEX_CLASS[align])}>{content}</div>
+        <div
+          className={cn(
+            "flex w-full items-center overflow-hidden",
+            ALIGN_FLEX_CLASS[align],
+            columnMeta.ellipsis === false && "whitespace-normal break-words",
+          )}
+          title={title}
+        >
+          {/* A flex box does not ellipsise its text; a block child does. */}
+          {columnMeta.ellipsis ? <span className="min-w-0 truncate">{content}</span> : content}
+        </div>
       )}
     </TableCell>
   );

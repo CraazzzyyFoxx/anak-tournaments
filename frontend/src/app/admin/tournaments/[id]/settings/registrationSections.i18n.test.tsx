@@ -25,6 +25,7 @@ declare global {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const getRegistrationForm = vi.fn();
+const getTournament = vi.fn();
 
 vi.mock("@/services/balancer-admin.service", () => ({
   default: {
@@ -35,13 +36,7 @@ vi.mock("@/services/balancer-admin.service", () => ({
 
 vi.mock("@/services/admin.service", () => ({
   default: {
-    getTournament: vi.fn().mockResolvedValue({
-      id: 1,
-      workspace_id: 3,
-      // Team registration, so the team-level admission rules are on screen —
-      // they are half the keys this test exists to resolve.
-      team_formation: "registration"
-    })
+    getTournament: (...args: unknown[]) => getTournament(...args)
   }
 }));
 
@@ -104,6 +99,13 @@ async function renderSection(page: () => React.ReactNode, locale: "en" | "ru") {
 }
 
 beforeEach(() => {
+  getTournament.mockReset().mockResolvedValue({
+    id: 1,
+    workspace_id: 3,
+    discipline: "overwatch",
+    identity_provider: "battlenet",
+    team_formation: "registration"
+  });
   getRegistrationForm.mockReset().mockResolvedValue({
     id: 9,
     tournament_id: 1,
@@ -166,10 +168,11 @@ describe("registration settings sections i18n", () => {
   it("leaves the team-level rules out of a tournament with no registered teams", async () => {
     // Rank spread and duplicate-identity checks need a roster to run against;
     // a balancer tournament has none until the balancer builds one.
-    const admin = await import("@/services/admin.service");
-    vi.mocked(admin.default.getTournament).mockResolvedValueOnce({
+    getTournament.mockResolvedValue({
       id: 1,
       workspace_id: 3,
+      discipline: "overwatch",
+      identity_provider: "battlenet",
       team_formation: "balancer"
     } as never);
 

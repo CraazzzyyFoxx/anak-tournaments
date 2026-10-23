@@ -1,15 +1,19 @@
 "use client";
 
-import { BattleTagCopyButton } from "@/app/balancer/components/BattleTagCopyControls";
-import { splitBattleTag } from "@/components/balancer/balancer-page-helpers";
+import { useTranslations } from "next-intl";
+
+import { HandleCopyButton } from "@/app/balancer/components/HandleCopyControls";
+import { HandleLabel } from "@/components/HandleLabel";
 import {
-  NEUTRAL_RANK_ACCENT,
-  ROLE_RANK_ACCENTS,
   RoleRankControls,
+  accentRowStyle,
+  accentTextStyle,
+  roleRankAccent,
   useDebouncedRank,
 } from "@/app/balancer/components/RoleRankControls";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import RankHistory from "@/components/RankHistory";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Label } from "@/components/ui/label";
 import {
   Sheet,
@@ -18,22 +22,21 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { ROLE_LABELS, ROLES, type RoleCode } from "@/lib/roster/roles";
-import { cn } from "@/lib/utils";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
 import type { RosterMember } from "@/services/workspace-player.service";
-
-const EYEBROW_CLASS =
-  "text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]";
-
-// The panel that mounts this sheet only ever reads/writes the workspace
-// canon (`WorkspacePlayersSidebar`'s sole caller is the tournament balancer
-// page); the per-mix "author" layer has its own sheet (`PickupPlayerSheet`).
-const SCOPE_HINT =
-  "The shared fallback. A tournament or mix uses it only where nobody set their own rank.";
+import type { DisciplineMetadata } from "@/types/discipline.types";
+import type { DivisionGrid } from "@/types/workspace.types";
 
 type WorkspacePlayerSheetProps = {
   /** `null` closes the sheet — the caller holds the row being edited. */
   member: RosterMember | null;
+  /** The roster's game: rank history is resolved for it. */
+  discipline: string;
+  /** The roster game's metadata: which roles carry a rank card (names, glyphs, tints) and whether it has a live rank. */
+  ontology: DisciplineMetadata | null;
+  /** The grid the ranks are on: the roster game's grid in the workspace. */
+  grid: DivisionGrid;
   canEdit: boolean;
   saving: boolean;
   onOpenChange: (open: boolean) => void;
@@ -58,13 +61,19 @@ type WorkspacePlayerSheetProps = {
  */
 export function WorkspacePlayerSheet({
   member,
+  discipline,
+  ontology,
+  grid,
   canEdit,
   saving,
   onOpenChange,
   onSaveRank,
 }: Readonly<WorkspacePlayerSheetProps>) {
-  const label = member ? member.display_name || member.battle_tag || `#${member.member_id}` : "";
-  const { name, suffix } = splitBattleTag(label);
+  const t = useTranslations("balancerTool.pool.sheet");
+  const label = member ? member.display_name || member.identity?.handle || `#${member.member_id}` : "";
+  // Only a game that collects native ranks has a live rank to show.
+  const nativeRankName = ontology?.discipline.capabilities.native_rank_collection ? ontology.discipline.name : null;
+  const roles = registrationRoles(ontology).map((role) => role.code);
 
   return (
     <Sheet open={member != null} onOpenChange={onOpenChange}>
@@ -73,20 +82,18 @@ export function WorkspacePlayerSheet({
         className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-[560px]"
       >
         <SheetHeader className="space-y-0 border-b border-[color:var(--aqt-border)] px-5 pb-4 pt-5 text-left">
-          <span className={EYEBROW_CLASS}>Player ranks</span>
+          <Eyebrow tone="dim">{t("eyebrow")}</Eyebrow>
           <SheetTitle className="flex items-baseline gap-1.5 pt-1.5 font-display text-xl">
-            <span className="truncate">{name}</span>
-            {suffix ? (
-              <span className="text-caption font-normal text-[color:var(--aqt-fg-faint)]">
-                {suffix}
-              </span>
-            ) : null}
-            {member?.battle_tag ? (
-              <BattleTagCopyButton battleTag={member.battle_tag} className="ml-0.5 shrink-0" />
+            <HandleLabel handle={label} tagClassName="text-caption" />
+            {member?.identity?.handle ? (
+              <HandleCopyButton handle={member.identity.handle} className="ml-0.5 shrink-0" />
             ) : null}
           </SheetTitle>
+          {/* The panel that mounts this sheet only ever reads/writes the workspace
+              canon (`WorkspacePlayersSidebar`'s sole caller is the tournament balancer
+              page); the per-mix "author" layer has its own sheet (`PickupPlayerSheet`). */}
           <SheetDescription className="pt-1 text-caption text-[color:var(--aqt-fg-dim)]">
-            {SCOPE_HINT}
+            {t("scopeHint")}
           </SheetDescription>
         </SheetHeader>
 
@@ -95,28 +102,25 @@ export function WorkspacePlayerSheet({
             <section className="space-y-2 border-b border-[color:var(--aqt-border)] px-5 py-4">
               <div>
                 <h3 className="text-caption font-medium text-[color:var(--aqt-fg)]">
-                  Roles and ranks
+                  {t("rolesTitle")}
                 </h3>
                 <p className="mt-0.5 text-xs text-[color:var(--aqt-fg-dim)]">
-                  A role with no rank is a role the balancer will not seat them in. Clear one to
-                  drop it from this layer instead of pinning a number over it.
+                  {t("rolesHint")}
                 </p>
               </div>
 
               <ul className="space-y-2">
-                {ROLES.map((role) => (
+                {roles.map((role) => (
                   <li
-                    key={role.code}
-                    className={cn(
-                      "rounded-xl border bg-[color:var(--aqt-overlay-2)] p-2.5",
-                      "border-[color:var(--aqt-border-2)]",
-                      ROLE_RANK_ACCENTS[role.code]?.row,
-                    )}
+                    key={role}
+                    className="rounded-xl border p-2.5"
+                    style={accentRowStyle(roleRankAccent(ontology, role))}
                   >
                     <RoleRankCard
                       member={member}
-                      role={role.code}
-                      iconName={role.icon}
+                      role={role}
+                      ontology={ontology}
+                      grid={grid}
                       disabled={!canEdit || saving}
                       onSaveRank={onSaveRank}
                     />
@@ -126,15 +130,16 @@ export function WorkspacePlayerSheet({
             </section>
 
             {/* The one thing the roster cannot tell an organiser: what this
-                player is actually ranked in Overwatch right now. Read-only, and
-                the same component both other sheets use. */}
-            {member.battle_tag ? (
+                player is actually ranked in the game right now, for a game
+                that collects a native rank. Read-only, and the same component
+                both other sheets use. */}
+            {nativeRankName !== null && member.identity?.handle ? (
               <section className="space-y-2 px-5 py-4">
                 <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
-                  Live rank (OverFast)
+                  {t("liveRank", { game: nativeRankName })}
                 </Label>
                 <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-2.5">
-                  <RankHistory battleTag={member.battle_tag} />
+                  <RankHistory battleTag={member.identity.handle} discipline={discipline} />
                 </div>
               </section>
             ) : null}
@@ -151,25 +156,30 @@ export function WorkspacePlayerSheet({
 function RoleRankCard({
   member,
   role,
-  iconName,
+  ontology,
+  grid,
   disabled,
   onSaveRank,
 }: Readonly<{
   member: RosterMember;
-  role: RoleCode;
-  iconName: string;
+  role: string;
+  ontology: RoleOntology | null;
+  grid: DivisionGrid;
   disabled: boolean;
   onSaveRank: (role: string, rank: number | null) => void;
 }>) {
-  const accent = ROLE_RANK_ACCENTS[role] ?? NEUTRAL_RANK_ACCENT;
+  const slotLabel = useSlotLabel(ontology);
+  const accent = roleRankAccent(ontology, role);
   const own = member.ranks[role] ?? null;
   const rank = useDebouncedRank(own, (next) => onSaveRank(role, next));
 
   return (
     <div className="min-w-0 space-y-2">
       <div className="flex items-center gap-1.5">
-        <PlayerRoleIcon role={iconName} size={15} decorative />
-        <span className={cn("text-xs font-semibold", accent.text)}>{ROLE_LABELS[role]}</span>
+        <PlayerRoleIcon role={role} ontology={ontology} size={15} decorative />
+        <span className="text-xs font-semibold" style={accentTextStyle(accent)}>
+          {slotLabel(role)}
+        </span>
       </div>
 
       <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_130px]">
@@ -179,6 +189,7 @@ function RoleRankCard({
           accent={accent}
           active
           disabled={disabled}
+          grid={grid}
           onClear={own == null ? null : () => rank.commitNow(null)}
           onChange={(next) => rank.set(next)}
         />

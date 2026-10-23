@@ -37,7 +37,7 @@ class DiscordMessageRepository(BaseRepository[models.DiscordMessage]):
         subject: str,
         slot: str,
         kind: str,
-        card_json: dict | None = None,
+        payload_json: dict | None = None,
         dedupe_key: str | None = None,
         notification_id: int | None = None,
         workspace_id: int | None = None,
@@ -57,7 +57,7 @@ class DiscordMessageRepository(BaseRepository[models.DiscordMessage]):
                 subject=subject,
                 slot=slot,
                 kind=kind,
-                card_json=card_json,
+                payload_json=payload_json,
                 dedupe_key=dedupe_key,
                 notification_id=notification_id,
                 workspace_id=workspace_id,
@@ -139,43 +139,60 @@ class DiscordMessageRepository(BaseRepository[models.DiscordMessage]):
         )
         return list(result.scalars().all())
 
-    async def _set(self, session: AsyncSession, message_id: int, **values: object) -> None:
-        await session.execute(
-            sa.update(self.model).where(self.model.id == message_id).values(**values, updated_at=datetime.now(UTC))
-        )
+    async def _move(
+        self, session: AsyncSession, row_id: int, *, from_statuses: Sequence[str], **values: object
+    ) -> bool:
+        """Apply ``values`` to the row while it is still in one of ``from_statuses``; whether it applied.
 
-    async def set_card(self, session: AsyncSession, row_id: int, card_json: dict) -> None:
-        await self._set(session, row_id, card_json=card_json)
+        Every transition is conditional on the status it leaves, in the
+        database, because two processes act on one row: the publisher moves it
+        to ``deleting`` while the bot may be mid-send, and a late ``failed``
+        must never overwrite a ``posted`` or a ``deleted``. A transition that
+        does not apply is reported, never raised -- the caller reads the row
+        and acts on the state it actually found.
+        """
+        result = await session.execute(
+            sa.update(self.model)
+            .where(self.model.id == row_id, self.model.status.in_(tuple(from_statuses)))
+            .values(**values, updated_at=datetime.now(UTC))
+        )
+        return result.rowcount > 0
+
+    async def set_card(self, session: AsyncSession, row_id: int, card_json: dict) -> bool:
+        """The bot's last render of a live message, for the next render to compare against."""
+        return await self._move(session, row_id, from_statuses=LIVE_STATUSES, card_json=card_json)
 
     async def mark_posted(
         self, session: AsyncSession, row_id: int, *, discord_channel_id: int, discord_message_id: int
     ) -> bool:
-        """Record where a sent message landed; ``False`` when the row was no longer ``pending``.
+        """Record where a sent message landed; ``False`` when the row has left ``pending``.
 
-        Conditional on purpose: a delete can reach the row while the bot is
-        still inside ``channel.send``, moving it to ``deleting``. Overwriting
-        that with ``posted`` would strand a message everyone believes is gone,
-        so the update simply does not apply and the caller -- the only process
-        holding the message -- deletes what it just sent.
+        A delete can reach the row while the bot is still inside
+        ``channel.send``, moving it to ``deleting``. Overwriting that with
+        ``posted`` would strand a message everyone believes is gone, so the
+        update simply does not apply and the caller -- the only process holding
+        the message -- deletes what it just sent.
         """
-        result = await session.execute(
-            sa.update(self.model)
-            .where(self.model.id == row_id, self.model.status == "pending")
-            .values(
-                status="posted",
-                discord_channel_id=discord_channel_id,
-                message_id=discord_message_id,
-                error=None,
-                updated_at=datetime.now(UTC),
-            )
+        return await self._move(
+            session,
+            row_id,
+            from_statuses=("pending",),
+            status="posted",
+            discord_channel_id=discord_channel_id,
+            message_id=discord_message_id,
+            error=None,
         )
-        return result.rowcount > 0
 
-    async def mark_failed(self, session: AsyncSession, row_id: int, *, error: str) -> None:
-        await self._set(session, row_id, status="failed", error=error[:500])
+    async def mark_failed(self, session: AsyncSession, row_id: int, *, error: str) -> bool:
+        """Discord refused the send; only a ``pending`` row can fail."""
+        return await self._move(session, row_id, from_statuses=("pending",), status="failed", error=error[:500])
 
-    async def mark_deleting(self, session: AsyncSession, row_id: int) -> None:
-        await self._set(session, row_id, status="deleting")
+    async def mark_deleting(self, session: AsyncSession, row_id: int) -> bool:
+        """A delete is queued for a message that exists or is about to."""
+        return await self._move(session, row_id, from_statuses=LIVE_STATUSES, status="deleting")
 
-    async def mark_deleted(self, session: AsyncSession, row_id: int) -> None:
-        await self._set(session, row_id, status="deleted")
+    async def mark_deleted(self, session: AsyncSession, row_id: int) -> bool:
+        """Gone from Discord, found already gone, closed before it was sent, or refused and taken off the list."""
+        return await self._move(
+            session, row_id, from_statuses=("pending", "posted", "deleting", "failed"), status="deleted"
+        )

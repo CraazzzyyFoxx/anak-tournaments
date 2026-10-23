@@ -20,9 +20,9 @@ from typing import Any
 import orjson
 
 from shared.domain.roster_shape import FLEX_SLOT_CODE
+from src.domain.balancer.config.defaults import NEUTRAL_ROLE_SETTINGS, RoleSettings
 from src.domain.balancer.entities import Player, Team
 from src.domain.balancer.progress import ProgressCallback
-from src.services.balancer.config.defaults import RoleSettings
 
 #: Importable as a plain module once ``maturin develop`` has built the crate.
 NATIVE_MODULE = "balancer_native"
@@ -38,6 +38,7 @@ def load_native_module():
 def build_roles(
     mask: Mapping[str, int],
     role_settings: Mapping[str, RoleSettings],
+    open_slot: RoleSettings,
     project: Callable[[RoleSettings], dict[str, float]],
 ) -> list[dict[str, Any]]:
     """``role_mask`` -> the engine's ``roles`` list, in mask order.
@@ -51,9 +52,7 @@ def build_roles(
         if slots <= 0:
             continue
         code = name.lower()
-        settings = role_settings.get(code)
-        if settings is None:
-            raise ValueError(f"no role settings for roster slot '{name}'")
+        settings = open_slot if code == FLEX_SLOT_CODE else role_settings.get(code, NEUTRAL_ROLE_SETTINGS)
         roles.append({"name": name, "slots": slots, "flex": code == FLEX_SLOT_CODE, **project(settings)})
     return roles
 

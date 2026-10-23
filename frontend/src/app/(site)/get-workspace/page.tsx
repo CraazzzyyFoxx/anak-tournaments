@@ -18,7 +18,6 @@ import {
 
 import { HeroFrame } from "@/components/site/PageHero";
 import {
-  EYEBROW_CLASS,
   HERO_TITLE_SIZE_CLASS,
   LEDE_CLASS,
   MoreLink,
@@ -29,6 +28,7 @@ import {
   Showcase
 } from "@/components/site/open-layout";
 import { owtButton } from "@/components/site/owt-button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { buildSiteRouteMetadata } from "@/lib/site/route-metadata";
 import { cn } from "@/lib/utils";
 import { CreateForm } from "./_components/CreateForm";
@@ -68,7 +68,7 @@ export default async function GetWorkspacePage() {
           )}
         >
           <div className="min-w-0">
-            <p className={EYEBROW_CLASS}>{t("hero.eyebrow")}</p>
+            <Eyebrow as="p">{t("hero.eyebrow")}</Eyebrow>
             <h1
               id="gw-title"
               className={cn(

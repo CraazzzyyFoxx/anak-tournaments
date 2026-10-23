@@ -7,12 +7,13 @@ from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.clients.s3 import S3Client
 from shared.messaging.config import TOURNAMENT_COMPUTE_EXCHANGE
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.observability import observe_scheduled_job
 from shared.repository import DivisionGridImportJobRepository, WorkspaceRepository
-from src import models, schemas
+from src import schemas
 from src.core import config, db
 from src.services.division_grid.marketplace import MarketplaceService, marketplace_service
 
@@ -36,7 +37,7 @@ def _idempotency_key(
     source_grid_id: int,
     source_version_id: int,
     include_icons: bool,
-    include_ow_rank_mappings: bool,
+    include_native_rank_mappings: bool,
     source_fingerprint: str,
 ) -> str:
     raw = ":".join(
@@ -46,7 +47,7 @@ def _idempotency_key(
             str(source_grid_id),
             str(source_version_id),
             str(include_icons),
-            str(include_ow_rank_mappings),
+            str(include_native_rank_mappings),
             source_fingerprint,
         )
     )
@@ -112,7 +113,7 @@ class ImportJobsService:
         source_grid_id: int,
         source_version_id: int,
         include_icons: bool,
-        include_ow_rank_mappings: bool,
+        include_native_rank_mappings: bool,
         source_fingerprint: str,
     ) -> models.DivisionGridImportJob:
         idempotency_key = _idempotency_key(
@@ -121,7 +122,7 @@ class ImportJobsService:
             source_grid_id=source_grid_id,
             source_version_id=source_version_id,
             include_icons=include_icons,
-            include_ow_rank_mappings=include_ow_rank_mappings,
+            include_native_rank_mappings=include_native_rank_mappings,
             source_fingerprint=source_fingerprint,
         )
         existing = await self.job_repo.get_by_idempotency_key(session, idempotency_key)
@@ -154,7 +155,7 @@ class ImportJobsService:
                     "source_grid_id": source_grid_id,
                     "source_version_id": source_version_id,
                     "include_icons": include_icons,
-                    "include_ow_rank_mappings": include_ow_rank_mappings,
+                    "include_native_rank_mappings": include_native_rank_mappings,
                     "source_fingerprint": source_fingerprint,
                 },
                 idempotency_key=idempotency_key,
@@ -253,7 +254,7 @@ class ImportJobsService:
                 expected_source_fingerprint=payload["source_fingerprint"],
                 source_version_id=payload["source_version_id"],
                 include_icons=payload["include_icons"],
-                include_ow_rank_mappings=payload["include_ow_rank_mappings"],
+                include_native_rank_mappings=payload["include_native_rank_mappings"],
             )
             await self.job_repo.update_fields(
                 session,
@@ -288,8 +289,8 @@ class ImportJobsService:
 import_jobs_service = ImportJobsService()
 
 
-# Worker/scheduler entrypoints. They take no `session` — they OWN one — so they
-# stay module-level (rule 12) and `serve.py` keeps importing them by name.
+# Worker/scheduler entrypoints: they own their session, so they stay
+# module-level and `serve.py` imports them by name.
 async def recover_stale_import_jobs() -> int:
     """Requeue imports abandoned by a worker after its lease window."""
     cutoff = datetime.now(UTC) - _STALE_RUNNING_AFTER

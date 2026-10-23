@@ -1,6 +1,7 @@
 package tournament
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
@@ -82,6 +83,7 @@ func TestPickBanV2RouteContracts(t *testing.T) {
 		method  string
 		idParam string
 		path    []string
+		query   []string
 		body    bool
 		auth    edge.AuthMode
 	}
@@ -91,7 +93,7 @@ func TestPickBanV2RouteContracts(t *testing.T) {
 	expected := map[string]want{
 		"rpc.tournament.captain_pick_ban_submit":       captain,
 		"rpc.tournament.captain_pick_ban_dispute":      captain,
-		"rpc.tournament.pick_ban_rules_catalog":        {method: "GET", auth: edge.AuthOptional},
+		"rpc.tournament.pick_ban_rules_catalog":        {method: "GET", query: []string{"discipline"}, auth: edge.AuthOptional},
 		"rpc.tournament.admin_pick_ban_submit":         adminEncounter,
 		"rpc.tournament.admin_pick_ban_reopen":         adminEncounter,
 		"rpc.tournament.admin_pick_ban_rules_validate": adminTournament,
@@ -102,7 +104,7 @@ func TestPickBanV2RouteContracts(t *testing.T) {
 		"rpc.tournament.admin_pregame_rooms":           {method: "GET", idParam: "tournament_id", auth: edge.AuthRequired},
 		// The room journal: a bodyless read keyed on the encounter, so it must
 		// not drift onto the tournament id the rooms board uses.
-		"rpc.tournament.admin_pregame_room_history": {method: "GET", idParam: "encounter_id", auth: edge.AuthRequired},
+		"rpc.tournament.admin_pregame_room_history": {method: "GET", idParam: "encounter_id", query: []string{"limit"}, auth: edge.AuthRequired},
 		// The room's emergency controls, all four body writes on an encounter:
 		// a missing one strands the organizer panel's buttons on a 404.
 		"rpc.tournament.admin_pick_ban_pause":           adminEncounter,
@@ -121,6 +123,11 @@ func TestPickBanV2RouteContracts(t *testing.T) {
 			seen[r.Queue] = true
 			if r.Method != exp.method || r.IDParam != exp.idParam || r.Body != exp.body || r.Auth != exp.auth {
 				t.Errorf("%s: unexpected contract %#v", r.Queue, r)
+			}
+			// Forwarded query keys are an allow-list: a key the route does not name never reaches the handler,
+			// so the catalog's required `discipline` would silently be missing.
+			if !slices.Equal(r.Query, exp.query) {
+				t.Errorf("%s: Query=%v, want %v", r.Queue, r.Query, exp.query)
 			}
 			if len(r.Path) != len(exp.path) {
 				t.Errorf("%s: Path=%v, want %v", r.Queue, r.Path, exp.path)

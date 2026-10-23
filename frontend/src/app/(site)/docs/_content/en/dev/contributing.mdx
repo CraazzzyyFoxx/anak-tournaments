@@ -7,7 +7,7 @@ How the repository is laid out, how to run the platform locally, which checks a 
 | `frontend/` | The Next.js application: public site, admin, tools |
 | `gateway/` | The Go gateway — the single HTTP and WebSocket entry point |
 | `backend/shared/` | The shared kernel: ORM models, repositories, RBAC, tenancy, messaging, observability |
-| `backend/*-service/` | Headless domain workers: app, identity, tournament, parser, balancer, analytics, stream, discord |
+| `backend/*-service/` | Headless domain workers: app, identity, tournament, stats, balancer, analytics, stream, discord |
 | `backend/migrations/` | One Alembic project for the whole database |
 | `backend/env/` | Environment templates (`*.env.example`), one per service |
 | `nginx/` | The internal HTTP edge in front of the gateway |
@@ -73,7 +73,7 @@ A change goes through five independent workflows. Run the ones covering the area
 | ci-gateway | `go mod tidy -diff`, `gofmt -l .`, `go vet ./...`, `go build ./...`, `go test -race ./...` |
 | ci-docs | `python3 scripts/check_doc_links.py` — relative documentation links must resolve |
 
-Three committed files are derived from code, and CI fails when they drift: the OpenAPI manifest the gateway builds its specs from, `frontend/src/lib/divisions/ow-ladder.generated.json`, and the entity diagrams in `docs/database_erd.md`. After changing an ORM model, regenerate them with the commands in the table above. Hooks are installed once — `pre-commit install` — and run ruff plus file hygiene on staged files.
+Three committed files are derived from code, and CI fails when they drift: the OpenAPI manifest the gateway builds its specs from, `frontend/src/disciplines/overwatch/ladder/ow-ladder.generated.json`, and the entity diagrams in `docs/database_erd.md`. After changing an ORM model, regenerate them with the commands in the table above. Hooks are installed once — `pre-commit install` — and run ruff plus file hygiene on staged files.
 
 <Callout type="warning">
 A migration that drops a column or a table must not arrive through a plain `upgrade head` while running code still reads what it removes. The safe order is in [CONTRIBUTING.md](https://github.com/CraazzzyyFoxx/overwatch-tournaments/blob/master/CONTRIBUTING.md#database-changes).

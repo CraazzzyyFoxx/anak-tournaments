@@ -5,17 +5,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { AlertTriangle, ClipboardCheck, Gavel, Hourglass, Swords } from "lucide-react";
+import { Swords } from "lucide-react";
 
 import { DataTable } from "@/components/data-table";
-import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { useFilters } from "@/components/kit/useFilters";
 import { Button } from "@/components/ui/button";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import adminService from "@/services/admin.service";
 import type { PregameRoomRow } from "@/types/admin.types";
+import { seatsBySlot } from "@/lib/encounter/seats";
 
 import { pregameRoomFilterDefs } from "./filters";
 import { PHASE_LABEL, PREGAME_ROOMS_REFETCH_MS, sortRooms } from "./model";
@@ -74,6 +75,10 @@ export function PregameRoomsBrowser({ tournamentId }: Readonly<{ tournamentId: n
     returnTo: pathname ?? `/admin/tournaments/${tournamentId}/matches/rooms`
   });
 
+  if (roomsQuery.isError) {
+    return <PageStateCard state="error" onAction={() => void roomsQuery.refetch()} />;
+  }
+
   if (!roomsQuery.isLoading && rooms.length === 0) {
     return (
       <EmptyNote
@@ -94,42 +99,6 @@ export function PregameRoomsBrowser({ tournamentId }: Readonly<{ tournamentId: n
 
   return (
     <div className="space-y-3">
-      <StatTileGrid className="xl:grid-cols-5">
-        <StatTile
-          label={t("needsAttention")}
-          value={rooms.filter((room) => room.attention.length > 0).length}
-          detail={t("needsAttentionDetail")}
-          icon={AlertTriangle}
-          tone="danger"
-        />
-        <StatTile
-          label={t("waitingReadiness")}
-          value={rooms.filter((room) => room.phase === "readiness").length}
-          detail={t("waitingReadinessDetail")}
-          icon={Hourglass}
-          tone="warning"
-        />
-        <StatTile
-          label={t("vetoLive")}
-          value={rooms.filter((room) => room.phase === "map" || room.phase === "hero").length}
-          icon={Swords}
-          tone="accent"
-        />
-        <StatTile
-          label={t("reporting")}
-          value={rooms.filter((room) => room.phase === "report").length}
-          detail={t("reportingDetail")}
-          icon={Gavel}
-          tone="info"
-        />
-        <StatTile
-          label={t("done")}
-          value={rooms.filter((room) => room.phase === "done").length}
-          icon={ClipboardCheck}
-          tone="success"
-        />
-      </StatTileGrid>
-
       <DataTable<PregameRoomRow>
         rows={visible}
         isLoading={roomsQuery.isLoading}
@@ -145,7 +114,7 @@ export function PregameRoomsBrowser({ tournamentId }: Readonly<{ tournamentId: n
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{row.original.name}</p>
             <p className="truncate text-xs text-muted-foreground">
-              {t("teamsVs", { home: row.original.home_team?.name ?? "TBD", away: row.original.away_team?.name ?? "TBD" })}
+              {seatsBySlot(row.original.teams).map((seat) => seat.name).join(` ${t("vs")} `) || t("tbd")}
             </p>
             <p className="text-xs text-muted-foreground">
               {t(PHASE_LABEL[row.original.phase] as Parameters<typeof t>[0])}

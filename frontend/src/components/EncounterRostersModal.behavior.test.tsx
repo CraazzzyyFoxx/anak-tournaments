@@ -35,10 +35,9 @@ function player(id: number, name: string, overrides: Partial<Player> = {}): Play
     created_at: new Date(0),
     updated_at: null,
     name,
-    sub_role: null,
     rank: 3000,
     division: 5,
-    role: "damage",
+    role: { dimension: "player_role", role: "damage" },
     tournament_id: 1,
     user_id: id,
     team_id: 1,
@@ -71,8 +70,10 @@ function team(id: number, name: string, players: Player[]): Team {
 
 const ENCOUNTER = {
   id: 4242,
-  home_team: team(1, "Bright Wolves", [player(11, "Kiriko Main"), player(12, "Second Wolf")]),
-  away_team: team(2, "Quiet Foxes", [player(21, "Silent Fox")]),
+  teams: [
+    { id: 71, slot: 1, team_id: 1, name: "Bright Wolves", seed: null, score: 0, placement: null, active: true, team: team(1, "Bright Wolves", [player(11, "Kiriko Main"), player(12, "Second Wolf")]) },
+    { id: 72, slot: 2, team_id: 2, name: "Quiet Foxes", seed: null, score: 0, placement: null, active: true, team: team(2, "Quiet Foxes", [player(21, "Silent Fox")]) }
+  ],
   tournament: { division_grid_version: null }
 } as unknown as Encounter;
 
@@ -110,8 +111,7 @@ async function mount() {
         <NextIntlClientProvider locale="en" messages={en}>
           <EncounterRostersModal
             encounterId={4242}
-            homeTeamName="Bright Wolves"
-            awayTeamName="Quiet Foxes"
+            teamNames={["Bright Wolves", "Quiet Foxes"]}
           />
         </NextIntlClientProvider>
       </QueryClientProvider>

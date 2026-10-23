@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation } from "@tanstack/react-query";
 import { Lock, LockOpen, RotateCcw } from "lucide-react";
@@ -8,11 +8,9 @@ import { Lock, LockOpen, RotateCcw } from "lucide-react";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { SortableGrip, SortableRows, useSortableRow } from "@/components/kit/SortableRows";
-import { StatusPill } from "@/components/kit/StatusPill";
 import TeamName from "@/components/TeamName";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Spinner } from "@/components/ui/spinner";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
@@ -121,6 +119,7 @@ function ArrangeCard({
   const t = useTranslations("adminTournaments.arrange");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  const noPinsId = useId();
 
   // The dropped order is shown while the recalculation runs and until the
   // refetched rows carry it. Keyed on the rows themselves, not the array
@@ -179,22 +178,31 @@ function ArrangeCard({
           <h3 className="min-w-0 truncate text-sm">{table.title}</h3>
         </CardTitle>
         {canUpdate ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={busy || !hasPins}
-            onClick={() => setConfirmClear(true)}
-          >
-            <RotateCcw aria-hidden className="size-4" />
-            {t("clearPins")}
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            {hasPins ? null : (
+              <span id={noPinsId} className="text-caption text-muted-foreground">
+                {t("noPins")}
+              </span>
+            )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={busy || !hasPins}
+              aria-describedby={hasPins ? undefined : noPinsId}
+              onClick={() => setConfirmClear(true)}
+            >
+              <RotateCcw aria-hidden className="size-4" />
+              {t("clearPins")}
+            </Button>
+          </div>
         ) : null}
       </CardHeader>
       <CardContent>
-        <div aria-busy={busy || undefined} className="relative">
+        {/* While the pins save, the list dims rather than hiding under a spinner. */}
+        <div aria-busy={busy || undefined} className={cn(busy && "opacity-60")}>
           <SortableRows
-            className="rounded-md border border-border"
+            className="flex flex-col divide-y divide-border"
             items={current}
             getId={(row) => String(row.team_id)}
             onReorder={(next, moved) =>
@@ -226,11 +234,6 @@ function ArrangeCard({
               />
             )}
           </SortableRows>
-          {busy ? (
-            <div className="absolute inset-0 flex items-center justify-center rounded-md bg-background/40">
-              <Spinner />
-            </div>
-          ) : null}
         </div>
       </CardContent>
 
@@ -267,17 +270,14 @@ function ArrangeRow({
   onUnpin: () => void;
 }>) {
   const t = useTranslations("adminTournaments.arrange");
-  const name = row.team?.name ?? `team #${row.team_id}`;
+  const name = row.team?.name ?? t("teamFallback", { id: row.team_id });
   const { ref, style, handleProps } = useSortableRow(String(row.team_id), !canUpdate || disabled);
 
   return (
     <div
       ref={ref}
       style={style}
-      className={cn(
-        "flex items-center gap-2 border-b border-border/50 bg-card px-3 py-1.5 last:border-b-0",
-        pinned && "bg-muted/40"
-      )}
+      className={cn("flex items-center gap-2 bg-card py-1.5", pinned && "bg-muted/40")}
     >
       {canUpdate ? (
         <SortableGrip
@@ -286,7 +286,7 @@ function ArrangeRow({
           disabled={disabled}
         />
       ) : null}
-      <span className="w-6 shrink-0 text-sm font-semibold tabular-nums">{place ?? "—"}</span>
+      <span className="w-6 shrink-0 text-sm font-semibold tabular-nums">{place}</span>
       {row.team ? (
         <TeamName team={row.team} size="xs" className="min-w-0 flex-1" nameClassName="font-medium" />
       ) : (
@@ -295,9 +295,10 @@ function ArrangeRow({
         </span>
       )}
       {row.tie_group != null && !pinned ? (
-        <StatusPill tone="warning" title={t("tiedTitle")}>
-          {t("tied")}
-        </StatusPill>
+        <span className="shrink-0 text-sm text-muted-foreground" title={t("tiedTitle")}>
+          <span aria-hidden>=</span>
+          <span className="sr-only">{t("tied")}</span>
+        </span>
       ) : null}
       <span className="shrink-0 text-xs tabular-nums text-muted-foreground" title={t("recordTitle")}>
         {row.win}·{row.draw}·{row.lose}
@@ -306,7 +307,7 @@ function ArrangeRow({
         {t("pointsValue", { points: row.points.toFixed(1) })}
       </span>
       {pinned ? (
-        <span className="flex shrink-0 items-center text-foreground" title={t("pinnedPlace")}>
+        <span className="flex shrink-0 items-center" title={t("pinnedPlace")}>
           <Lock aria-hidden className="size-3.5" />
           <span className="sr-only">{t("pinnedPlace")}</span>
         </span>
@@ -320,6 +321,7 @@ function ArrangeRow({
           size="icon"
           className="size-7 shrink-0"
           aria-label={t("unpin", { name })}
+          title={t("unpin", { name })}
           disabled={disabled}
           onClick={onUnpin}
         >

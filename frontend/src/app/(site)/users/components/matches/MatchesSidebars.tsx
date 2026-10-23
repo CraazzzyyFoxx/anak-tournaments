@@ -1,8 +1,11 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface } from "@/components/profile/atoms";
+import { Button } from "@/components/ui/button";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { winrateColor } from "@/lib/colors";
+import { cn } from "@/lib/utils";
 import { ArrowRight } from "lucide-react";
 import {
   Dialog,
@@ -55,8 +58,7 @@ const OpponentRecord = ({ o }: { o: OpponentStat }) => (
   </>
 );
 
-const thLeft =
-  "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2 text-left text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
+const thLeft = cn(eyebrowClass(), "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2 text-left");
 const thRight = `${thLeft} text-right`;
 
 const MatchesSidebars = ({ opponentStats, stageStats }: MatchesSidebarsProps) => {
@@ -78,11 +80,13 @@ const MatchesSidebars = ({ opponentStats, stageStats }: MatchesSidebarsProps) =>
         action={
           opponentStats.length > SIDEBAR_LIMIT ? (
             <Dialog>
-              <DialogTrigger className="aqt-pf-link" aria-label={t("users.matches.allOpponents")}>
-                <span className="tabular-nums">
-                  {t("common.all")} {opponentStats.length}
-                </span>
-                <ArrowRight aria-hidden className="size-3" />
+              <DialogTrigger asChild>
+                <Button variant="link" size="inline" className="[&_svg]:size-3" aria-label={t("users.matches.allOpponents")}>
+                  <span className="tabular-nums">
+                    {t("common.all")} {opponentStats.length}
+                  </span>
+                  <ArrowRight aria-hidden />
+                </Button>
               </DialogTrigger>
               <DialogContent className="max-w-[560px] border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)]">
                 <DialogHeader>

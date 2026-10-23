@@ -8,22 +8,22 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 import { Crown, Shuffle, Sprout } from "lucide-react";
-import {
-  sortTeamPlayers,
-  type SortableRosterPlayer,
-  type TeamRosterPlayer
-} from "@/lib/player";
+import { sortTeamPlayers, splitHandle, type SortableRosterPlayer, type TeamRosterPlayer } from "@/lib/player";
 import PlayerName from "@/components/PlayerName";
 import { Team } from "@/types/team.types";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import DivisionIcon from "@/components/DivisionIcon";
-import { HeroStrip } from "@/components/hero/HeroImage";
+import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import TeamName from "@/components/TeamName";
+import { Badge } from "@/components/ui/badge";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { PlaceBadge } from "@/components/ui/place-badge";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { getDivisionLabel } from "@/lib/divisions/grid";
-import { normalizePlayerRole, PLAYER_ROLE_LABEL_KEY } from "@/lib/roster/player-role";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import { roleOf, type RoleRef } from "@/lib/roster/role-ref";
+import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
 import { groupDisplayName, groupHue } from "@/lib/tournament/group";
 import { cn } from "@/lib/utils";
 import type { DivisionGridVersion } from "@/types/workspace.types";
@@ -39,9 +39,9 @@ const relatedPlayerId = (player: SortableRosterPlayer) =>
  * (the substitution chain `sortTeamPlayers` already orders that way). A sub
  * whose original is not in the list starts a slot of its own.
  */
-export function rosterSlots<P extends SortableRosterPlayer>(players: P[]): P[][] {
+export function rosterSlots<P extends SortableRosterPlayer>(players: P[], ontology: RoleOntology | null): P[][] {
   const slots: P[][] = [];
-  for (const player of sortTeamPlayers(players)) {
+  for (const player of sortTeamPlayers(players, ontology)) {
     const slot = slots.at(-1);
     const related = relatedPlayerId(player);
     if (player.is_substitution && slot?.some((member) => member.id === related)) {
@@ -79,13 +79,17 @@ const BRANCH_LINE = "pointer-events-none absolute border-[color:var(--aqt-fg-fai
 export function RosterRole({
   role,
   position,
-  inline
+  inline,
+  ontology = null
 }: Readonly<{
-  role: string | null;
+  role: RoleRef | null;
   position?: RosterSlotPosition<SortableRosterPlayer & { name: string }>;
   inline?: boolean;
+  /** The roster's own game's scoped ontology. Absent, the role renders neutral — never another game's glyph. */
+  ontology?: RoleOntology | null;
 }>) {
   const t = useTranslations();
+  const slotLabel = useSlotLabel(ontology);
   const index = position?.index ?? 0;
   const slotSize = position?.slot.length ?? 1;
   const lineBelow = index < slotSize - 1;
@@ -96,12 +100,14 @@ export function RosterRole({
     const original = position.slot.find((member) => member.id === related);
     return (
       <>
-        {lineBelow ? <span className={cn(BRANCH_LINE, "-bottom-px left-[21px] top-0 border-l-[1.5px]")} /> : null}
+        {lineBelow ? (
+          <span className={cn(BRANCH_LINE, "-bottom-px left-[21px] top-0 border-l-[1.5px]")} />
+        ) : null}
         <IconTooltip
           label={t("teams.roster.substitution")}
           hint={
             original
-              ? t("teams.roster.substituteFor", { name: original.name.split("#")[0] })
+              ? t("teams.roster.substituteFor", { name: splitHandle(original.name).name })
               : undefined
           }
           className={cn(
@@ -115,17 +121,21 @@ export function RosterRole({
     );
   }
 
-  const roleKey = PLAYER_ROLE_LABEL_KEY[normalizePlayerRole(role)];
   return (
     <>
       {lineBelow ? (
-        <span className={cn(BRANCH_LINE, "-bottom-px left-[21px] top-[calc(50%+14px)] border-l-[1.5px]")} />
+        <span
+          className={cn(
+            BRANCH_LINE,
+            "-bottom-px left-[21px] top-[calc(50%+14px)] border-l-[1.5px]"
+          )}
+        />
       ) : null}
       <IconTooltip
-        label={t(roleKey)}
+        label={slotLabel(role ? roleOf(role) : OPEN_SLOT_CODE)}
         className={cn("shrink-0", position && isReplaced(position) && "opacity-50")}
       >
-        <PlayerRoleIcon role={role} decorative />
+        <PlayerRoleIcon role={role} ontology={ontology} decorative />
       </IconTooltip>
     </>
   );
@@ -138,7 +148,7 @@ export function RosterPlayer({
   highlightUserId,
   dimmed
 }: Readonly<{
-  player: Pick<TeamRosterPlayer, "name" | "role" | "sub_role" | "user_id" | "is_newcomer" | "is_newcomer_role">;
+  player: Pick<TeamRosterPlayer, "name" | "role" | "user_id" | "is_newcomer" | "is_newcomer_role">;
   captainUserId?: number | null;
   /** When the row belongs to this user id, it gets a "you" tag. */
   highlightUserId?: number;
@@ -164,7 +174,7 @@ export function RosterPlayer({
       ) : null}
       {/* Same rule as the Teams list view: a flex player has no role to be new
           to, and a flex tournament sets the flag on everyone. */}
-      {player.is_newcomer_role && normalizePlayerRole(player.role) !== "Flex" ? (
+      {player.is_newcomer_role && player.role != null ? (
         <IconTooltip
           label={t("teams.roster.newcomerRole")}
           hint={t("teams.roster.newcomerRoleHint")}
@@ -175,44 +185,54 @@ export function RosterPlayer({
       ) : null}
       {highlightUserId != null && player.user_id === highlightUserId ? (
         <span className={ICON_SLOT}>
-          <span
-            className="aqt-tnum rounded-[4px] px-1.5 py-0.5 text-label font-bold uppercase tracking-label"
-            style={{
-              background: "color-mix(in srgb, var(--aqt-teal) 12%, transparent)",
-              border: "1px solid color-mix(in srgb, var(--aqt-teal) 30%, transparent)",
-              color: "var(--aqt-teal)"
-            }}
-          >
+          <Badge palette="aqt" tone="accent" voice="label">
             {t("users.tournaments.you")}
-          </span>
+          </Badge>
         </span>
       ) : null}
     </div>
   );
 }
 
-/** Rank crest (tier name in its tooltip) and the player's SR. */
+/** Rank crest (tier name in its tooltip) and the player's SR; "—" when the tournament recorded no rank. */
 export function RosterRank({
   division,
   rank,
   tournamentGrid,
+  discipline,
   dimmed,
   className
 }: Readonly<{
-  division: number;
-  rank: number;
+  division: number | null;
+  rank: number | null;
   tournamentGrid?: DivisionGridVersion | null;
+  discipline?: string;
   dimmed?: boolean;
   className?: string;
 }>) {
-  const workspaceGrid = useDivisionGrid();
+  const workspaceGrid = useDivisionGrid(discipline);
   const format = useFormatter();
-  const label = getDivisionLabel(tournamentGrid ?? workspaceGrid, division) ?? `Division ${division}`;
+  if (rank == null) {
+    return (
+      <span className={cn("text-[color:var(--aqt-fg-dim)]", dimmed && "opacity-50", className)}>—</span>
+    );
+  }
   return (
     <div className={cn("flex items-center gap-2", dimmed && "opacity-50", className)}>
-      <IconTooltip label={label} className="shrink-0">
-        <DivisionIcon division={division} width={26} height={26} tournamentGrid={tournamentGrid} />
-      </IconTooltip>
+      {division != null ? (
+        <IconTooltip
+          label={getDivisionLabel(tournamentGrid ?? workspaceGrid, division) ?? `Division ${division}`}
+          className="shrink-0"
+        >
+          <DivisionIcon
+            division={division}
+            width={26}
+            height={26}
+            tournamentGrid={tournamentGrid}
+            discipline={discipline}
+          />
+        </IconTooltip>
+      ) : null}
       <span className="aqt-tnum text-caption font-semibold tabular-nums text-[color:var(--aqt-fg-muted)]">
         {format.number(rank, { maximumFractionDigits: 0 })}
       </span>
@@ -230,11 +250,16 @@ function avgMvpColor(value: number): string {
 export const TournamentTeamTable = ({
   players,
   tournamentGrid,
+  discipline,
+  ontology,
   highlightUserId,
   captainUserId
 }: {
   players: TeamRosterPlayer[];
   tournamentGrid?: DivisionGridVersion | null;
+  discipline?: string;
+  /** The roster's own game's scoped ontology, for the role column. */
+  ontology?: RoleOntology | null;
   /** When a roster row belongs to this user id, it gets a "you" tag. */
   highlightUserId?: number;
   /** When a roster row belongs to this user id, it gets a captain crown. */
@@ -245,7 +270,7 @@ export const TournamentTeamTable = ({
   // Each dossier column renders only when at least one row carries its data;
   // other callers (team cards) pass rosters without these fields.
   const showMvp = players.some((p) => p.avg_mvp != null);
-  const showHeroes = players.some((p) => (p.heroes?.length ?? 0) > 0);
+  const showHeroes = players.some((p) => (p.characters?.length ?? 0) > 0);
   const signatureTitle = t("users.tournaments.roster.signatureHeroes");
 
   return (
@@ -274,7 +299,7 @@ export const TournamentTeamTable = ({
         </thead>
         {/* One <tbody> per slot: hover lights a player together with their
             subs, so the highlight never cuts the branch line in half. */}
-        {rosterSlots(players).map((slot) => (
+        {rosterSlots(players, ontology ?? null).map((slot) => (
           <tbody key={slot[0].id}>
             {slot.map((player, index) => {
               const position = { slot, index };
@@ -282,7 +307,7 @@ export const TournamentTeamTable = ({
               return (
                 <tr key={player.id}>
                   <td className="relative">
-                    <RosterRole role={player.role} position={position} />
+                    <RosterRole role={player.role} position={position} ontology={ontology} />
                   </td>
                   <td>
                     <RosterPlayer
@@ -297,6 +322,7 @@ export const TournamentTeamTable = ({
                       division={player.division}
                       rank={player.rank}
                       tournamentGrid={tournamentGrid}
+                      discipline={discipline}
                       dimmed={dimmed}
                     />
                   </td>
@@ -306,9 +332,7 @@ export const TournamentTeamTable = ({
                       style={{
                         textAlign: "right",
                         color:
-                          player.avg_mvp != null
-                            ? avgMvpColor(player.avg_mvp)
-                            : "var(--aqt-fg-dim)"
+                          player.avg_mvp != null ? avgMvpColor(player.avg_mvp) : "var(--aqt-fg-dim)"
                       }}
                     >
                       {player.avg_mvp != null ? player.avg_mvp.toFixed(1) : "—"}
@@ -316,9 +340,9 @@ export const TournamentTeamTable = ({
                   ) : null}
                   {showHeroes ? (
                     <td>
-                      {player.heroes && player.heroes.length > 0 ? (
+                      {player.characters && player.characters.length > 0 ? (
                         <div title={signatureTitle} aria-label={signatureTitle}>
-                          <HeroStrip heroes={player.heroes} size="sm" limit={3} />
+                          <CatalogEntityStrip entities={player.characters} size="sm" limit={3} />
                         </div>
                       ) : (
                         <span className="text-[color:var(--aqt-fg-dim)]">—</span>
@@ -358,14 +382,14 @@ export function TeamPlacement({ placement, medal }: { placement: number; medal: 
   );
 }
 
-interface TournamentTeamCardFrameProps extends React.HTMLAttributes<HTMLElement> {
+interface TournamentTeamCardFrameProps extends Omit<React.HTMLAttributes<HTMLElement>, "slot"> {
   name: React.ReactNode;
   leadingTag?: React.ReactNode;
   positionTag?: React.ReactNode;
   metricLabel?: React.ReactNode;
   metricValue?: React.ReactNode;
-  /** Encounter-bound cards: the side's colour along the top edge. */
-  side?: "home" | "away";
+  /** Encounter-bound cards: the seat's colour along the top edge (slot 1 teal, slot 2 rose). */
+  slot?: 1 | 2;
 }
 
 /** Shared team-card chrome: the Teams page, encounter, pre-game and rosters modal. */
@@ -375,7 +399,7 @@ export const TournamentTeamCardFrame = ({
   positionTag,
   metricLabel,
   metricValue,
-  side,
+  slot,
   children,
   className,
   ...props
@@ -384,7 +408,7 @@ export const TournamentTeamCardFrame = ({
   const hasMetric = metricLabel != null || metricValue != null;
 
   return (
-    <article className={cn("team-card", className)} data-side={side} {...props}>
+    <article className={cn("team-card", className)} data-slot={slot} {...props}>
       <header className="tc-header">
         {hasTags && (
           <div className="tc-tags">
@@ -416,11 +440,16 @@ export const TournamentTeamCardFrame = ({
 export const TournamentTeamCard = ({
   team,
   medal,
-  showGroup
+  showGroup,
+  discipline,
+  ontology
 }: {
   team: Team;
   medal: boolean;
   showGroup: boolean;
+  discipline: string;
+  /** The team's own game's scoped ontology, for the roster's role column. */
+  ontology?: RoleOntology | null;
 }) => {
   const t = useTranslations();
   const format = useFormatter();
@@ -440,9 +469,7 @@ export const TournamentTeamCard = ({
         ) : undefined
       }
       positionTag={
-        team.placement != null ? (
-          <TeamPlacement placement={team.placement} medal={medal} />
-        ) : null
+        team.placement != null ? <TeamPlacement placement={team.placement} medal={medal} /> : null
       }
       metricLabel={t("teams.roster.avgSr")}
       metricValue={
@@ -454,6 +481,8 @@ export const TournamentTeamCard = ({
       <TournamentTeamTable
         players={team.players}
         tournamentGrid={team.tournament?.division_grid_version}
+        discipline={discipline}
+        ontology={ontology}
         captainUserId={team.captain_id}
       />
     </TournamentTeamCardFrame>

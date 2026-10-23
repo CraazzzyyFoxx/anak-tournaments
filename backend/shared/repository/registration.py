@@ -5,104 +5,79 @@ from datetime import datetime
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared import models
 from shared.repository.base import BaseRepository
 
 
-class BalancerRegistrationRepository(BaseRepository[models.BalancerRegistration]):
+class RegistrationRepository(BaseRepository[models.Registration]):
     def __init__(self) -> None:
-        super().__init__(models.BalancerRegistration)
-
-    async def get_active_for_user(
-        self,
-        session: AsyncSession,
-        *,
-        tournament_id: int,
-        auth_user_id: int,
-    ) -> models.BalancerRegistration | None:
-        result = await session.execute(
-            sa.select(models.BalancerRegistration)
-            .options(selectinload(models.BalancerRegistration.roles))
-            .where(
-                models.BalancerRegistration.tournament_id == tournament_id,
-                models.BalancerRegistration.workspace_member.has(
-                    models.WorkspaceMember.player.has(models.User.auth_user_id == auth_user_id)
-                ),
-                models.BalancerRegistration.deleted_at.is_(None),
-            )
-        )
-        return result.scalar_one_or_none()
-
-    async def list_active_by_tournament(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-        *,
-        with_workspace_member: bool = False,
-    ) -> Sequence[models.BalancerRegistration]:
-        options = [selectinload(models.BalancerRegistration.roles)]
-        if with_workspace_member:
-            options.append(selectinload(models.BalancerRegistration.workspace_member))
-        result = await session.execute(
-            sa.select(models.BalancerRegistration)
-            .options(*options)
-            .where(
-                models.BalancerRegistration.tournament_id == tournament_id,
-                models.BalancerRegistration.deleted_at.is_(None),
-            )
-            .order_by(models.BalancerRegistration.id.asc())
-        )
-        return result.scalars().all()
+        super().__init__(models.Registration)
 
 
-class RegistrationFormRepository(BaseRepository[models.BalancerRegistrationForm]):
+class RegistrationFormRepository(BaseRepository[models.RegistrationForm]):
     def __init__(self) -> None:
-        super().__init__(models.BalancerRegistrationForm)
+        super().__init__(models.RegistrationForm)
 
     async def get_by_tournament(
         self,
         session: AsyncSession,
         tournament_id: int,
-    ) -> models.BalancerRegistrationForm | None:
+    ) -> models.RegistrationForm | None:
         return await self.get_by(session, tournament_id=tournament_id)
 
 
-class RegistrationFormVersionRepository(BaseRepository[models.BalancerRegistrationFormVersion]):
+class RegistrationFormVersionRepository(BaseRepository[models.RegistrationFormVersion]):
     """``registration_form_version`` — append-only schema snapshots of one form."""
 
     def __init__(self) -> None:
-        super().__init__(models.BalancerRegistrationFormVersion)
+        super().__init__(models.RegistrationFormVersion)
 
     async def latest_number(self, session: AsyncSession, form_id: int) -> int:
         """The highest version number on ``form_id``; ``0`` when it has none yet,
         so a caller writes ``number = latest_number + 1`` without a branch."""
         result = await session.execute(
-            sa.select(sa.func.max(models.BalancerRegistrationFormVersion.number)).where(
-                models.BalancerRegistrationFormVersion.form_id == form_id
+            sa.select(sa.func.max(models.RegistrationFormVersion.number)).where(
+                models.RegistrationFormVersion.form_id == form_id
             )
         )
         return result.scalar_one_or_none() or 0
 
+    async def current_schema_json(self, session: AsyncSession, tournament_id: int) -> dict | None:
+        """``schema_json`` of the tournament form's current version; ``None`` when there is no form."""
+        return await session.scalar(
+            sa.select(models.RegistrationFormVersion.schema_json)
+            .join(
+                models.RegistrationForm,
+                models.RegistrationForm.current_version_id == models.RegistrationFormVersion.id,
+            )
+            .where(models.RegistrationForm.tournament_id == tournament_id)
+        )
 
-class RegistrationFormTemplateRepository(BaseRepository[models.BalancerRegistrationFormTemplate]):
+
+class RegistrationFormTemplateRepository(BaseRepository[models.RegistrationFormTemplate]):
     """``registration_form_template`` — workspace-level named schemas, copied on apply."""
 
     def __init__(self) -> None:
-        super().__init__(models.BalancerRegistrationFormTemplate)
+        super().__init__(models.RegistrationFormTemplate)
 
     async def list_for_workspace(
         self,
         session: AsyncSession,
         workspace_id: int,
-    ) -> Sequence[models.BalancerRegistrationFormTemplate]:
-        result = await session.execute(
-            sa.select(models.BalancerRegistrationFormTemplate)
-            .where(models.BalancerRegistrationFormTemplate.workspace_id == workspace_id)
-            .order_by(models.BalancerRegistrationFormTemplate.name.asc())
+        *,
+        discipline: str | None = None,
+    ) -> Sequence[models.RegistrationFormTemplate]:
+        """The workspace's templates by name; ``discipline`` narrows to one game's."""
+        query = (
+            sa.select(models.RegistrationFormTemplate)
+            .where(models.RegistrationFormTemplate.workspace_id == workspace_id)
+            .order_by(models.RegistrationFormTemplate.name.asc())
         )
+        if discipline is not None:
+            query = query.where(models.RegistrationFormTemplate.discipline == discipline)
+        result = await session.execute(query)
         return result.scalars().all()
 
     async def get_for_workspace(
@@ -110,15 +85,15 @@ class RegistrationFormTemplateRepository(BaseRepository[models.BalancerRegistrat
         session: AsyncSession,
         workspace_id: int,
         template_id: int,
-    ) -> models.BalancerRegistrationFormTemplate | None:
+    ) -> models.RegistrationFormTemplate | None:
         """Scoped by workspace on purpose: a bare id lookup would let one
         workspace read or overwrite another's template."""
         return await self.get_by(session, id=template_id, workspace_id=workspace_id)
 
 
-class RegistrationStatusRepository(BaseRepository[models.BalancerRegistrationStatus]):
+class RegistrationStatusRepository(BaseRepository[models.RegistrationStatus]):
     def __init__(self) -> None:
-        super().__init__(models.BalancerRegistrationStatus)
+        super().__init__(models.RegistrationStatus)
 
     async def get_by_slug(
         self,
@@ -128,17 +103,17 @@ class RegistrationStatusRepository(BaseRepository[models.BalancerRegistrationSta
         scope: str,
         slug: str,
         kind: str | None = None,
-    ) -> models.BalancerRegistrationStatus | None:
+    ) -> models.RegistrationStatus | None:
         filters: list[sa.ColumnElement[bool]] = [
-            models.BalancerRegistrationStatus.workspace_id.is_(None)
+            models.RegistrationStatus.workspace_id.is_(None)
             if workspace_id is None
-            else models.BalancerRegistrationStatus.workspace_id == workspace_id,
-            models.BalancerRegistrationStatus.scope == scope,
-            models.BalancerRegistrationStatus.slug == slug,
+            else models.RegistrationStatus.workspace_id == workspace_id,
+            models.RegistrationStatus.scope == scope,
+            models.RegistrationStatus.slug == slug,
         ]
         if kind is not None:
-            filters.append(models.BalancerRegistrationStatus.kind == kind)
-        result = await session.execute(sa.select(models.BalancerRegistrationStatus).where(*filters))
+            filters.append(models.RegistrationStatus.kind == kind)
+        result = await session.execute(sa.select(models.RegistrationStatus).where(*filters))
         return result.scalar_one_or_none()
 
     async def list_for_workspace(
@@ -147,48 +122,46 @@ class RegistrationStatusRepository(BaseRepository[models.BalancerRegistrationSta
         *,
         workspace_id: int,
         scope: str | None = None,
-    ) -> Sequence[models.BalancerRegistrationStatus]:
+    ) -> Sequence[models.RegistrationStatus]:
         filters: list[sa.ColumnElement[bool]] = [
             sa.or_(
-                models.BalancerRegistrationStatus.workspace_id == workspace_id,
-                models.BalancerRegistrationStatus.workspace_id.is_(None),
+                models.RegistrationStatus.workspace_id == workspace_id,
+                models.RegistrationStatus.workspace_id.is_(None),
             )
         ]
         if scope is not None:
-            filters.append(models.BalancerRegistrationStatus.scope == scope)
+            filters.append(models.RegistrationStatus.scope == scope)
         result = await session.execute(
-            sa.select(models.BalancerRegistrationStatus)
+            sa.select(models.RegistrationStatus)
             .where(*filters)
             .order_by(
-                models.BalancerRegistrationStatus.scope.asc(),
-                sa.case((models.BalancerRegistrationStatus.workspace_id.is_(None), 0), else_=1).asc(),
-                models.BalancerRegistrationStatus.kind.asc(),
-                models.BalancerRegistrationStatus.name.asc(),
-                models.BalancerRegistrationStatus.id.asc(),
+                models.RegistrationStatus.scope.asc(),
+                sa.case((models.RegistrationStatus.workspace_id.is_(None), 0), else_=1).asc(),
+                models.RegistrationStatus.kind.asc(),
+                models.RegistrationStatus.name.asc(),
+                models.RegistrationStatus.id.asc(),
             )
         )
         return result.scalars().all()
 
 
-class GoogleSheetFeedRepository(BaseRepository[models.BalancerRegistrationGoogleSheetFeed]):
+class GoogleSheetFeedRepository(BaseRepository[models.RegistrationGoogleSheetFeed]):
     def __init__(self) -> None:
-        super().__init__(models.BalancerRegistrationGoogleSheetFeed)
+        super().__init__(models.RegistrationGoogleSheetFeed)
 
     async def get_by_tournament(
         self,
         session: AsyncSession,
         tournament_id: int,
-    ) -> models.BalancerRegistrationGoogleSheetFeed | None:
+    ) -> models.RegistrationGoogleSheetFeed | None:
         return await self.get_by(session, tournament_id=tournament_id)
 
 
-class BalancerRegistrationTeamRepository(BaseRepository[models.BalancerRegistrationTeam]):
+class RegistrationTeamRepository(BaseRepository[models.RegistrationTeam]):
     def __init__(self) -> None:
-        super().__init__(models.BalancerRegistrationTeam)
+        super().__init__(models.RegistrationTeam)
 
-    async def get_active_for_update(
-        self, session: AsyncSession, team_id: int
-    ) -> models.BalancerRegistrationTeam | None:
+    async def get_active_for_update(self, session: AsyncSession, team_id: int) -> models.RegistrationTeam | None:
         """The serialization point for every roster decision on a team.
 
         Eleven flows take this lock before reading slot occupancy; it is what stops
@@ -199,37 +172,58 @@ class BalancerRegistrationTeamRepository(BaseRepository[models.BalancerRegistrat
         ``deleted_at IS NULL`` is part of the lock's meaning — a disbanded team must
         not be lockable at all.
         """
-        team = models.BalancerRegistrationTeam
+        team = models.RegistrationTeam
         return await session.scalar(
             self.select().where(team.id == team_id, team.deleted_at.is_(None)).with_for_update()
         )
 
 
-class BalancerRegistrationRoleRepository(BaseRepository[models.BalancerRegistrationRole]):
+class RegistrationRoleRepository(BaseRepository[models.RegistrationRole]):
     """``registration_role`` — one declared role (with rank/priority) on a registration."""
 
     def __init__(self) -> None:
-        super().__init__(models.BalancerRegistrationRole)
+        super().__init__(models.RegistrationRole)
+
+    async def get_by_registration_and_role(
+        self, session: AsyncSession, registration_id: int, role: str
+    ) -> models.RegistrationRole | None:
+        """The registration's row for ``role``, active or not."""
+        return await session.scalar(
+            sa.select(models.RegistrationRole).where(
+                models.RegistrationRole.registration_id == registration_id,
+                models.RegistrationRole.role == role,
+            )
+        )
+
+    async def next_priority(self, session: AsyncSession, registration_id: int) -> int:
+        """``max(priority) + 1`` over the registration's roles; ``0`` when it has none."""
+        return (
+            await session.scalar(
+                sa.select(sa.func.coalesce(sa.func.max(models.RegistrationRole.priority), -1)).where(
+                    models.RegistrationRole.registration_id == registration_id
+                )
+            )
+        ) + 1
 
 
-class BalancerRegistrationTeamInviteRepository(BaseRepository[models.BalancerRegistrationTeamInvite]):
+class RegistrationTeamInviteRepository(BaseRepository[models.RegistrationTeamInvite]):
     """``registration_team_invite`` — slot offers a captain issues for their team."""
 
     def __init__(self) -> None:
-        super().__init__(models.BalancerRegistrationTeamInvite)
+        super().__init__(models.RegistrationTeamInvite)
 
     @staticmethod
     def _live_clause() -> sa.ColumnElement[bool]:
         """ "Not expired" — a NULL ``expires_at`` never lapses."""
-        invite = models.BalancerRegistrationTeamInvite
+        invite = models.RegistrationTeamInvite
         return sa.or_(invite.expires_at.is_(None), invite.expires_at > sa.func.now())
 
     async def list_pending(
         self, session: AsyncSession, team_id: int, *, pending_state: str
-    ) -> Sequence[models.BalancerRegistrationTeamInvite]:
+    ) -> Sequence[models.RegistrationTeamInvite]:
         """Live invites only: an expired one reserves nothing, so its slot is
         offerable again without an explicit revoke."""
-        invite = models.BalancerRegistrationTeamInvite
+        invite = models.RegistrationTeamInvite
         result = await session.scalars(
             self.select().where(
                 invite.team_id == team_id,
@@ -239,25 +233,19 @@ class BalancerRegistrationTeamInviteRepository(BaseRepository[models.BalancerReg
         )
         return result.all()
 
-    async def list_for_team(
-        self, session: AsyncSession, team_id: int
-    ) -> Sequence[models.BalancerRegistrationTeamInvite]:
-        invite = models.BalancerRegistrationTeamInvite
+    async def list_for_team(self, session: AsyncSession, team_id: int) -> Sequence[models.RegistrationTeamInvite]:
+        invite = models.RegistrationTeamInvite
         result = await session.scalars(
             self.select().where(invite.team_id == team_id).order_by(invite.invited_at.desc())
         )
         return result.all()
 
-    async def get_by_token_hash(
-        self, session: AsyncSession, token_sha256: str
-    ) -> models.BalancerRegistrationTeamInvite | None:
+    async def get_by_token_hash(self, session: AsyncSession, token_sha256: str) -> models.RegistrationTeamInvite | None:
         """Indexed single read against the partial unique index on the hash.
 
         The raw token is never compared against anything stored.
         """
-        return await session.scalar(
-            self.select().where(models.BalancerRegistrationTeamInvite.token_sha256 == token_sha256)
-        )
+        return await session.scalar(self.select().where(models.RegistrationTeamInvite.token_sha256 == token_sha256))
 
     async def consume_if_pending(
         self,
@@ -274,7 +262,7 @@ class BalancerRegistrationTeamInviteRepository(BaseRepository[models.BalancerReg
         redemptions of one link cannot both succeed. Preserved verbatim as a single
         conditional statement — a read-then-write reintroduces the double-redeem race.
         """
-        invite = models.BalancerRegistrationTeamInvite
+        invite = models.RegistrationTeamInvite
         consumed = await session.execute(
             sa.update(invite)
             .where(
@@ -302,7 +290,7 @@ class BalancerRegistrationTeamInviteRepository(BaseRepository[models.BalancerReg
         UI still renders as outstanding. That is the opposite of ``consume_if_pending``,
         where an expired row must not be redeemable.
         """
-        invite = models.BalancerRegistrationTeamInvite
+        invite = models.RegistrationTeamInvite
         await session.execute(
             sa.update(invite)
             .where(invite.team_id == team_id, invite.state == pending_state)
@@ -310,14 +298,14 @@ class BalancerRegistrationTeamInviteRepository(BaseRepository[models.BalancerReg
         )
 
 
-class GoogleSheetBindingRepository(BaseRepository[models.BalancerRegistrationGoogleSheetBinding]):
+class GoogleSheetBindingRepository(BaseRepository[models.RegistrationGoogleSheetBinding]):
     """``registration_google_sheet_binding`` — one imported sheet row ↔ one registration."""
 
     def __init__(self) -> None:
-        super().__init__(models.BalancerRegistrationGoogleSheetBinding)
+        super().__init__(models.RegistrationGoogleSheetBinding)
 
     async def list_source_record_keys(self, session: AsyncSession, feed_id: int) -> Sequence[str]:
-        binding = models.BalancerRegistrationGoogleSheetBinding
+        binding = models.RegistrationGoogleSheetBinding
         result = await session.scalars(sa.select(binding.source_record_key).where(binding.feed_id == feed_id))
         return result.all()
 
@@ -327,9 +315,9 @@ class GoogleSheetBindingRepository(BaseRepository[models.BalancerRegistrationGoo
         feed_id: int,
         *,
         options: Sequence[_AbstractLoad] | None = None,
-    ) -> Sequence[models.BalancerRegistrationGoogleSheetBinding]:
+    ) -> Sequence[models.RegistrationGoogleSheetBinding]:
         query = self._apply_options(
-            self.select().where(models.BalancerRegistrationGoogleSheetBinding.feed_id == feed_id),
+            self.select().where(models.RegistrationGoogleSheetBinding.feed_id == feed_id),
             options,
         )
         result = await session.execute(query)

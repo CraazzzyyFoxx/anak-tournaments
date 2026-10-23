@@ -12,17 +12,22 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 
-from src.domain.mix_stats import SeatOutcome, aggregate_mix_stats, outcome_for  # noqa: E402
+from src.domain.mix_stats import FORM_LENGTH, SeatOutcome, aggregate_mix_stats, outcome_for  # noqa: E402
 
 _EPOCH = datetime(2026, 1, 1, 20, 0)
 
 
-def _seat(member_id: int, match_id: int, outcome: str, role: str | None = None) -> SeatOutcome:
+def _seat(
+    member_id: int, match_id: int, outcome: str, role: str | None = None, *, recorded: int | None = None
+) -> SeatOutcome:
+    """A seat of match ``match_id``, started at minute ``match_id`` and recorded at minute ``recorded`` (by default
+    right after it started, so recording order is match order)."""
     return SeatOutcome(
         member_id=member_id,
         role=role,
         match_id=match_id,
         played_at=_EPOCH + timedelta(minutes=match_id),
+        recorded_at=_EPOCH + timedelta(minutes=match_id if recorded is None else recorded, seconds=30),
         outcome=outcome,
     )
 
@@ -93,10 +98,34 @@ def test_streak_is_zero_when_the_newest_match_was_a_draw() -> None:
 
 
 def test_seat_order_does_not_decide_the_streak() -> None:
-    # Rows arrive match-ordered from SQL, but the streak reads match ids, so a
+    # Rows arrive recording-ordered from SQL, but the streak reads recording times, so a
     # shuffled input answers the same.
     shuffled = [_seat(7, 3, "win"), _seat(7, 1, "loss"), _seat(7, 2, "win")]
     assert _only(shuffled).streak == 2
+
+
+def test_the_newest_result_is_the_last_recorded_not_the_last_started() -> None:
+    # Match 2 started after match 1 (in another lobby, or another mix) but its result landed first.
+    entry = _only([_seat(7, 1, "win", recorded=5), _seat(7, 2, "loss", recorded=3)])
+    assert [seat.match_id for seat in entry.form] == [1, 2]
+    assert entry.streak == 1
+    # ``played_at`` stays when the newest-recorded match started.
+    assert entry.last_played_at == _EPOCH + timedelta(minutes=1)
+
+
+def test_form_is_the_newest_ten_results_newest_first() -> None:
+    # Twelve matches, shuffled: the strip reads recording times, not input order.
+    outcomes = ["win", "loss", "draw"] * 4
+    seats = [_seat(7, match_id, outcomes[match_id - 1]) for match_id in (5, 12, 1, 9, 3, 11, 2, 8, 4, 10, 6, 7)]
+    form = _only(seats).form
+    assert FORM_LENGTH == 10
+    assert [seat.match_id for seat in form] == list(range(12, 2, -1))
+    assert [seat.outcome for seat in form] == [outcomes[match_id - 1] for match_id in range(12, 2, -1)]
+    assert form[0].played_at == _EPOCH + timedelta(minutes=12)
+
+
+def test_a_short_record_is_the_whole_form() -> None:
+    assert [seat.outcome for seat in _only([_seat(7, 1, "loss"), _seat(7, 2, "win")]).form] == ["win", "loss"]
 
 
 def test_members_rank_by_wins_then_win_rate() -> None:

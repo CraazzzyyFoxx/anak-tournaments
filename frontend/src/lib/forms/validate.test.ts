@@ -117,6 +117,33 @@ describe("validateAnswer — patterns", () => {
   });
 });
 
+describe("Riot ID grammar", () => {
+  it.each([
+    ["Faker#KR1", true],
+    ["Hide on bush#KR1", true],
+    ["  Hide on bush # KR1 ", true],
+    ["Abc#123", true],
+    ["1234567890123456#ABCDE", true],
+    ["ab#KR1", false],
+    ["12345678901234567#KR1", false],
+    ["Name#TOOLONG", false],
+    ["Name#KR", false],
+    ["Name#K_1", false],
+    ["Name#K#1", false],
+    ["Name", false]
+  ])("validates %s after normalization", (handle, valid) => {
+    const riot = field({ key: "identity_riot", kind: "builtin", required: true });
+    expect(validateAnswer(riot, [handle], t)).toBe(valid ? null : "invalid_format");
+  });
+
+  it("stores display casing and distinguishes names by their inner spaces", () => {
+    const riot = field({ key: "identity_riot", kind: "builtin" });
+    expect(normalizeAnswerText(riot, "  Hide On Bush # KR1 ")).toBe("Hide On Bush#KR1");
+    expect(validateAnswer(riot, ["Hide On Bush#KR1", "hide on bush # kr1"], t)).toBeNull();
+    expect(validateAnswer(riot, ["Hide On Bush#KR1", "HideOnBush#KR1"], t)).toBe("too_many");
+  });
+});
+
 describe("validateAnswer — kinds", () => {
   it("refuses a value that is not one of the options", () => {
     const rules = field({ key: "server", kind: "select", options: ["eu", "na"] });
@@ -157,7 +184,9 @@ describe("validateAnswer — kinds", () => {
     // The renderer deletes a blank rank, so an untouched block arrives as `{}`.
     expect(validateAnswer(rules, {}, t)).toBe("required");
     expect(validateAnswer(field({ key: "peak_rank", kind: "role_ranks" }), {}, t)).toBeNull();
-    expect(validateAnswer(rules, { healer: "3200" }, t)).toBe("invalid_option");
+    // The owner game's role codes judge which roles may be rated; without them the server is the only judge.
+    expect(validateAnswer(rules, { healer: "3200" }, t, undefined, ["tank", "damage", "support"])).toBe("invalid_option");
+    expect(validateAnswer(rules, { healer: "3200" }, t)).toBeNull();
     expect(validateAnswer(rules, { tank: "3200.5" }, t)).toBe("invalid_type");
     expect(validateAnswer(rules, "3200", t)).toBe("invalid_type");
   });

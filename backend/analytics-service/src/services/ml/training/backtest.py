@@ -20,21 +20,15 @@ import pandas as pd
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.repository import MLModelArtifactRepository
-from src import models
-from src.core.workspace import workspace_scope_filter
-from src.services.analytics.canonical_division import (
-    assign_canonical_division,
-    load_source_grids,
-)
+from shared.services.workspace_scope import workspace_filter, workspace_scope_filter
+from src.core.analytics_exports import analytics_exports, tournament_discipline
+from src.services.analytics.canonical_division import load_source_grids
 
 from ..inference.runner import run_for_tournament
 from .calibration import compute_calibration_report
-from .orchestrator import (
-    SHIFT_ALGORITHM_NAME,
-    STANDINGS_ALGORITHM_NAME,
-    train_all_models,
-)
+from .orchestrator import train_all_models
 from .registry import registry_service
 from .splits import tournament_ids_up_to
 
@@ -52,9 +46,9 @@ async def _v1_shift_map(session: AsyncSession, tournament_id: int) -> dict[int, 
     return {int(pid): float(shift or 0) for pid, shift in result.all()}
 
 
-async def _v2_shift_map(session: AsyncSession, tournament_id: int) -> dict[int, float]:
+async def _v2_shift_map(session: AsyncSession, tournament_id: int, algorithm_name: str) -> dict[int, float]:
     algorithm_id = await session.scalar(
-        sa.select(models.AnalyticsAlgorithm.id).where(models.AnalyticsAlgorithm.name == SHIFT_ALGORITHM_NAME)
+        sa.select(models.AnalyticsAlgorithm.id).where(models.AnalyticsAlgorithm.name == algorithm_name)
     )
     if algorithm_id is None:
         return {}
@@ -66,10 +60,10 @@ async def _v2_shift_map(session: AsyncSession, tournament_id: int) -> dict[int, 
     return {int(pid): float(shift) for pid, shift in result.all()}
 
 
-async def _v2_shift_confidence_map(session: AsyncSession, tournament_id: int) -> dict[int, float]:
+async def _v2_shift_confidence_map(session: AsyncSession, tournament_id: int, algorithm_name: str) -> dict[int, float]:
     """Return ``{player_id: confidence}`` for v2 shift rows of one tournament."""
     algorithm_id = await session.scalar(
-        sa.select(models.AnalyticsAlgorithm.id).where(models.AnalyticsAlgorithm.name == SHIFT_ALGORITHM_NAME)
+        sa.select(models.AnalyticsAlgorithm.id).where(models.AnalyticsAlgorithm.name == algorithm_name)
     )
     if algorithm_id is None:
         return {}
@@ -85,6 +79,7 @@ async def _realised_shift_map(
     session: AsyncSession,
     tournament_id: int,
     *,
+    discipline: str,
     history_through_tournament_id: int,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
@@ -94,8 +89,8 @@ async def _realised_shift_map(
     ``realised_shift = current_div - next_tournament_div`` — the same sign
     convention as the shift signal (positive = moved up to a lower division
     number) and the label Shift v2 fits its blend weights against. The division
-    is resolved on the canonical OW grid (per the tournament's source grid
-    version) to match :func:`shift_features._player_rank_history`, so the label
+    is resolved on the canonical grid of ``discipline``'s module (per the tournament's source grid
+    version) to match the module's ``load_player_rank_history``, so the label
     scale lines up with what the model was trained to predict.
 
     ``history_through_tournament_id`` must cover each player's *next* tournament;
@@ -120,6 +115,9 @@ async def _realised_shift_map(
         .where(
             models.Player.tournament_id <= history_through_tournament_id,
             models.Player.is_substitution.is_(False),
+            # Unranked rows have no division: the realised move is between consecutive ranked tournaments.
+            models.Player.rank.is_not(None),
+            models.Tournament.discipline == discipline,
             *workspace_scope_filter(workspace_id, workspace_ids),
         )
         .order_by(models.WorkspaceMember.player_id, models.Player.role, models.Tournament.id)
@@ -133,7 +131,7 @@ async def _realised_shift_map(
     df = df.sort_values(["user_id", "role", "tournament_id"]).reset_index(drop=True)
 
     grids = await load_source_grids(session, df["version_id"].dropna().unique())
-    assign_canonical_division(df, grids, rank_col="rank")
+    analytics_exports(discipline).assign_canonical_division(df, grids, rank_col="rank")
     df["next_tournament_div"] = df.groupby(["user_id", "role"], sort=False)["div"].shift(-1)
 
     fold = df[df["tournament_id"] == int(tournament_id)]
@@ -208,9 +206,9 @@ async def _actual_standings(session: AsyncSession, tournament_id: int) -> dict[i
     return {int(tid): int(pos) for tid, pos in result.all() if pos is not None}
 
 
-async def _predicted_standings(session: AsyncSession, tournament_id: int) -> dict[int, float]:
+async def _predicted_standings(session: AsyncSession, tournament_id: int, algorithm_name: str) -> dict[int, float]:
     algorithm_id = await session.scalar(
-        sa.select(models.AnalyticsAlgorithm.id).where(models.AnalyticsAlgorithm.name == STANDINGS_ALGORITHM_NAME)
+        sa.select(models.AnalyticsAlgorithm.id).where(models.AnalyticsAlgorithm.name == algorithm_name)
     )
     if algorithm_id is None:
         return {}
@@ -245,13 +243,17 @@ def _spearman_correlation(actual: dict[int, int], predicted: dict[int, float]) -
     return float(np.corrcoef(a_rank, p_rank)[0, 1])
 
 
-async def _latest_tournament_id(session: AsyncSession) -> int:
+async def _latest_tournament_id(session: AsyncSession, *, discipline: str, workspace_id: int | None) -> int:
     # Same exclusion as ``tournament_ids_up_to``: the per-workspace scrim
-    # container (docs/plans/2026-08-12-scrim-rooms.md) is hidden and carries no
-    # ranked roster data, so letting it win ``max()`` would shift the timeline
-    # maximum onto a tournament the backtest can score nothing against.
+    # container is hidden and carries no ranked roster data, so letting it win
+    # ``max()`` would shift the timeline maximum onto a tournament the backtest
+    # can score nothing against.
     tid = await session.scalar(
-        sa.select(sa.func.max(models.Tournament.id)).where(models.Tournament.is_hidden.is_(False))
+        sa.select(sa.func.max(models.Tournament.id)).where(
+            models.Tournament.is_hidden.is_(False),
+            models.Tournament.discipline == discipline,
+            *workspace_filter(workspace_id),
+        )
     )
     return int(tid or 0)
 
@@ -284,35 +286,52 @@ class BacktestService:
         window: int,
         cutoff_tournament_id: int | None = None,
         workspace_id: int | None = None,
+        discipline: str | None = None,
     ) -> dict[str, typing.Any]:
-        """Train + infer + score for the latest ``window`` tournaments.
+        """Train + infer + score for the latest ``window`` tournaments of one discipline.
 
-        Returns ``{fold_tournament_id: {metric: value}}`` plus an aggregate
-        summary with mean MAE / Spearman / Brier across folds.
+        ``cutoff_tournament_id`` owns the run: its discipline is the one scored and an ``explicit`` ``discipline``
+        naming another game is rejected. Without a cutoff the discipline must be named. Returns ``{fold_tournament_id:
+        {metric: value}}`` plus an aggregate summary with mean MAE / Spearman / Brier across folds.
         """
+        if cutoff_tournament_id is not None:
+            owner = await tournament_discipline(session, cutoff_tournament_id, explicit=discipline)
+            if owner is None:
+                raise LookupError(f"cutoff tournament {cutoff_tournament_id} not found")
+            discipline = owner
+        elif discipline is None:
+            raise ValueError("a backtest without a cutoff tournament must name its discipline")
+        exports = analytics_exports(discipline)
+        shift_algorithm = exports.MODELS["shift"].algorithm_name
+        standings_algorithm = exports.MODELS["standings"].algorithm_name
+        if cutoff_tournament_id is None:
+            cutoff_tournament_id = await _latest_tournament_id(
+                session, discipline=discipline, workspace_id=workspace_id
+            )
         all_ids = await tournament_ids_up_to(
             session,
-            cutoff_tournament_id if cutoff_tournament_id is not None else (await _latest_tournament_id(session)),
+            cutoff_tournament_id,
+            discipline=discipline,
             workspace_id=workspace_id,
         )
         if len(all_ids) < window + 1:
             logger.warning("Not enough tournaments for backtest window=%d", window)
-            return {"folds": {}, "summary": {}, "n_tournaments": len(all_ids)}
+            return {"folds": {}, "summary": {}, "n_tournaments": len(all_ids), "discipline": discipline}
 
         folds_meta: dict[int, dict[str, typing.Any]] = {}
         calibration_confidences: list[float] = []
         calibration_errors: list[float] = []
-        last_tids = all_ids[-window:]
         history_horizon = all_ids[-1]
-        for fold_tid in last_tids:
+        for position in range(len(all_ids) - window, len(all_ids)):
+            fold_tid = all_ids[position]
             logger.info("Backtest fold cutoff=%d", fold_tid)
-            # Train on everything strictly before the fold.
-            await train_all_models(session, fold_tid - 1, workspace_id=workspace_id)
+            # Train on everything strictly before the fold: the previous tournament by start date, never ``id - 1``.
+            await train_all_models(session, all_ids[position - 1], workspace_id=workspace_id)
             await session.commit()
             await run_for_tournament(session, fold_tid, workspace_id=workspace_id)
 
             v1 = await _v1_shift_map(session, fold_tid)
-            v2 = await _v2_shift_map(session, fold_tid)
+            v2 = await _v2_shift_map(session, fold_tid, shift_algorithm)
 
             # Ground-truth scoring: realised division move (drops the latest fold,
             # whose next-tournament div is not observed yet).
@@ -321,12 +340,13 @@ class BacktestService:
                 fold_tid,
                 history_through_tournament_id=history_horizon,
                 workspace_id=workspace_id,
+                discipline=discipline,
             )
             v2_scores = _shift_scores(realised, v2)
             v1_scores = _shift_scores(realised, v1)
 
             # Accumulate (confidence, |error|) pairs for the calibration report.
-            v2_conf = await _v2_shift_confidence_map(session, fold_tid)
+            v2_conf = await _v2_shift_confidence_map(session, fold_tid, shift_algorithm)
             for player_id in realised.keys() & v2.keys() & v2_conf.keys():
                 calibration_confidences.append(v2_conf[player_id])
                 calibration_errors.append(abs(v2[player_id] - realised[player_id]))
@@ -336,7 +356,7 @@ class BacktestService:
             shift_mae_v1_vs_v2 = float(np.mean([abs(v1[k] - v2[k]) for k in common])) if common else None
 
             actual = await _actual_standings(session, fold_tid)
-            predicted = await _predicted_standings(session, fold_tid)
+            predicted = await _predicted_standings(session, fold_tid, standings_algorithm)
             spearman = _spearman_correlation(actual, predicted) if predicted else None
             position_mae = _position_mae(actual, predicted) if predicted else None
             standings_teams_scored = len(actual.keys() & predicted.keys())
@@ -380,6 +400,7 @@ class BacktestService:
             "summary": aggregate,
             "calibration": calibration,
             "n_tournaments": len(all_ids),
+            "discipline": discipline,
         }
 
     async def persist_backtest_summary(
@@ -387,18 +408,29 @@ class BacktestService:
         session: AsyncSession,
         report: dict[str, typing.Any],
         *,
+        discipline: str,
         model_kinds: typing.Sequence[str] = ("shift", "standings"),
     ) -> int:
         """Attach the walk-forward ``report`` to the active artifacts' ``metrics``.
 
-        This surfaces the honest backtest aggregates (realised-shift MAE,
-        sign-accuracy, standings Spearman, ECE) through ``routes/v2.py::list_artifacts``
-        so the UI can show them next to the in-sample / val training metrics.
+        This surfaces the backtest aggregates (realised-shift MAE, sign-accuracy,
+        standings Spearman, ECE) through ``rpc.analytics.artifacts`` so the UI can
+        show them next to the in-sample / val training metrics.
         Returns the number of artifact rows updated.
         """
+        exports = analytics_exports(discipline)
         updated = 0
         for kind in model_kinds:
-            for artifact in await registry_service.load_active_artifacts(session, model_kind=kind):
+            algorithm_id = await session.scalar(
+                sa.select(models.AnalyticsAlgorithm.id).where(
+                    models.AnalyticsAlgorithm.name == exports.MODELS[kind].algorithm_name
+                )
+            )
+            if algorithm_id is None:
+                continue
+            for artifact in await registry_service.load_active_artifacts(
+                session, discipline=discipline, algorithm_id=algorithm_id, model_kind=kind
+            ):
                 await self.artifacts.update_fields(
                     session,
                     artifact,

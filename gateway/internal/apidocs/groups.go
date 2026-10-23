@@ -8,10 +8,11 @@ import (
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/analytics"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/app"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/balancer"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/discord"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/identity"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/openapi"
-	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/parser"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/stats"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/stream"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/tournament"
 )
@@ -44,7 +45,7 @@ func splitQueue(routes []edge.RouteSpec, queue string) (matched, rest []edge.Rou
 // classification mirrors the route-table grouping: reads + public/captain
 // writes + self-service auth go to the public spec; everything admin-gated
 // (admin CRUD, RBAC, integrations, metadata, job control) goes to the admin
-// spec. parser.Routes mixes public rank reads with admin endpoints, so it is
+// spec. stats.Routes mixes public rank reads with admin endpoints, so it is
 // split by auth mode.
 func Groups() (public, admin []openapi.Group) {
 	// The audit feed is served off the metadata-admin table (that table is
@@ -56,7 +57,7 @@ func Groups() (public, admin []openapi.Group) {
 		{Tag: "Tournaments", Description: "Public tournament, encounter, match & team reads + captain/registration actions + scrim rooms.",
 			Routes: concat(tournament.PublicReadRoutes, tournament.PublicWriteRoutes, tournament.RegistrationTeamSubtreeRoutes, tournament.ScrimRoutes)},
 		{Tag: "Game Data", Description: "Heroes, maps, gamemodes, achievements & statistics (public reads).",
-			Routes: concat(app.ReadRoutes, app.AchievementsSubtreeRoutes)},
+			Routes: concat(app.ReadRoutes, stats.PublicReadRoutes, stats.AchievementsSubtreeRoutes)},
 		{Tag: "Analytics", Description: "Analytics reads (v1 public; v2 require analytics.read).",
 			Routes: analytics.ReadRoutes},
 		{Tag: "Streams", Description: "Live stream channels for a tournament (public read).",
@@ -64,7 +65,9 @@ func Groups() (public, admin []openapi.Group) {
 		{Tag: "Balancer & Draft", Description: "Balancer config, draft spectating reads, balance jobs.",
 			Routes: concat(balancer.PublicRoutes, balancer.DraftReadRoutes, balancer.JobRoutes, balancer.DraftRoutes, balancer.BinaryPublicDocRoutes)},
 		{Tag: "Ranks", Description: "OverFast rank history (public reads).",
-			Routes: openapi.PublicOnly(parser.Routes)},
+			Routes: openapi.PublicOnly(stats.Routes)},
+		{Tag: "Match Ingest", Description: "Submit one canonical owt.match/1 match document with a workspace API key (stats.ingest scope) and poll its ingest job.",
+			Routes: stats.IngestDocRoutes},
 		{Tag: "Auth", Description: "Authentication, sessions, profile, OAuth, API keys, player linking.",
 			Routes: identity.PublicDocRoutes},
 		{Tag: "Notifications", Description: "Personal notification inbox + the site-wide announcement banner.",
@@ -72,7 +75,7 @@ func Groups() (public, admin []openapi.Group) {
 	}
 	admin = []openapi.Group{
 		{Tag: "Admin: Tournaments", Description: "Tournament/team/player/encounter/standing CRUD, stages & bespoke admin actions.",
-			Routes: concat(tournament.AdminCrudRoutes, tournament.AdminMiscRoutes, tournament.StageSubtreeRoutes, tournament.BinaryDocRoutes, app.TournamentAdminRoutes)},
+			Routes: concat(tournament.AdminCrudRoutes, tournament.AdminMiscRoutes, tournament.StageSubtreeRoutes, tournament.BinaryDocRoutes, tournament.DashboardRoutes)},
 		{Tag: "Admin: Registration", Description: "Registration management & balancer statuses.",
 			Routes: tournament.RegistrationAdminRoutes},
 		{Tag: "Admin: Integrations", Description: "Challonge sync, Google Sheets, division grids.",
@@ -83,14 +86,16 @@ func Groups() (public, admin []openapi.Group) {
 			Routes: app.UsersAdminRoutes},
 		{Tag: "Admin: Files & Assets", Description: "Workspace icons, assets, match-log download, user avatar & CSV import.",
 			Routes: app.BinaryDocRoutes},
-		{Tag: "Admin: Parser & Achievements", Description: "Match-log/rank admin, OverFast sync, settings, achievement engine + rules.",
-			Routes: concat(openapi.AuthedOnly(parser.Routes), parser.AchievementAdminRoutes, parser.BinaryDocRoutes)},
+		{Tag: "Admin: Stats & Achievements", Description: "Match-log/rank admin, OverFast sync, settings, achievement engine + rules.",
+			Routes: concat(openapi.AuthedOnly(stats.Routes), stats.AchievementAdminRoutes, stats.BinaryDocRoutes)},
 		{Tag: "Admin: Balancer", Description: "Workspace/tournament balancer config + teams import.",
 			Routes: concat(balancer.AdminRoutes, balancer.RosterRoutes, balancer.BinaryAdminDocRoutes)},
 		{Tag: "Admin: Analytics", Description: "Analytics mutations & compute job control.",
 			Routes: analytics.WriteRoutes},
 		{Tag: "Admin: Streams", Description: "Force an immediate live-status re-poll.",
 			Routes: stream.AdminRoutes},
+		{Tag: "Admin: Discord", Description: "Workspace Discord pickers (roles, channels, server status) + per-tournament match-log channel binding.",
+			Routes: discord.Routes},
 		{Tag: "Admin: RBAC", Description: "Permissions, roles, user-role/player assignment, sessions & service tokens.",
 			Routes: identity.AdminDocRoutes},
 		{Tag: "Admin: Audit", Description: "Platform audit log: who changed what, when, workspace-scoped.",
@@ -99,6 +104,10 @@ func Groups() (public, admin []openapi.Group) {
 			Routes: app.AnnouncementAdminRoutes},
 		{Tag: "Admin: Notifications", Description: "Notifications a workspace produced: review and retire, plus one account's notification state.",
 			Routes: concat(app.NotificationAdminRoutes, app.NotificationUserAdminRoutes)},
+		{Tag: "Admin: Workspaces", Description: "Workspace create/update/delete, members, owner, custom domain, Discord guild, notification delivery, team formats, verification tier and quota overrides.",
+			Routes: app.WorkspaceWriteRoutes},
+		{Tag: "Admin: Quota", Description: "Platform quota plans and the cost of each metered operation (superuser).",
+			Routes: app.QuotaAdminRoutes},
 	}
 	return public, admin
 }

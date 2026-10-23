@@ -166,7 +166,8 @@ export function LogicalNode({ data, id }: NodeProps) {
         <span className="text-xs tabular-nums text-muted-foreground">{path}</span>
         <Select value={op} onValueChange={(val) => d.onChangeOp?.(id, val)}>
           <SelectTrigger
-            className="w-20 h-8 text-xs font-bold"
+            size="sm"
+            className="w-20"
             style={{ color }}
             aria-label={labels.operatorLabel(groupName)}
           >
@@ -260,7 +261,7 @@ export function LeafNode({ data, id }: NodeProps) {
       <div className="flex items-center gap-2">
         <span className="text-xs tabular-nums text-muted-foreground">{path}</span>
         <Select value={leafType} onValueChange={(val) => d.onChangeType?.(id, val)}>
-          <SelectTrigger className="h-7 text-xs flex-1" aria-label={labels.leafTypeLabel(path)}>
+          <SelectTrigger size="sm" className="h-7 flex-1" aria-label={labels.leafTypeLabel(path)}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

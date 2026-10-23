@@ -13,12 +13,14 @@ version the registration answered. ``public_keys=None`` is the organizer context
 """
 
 from datetime import datetime
+from functools import partial
 from types import SimpleNamespace
 
 # Importing the read model instantiates the service Settings(); this file used
 # to rely on whichever sibling test module happened to be collected first.
-from shared.core.enums import HeroClass  # noqa: E402
 from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
+from shared.models.registration.registration import Registration  # noqa: E402
+from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from src.schemas.registration_build import _reg_to_read  # noqa: E402
 
 #: What a form that asks the four public questions publishes. ``organizer_notes``
@@ -31,14 +33,14 @@ def _roster(rank: int | None, source: str = "registration", *extra: RosterRole) 
     """A one-role roster plus any ``extra`` entries, as the engine hands it over."""
     return PlayerRoster(
         registration_id=1,
-        battle_tag="Player#1234",
+        identity=PlayerIdentityRead(provider="battlenet", handle="Player#1234"),
         display_name=None,
         player_id=42,
         auth_user_id=None,
         workspace_member_id=None,
         roles=(
             RosterRole(
-                role=HeroClass.tank,
+                role="tank",
                 rank=rank,
                 source=source if rank is not None else "none",
                 is_primary=True,
@@ -55,20 +57,21 @@ def _identity(provider: str, handle: str, position: int = 0) -> SimpleNamespace:
     return SimpleNamespace(provider=provider, handle=handle, position=position)
 
 
-def _reg_stub() -> SimpleNamespace:
+def _reg_stub(extra: tuple[SimpleNamespace, ...] = ()) -> SimpleNamespace:
     identities = [
         _identity("battlenet", "Player#1234"),
         _identity("battlenet", "Alt#1111", 1),
         _identity("battlenet", "Alt#2222", 2),
         _identity("discord", "player"),
         _identity("twitch", "player_tv"),
+        *extra,
     ]
-    return SimpleNamespace(
+    stub = SimpleNamespace(
         id=1,
         tournament_id=78,
+        tournament=SimpleNamespace(discipline="overwatch"),
         workspace_member=SimpleNamespace(player_id=42),
         identities=identities,
-        primary_game_identity=lambda: identities[0],
         stream_pov=False,
         roles=[],
         public_notes="anything you'd like organizers to know",
@@ -81,10 +84,13 @@ def _reg_stub() -> SimpleNamespace:
         submitted_at=datetime(2026, 1, 1),
         reviewed_at=None,
     )
+    # The model's own algorithm, run against the stub's rows.
+    stub.primary_game_identity = partial(Registration.primary_game_identity, stub)
+    return stub
 
 
 def test_the_roster_read_carries_every_public_answer_it_renders():
-    read = _reg_to_read(_reg_stub(), workspace_id=1, public_keys=PUBLIC_KEYS)
+    read = _reg_to_read(_reg_stub(), workspace_id=1, provider="battlenet", public_keys=PUBLIC_KEYS)
 
     # Anti-smurf transparency data (the roster's whole point): the declared
     # alternates ride in the battlenet answer, primary first.
@@ -103,7 +109,7 @@ def test_the_roster_read_carries_every_public_answer_it_renders():
 
 
 def test_an_anonymous_read_drops_the_answers_the_organizer_kept_to_themselves():
-    read = _reg_to_read(_reg_stub(), workspace_id=1, public_keys=PUBLIC_KEYS)
+    read = _reg_to_read(_reg_stub(), workspace_id=1, provider="battlenet", public_keys=PUBLIC_KEYS)
 
     assert "organizer_notes" not in read.answers
     assert "staff_note" not in read.answers
@@ -112,7 +118,7 @@ def test_an_anonymous_read_drops_the_answers_the_organizer_kept_to_themselves():
 
 
 def test_no_public_key_set_is_the_organizer_context_and_filters_nothing():
-    read = _reg_to_read(_reg_stub(), workspace_id=1)
+    read = _reg_to_read(_reg_stub(), workspace_id=1, provider="battlenet")
 
     assert read.answers["organizer_notes"] == "please seed me low"
     assert read.answers["staff_note"] == "watch this one"
@@ -121,14 +127,14 @@ def test_no_public_key_set_is_the_organizer_context_and_filters_nothing():
 
 
 def test_a_registration_answered_against_an_older_version_reads_stale():
-    stale = _reg_to_read(_reg_stub(), workspace_id=1, current_version_id=11)
-    current = _reg_to_read(_reg_stub(), workspace_id=1, current_version_id=9)
+    stale = _reg_to_read(_reg_stub(), workspace_id=1, provider="battlenet", current_version_id=11)
+    current = _reg_to_read(_reg_stub(), workspace_id=1, provider="battlenet", current_version_id=9)
 
     assert (stale.form_version_id, stale.form_version_stale) == (9, True)
     assert current.form_version_stale is False
     # An unknown current version is never reported as stale: the read simply
     # does not know, and a false badge would nag every reader forever.
-    assert _reg_to_read(_reg_stub(), workspace_id=1).form_version_stale is False
+    assert _reg_to_read(_reg_stub(), workspace_id=1, provider="battlenet").form_version_stale is False
 
 
 def test_ranks_stay_hidden_unless_the_form_publishes_them():
@@ -137,8 +143,8 @@ def test_ranks_stay_hidden_unless_the_form_publishes_them():
         SimpleNamespace(role="tank", subrole=None, is_primary=True, priority=0, rank_value=3200, hero_entries=[])
     ]
 
-    hidden = _reg_to_read(stub, workspace_id=1, roster=_roster(3200))
-    shown = _reg_to_read(stub, workspace_id=1, show_ranks=True, roster=_roster(3200))
+    hidden = _reg_to_read(stub, workspace_id=1, provider="battlenet", roster=_roster(3200))
+    shown = _reg_to_read(stub, workspace_id=1, provider="battlenet", show_ranks=True, roster=_roster(3200))
 
     assert hidden.roles[0].rank_value is None
     assert shown.roles[0].rank_value == 3200
@@ -150,7 +156,7 @@ def test_follow_reg_uses_inherited_workspace_rank():
         SimpleNamespace(role="tank", subrole=None, is_primary=True, priority=0, rank_value=None, hero_entries=[])
     ]
 
-    read = _reg_to_read(stub, workspace_id=1, show_ranks=True, roster=_roster(3200, "workspace"))
+    read = _reg_to_read(stub, workspace_id=1, provider="battlenet", show_ranks=True, roster=_roster(3200, "workspace"))
 
     assert read.roles[0].rank_value == 3200
 
@@ -164,16 +170,29 @@ def test_public_roles_come_from_the_roster_not_the_rows():
     stub.roles = [
         SimpleNamespace(role="tank", subrole=None, is_primary=True, priority=0, rank_value=3200, hero_entries=[])
     ]
-    synthesized = RosterRole(
-        role=HeroClass.damage, rank=None, source="none", is_primary=False, priority=1, subrole=None
+    synthesized = RosterRole(role="damage", rank=None, source="none", is_primary=False, priority=1, subrole=None)
+
+    read = _reg_to_read(
+        stub, workspace_id=1, provider="battlenet", show_ranks=True, roster=_roster(3200, "registration", synthesized)
     )
 
-    read = _reg_to_read(stub, workspace_id=1, show_ranks=True, roster=_roster(3200, "registration", synthesized))
-
-    assert [(role.role, role.rank_value) for role in read.roles] == [("tank", 3200), ("damage", None)]
+    assert [(role.role.role, role.rank_value) for role in read.roles] == [("tank", 3200), ("damage", None)]
 
 
 def test_read_payload_includes_profile_visibility():
-    read = _reg_to_read(_reg_stub(), workspace_id=1, profiles_open=True)
+    read = _reg_to_read(_reg_stub(), workspace_id=1, provider="battlenet", profiles_open=True)
 
     assert read.profiles_open is True
+
+
+def test_the_primary_handle_is_the_owner_providers_never_another_games():
+    riot = _identity("riot", "Faker#KR1")
+
+    # Both games' handles on one registration: each owner provider reads its own.
+    assert _reg_to_read(_reg_stub((riot,)), workspace_id=1, provider="riot").primary_handle == "Faker#KR1"
+    assert _reg_to_read(_reg_stub((riot,)), workspace_id=1, provider="battlenet").primary_handle == "Player#1234"
+
+
+def test_a_missing_owner_provider_handle_reads_null_even_with_another_games_handle():
+    # A League registration whose only game handle is a BattleTag: no Riot ID, no handle.
+    assert _reg_to_read(_reg_stub(), workspace_id=1, provider="riot").primary_handle is None

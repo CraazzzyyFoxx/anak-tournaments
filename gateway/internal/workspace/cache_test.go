@@ -144,3 +144,67 @@ func TestBoundedTTLCache_CachesNegativeResultsLikePositiveOnes(t *testing.T) {
 		t.Fatalf("not-verified.example.com: got (%v, %v), want (false, true) — a cached negative result", v, ok)
 	}
 }
+
+// identity-svc announces realtime:user:{id}:rbac after a membership or role
+// change. Store.EvictUser must drop that user's answers at once (a removed
+// member is refused, a new one admitted, on the very next subscribe) and keep
+// a lookup that read the database before the change from caching it after.
+// Other users' answers stay put.
+func TestStore_EvictUserDropsThatUsersMembershipAnswers(t *testing.T) {
+	s := New(nil)
+	removed, other := memberKey{userID: 1, workspaceID: 10}, memberKey{userID: 2, workspaceID: 10}
+	s.members.set(removed, true)
+	s.members.set(other, true)
+	s.organizers.set(removed, true)
+	inFlight := s.members.generation() // a lookup for user 1 already querying
+
+	s.EvictUser(1)
+
+	if _, ok := s.members.get(removed); ok {
+		t.Fatal("user 1's membership must be re-read after their RBAC change")
+	}
+	if _, ok := s.organizers.get(removed); ok {
+		t.Fatal("user 1's organizer answer must be re-read after their RBAC change")
+	}
+	if v, ok := s.members.get(other); !ok || !v {
+		t.Fatalf("user 2's membership must stay cached, got (%v, %v)", v, ok)
+	}
+
+	s.members.setIfCurrent(removed, true, inFlight)
+	if _, ok := s.members.get(removed); ok {
+		t.Fatal("an answer read before the eviction must not be cached after it")
+	}
+	s.members.setIfCurrent(removed, false, s.members.generation())
+	if v, ok := s.members.get(removed); !ok || v {
+		t.Fatalf("a lookup started after the eviction must cache, got (%v, %v)", v, ok)
+	}
+}
+
+// A replaced draft captain is announced as chat.visibility_changed on the
+// session's chat topic. The revoker's invalidation must drop that session's
+// captain answers (and fence a lookup already querying), or the former captain
+// is re-admitted from cache. Another session's answers stay put.
+func TestStore_InvalidateRoomAccessDropsTheDraftsCaptainAnswers(t *testing.T) {
+	s := New(nil)
+	former, other := draftCaptainKey{userID: 1, sessionID: 7}, draftCaptainKey{userID: 1, sessionID: 8}
+	s.draftCaptains.set(former, true)
+	s.draftCaptains.set(other, true)
+	s.roomSettings.set(roomKey{kind: "draft", refID: 7}, false)
+	inFlight := s.draftCaptains.generation()
+
+	s.InvalidateRoomAccess("draft", 7)
+
+	if _, ok := s.draftCaptains.get(former); ok {
+		t.Fatal("session 7's captain answers must be re-read after its captain changed")
+	}
+	if _, ok := s.roomSettings.get(roomKey{kind: "draft", refID: 7}); ok {
+		t.Fatal("the room's spectator setting must be re-read too")
+	}
+	if v, ok := s.draftCaptains.get(other); !ok || !v {
+		t.Fatalf("session 8's captain answer must stay cached, got (%v, %v)", v, ok)
+	}
+	s.draftCaptains.setIfCurrent(former, true, inFlight)
+	if _, ok := s.draftCaptains.get(former); ok {
+		t.Fatal("an answer read before the invalidation must not be cached after it")
+	}
+}

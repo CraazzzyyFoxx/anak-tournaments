@@ -52,8 +52,10 @@ jobs:
         run: bun run lint
       # Structural gate, not style: the app is one deployable split into route
       # zones (admin / web / tools), and the zones only stay separable while
-      # nothing reaches across them. ESLint cannot state this — see the header
-      # of the script for why — so it is its own step, next to the linter.
+      # nothing reaches across them; game modules (src/disciplines/<code>) only
+      # stay replaceable while core reaches them through the registry (Z6/Z7).
+      # ESLint cannot state this — see the header of the script for why — so it
+      # is its own step, next to the linter.
       - name: Zone boundaries
         run: bun run lint:zones
       - name: Vitest suite

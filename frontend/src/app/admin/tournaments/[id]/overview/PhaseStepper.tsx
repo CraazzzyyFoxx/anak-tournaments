@@ -24,7 +24,6 @@ export function PhaseStepper({ tournament }: Readonly<{ tournament: Tournament }
   const tStatus = useTranslations("common.statusBadge");
   const phases = effectivePhases({
     teamFormation: tournament.team_formation,
-    schedule: tournament.phase_schedule.map((entry) => entry.status),
     currentStatus: tournament.status
   });
   const drifted = phases.find((phase) => phase.drifted);
@@ -47,7 +46,7 @@ export function PhaseStepper({ tournament }: Readonly<{ tournament: Tournament }
       {drifted ? (
         <p className="inline-flex items-center gap-1.5 text-xs font-medium text-warning">
           <AlertTriangle className="size-3.5" aria-hidden />
-          {t("offTrack")} {tStatus(drifted.key)}
+          {t("offTrack", { status: tStatus(drifted.key) })}
         </p>
       ) : null}
     </div>

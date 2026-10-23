@@ -8,7 +8,7 @@ import { getFormatter } from "@/lib/datetime/server";
 import { getPlayerSlug } from "@/lib/player";
 import { cn } from "@/lib/utils";
 import type { PlayerStatistics } from "@/types/statistics.types";
-import { EmptyNote, LoadError } from "./open-layout";
+import { OpenEmptyRow, OpenLoadError } from "./open-layout";
 
 export type KpiKey =
   | "communities"
@@ -58,7 +58,7 @@ export async function LeadersContent({
     <>
       <div className="border-b border-[color:var(--aqt-border)] pb-7 pt-3">
         {totals === null ? (
-          <LoadError />
+          <OpenLoadError />
         ) : (
           <>
             <dl className={METRICS_CLASS}>
@@ -112,9 +112,9 @@ export async function LeadersContent({
               ) : null}
             </div>
             {board.rows === null ? (
-              <LoadError />
+              <OpenLoadError />
             ) : board.rows.length === 0 ? (
-              <EmptyNote>{board.empty}</EmptyNote>
+              <OpenEmptyRow>{board.empty}</OpenEmptyRow>
             ) : (
               <ol>
                 {board.rows.map((player, index) => (

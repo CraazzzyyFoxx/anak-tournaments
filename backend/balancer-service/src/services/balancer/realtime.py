@@ -2,8 +2,8 @@
 
 Everything here is DATA on the tournament-scoped ``tournament:{id}:balancer``
 topic: what the admin tool renders, never what a cache should drop. The
-staleness an export causes is announced separately, by the export's own call
-site, as a tournament-scoped invalidation.
+staleness an export causes is announced separately, by
+``stage_export_invalidation``, as a tournament-scoped invalidation.
 
 Two families:
 
@@ -14,9 +14,8 @@ Two families:
   ticks, which a late joiner re-derives from the REST job-status snapshot.
 
 Every call stages on the CALLER's session and is published by ``emit``'s
-after-commit hook. The module used to open its own short-lived session per
-event and fire the publish off as a detached task — which meant an event could
-describe state its own transaction never committed, and could outlive it.
+after-commit hook, so an event can never describe state its transaction did
+not commit, nor outlive it.
 """
 
 from __future__ import annotations
@@ -24,15 +23,21 @@ from __future__ import annotations
 from typing import Any
 
 from shared.services.balancer_realtime import BALANCER_JOB_PROGRESS
-from shared.services.realtime import DomainEvent, Resource, Scope, emit
+from shared.services.realtime import DomainEvent, Resource, Scope, emit, enqueue_invalidation_outbox
 
-__all__ = ("EXPORT_RESOURCES", "emit_balancer_data", "emit_job_lifecycle", "emit_job_progress")
+__all__ = (
+    "EXPORT_RESOURCES",
+    "emit_balancer_data",
+    "emit_job_lifecycle",
+    "emit_job_progress",
+    "stage_export_invalidation",
+)
 
 # What every path through ``TeamMaterializationService`` stales: it DELETEs and
 # re-INSERTs tournament.team / player / standing, so the teams list, the
 # standings hanging off them and the set of sections the tournament page has all
-# move at once. app-service caches the same three, which is why each of these
-# call sites also enqueues the cross-service outbox row.
+# move at once. tournament-service and app-service cache them, which is why
+# ``stage_export_invalidation`` also enqueues the cross-service outbox row.
 EXPORT_RESOURCES = (Resource.TOURNAMENT_TEAMS, Resource.TOURNAMENT_STANDINGS, Resource.TOURNAMENT_STRUCTURE)
 _DOMAIN = "balancer"
 
@@ -58,6 +63,20 @@ async def emit_balancer_data(
         data=DomainEvent(domain=_DOMAIN, event_type=event_type, payload=payload or {}),
         actor_user_id=actor_user_id,
     )
+
+
+async def stage_export_invalidation(session: Any, tournament_id: int) -> None:
+    """Stage the public-read staleness of an export on the caller's session.
+
+    The balancer topic reaches only the admin tool, while public reads cache
+    ``EXPORT_RESOURCES``: the export's commit bumps their shared cache
+    generations, so tournament-service and app-service miss them before the
+    reply leaves; the outbox row, committed with the export, re-bumps them
+    durably.
+    """
+    scope = Scope.tournament(tournament_id)
+    await emit(session, scope=scope, invalidates=EXPORT_RESOURCES)
+    await enqueue_invalidation_outbox(session, scope=scope, resources=EXPORT_RESOURCES)
 
 
 async def emit_job_lifecycle(

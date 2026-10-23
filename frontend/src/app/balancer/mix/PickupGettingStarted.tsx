@@ -4,49 +4,58 @@ import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { CheckCircle2, Send, UserPlus } from "lucide-react";
 
-import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
-import { EYEBROW_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import { postModeOf, signupPostOf } from "@/app/balancer/mix/PickupMixHeader";
+import { CAPTION_CLASS, CARD_TITLE_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import type { CustomGame } from "@/services/custom-game.service";
 
 /**
- * What a host does with a mix that has never played, in order, in place of
- * the empty matchup. Each step ticks itself off from the mix's own state, so
- * a host who came back halfway sees where they stopped.
+ * What a host does with a mix that has never played, in order, in place of the
+ * empty matchup inside the lobby card. Each step ticks itself off from the
+ * mix's own state, so a host who came back halfway sees where they stopped.
+ *
+ * The first open step is the current one and carries the screen's one solid
+ * button; the steps after it wait, dimmed. The Discord announcement is
+ * optional, so it never holds the balance step back: once players are in, an
+ * unannounced mix keeps a quiet Post button on that step.
  */
 export function PickupGettingStarted({
   game,
   onOpenPool,
   onPostSignup,
-  posting
+  posting,
+  balanceAction
 }: Readonly<{
   game: CustomGame;
   onOpenPool: () => void;
   /** Omitted -- the Discord step is not offered. */
   onPostSignup?: (selfSignup: "pool" | "benched") => void;
   posting: boolean;
+  /** The lobby's own Balance (or Draft) control, handed in by `PickupTeamsPanel`: the last step's action. */
+  balanceAction: ReactNode;
 }>) {
   const t = useTranslations("mixes.start");
   const ts = useTranslations("mixes.self");
   const playerCount = (game.players ?? []).length;
+  const gathered = playerCount > 0;
   const postStatus = signupPostOf(game)?.status;
   const announced = postStatus === "posted" || postStatus === "pending";
   const hasChannel = game.settings.workspace_discord_channel_id != null;
+  const draft = game.team_formation === "draft";
 
   return (
-    <section aria-label={t("title")} className={cn(PANEL_CLASS, "space-y-4 px-5 py-5")}>
-      <span className={EYEBROW_CLASS}>{t("title")}</span>
-      <ol className="space-y-4">
+    <section aria-label={t("title")} className="flex flex-col gap-3 px-4 py-3.5">
+      <h2 className={CARD_TITLE_CLASS}>{t("title")}</h2>
+      <ol className="flex flex-col gap-3">
         <Step
           number={1}
-          done={playerCount > 0}
+          state={gathered ? "done" : "current"}
           title={t("players")}
-          hint={playerCount > 0 ? t("playersDone", { count: playerCount }) : t("playersHint")}
+          detail={gathered ? t("playersDone", { count: playerCount }) : t("playersHint")}
           action={
-            <Button type="button" variant="outline" className="h-8" onClick={onOpenPool}>
+            <Button type="button" size="sm" onClick={onOpenPool}>
               <UserPlus className="mr-1.5 size-3.5" aria-hidden="true" />
               {t("addPlayers")}
             </Button>
@@ -55,15 +64,15 @@ export function PickupGettingStarted({
         {onPostSignup ? (
           <Step
             number={2}
-            done={announced}
+            state={announced ? "done" : gathered ? "open" : "later"}
             title={t("discord")}
-            hint={announced ? t("discordDone") : hasChannel ? t("discordHint") : ts("noChannel")}
+            detail={announced ? t("discordDone") : hasChannel ? t("discordHint") : ts("noChannel")}
             action={
-              hasChannel && !announced ? (
+              hasChannel ? (
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-8"
+                  size="sm"
                   disabled={posting}
                   onClick={() => onPostSignup(postModeOf(game.self_signup))}
                 >
@@ -80,49 +89,65 @@ export function PickupGettingStarted({
         ) : null}
         <Step
           number={onPostSignup ? 3 : 2}
-          done={false}
-          title={t("balance")}
-          hint={t("balanceHint")}
+          state={gathered ? "current" : "later"}
+          title={t(draft ? "draft" : "balance")}
+          detail={t(draft ? "draftHint" : "balanceHint")}
+          action={balanceAction}
         />
       </ol>
     </section>
   );
 }
 
+/** `open`: an optional step before the current one, still actionable but not the next thing to do. */
+type StepState = "done" | "current" | "open" | "later";
+
 function Step({
   number,
-  done,
+  state,
   title,
-  hint,
+  detail,
   action
-}: Readonly<{ number: number; done: boolean; title: string; hint: string; action?: ReactNode }>) {
+}: Readonly<{ number: number; state: StepState; title: string; detail: string; action?: ReactNode }>) {
+  if (state === "done") {
+    return (
+      <li className="flex items-center gap-3">
+        <CheckCircle2 className="size-5 shrink-0 text-[color:var(--aqt-teal)]" aria-hidden="true" />
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
+          <span className="text-ui font-semibold text-[color:var(--aqt-fg-muted)]">{title}</span>
+          <span className={CAPTION_CLASS}>· {detail}</span>
+        </div>
+      </li>
+    );
+  }
+  const later = state === "later";
   return (
-    <li className="flex items-start gap-3" data-done={done}>
-      {done ? (
-        <CheckCircle2
-          className="mt-0.5 size-5 shrink-0 text-[color:var(--aqt-teal)]"
-          aria-hidden="true"
-        />
-      ) : (
-        <span
-          aria-hidden="true"
-          className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-[color:var(--aqt-border)] text-label font-semibold text-[color:var(--aqt-fg-muted)]"
-        >
-          {number}
-        </span>
-      )}
+    <li className="flex flex-wrap items-start gap-3">
+      <span
+        aria-hidden="true"
+        className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-[color:var(--aqt-border)] text-label font-semibold text-[color:var(--aqt-fg-muted)]"
+      >
+        {number}
+      </span>
       <div className="min-w-0 flex-1 space-y-0.5">
         <div
           className={cn(
-            "text-sm font-semibold",
-            done ? "text-[color:var(--aqt-fg-muted)]" : "text-[color:var(--aqt-fg)]"
+            "text-ui font-semibold",
+            later ? "text-[color:var(--aqt-fg-dim)]" : "text-[color:var(--aqt-fg)]"
           )}
         >
           {title}
         </div>
-        <p className="text-caption text-[color:var(--aqt-fg-dim)]">{hint}</p>
+        <p
+          className={cn(
+            "text-caption",
+            later ? "text-[color:var(--aqt-fg-faint)]" : "text-[color:var(--aqt-fg-dim)]"
+          )}
+        >
+          {detail}
+        </p>
       </div>
-      {action ? <div className="shrink-0">{action}</div> : null}
+      {!later && action ? <div className="flex flex-wrap items-center gap-2">{action}</div> : null}
     </li>
   );
 }

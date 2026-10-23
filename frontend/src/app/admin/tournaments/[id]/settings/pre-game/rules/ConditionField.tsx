@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
 import { Filter, RotateCcw } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,7 +13,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { RuleBuilder, LOGICAL_COLORS, type RuleLeafFieldsProps, type RulePaletteGroup } from "@/components/rule-builder";
+import type { RuleLeafFieldsProps, RulePaletteGroup } from "@/components/rule-builder";
+import { LOGICAL_COLORS } from "@/components/rule-builder/rule-tree";
+import { Skeleton } from "@/components/ui/skeleton";
 import type {
   PickBanCondition,
   PickBanConditionContext,
@@ -24,6 +26,13 @@ import type {
 
 import type { CatalogueItem } from "../CataloguePicker";
 import { ParamFields } from "./ParamFields";
+
+// @xyflow/react and its stylesheet only matter once the editor dialog opens,
+// so the canvas is a client-only chunk (same split as the public achievement page).
+const RuleBuilder = dynamic(
+  () => import("@/components/rule-builder").then((m) => m.RuleBuilder),
+  { ssr: false, loading: () => <Skeleton className="h-125 w-full rounded-lg" /> }
+);
 
 /**
  * One condition tree of the ruleset, edited in the shared rule builder.
@@ -170,9 +179,9 @@ export function ConditionField({
     <>
       <Button
         type="button"
-        variant="outline"
+        variant="dashed"
         size="sm"
-        className="h-7 max-w-full gap-1.5 border-dashed text-xs font-normal"
+        className="max-w-full gap-1.5"
         onClick={() => setOpen(true)}
       >
         <Filter aria-hidden className="size-3.5 shrink-0" />
@@ -188,7 +197,6 @@ export function ConditionField({
           </DialogHeader>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">{t(`context.${context}`)}</Badge>
             {leaves.length === 0 ? (
               <span className="text-xs text-muted-foreground">{t("builder.noLeaves")}</span>
             ) : null}

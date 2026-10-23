@@ -21,23 +21,24 @@ export interface DateFormatter {
   dateTime: (value: Date, options?: DateTimeFormatOptions) => string;
 }
 
+/** A missing or unparsable date renders as nothing, not as a dash. */
 export function formatDate(format: DateFormatter, value: string | null | undefined): string {
-  if (!value) return "—";
+  if (!value) return "";
   const date = new Date(value);
   return Number.isNaN(date.getTime())
-    ? "—"
+    ? ""
     : format.dateTime(date, { dateStyle: "medium", timeStyle: "short" });
 }
 
-/** Compact "5 min. ago" / "5 мин. назад" in the UI language; falls back to "—". */
+/** Compact "5 min. ago" / "5 мин. назад" in the UI language; empty for no date. */
 export function formatRelative(
   format: Pick<Formatter, "relativeTime">,
   value: string | null | undefined,
   now: number = Date.now()
 ): string {
-  if (!value) return "—";
+  if (!value) return "";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) return "";
   return format.relativeTime(date, { now, style: "short" });
 }
 

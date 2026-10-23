@@ -1,10 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useMemo } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
 function FieldSet({ className, ...props }: React.ComponentProps<"fieldset">) {
@@ -14,26 +12,6 @@ function FieldSet({ className, ...props }: React.ComponentProps<"fieldset">) {
       className={cn(
         "flex flex-col gap-6",
         "has-[>[data-slot=checkbox-group]]:gap-3 has-[>[data-slot=radio-group]]:gap-3",
-        className
-      )}
-      {...props}
-    />
-  );
-}
-
-function FieldLegend({
-  className,
-  variant = "legend",
-  ...props
-}: React.ComponentProps<"legend"> & { variant?: "legend" | "label" }) {
-  return (
-    <legend
-      data-slot="field-legend"
-      data-variant={variant}
-      className={cn(
-        "mb-3 font-medium",
-        "data-[variant=legend]:text-base",
-        "data-[variant=label]:text-sm",
         className
       )}
       {...props}
@@ -140,12 +118,16 @@ function FieldTitle({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-function FieldDescription({ className, ...props }: React.ComponentProps<"p">) {
+/** `size="sm"` is the 12px message line the public registration skin uses. */
+type FieldTextSize = { size?: "sm" | "default" };
+
+function FieldDescription({ className, size = "default", ...props }: React.ComponentProps<"p"> & FieldTextSize) {
   return (
     <p
       data-slot="field-description"
       className={cn(
-        "text-muted-foreground text-sm font-normal leading-normal group-has-[[data-orientation=horizontal]]/field:text-balance",
+        "text-muted-foreground font-normal leading-normal group-has-[[data-orientation=horizontal]]/field:text-balance",
+        size === "sm" ? "text-xs" : "text-sm",
         "nth-last-2:-mt-1 last:mt-0 [[data-variant=legend]+&]:-mt-1.5",
         "[&>a:hover]:text-primary [&>a]:underline [&>a]:underline-offset-4",
         className
@@ -155,79 +137,17 @@ function FieldDescription({ className, ...props }: React.ComponentProps<"p">) {
   );
 }
 
-function FieldSeparator({
-  children,
-  className,
-  ...props
-}: React.ComponentProps<"div"> & {
-  children?: React.ReactNode;
-}) {
+/** A field's validation message; renders nothing without one. Point the control's `aria-describedby` at its `id`. */
+function FieldError({ className, size = "default", children, ...props }: React.ComponentProps<"p"> & FieldTextSize) {
+  if (!children) return null;
   return (
-    <div
-      data-slot="field-separator"
-      data-content={!!children}
-      className={cn(
-        "relative -my-2 h-5 text-sm group-data-[variant=outline]/field-group:-mb-2",
-        className
-      )}
-      {...props}
-    >
-      <Separator className="absolute inset-0 top-1/2" />
-      {children && (
-        <span
-          className="bg-background text-muted-foreground relative mx-auto block w-fit px-2"
-          data-slot="field-separator-content"
-        >
-          {children}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function FieldError({
-  className,
-  children,
-  errors,
-  ...props
-}: React.ComponentProps<"div"> & {
-  errors?: Array<{ message?: string } | undefined>;
-}) {
-  const content = useMemo(() => {
-    if (children) {
-      return children;
-    }
-
-    if (!errors) {
-      return null;
-    }
-
-    if (errors.length === 1 && errors[0]?.message) {
-      return errors[0].message;
-    }
-
-    return (
-      <ul className="ml-4 flex list-disc flex-col gap-1">
-        {errors.map(
-          (error, index) => error?.message && <li key={index}>{error.message}</li>
-        )}
-      </ul>
-    );
-  }, [children, errors]);
-
-  if (!content) {
-    return null;
-  }
-
-  return (
-    <div
-      role="alert"
+    <p
       data-slot="field-error"
-      className={cn("text-destructive text-sm font-normal", className)}
+      className={cn("text-destructive font-normal", size === "sm" ? "text-xs" : "text-sm", className)}
       {...props}
     >
-      {content}
-    </div>
+      {children}
+    </p>
   );
 }
 
@@ -238,8 +158,6 @@ export {
   FieldError,
   FieldGroup,
   FieldLabel,
-  FieldLegend,
-  FieldSeparator,
   FieldSet,
   FieldTitle,
 };

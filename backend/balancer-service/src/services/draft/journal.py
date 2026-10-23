@@ -15,9 +15,11 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.models.balancer.draft import DraftAuditEvent, DraftSession
+from shared.models.draft import DraftAuditEvent, DraftSession
 from shared.repository.draft import DraftAuditEventRepository
+from shared.schemas.role import RoleRef
 from src import schemas
+from src.services.draft import loaders
 
 __all__ = ("DEFAULT_REASONS", "JOURNAL_LIMIT_DEFAULT", "JOURNAL_LIMIT_MAX", "DraftJournalService", "journal_service")
 
@@ -82,7 +84,7 @@ class DraftJournalService:
         actor_auth_user_id: int | None,
         after: dict[str, Any] | None = None,
     ) -> DraftAuditEvent:
-        """A session-scoped move (start/pause/resume/rollback/cancel/complete)."""
+        """Record a session-scoped move (start/pause/resume/rollback/cancel/complete)."""
         return await self.record(
             session,
             draft_session.id,
@@ -99,13 +101,14 @@ class DraftJournalService:
         rows = await self.audit_repo.list_with_actor(
             session, draft_session.id, limit=max(1, min(limit, JOURNAL_LIMIT_MAX))
         )
+        dimension = await loaders.rated_dimension(session, draft_session)
         return schemas.DraftJournalResponse(
             session_id=draft_session.id,
-            entries=[_entry(row, actor_name) for row, actor_name in rows],
+            entries=[_entry(row, actor_name, dimension=dimension) for row, actor_name in rows],
         )
 
 
-def _entry(row: DraftAuditEvent, actor_name: str | None) -> schemas.DraftJournalEntry:
+def _entry(row: DraftAuditEvent, actor_name: str | None, *, dimension: str) -> schemas.DraftJournalEntry:
     # after over before: the journal answers "what is it now", and only an
     # override writes the same keys twice.
     payload: dict[str, Any] = {**(row.before_json or {}), **(row.after_json or {})}
@@ -121,7 +124,7 @@ def _entry(row: DraftAuditEvent, actor_name: str | None) -> schemas.DraftJournal
         pick_no=payload.get("overall_no"),
         team_id=payload.get("team_id"),
         player_id=payload.get("player_id"),
-        role=payload.get("role"),
+        role=RoleRef.of(dimension, payload.get("role")),
         seconds=payload.get("seconds"),
     )
 

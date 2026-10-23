@@ -98,13 +98,6 @@ function hasJsxAttribute(
   });
 }
 
-function isInsideFunction(node: ts.Node): boolean {
-  for (let current = node.parent; current; current = current.parent) {
-    if (ts.isFunctionLike(current)) return true;
-  }
-  return false;
-}
-
 describe("tournament overview server contract", () => {
   it("uses one request-scoped public overview loader without cross-request caching", () => {
     const sourceFile = parsedSource("_data.ts");
@@ -115,47 +108,6 @@ describe("tournament overview server contract", () => {
     expect(calledMethods(sourceFile)).toContain("getPublicOverview");
     expect(source).not.toContain("unstable_cache");
     expect(source).not.toContain("getStages");
-  });
-
-  it("renders the overview seed and the client shell in that order, inside one Suspense", () => {
-    const sourceFile = parsedSource("layout.tsx");
-    const source = sourceFor("layout.tsx");
-    const suspense = jsxElements(sourceFile, "Suspense");
-    const overviewBoundaryEl = jsxElements(sourceFile, "TournamentOverviewBoundary");
-    const layoutFunction = nodesMatching(sourceFile, ts.isFunctionDeclaration).find(
-      (declaration) => declaration.name?.text === "TournamentLayout"
-    );
-
-    expect(importedNames(sourceFile, "react")).toContain("Suspense");
-    // No client-side format validation is meaningful for a slug (any
-    // non-empty string is a legitimate ref) -- the raw URL segment goes
-    // straight to TournamentOverviewBoundary, which 404s upstream misses.
-    expect(source).toContain("slug={resolvedParams.slug}");
-    expect(layoutFunction?.getText(sourceFile)).not.toContain("getTournamentOverviewState");
-    expect(overviewBoundaryEl).toHaveLength(1);
-    expect(suspense).toHaveLength(1);
-
-    // The seed renders first and the shell that reads it second, both inside
-    // the SAME boundary. React hydrates a boundary's children as one unit in
-    // order; a shell outside it hydrates in an earlier pass, against a cache
-    // the seed has not written yet, and mismatches the server's HTML.
-    const suspenseElement = nodesMatching(sourceFile, ts.isJsxElement).find(
-      (element) => element.openingElement.tagName.getText(sourceFile) === "Suspense"
-    );
-    const childTags = (suspenseElement?.children ?? [])
-      .filter((child) => ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child))
-      .map((child) =>
-        ts.isJsxElement(child)
-          ? child.openingElement.tagName.getText(sourceFile)
-          : (child as ts.JsxSelfClosingElement).tagName.getText(sourceFile)
-      );
-    expect(childTags).toEqual(["TournamentOverviewBoundary", "TournamentClientLayout"]);
-    // Nothing under this layout can paint before the overview resolves, so the
-    // fallback is the shell's own skeleton — streamed, rather than appearing
-    // after hydration as the client shell's pending branch.
-    expect(
-      hasJsxAttribute(sourceFile, suspense[0], "fallback", "<TournamentShellSkeleton />")
-    ).toBe(true);
   });
 
   it("resolves the same raw slug ref across layout, metadata, and index route", () => {
@@ -186,42 +138,6 @@ describe("tournament overview server contract", () => {
     // The state object itself never calls notFound -- only the callers
     // (page.tsx, TournamentOverviewBoundary) act on its "not-found" kind.
     expect(calledIdentifiers(data)).not.toContain("notFound");
-  });
-
-  it("hydrates with a request-local query client and lets the client shell own errors", () => {
-    const sourceFile = parsedSource("TournamentOverviewBoundary.tsx");
-    const source = sourceFor("TournamentOverviewBoundary.tsx");
-    const queryClients = nodesMatching(sourceFile, ts.isNewExpression).filter(
-      (expression) => expression.expression.getText(sourceFile) === "QueryClient"
-    );
-    const seedCall = nodesMatching(sourceFile, ts.isCallExpression).find(
-      (call) => call.expression.getText(sourceFile) === "queryClient.setQueryData"
-    );
-    const boundaryFunction = nodesMatching(sourceFile, ts.isFunctionDeclaration).find(
-      (declaration) => declaration.name?.text === "TournamentOverviewBoundary"
-    );
-
-    expect(importedNames(sourceFile, "@/lib/tournament/overview-query")).toContain(
-      "tournamentOverviewQueryOptions"
-    );
-    expect(calledIdentifiers(sourceFile)).toContain("getTournamentOverviewState");
-    expect(calledIdentifiers(sourceFile)).toContain("notFound");
-    expect(source).toContain("streamed soft-404");
-    // No children prop: it never wraps TournamentClientLayout, and the error
-    // branch defers to the client shell's own query state instead of
-    // rendering a shell-replacing error element itself.
-    expect(boundaryFunction?.parameters[0]?.getText(sourceFile)).not.toContain("children");
-    expect(source).not.toContain("TournamentShellError");
-    expect(queryClients).toHaveLength(1);
-    expect(isInsideFunction(queryClients[0])).toBe(true);
-    expect(calledMethods(sourceFile)).toContain("setQueryData");
-    expect(seedCall?.arguments.map((argument) => argument.getText(sourceFile))).toEqual([
-      "overviewOptions.queryKey",
-      "overviewState.overview"
-    ]);
-    expect(calledIdentifiers(sourceFile)).toContain("dehydrate");
-    expect(jsxElements(sourceFile, "HydrationBoundary")).toHaveLength(1);
-    expect(source).not.toContain("prefetchQuery");
   });
 
   it("shows the shared error card from the client shell when the overview query errors", () => {

@@ -26,29 +26,13 @@ from src.services.tickets import guard_digest
 class StatePayload:
     """Decoded, verified contents of a signed OAuth ``state`` parameter.
 
-    Carries the originating host (``origin``), the post-auth redirect path
-    (``redirect``), and the intent (``action``: ``"login"`` or ``"link"``) so
-    the callback -- which always lands on the ONE fixed apex callback URL
-    registered with each provider -- can send the user back to the tenant
-    subdomain that started the flow. ``nonce`` is exposed so the caller can
-    enforce single-use / replay protection (see the flow layer's ``callback``);
-    ``verify`` itself does not consume it. ``csrf`` is the SHA-256 hex
-    digest of the raw CSRF cookie value that was live in the browser when the
-    flow started (browser-binding, closes OAuth login/link CSRF) -- this
-    dataclass never carries the raw token, only its hash, and does not
-    compare it against anything; the flow layer does that with the raw cookie
-    value it receives separately.
-
-    ``guard_hash`` (JSON key ``"lg"``) is the SAME kind of binding, one layer
-    further out: it is the SHA-256 hex digest of the raw ``owt_xdomain_guard``
-    cookie value set by the frontend's custom-domain apex bounce
-    (``oauth-login.ts``). It is OPTIONAL -- only present for a flow that
-    actually bounced through a custom domain -- and, like ``csrf``, this
-    dataclass only ever carries the hash, never the raw cookie value. When
-    present it is later stored on the cross-domain ticket issued by the flow
-    layer's ``callback``/``link`` and compared (constant-time) against the raw
-    guard value presented at redemption (``sso_exchange``/``link_complete``)
-    -- see the Task 10R fix-1 brief.
+    ``action`` is ``"login"`` or ``"link"``. ``csrf`` and ``guard_hash`` (JSON key
+    ``"lg"``, present only for a flow that bounced through a custom domain via
+    ``oauth-login.ts``) are SHA-256 hex digests of the raw CSRF and
+    ``owt_xdomain_guard`` cookies, never the raw values. Nothing here compares
+    them: the flow layer checks ``csrf`` against the raw cookie at the callback,
+    and ``guard_hash`` is stored on the cross-domain ticket and checked
+    (constant-time) at redemption (``sso_exchange``/``link_complete``).
     """
 
     origin: str
@@ -66,11 +50,15 @@ class OAuthStateCodec:
 
     def __init__(self, *, config: Settings = settings) -> None:
         self.config = config
-        # Domain-separated subkey for signing OAuth ``state`` (never the raw JWT
-        # secret). State is short-lived (minutes), so switching its derivation is
-        # safe with no migration — any state signed under the old key simply
-        # fails validation and the user retries the redirect.
+        # Domain-separated subkey, never the raw JWT secret. States live minutes,
+        # so changing the derivation needs no migration: an in-flight state just
+        # fails verification and the user retries the redirect.
         self._key = key_derivation.oauth_state_key(config.JWT_SECRET_KEY)
+
+    @property
+    def ttl_seconds(self) -> int:
+        """Lifetime of a freshly signed state."""
+        return max(self.config.OAUTH_STATE_EXPIRE_MINUTES, 1) * 60
 
     @staticmethod
     def _encode_part(raw: bytes) -> str:
@@ -95,47 +83,32 @@ class OAuthStateCodec:
         csrf: str,
         guard_hash: str | None = None,
     ) -> str:
-        """Build a signed, short-lived OAuth ``state`` carrying the originating
-        host, post-auth redirect path, and action (``login``/``link``)
-        alongside the provider.
+        """Build a signed, short-lived ``state`` for ``provider``'s authorization URL.
 
-        ``csrf`` is the RAW CSRF cookie token (never the hash) that was live
-        in the browser that is about to start this flow; only its SHA-256 hex
-        digest is stored in the payload (short key ``"c"``) -- the raw value
-        itself is never persisted, signed into anything retrievable, or
-        logged. This is what lets the flow layer bind the eventual callback
-        to the SAME browser: an attacker can trigger the authorization-URL
-        call for themselves and obtain a validly-signed ``state``, but cannot
-        read the victim's HttpOnly cookie, so they cannot produce a ``csrf``
-        value whose hash matches this one.
+        ``csrf`` is the RAW CSRF cookie of the browser starting the flow; only its
+        SHA-256 hex digest is stored (key ``"c"``), and the raw value is never
+        persisted or logged. An attacker can mint a validly signed ``state`` for
+        themselves but cannot read the victim's HttpOnly cookie, so cannot produce
+        a ``csrf`` whose hash matches — that binds the callback to the SAME browser.
 
-        ``guard_hash`` is OPTIONAL and, when given, is stored verbatim under
-        the short key ``"lg"`` -- it is ALREADY a hash (``sha256_hex`` of the
-        raw ``owt_xdomain_guard`` cookie, computed by the frontend before this
-        call), never a raw secret, so unlike ``csrf`` there is nothing further
-        to hash here. Omitted entirely (no ``"lg"`` key at all) when absent,
-        which is the case for every flow that never bounced through a custom
-        domain (see ``oauth-login.ts``) -- ``verify`` surfaces that as
-        ``guard_hash=None``, and downstream ticket issuance treats that as
-        "no cross-domain ticket may be issued" (fail closed).
+        ``guard_hash`` is already ``sha256_hex`` of the raw ``owt_xdomain_guard``
+        cookie (computed by the frontend), so it is stored verbatim under ``"lg"``.
+        It is omitted for every flow that never bounced through a custom domain;
+        ``verify`` then yields ``guard_hash=None`` and cross-domain ticket issuance
+        fails closed.
 
-        Pure and Redis/DB-free: the returned string is fully self-contained
-        (``base64url(json) + "." + base64url(hmac)``), so it round-trips
-        through any provider's redirect with no shared storage, and
-        ``verify`` can check it with nothing but the signing key. Nonce
-        single-use / replay protection is enforced separately by the caller
-        that has access to Redis (the flow layer's ``callback``) -- keeping
-        this method unit-testable without any infra.
+        The result (``base64url(json) + "." + base64url(hmac)``) needs no shared
+        storage to verify. Nonce single use is enforced by the caller that has
+        Redis (the flow layer's ``callback``), so this stays infra-free.
         """
         now_ts = int(datetime.now(UTC).timestamp())
-        ttl_seconds = max(self.config.OAUTH_STATE_EXPIRE_MINUTES, 1) * 60
         payload: dict[str, str | int] = {
             "o": origin,
             "r": redirect,
             "a": action,
             "p": provider,
             "n": self._encode_part(secrets.token_bytes(24)),
-            "e": now_ts + ttl_seconds,
+            "e": now_ts + self.ttl_seconds,
             "c": guard_digest(csrf),
         }
         if guard_hash is not None:
@@ -146,18 +119,12 @@ class OAuthStateCodec:
     def verify(self, state: str) -> StatePayload:
         """Verify a signed OAuth ``state`` and decode its payload.
 
-        Pure and Redis/DB-free: checks the HMAC signature (constant-time
-        comparison) and the embedded expiry only. Raises ``ValueError`` if
-        the state is missing, malformed, tampered with, or expired -- never
-        ``HTTPException``, so this stays usable from a plain unit test.
-        Nonce single-use / replay protection is intentionally NOT enforced
-        here; the caller must consume ``StatePayload.nonce`` itself (the flow
-        layer's ``callback``). Likewise, this method only returns the stored
-        ``csrf``/``guard_hash`` hashes -- it does NOT compare either against
-        anything, since that requires the raw cookie values which only the
-        RPC-layer caller has access to. Both are surfaced only AFTER the HMAC
-        signature above is verified -- never trust an unverified payload's
-        fields.
+        Checks only the HMAC (constant-time) and the embedded expiry; raises
+        ``ValueError`` — never ``HTTPException`` — if the state is missing,
+        malformed, tampered with or expired. The caller must still consume
+        ``nonce`` and compare ``csrf``/``guard_hash`` against the raw cookies,
+        which only the RPC layer has. No payload field is read before the
+        signature checks out.
         """
         if not state or not isinstance(state, str):
             raise ValueError("state is required")

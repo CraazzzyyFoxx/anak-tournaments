@@ -2,35 +2,23 @@
 
 import type { ReactNode } from "react";
 import { useEffect } from "react";
-import { useParams, usePathname, useRouter } from "next/navigation";
-
-import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
-import { usePermissions } from "@/hooks/usePermissions";
-import { useHubTournamentQuery } from "../hubQueries";
-import { REGISTRATION_SUB_TABS, type RegistrationSubTab } from "../tab-guards";
+import { useParams, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 
-const SUB_TAB_LABEL_KEYS: Record<RegistrationSubTab, "entries" | "teams" | "form" | "feed" | "rankAutofill"> = {
-  entries: "entries",
-  teams: "teams",
-  form: "form",
-  feed: "feed",
-  "rank-autofill": "rankAutofill"
-};
+import type { LinkTabItem } from "@/components/kit/LinkTabs";
+import { usePermissions } from "@/hooks/usePermissions";
+import { useHubTournamentQuery } from "../hubQueries";
+import { SubTabShell, useSubTabSegment } from "../sub-tabs";
+import { REGISTRATION_SUB_TABS, type RegistrationSubTab } from "../tab-guards";
 
 const DEFAULT_SUB_TAB: RegistrationSubTab = "entries";
 
-function isRegistrationSubTab(value: string): value is RegistrationSubTab {
-  return (REGISTRATION_SUB_TABS as readonly string[]).includes(value);
-}
-
 /**
- * Sub-tab bar for the Registration hub tab.
- *
- * The three sibling routes (form, feed, rank-autofill) used to be reachable
- * only from a dropdown inside the entries table — an orphan cluster with no
- * visible switcher. They are the same kind of destination as the Matches
- * sub-tabs, so they get the same bar, from the same component.
+ * Sub-tab bar of the Registration hub tab: the two views of who entered
+ * (entries, teams) and the tools that act on entries (Sheets feed, rank
+ * autofill), each a routed tab. The questionnaire builder is configuration
+ * and lives in Settings › Registration (`form` redirects there), so it has no
+ * tab here.
  *
  * Navigation only: no queries beyond the tournament the guard needs (already
  * in cache from the shell), and no realtime — the hub shell owns that.
@@ -38,15 +26,12 @@ function isRegistrationSubTab(value: string): value is RegistrationSubTab {
 export default function RegistrationLayout({ children }: Readonly<{ children: ReactNode }>) {
   const params = useParams<{ id: string }>();
   const tournamentId = Number(params.id);
-  const pathname = usePathname();
   const router = useRouter();
   const { canAccessPermission, isLoaded: permissionsLoaded } = usePermissions();
   const t = useTranslations("adminTournament.registration");
 
   const basePath = `/admin/tournaments/${params.id}/registration`;
-  const segment = pathname.startsWith(basePath)
-    ? (pathname.slice(basePath.length).split("/").find(Boolean) ?? DEFAULT_SUB_TAB)
-    : DEFAULT_SUB_TAB;
+  const { active: requested, isKnown } = useSubTabSegment(basePath, REGISTRATION_SUB_TABS, DEFAULT_SUB_TAB);
 
   const tournamentQuery = useHubTournamentQuery(tournamentId);
   const workspaceId = tournamentQuery.data?.workspace_id ?? null;
@@ -59,9 +44,8 @@ export default function RegistrationLayout({ children }: Readonly<{ children: Re
   const teamsOffered = tournamentQuery.data
     ? tournamentQuery.data.team_formation === "registration"
     : null;
-  const isKnownSegment = isRegistrationSubTab(segment);
-  const known = isKnownSegment && (segment !== "teams" || teamsOffered !== false);
-  const active: RegistrationSubTab = known && isKnownSegment ? segment : DEFAULT_SUB_TAB;
+  const known = isKnown && (requested !== "teams" || teamsOffered !== false);
+  const active: RegistrationSubTab = known ? requested : DEFAULT_SUB_TAB;
 
   // Every section of Registration reads teams and registrations, so they share
   // the tab's own grant rather than each carrying a different one.
@@ -76,21 +60,25 @@ export default function RegistrationLayout({ children }: Readonly<{ children: Re
     router.replace(`${basePath}/${DEFAULT_SUB_TAB}`);
   }, [known, basePath, router]);
 
-  const items: LinkTabItem[] = REGISTRATION_SUB_TABS.map((key) => ({
-    key,
-    label: t(`tabs.${SUB_TAB_LABEL_KEYS[key]}`),
-    href: `${basePath}/${key}`,
-    hidden: key === "teams" && teamsOffered !== true
-  }));
+  const items: LinkTabItem[] = [
+    { key: "entries", label: t("tabs.entries"), href: `${basePath}/entries` },
+    {
+      key: "teams",
+      label: t("tabs.teams"),
+      href: `${basePath}/teams`,
+      hidden: teamsOffered !== true
+    },
+    { key: "feed", label: t("tabs.feed"), href: `${basePath}/feed` },
+    { key: "rank-autofill", label: t("tabs.rankAutofill"), href: `${basePath}/rank-autofill` }
+  ];
 
   // Held back until permissions resolve, so a legitimate visitor never sees the
   // tab bar blink out on first paint.
   const allowed = permissionsLoaded && canTeamRead;
 
   return (
-    <div className="space-y-4">
-      <LinkTabs items={items} activeKey={active} level={2} ariaLabel={t("ariaLabel")} />
-      {allowed && known ? children : null}
-    </div>
+    <SubTabShell items={items} activeKey={active} ariaLabel={t("ariaLabel")} allowed={allowed && known}>
+      {children}
+    </SubTabShell>
   );
 }

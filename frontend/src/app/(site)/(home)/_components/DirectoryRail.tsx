@@ -5,7 +5,6 @@ import {
   useEffect,
   useRef,
   useState,
-  useSyncExternalStore,
   type PointerEvent as ReactPointerEvent,
   type ReactNode
 } from "react";
@@ -14,6 +13,8 @@ import { useTranslations } from "next-intl";
 
 import { SectionHead } from "@/components/site/open-layout";
 import { owtButton } from "@/components/site/owt-button";
+import { Button } from "@/components/ui/button";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { cn } from "@/lib/utils";
 
 /**
@@ -57,18 +58,6 @@ const INITIAL: RailMetrics = {
   overflow: false
 };
 
-// Reduced motion decides the DEFAULT autoplay state, which the pause/play
-// button renders, so it is read through `useSyncExternalStore`: the server
-// snapshot (motion allowed) hydrates without a mismatch and the real value
-// lands on the first client render.
-const REDUCE_MOTION = "(prefers-reduced-motion: reduce)";
-
-function subscribeReduceMotion(onChange: () => void) {
-  const query = window.matchMedia(REDUCE_MOTION);
-  query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
-}
-
 export function DirectoryRail({
   titleId,
   children
@@ -76,11 +65,10 @@ export function DirectoryRail({
   const t = useTranslations("home.directory");
   const railRef = useRef<HTMLDivElement>(null);
   const [metrics, setMetrics] = useState<RailMetrics>(INITIAL);
-  const reduceMotion = useSyncExternalStore(
-    subscribeReduceMotion,
-    () => window.matchMedia(REDUCE_MOTION).matches,
-    () => false
-  );
+  // Reduced motion decides the DEFAULT autoplay state, which the pause/play
+  // button renders: the server answer (motion allowed) hydrates without a
+  // mismatch and the real value lands on the first client render.
+  const reduceMotion = usePrefersReducedMotion();
   // `null` = still following the reduced-motion default; a boolean is the
   // visitor's own decision, and a take-over is a stop that sticks.
   const [override, setOverride] = useState<boolean | null>(null);
@@ -229,6 +217,8 @@ export function DirectoryRail({
     if (geo) goTo(Math.round(geo.rail.scrollLeft / geo.step));
   };
 
+  // The rail keeps the marketing `owtButton` look; `Button` (variant/size
+  // unset) only supplies the element.
   const navButton = owtButton({
     variant: "ghost",
     size: "icon",
@@ -249,8 +239,9 @@ export function DirectoryRail({
 
       {/* ≥1440px: the grid bleeds 44px + 12px gap past each side, so the rail spans the full container and the arrows sit outside it. */}
       <div className="grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-x-2 md:gap-x-3 min-[1440px]:-mx-14">
-        <button
-          type="button"
+        <Button
+          variant={null}
+          size={null}
           className={cn(
             navButton,
             "col-start-1 row-start-3 md:row-start-1",
@@ -264,7 +255,7 @@ export function DirectoryRail({
           }}
         >
           <ChevronLeft aria-hidden strokeWidth={1.5} />
-        </button>
+        </Button>
         <div
           ref={railRef}
           id={RAIL_ID}
@@ -307,8 +298,9 @@ export function DirectoryRail({
             {children}
           </ul>
         </div>
-        <button
-          type="button"
+        <Button
+          variant={null}
+          size={null}
           className={cn(
             navButton,
             "col-start-3 row-start-3 md:row-start-1",
@@ -322,7 +314,7 @@ export function DirectoryRail({
           }}
         >
           <ChevronRight aria-hidden strokeWidth={1.5} />
-        </button>
+        </Button>
 
         <div
           className={cn(
@@ -336,10 +328,11 @@ export function DirectoryRail({
             className="col-span-3 row-start-2 mt-3 flex max-w-full flex-wrap justify-center gap-0.5 md:mt-0"
           >
             {Array.from({ length: metrics.stops }).map((_, stop) => (
-              <button
+              <Button
                 key={stop}
-                type="button"
-                className="group inline-flex size-11 items-center justify-center rounded-md sm:size-6"
+                variant={null}
+                size={null}
+                className="group size-11 sm:size-6"
                 aria-current={stop === metrics.index}
                 aria-label={
                   metrics.perView > 1
@@ -356,11 +349,12 @@ export function DirectoryRail({
                 }}
               >
                 <span className="block size-1.5 rounded-full bg-[color:var(--aqt-border-3)] transition-[width,background-color] duration-200 group-hover:bg-[color:var(--aqt-fg-faint)] group-aria-[current=true]:w-[18px] group-aria-[current=true]:bg-[color:var(--aqt-teal)]" />
-              </button>
+              </Button>
             ))}
           </div>
-          <button
-            type="button"
+          <Button
+            variant={null}
+            size={null}
             className={cn(navButton, "col-start-2 row-start-3 justify-self-center")}
             aria-controls={RAIL_ID}
             aria-label={autoplay ? t("pause") : t("play")}
@@ -374,7 +368,7 @@ export function DirectoryRail({
             ) : (
               <Play aria-hidden strokeWidth={1.5} />
             )}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

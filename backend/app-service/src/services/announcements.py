@@ -6,7 +6,7 @@ locale rules, the audience/column agreement -- belongs to
 ``shared.services.notifications``; this module owns the operator half: which row
 an operator is allowed to reach, how an edit merges into the stored snapshot,
 what "delete" means, and the audit entry that has to land in the same
-transaction as the write (Global Constraint 6).
+transaction as the write.
 
 Delete is an expiry, not a ``DELETE``. ``notification_read`` references the id
 with no foreign key (the journal convention this table follows), so removing the

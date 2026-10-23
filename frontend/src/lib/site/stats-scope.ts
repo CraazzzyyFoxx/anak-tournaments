@@ -16,9 +16,15 @@ export const STATS_SCOPE_COOKIE = "owt-stats-scope";
 
 /**
  * The `workspace_id` query fragment for a scoped read. `all` is the backend's
- * cross-workspace sentinel; in workspace mode the fragment is empty so
- * `apiFetch` keeps injecting the ambient workspace.
+ * cross-workspace sentinel. In workspace mode the fragment is empty — `apiFetch`
+ * keeps injecting the ambient workspace — unless the caller names the concrete
+ * workspace it resolved (an owner's, or a metadata read's), which is then sent
+ * explicitly.
  */
-export function scopeQuery(scope: StatsScope | undefined): { workspace_id?: "all" } {
-  return scope === "all" ? { workspace_id: "all" } : {};
+export function scopeQuery(
+  scope: StatsScope | undefined,
+  workspaceId?: number | null
+): { workspace_id?: number | "all" } {
+  if (scope === "all") return { workspace_id: "all" };
+  return workspaceId == null ? {} : { workspace_id: workspaceId };
 }

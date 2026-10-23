@@ -39,14 +39,14 @@ def pick_config(
     return max(matched, key=lambda pair: pair[0])[1]
 
 
-def pool_allows(configs: Iterable[PickBanConfig], *, stage_id: int | None, round: int | None, item_id: int) -> bool:
-    """Whether the effective pool for (stage, round) admits ``item_id``; no pool admits anything."""
+def pool_items(configs: Iterable[PickBanConfig], *, stage_id: int | None, round: int | None) -> set[int] | None:
+    """Every item the effective pool for (stage, round) names (slot candidates and reserves included); ``None`` when
+    no pool applies, which admits anything."""
     config = pick_config(configs, stage_id=stage_id, round=round)
     if config is None or not has_pool(config):
-        return True
+        return None
     if config.mode == MapVetoMode.SLOTS:
-        return any(
-            item_id == slot.reserve_item_id or any(item_id == item.item_id for item in slot.items)
-            for slot in config.slots
-        )
-    return any(item_id == item.item_id for item in config.items)
+        return {item.item_id for slot in config.slots for item in slot.items} | {
+            slot.reserve_item_id for slot in config.slots if slot.reserve_item_id is not None
+        }
+    return {item.item_id for item in config.items}

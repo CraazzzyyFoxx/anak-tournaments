@@ -11,7 +11,7 @@ import type { Tournament } from "@/types/tournament.types";
 import {
   useScopedSettingsForm,
   type ScopedSettingsForm
-} from "@/components/admin/settings/useScopedSettingsForm";
+} from "@/components/kit/useScopedSettingsForm";
 import {
   getPhaseSchedulePayload,
   getTournamentForm,
@@ -33,7 +33,7 @@ import { invalidateTournamentWorkspace } from "@/lib/tournament/workspace-query-
  * `phase_schedule` is not here: it travels through `setTournamentSchedule`,
  * and only the `schedule` section sends it.
  */
-export const SETTINGS_SECTION_FIELDS = {
+const SETTINGS_SECTION_FIELDS = {
   // How teams form and which grid seeds them are read on every screen that
   // describes the tournament, so they sit with its name rather than with the
   // points a result is worth.
@@ -41,9 +41,8 @@ export const SETTINGS_SECTION_FIELDS = {
   // One field, and deliberately alone: the published document is the section.
   // Saving the scoring must not rewrite it in the audit trail, nor the reverse.
   rules: ["rules"],
-  scoring: ["is_league", "is_finished", "win_points", "draw_points", "loss_points"],
+  scoring: ["is_league", "is_finished", "win_points", "draw_points", "loss_points", "logs_official"],
   schedule: ["start_date", "end_date", "auto_transitions_enabled", "allow_late_registration"],
-  roster: ["roster_slots_json"],
   draft: ["draft_format_json"],
   challonge: ["challonge_slug"],
   discord: ["discord_broadcasts_enabled", "discord_dms_enabled"],

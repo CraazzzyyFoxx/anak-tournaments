@@ -5,6 +5,7 @@ import { ArrowRight, Check, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { Button } from "@/components/ui/button";
 import type { DraftGating } from "@/lib/draft/logic";
 import {
   currentRound,
@@ -17,7 +18,9 @@ import {
   turnsUntil
 } from "@/lib/draft/room-model";
 import type { DraftViewParams } from "@/lib/draft/workspace-model";
-import { getRoleIconName } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { showsRoles, type RoleOntology } from "@/lib/roster/ontology";
+import { roleOf } from "@/lib/roster/role-ref";
 import type { DraftBoard, DraftPick, DraftTeam } from "@/types/draft.types";
 
 import { DraftClockRing } from "./DraftClockRing";
@@ -28,6 +31,8 @@ interface RoomClockStripProps {
   followed: ReadonlySet<number>;
   onlineCaptainIds: ReadonlySet<number>;
   onViewParamsChange: (patch: Partial<DraftViewParams>) => void;
+  /** The session owner's role dictionary: the last pick's role glyph and name. */
+  ontology: RoleOntology | null;
 }
 
 /** Who is picking, how far the draft is, what comes next — the room's one clock. */
@@ -36,9 +41,11 @@ export function RoomClockStrip({
   gating,
   followed,
   onlineCaptainIds,
-  onViewParamsChange
+  onViewParamsChange,
+  ontology
 }: Readonly<RoomClockStripProps>) {
   const t = useTranslations("draftRedesign");
+  const slotLabel = useSlotLabel(ontology);
   const tClock = useTranslations("draft.clock");
   const session = board.session;
   const current = board.current_pick;
@@ -102,7 +109,7 @@ export function RoomClockStrip({
     announceParts.push(
       t("shell.strip.announceLast", {
         team: teamName(last.draft_team_id),
-        player: lastPlayer.battle_tag ?? `#${lastPlayer.id}`
+        player: lastPlayer.identity?.handle ?? `#${lastPlayer.id}`
       })
     );
   if (current != null)
@@ -124,7 +131,7 @@ export function RoomClockStrip({
   const whoName = done ? t("shell.strip.picksMade", { count: totalPicks }) : (clockTeam?.name ?? "—");
   // Teams are named after their captain by default: the tag next to the team
   // name only earns its place when it says something the name doesn't.
-  const captainTag = captain ? (captain.battle_tag ?? `#${captain.id}`) : null;
+  const captainTag = captain ? (captain.identity?.handle ?? `#${captain.id}`) : null;
   const showCaptainTag = captainTag != null && captainTag !== whoName;
 
   const tickTone = (pick: DraftPick) => {
@@ -155,7 +162,7 @@ export function RoomClockStrip({
       ? t("shell.strip.tickPlayer", {
           pick: pick.overall_no,
           team: teamName(pick.draft_team_id),
-          player: player.battle_tag ?? `#${player.id}`
+          player: player.identity?.handle ?? `#${player.id}`
         })
       : t("shell.strip.tick", { pick: pick.overall_no, team: teamName(pick.draft_team_id) });
   };
@@ -221,7 +228,7 @@ export function RoomClockStrip({
         <span aria-hidden className="hidden w-px self-stretch bg-[color:var(--aqt-border)] sm:block" />
 
         <div className="flex min-w-[230px] flex-[1_1_300px] flex-col gap-2">
-          <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 text-caption">
             <span className="whitespace-nowrap text-ui font-semibold tabular-nums">
               {t("shell.strip.pick", {
                 pick: done ? totalPicks : (headPick?.overall_no ?? totalPicks),
@@ -235,13 +242,15 @@ export function RoomClockStrip({
                 direction: t(`shell.strip.direction.${roundDirection(board, round)}`)
               })}
             </span>
-            <button
+            <Button
               type="button"
+              variant="link"
+              size="inline"
               onClick={() => onViewParamsChange({ teams: "order", view: "teams" })}
-              className="min-h-11 whitespace-nowrap rounded-sm text-caption font-medium text-[color:var(--aqt-teal)] outline-hidden hover:underline focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] sm:min-h-0"
+              className="min-h-11 text-[color:var(--aqt-teal)] sm:min-h-0"
             >
               {t("shell.strip.allRounds")}
-            </button>
+            </Button>
             {nextParts.length > 0 && (
               <span className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 text-body text-[color:var(--aqt-fg-muted)] sm:ml-auto">
                 {nextParts}
@@ -270,12 +279,12 @@ export function RoomClockStrip({
               <span className="truncate">{teamName(last.draft_team_id)}</span>
               <ArrowRight className="h-3.5 w-3.5 shrink-0 text-[color:var(--aqt-fg-faint)]" aria-hidden />
               <span className="truncate font-semibold text-[color:var(--aqt-fg)]">
-                {lastPlayer.battle_tag ?? `#${lastPlayer.id}`}
+                {lastPlayer.identity?.handle ?? `#${lastPlayer.id}`}
               </span>
-              {last.target_role && (
-                <span title={t(`roles.${last.target_role}`)} className="inline-flex shrink-0">
-                  <PlayerRoleIcon role={getRoleIconName(last.target_role)} size={20} decorative />
-                  <span className="sr-only">{t(`roles.${last.target_role}`)}</span>
+              {last.target_role && showsRoles(ontology) && (
+                <span title={slotLabel(roleOf(last.target_role))} className="inline-flex shrink-0">
+                  <PlayerRoleIcon role={roleOf(last.target_role)} ontology={ontology} size={20} decorative />
+                  <span className="sr-only">{slotLabel(roleOf(last.target_role))}</span>
                 </span>
               )}
               {last.is_autopick && (

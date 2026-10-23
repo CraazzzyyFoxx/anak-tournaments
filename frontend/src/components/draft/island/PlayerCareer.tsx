@@ -3,13 +3,15 @@
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import DivisionIcon from "@/components/DivisionIcon";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { useFormatter } from "@/lib/datetime/client";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
-import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
-import { getRoleIconName } from "@/lib/roster/roles";
-import { cn } from "@/lib/utils";
+import { eyebrowClass } from "@/components/ui/eyebrow";
+import { Skeleton } from "@/components/ui/skeleton";
+import { RankCrest } from "@/components/RankCrest";
+import { roleOf } from "@/lib/roster/role-ref";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import type { UserDraftCard } from "@/types/user.types";
 import type { DivisionGrid } from "@/types/workspace.types";
 import { getHeroIconUrl } from "@/lib/player";
@@ -24,36 +26,18 @@ export function winrateColor(wonShare: number, maps: number): string {
   return "var(--aqt-rose-text)";
 }
 
-export function placeColor(place: number | null): string {
+function placeColor(place: number | null): string {
   if (place === 1) return "var(--aqt-medal-gold)";
   if (place === 2) return "var(--aqt-medal-silver)";
   if (place === 3) return "var(--aqt-medal-bronze)";
   return "var(--aqt-fg)";
 }
 
-const EYEBROW = "text-label font-semibold text-[color:var(--aqt-fg-muted)]";
+const EYEBROW = eyebrowClass("muted");
 const STATS_GRID =
   "grid grid-cols-[repeat(auto-fit,minmax(112px,1fr))] gap-px bg-[color:var(--aqt-border)]";
 const STAT_CELL = "flex min-w-0 flex-col gap-0.5 bg-[color:var(--aqt-card-2)] px-3.5 py-2.5";
 const STAT_VALUE = "whitespace-nowrap font-onest text-heading font-semibold leading-tight tabular-nums";
-
-/**
- * A loading stand-in for one line of text. It sits in the line box of a parent
- * carrying the real text's classes, so the value that replaces it takes exactly
- * the same height and the card does not shift when the data lands. Never make
- * it a grid or flex item itself: that blockifies it to its own 0.8em height.
- */
-export function Bar({ className }: Readonly<{ className: string }>) {
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        "inline-block h-[0.8em] animate-pulse rounded bg-[color:var(--aqt-overlay-3)] align-middle motion-reduce:animate-none",
-        className
-      )}
-    />
-  );
-}
 
 interface Stat {
   key: string;
@@ -79,13 +63,13 @@ export function CareerStats({ query }: Readonly<{ query: UseQueryResult<UserDraf
         {[0, 1, 2, 3, 4].map((cell) => (
           <div key={cell} className={STAT_CELL}>
             <div className={EYEBROW}>
-              <Bar className="w-16" />
+              <Skeleton variant="text" aria-hidden className="w-16" />
             </div>
             <div className={STAT_VALUE}>
-              <Bar className="w-10" />
+              <Skeleton variant="text" aria-hidden className="w-10" />
             </div>
             <div className="text-xs">
-              <Bar className="w-20" />
+              <Skeleton variant="text" aria-hidden className="w-20" />
             </div>
           </div>
         ))}
@@ -202,14 +186,15 @@ const HISTORY_ROW = `${HISTORY_GRID} min-h-[30px] py-1`;
 const SKELETON_ROWS = [0, 1, 2, 3, 4];
 
 /**
- * Top heroes and recent tournaments; nothing until the card has history. While
+ * Top characters and recent tournaments; nothing until the card has history. While
  * the card loads, a stand-in with the rows' own geometry holds their space.
  */
 export function CareerTables({
   card,
   pending,
-  divisionGrid
-}: Readonly<{ card: UserDraftCard | undefined; pending: boolean; divisionGrid: DivisionGrid }>) {
+  divisionGrid,
+  ontology
+}: Readonly<{ card: UserDraftCard | undefined; pending: boolean; divisionGrid: DivisionGrid; ontology: RoleOntology | null }>) {
   const t = useTranslations("draftRedesign");
   const format = useFormatter();
 
@@ -220,14 +205,14 @@ export function CareerTables({
           <div className={`${HERO_GRID} pb-1.5 ${EYEBROW}`}>
             <span />
             <span>
-              <Bar className="w-14" />
+              <Skeleton variant="text" aria-hidden className="w-14" />
             </span>
           </div>
           {SKELETON_ROWS.map((row) => (
             <div key={row} className={`${HERO_GRID} py-1`}>
-              <span className="h-7 w-7 animate-pulse rounded-full bg-[color:var(--aqt-overlay-3)] motion-reduce:animate-none" />
+              <Skeleton className="h-7 w-7 rounded-full" />
               <span className="text-[13px]">
-                <Bar className="w-20" />
+                <Skeleton variant="text" className="w-20" />
               </span>
             </div>
           ))}
@@ -235,17 +220,17 @@ export function CareerTables({
         <div className={HISTORY_SECTION}>
           <div className={`${HISTORY_GRID} pb-1.5 ${EYEBROW}`}>
             <span>
-              <Bar className="w-28" />
+              <Skeleton variant="text" className="w-28" />
             </span>
           </div>
           {SKELETON_ROWS.map((row) => (
             <div key={row} className={HISTORY_ROW}>
               <span className="min-w-0">
                 <span className="block text-[13px]">
-                  <Bar className="w-32" />
+                  <Skeleton variant="text" className="w-32" />
                 </span>
                 <span className="block text-xs">
-                  <Bar className="w-16" />
+                  <Skeleton variant="text" className="w-16" />
                 </span>
               </span>
             </div>
@@ -256,11 +241,12 @@ export function CareerTables({
   }
 
   if (!card || card.tournaments === 0) return null;
-  if (card.heroes.length === 0 && card.recent_tournaments.length === 0) return null;
+  const characters = card.characters ?? [];
+  if (characters.length === 0 && card.recent_tournaments.length === 0) return null;
 
   return (
     <div className={TABLES_GRID}>
-      {card.heroes.length > 0 && (
+      {characters.length > 0 && (
         <section className={TABLE_SECTION} aria-label={t("island.heroes.heading")}>
           <div className={`${HERO_GRID} pb-1.5 ${EYEBROW}`} aria-hidden>
             <span />
@@ -269,23 +255,22 @@ export function CareerTables({
             <span className="text-right">{t("island.heroes.winrate")}</span>
           </div>
           <ul>
-            {card.heroes.slice(0, 5).map((entry) => {
+            {characters.slice(0, 5).map((entry) => {
               const share = entry.maps > 0 ? entry.maps_won / entry.maps : 0;
               const low = entry.maps < MIN_WINRATE_MAPS;
               const color = winrateColor(share, entry.maps);
               return (
-                <li key={`${entry.hero.id}-${entry.role}`} className={`${HERO_GRID} py-1`}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={getHeroIconUrl(entry.hero.slug, entry.hero.image_path)}
-                    alt=""
-                    width={28}
-                    height={28}
-                    className="h-7 w-7 rounded-full object-cover"
+                <li key={entry.character.id} className={`${HERO_GRID} py-1`}>
+                  <CatalogEntityImage
+                    entity={{
+                      name: entry.character.name,
+                      image_path: getHeroIconUrl(entry.character.slug, entry.character.image_path)
+                    }}
+                    size={28}
+                    decorative
                   />
                   <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate text-[13px] font-medium">{entry.hero.name}</span>
-                    <PlayerRoleIcon role={getRoleIconName(entry.role)} size={14} />
+                    <span className="truncate text-[13px] font-medium">{entry.character.name}</span>
                   </span>
                   <span className="text-right text-[13px] tabular-nums text-[color:var(--aqt-fg-muted)]">
                     {entry.maps}
@@ -320,10 +305,7 @@ export function CareerTables({
             <span className="text-right">{t("island.recent.place")}</span>
           </div>
           <ul>
-            {card.recent_tournaments.map((entry) => {
-              const division = resolveDivisionFromRank(divisionGrid, entry.rank);
-              const crestLabel = division != null ? getDivisionLabel(divisionGrid, division) : null;
-              return (
+            {card.recent_tournaments.map((entry) => (
                 <li key={entry.id} className={HISTORY_ROW}>
                   <span className="min-w-0">
                     <span className="block truncate text-[13px] font-medium" title={entry.name}>
@@ -337,22 +319,15 @@ export function CareerTables({
                     )}
                   </span>
                   <span className="flex justify-center">
-                    {entry.role && <PlayerRoleIcon role={getRoleIconName(entry.role)} size={16} />}
+                    {entry.role && <PlayerRoleIcon role={roleOf(entry.role)} ontology={ontology} size={16} />}
                   </span>
-                  <span className="flex items-center justify-end gap-1.5" title={crestLabel ?? undefined}>
-                    {division != null && (
-                      <DivisionIcon
-                        division={division}
-                        tournamentGrid={divisionGrid}
-                        width={20}
-                        height={20}
-                        className="h-5 w-5 shrink-0 object-contain"
-                      />
-                    )}
-                    <span className="text-[13px] tabular-nums text-[color:var(--aqt-fg-muted)]">
-                      {entry.rank ?? "—"}
-                    </span>
-                  </span>
+                  <RankCrest
+                    rank={entry.rank}
+                    grid={divisionGrid}
+                    size={20}
+                    showValue
+                    className="justify-end text-[13px] text-[color:var(--aqt-fg-muted)]"
+                  />
                   <span
                     className="whitespace-nowrap text-right text-[13px] font-semibold tabular-nums"
                     style={{ color: placeColor(entry.placement) }}
@@ -363,8 +338,7 @@ export function CareerTables({
                     )}
                   </span>
                 </li>
-              );
-            })}
+            ))}
           </ul>
         </section>
       )}

@@ -62,7 +62,7 @@ def _added_columns() -> dict[str, set[str]]:
 
 class TestTheMigrationCreatesWhatTheModelReads:
     def test_the_invite_audit_columns_are_both_places(self):
-        model = set(models.BalancerRegistrationTeamInvite.__table__.columns.keys())
+        model = set(models.RegistrationTeamInvite.__table__.columns.keys())
         migrated = _added_columns()["registration_team_invite"]
 
         for column in INVITE_COLUMNS:
@@ -70,7 +70,7 @@ class TestTheMigrationCreatesWhatTheModelReads:
             assert column in migrated, f"{column} missing from the migration"
 
     def test_the_cap_watermark_columns_are_in_both_places(self):
-        model = set(models.BalancerRegistrationTeam.__table__.columns.keys())
+        model = set(models.RegistrationTeam.__table__.columns.keys())
         migrated = _added_columns()["registration_team"]
 
         for column in TEAM_COLUMNS:
@@ -81,8 +81,8 @@ class TestTheMigrationCreatesWhatTheModelReads:
         """The other direction. A column created and never read is dead weight that
         the next reader has to prove is dead."""
         model_columns = {
-            "registration_team_invite": set(models.BalancerRegistrationTeamInvite.__table__.columns.keys()),
-            "registration_team": set(models.BalancerRegistrationTeam.__table__.columns.keys()),
+            "registration_team_invite": set(models.RegistrationTeamInvite.__table__.columns.keys()),
+            "registration_team": set(models.RegistrationTeam.__table__.columns.keys()),
         }
 
         for table, columns in _added_columns().items():
@@ -94,8 +94,8 @@ class TestItStaysAPureExpand:
         """A NOT NULL column with no server default would make this migration
         ordering-sensitive: any image still inserting without it would start
         failing the moment the migration landed."""
-        invite = models.BalancerRegistrationTeamInvite.__table__.columns
-        team = models.BalancerRegistrationTeam.__table__.columns
+        invite = models.RegistrationTeamInvite.__table__.columns
+        team = models.RegistrationTeam.__table__.columns
 
         for column in (*(invite[name] for name in INVITE_COLUMNS), *(team[name] for name in TEAM_COLUMNS)):
             assert column.nullable or column.server_default is not None, column.name
@@ -104,7 +104,7 @@ class TestItStaysAPureExpand:
         """Three-valued provenance would be a trap: NULL would mean both "not
         revoked" and "revoked, source unknown", and the UI cannot tell those apart.
         Every pre-existing row is honestly not-organizer-revoked."""
-        column = models.BalancerRegistrationTeamInvite.__table__.columns["revoked_by_organizer"]
+        column = models.RegistrationTeamInvite.__table__.columns["revoked_by_organizer"]
 
         assert not column.nullable
         assert column.server_default is not None

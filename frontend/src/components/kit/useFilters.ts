@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, type ReactNode } from "react";
 
 import type { AdminTableFilters } from "@/components/data-table";
 import { useQueryParams } from "@/hooks/useQueryParams";
@@ -10,10 +10,22 @@ export interface FilterOption {
   label: string;
   /** How many rows match, when the endpoint reports facet counts. */
   count?: number;
+  /** Leading mark in the picker (a game's mark). */
+  icon?: ReactNode;
 }
 
-export type FilterDef =
-  | { key: string; label: string; kind: "single"; options: FilterOption[] }
+export type FilterDef = (
+  | {
+      key: string;
+      label: string;
+      kind: "single";
+      options: FilterOption[];
+      /**
+       * Drawn as an always-visible select in the bar instead of behind "+ Filter", with `allLabel`
+       * for no value. For the one filter a page's actions depend on (the game on per-game pages).
+       */
+      inline?: { allLabel: string };
+    }
   | { key: string; label: string; kind: "multi"; options: FilterOption[] }
   /** Boolean chip: present in the URL as `1`, absent otherwise. */
   | { key: string; label: string; kind: "toggle" }
@@ -23,7 +35,11 @@ export type FilterDef =
       label: string;
       kind: "entity";
       search: (query: string) => Promise<FilterOption[]>;
-    };
+    }
+) & {
+  /** Keys that stop meaning anything once this filter takes `next` (a game's maps, roles); dropped in the same write. */
+  resets?: (next: FilterValue | null) => readonly string[];
+};
 
 export type FilterValue = string | string[] | boolean;
 
@@ -93,7 +109,7 @@ export function useFilters(defs: FilterDef[]): FilterState {
     defs.map((def) => [def.key, readValue(def, params)])
   ) as Record<string, FilterValue>;
 
-  // The two writers are the exception: `AdminAuditPage` lists them as column
+  // The two writers are the exception: `useAuditColumns` lists them as column
   // memo dependencies precisely because the `filters` object around them is
   // rebuilt every render. They close over nothing but `setParams`.
   const set = useCallback(

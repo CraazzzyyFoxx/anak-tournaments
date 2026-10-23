@@ -6,8 +6,13 @@ import typing
 
 from loguru import logger
 
+from shared.domain.player_sub_roles import workspace_sub_role_code
+from shared.domain.roles import Ontology
+from shared.domain.team_format import TeamFormat
 from src.domain.balancer.backends import get_backend
 from src.domain.balancer.captain_assignment_service import assign_captains
+from src.domain.balancer.config.defaults import AlgorithmConfig, apply_config_overrides, default_role_settings
+from src.domain.balancer.config.public_contract import normalize_config_payload
 from src.domain.balancer.determinism import build_balancer_seed, derive_balancer_seed
 from src.domain.balancer.entities import Player
 from src.domain.balancer.feasibility_analyzer import analyze_feasibility
@@ -16,18 +21,12 @@ from src.domain.balancer.progress import ProgressCallback, emit_progress
 from src.domain.balancer.rating_normalizer import RatingNormalizer
 from src.domain.balancer.result_serializer import _build_response_payload
 from src.domain.balancer.role_assignment_service import find_feasible_role_assignment
-from src.services.balancer.config.defaults import AlgorithmConfig, apply_config_overrides
-from src.services.balancer.config.public_contract import normalize_config_payload
+from src.domain.mix_lobby_split import seated_set
 
 
 @dataclasses.dataclass(slots=True)
 class BalanceContext:
-    """Shared, algorithm-agnostic setup produced once per balance run.
-
-    Replaces the 7-element positional tuple ``_prepare_balance_context`` used
-    to return: every one of its five call sites (this module, two tests, the
-    benchmark script) had to keep that field order in sync by hand.
-    """
+    """Shared, algorithm-agnostic setup produced once per balance run."""
 
     config: AlgorithmConfig
     players: list[Player]
@@ -36,6 +35,7 @@ class BalanceContext:
     role_assignment: dict[str, str] | None
     optimizer_seed: int
     overflow_benched: list[Player]
+    original_subclasses: dict[str, dict[str, str]] = dataclasses.field(default_factory=dict)
 
 
 def _filter_valid_players_and_role_counts(
@@ -64,14 +64,20 @@ def _prepare_balance_context(
     role_mask: dict[str, int] | None = None,
     *,
     max_teams: int | None = None,
+    team_format: TeamFormat | None = None,
+    ontology: Ontology | None = None,
+    discipline: str | None = None,
 ) -> BalanceContext:
     """Prepare config, players and role assignment for balancer flows.
 
     ``role_mask`` is the tournament's resolved roster shape. It is not a config
     override but the shape of the thing being built, so it is applied after the
-    overrides and cannot be contradicted by a saved config.
+    overrides and cannot be contradicted by a saved config. The role weights a run
+    starts from are its game's declaration (the owner format's game, else the
+    ``discipline`` a payload names); a run that names no game weighs every role neutrally.
     """
-    config = AlgorithmConfig()
+    game = team_format.discipline if team_format is not None else discipline
+    config = AlgorithmConfig(role_settings=default_role_settings(game))
 
     emit_progress(
         progress_callback,
@@ -80,8 +86,7 @@ def _prepare_balance_context(
         message="Validating request payload",
     )
 
-    # ``normalize_config_payload`` already guarantees real, non-None knobs, so
-    # there is nothing left here to check or skip.
+    # ``normalize_config_payload`` guarantees non-None knobs.
     overrides = normalize_config_payload(config_overrides) if config_overrides else {}
     if overrides:
         logger.info(f"Applying configuration overrides: {overrides}")
@@ -92,6 +97,8 @@ def _prepare_balance_context(
         config.role_mask = role_mask
 
     mask = config.role_mask
+    if not mask:
+        raise ValueError("role_mask is required: the run carries no roster shape")
     emit_progress(
         progress_callback,
         status="running",
@@ -101,6 +108,32 @@ def _prepare_balance_context(
     logger.info(f"Loading players with mask: {mask}")
 
     all_players = load_players_from_dict(input_data, mask)
+    original_subclasses = {}
+    if team_format is not None and ontology is not None:
+        recommendations = [
+            rule
+            for rule in team_format.rules
+            if (rule.recommended_min is not None or rule.recommended_max is not None)
+            and ontology.node(rule.dimension, rule.role).parent_id is not None
+        ]
+        if recommendations:
+            penalized = {
+                rule.role
+                for rule in recommendations
+                if rule.dimension == ontology.rated.code
+                and team_format.mode(rule.dimension) != "off"
+                and rule.recommended_max is not None
+                and rule.recommended_max <= 1
+            }
+            if not penalized:
+                config.sub_role_collision_weight = 0
+            for player in all_players:
+                original_subclasses[player.uuid] = player.subclasses
+                player.subclasses = {
+                    role: subtype
+                    for role, subtype in player.subclasses.items()
+                    if workspace_sub_role_code(role, subtype) in penalized
+                }
     needed_roles = [role for role, count in mask.items() if count > 0]
     valid_players, role_capable_counts = _filter_valid_players_and_role_counts(all_players, needed_roles)
 
@@ -140,15 +173,14 @@ def _prepare_balance_context(
         )
         num_teams = max_teams
 
-    # A player count that isn't an exact multiple of the team size no longer
-    # blocks the run: the leftover players just sit out, exactly like a host
-    # manually benching someone. A ``must_play`` player is never among them
-    # unless there are more of them than team slots exist -- they are moved to
-    # the front before the tail is cut, so trimming always reaches for an
-    # optional player first, and within the optional group ``rotation_priority``
-    # (ascending, default 0.0) breaks the tie -- the tournament balancer never
-    # sets it, so ``sorted``'s stability leaves that group's input order
-    # untouched, exactly as before this field existed.
+    # Players past the last full team sit out. ``must_play`` players move to the
+    # front before the tail is cut, so trimming reaches an optional player first
+    # unless there are more must-play players than slots; among optional players
+    # ``rotation_priority`` (ascending) breaks the tie, and input order -- the
+    # loader's uuid order -- after it. A player the seats' roles can no longer
+    # take sits out instead of the next one in that order, so a pool that can
+    # fill the teams is never refused for whoever sorts last. ``seated_set`` is
+    # that one rule, shared with the lobby splitter and a mix draft's seated set.
     usable_count = num_teams * players_per_team
     if usable_count < len(valid_players):
         must_play_players = [player for player in valid_players if player.must_play]
@@ -158,12 +190,9 @@ def _prepare_balance_context(
                 f"{usable_count} team slots exist for {len(valid_players)} players. "
                 f"Unflag {len(must_play_players) - usable_count} of them or add more players."
             )
-        optional_players = sorted(
-            (player for player in valid_players if not player.must_play),
-            key=lambda player: player.rotation_priority,
+        valid_players, overflow_benched = seated_set(
+            valid_players, [role for role, count in mask.items() for _ in range(count * num_teams)]
         )
-        ordered = must_play_players + optional_players
-        valid_players, overflow_benched = ordered[:usable_count], ordered[usable_count:]
         valid_players, role_capable_counts = _filter_valid_players_and_role_counts(valid_players, needed_roles)
         logger.info(
             f"{len(overflow_benched)} player(s) sit out: only {usable_count} of "
@@ -227,6 +256,7 @@ def _prepare_balance_context(
         role_assignment=role_assignment,
         optimizer_seed=derive_balancer_seed(base_seed, "tournament_balancer_optimizer"),
         overflow_benched=overflow_benched,
+        original_subclasses=original_subclasses,
     )
 
 
@@ -237,6 +267,9 @@ def balance_teams(
     role_mask: dict[str, int] | None = None,
     *,
     algorithm: str = "tournament_balancer",
+    team_format: TeamFormat | None = None,
+    ontology: Ontology | None = None,
+    discipline: str | None = None,
 ) -> list[dict[str, typing.Any]]:
     """Return ranked balance solutions for the same payload format.
 
@@ -250,7 +283,14 @@ def balance_teams(
     backend = get_backend(algorithm)
 
     context = _prepare_balance_context(
-        input_data, config_overrides, progress_callback, role_mask, max_teams=backend.max_teams
+        input_data,
+        config_overrides,
+        progress_callback,
+        role_mask,
+        max_teams=backend.max_teams,
+        team_format=team_format,
+        ontology=ontology,
+        discipline=discipline,
     )
     mask = context.config.role_mask
 
@@ -296,6 +336,9 @@ def balance_teams(
         )
     finally:
         normalizer.restore_players(context.players)
+        for player in context.players + context.overflow_benched:
+            if player.uuid in context.original_subclasses:
+                player.subclasses = context.original_subclasses[player.uuid]
 
     if not solutions:
         raise ValueError(f"{backend.name} backend returned no balance solutions.")
@@ -321,9 +364,20 @@ def balance_teams(
             context.has_applied_overrides,
             solution.metrics,
             feasibility=feasibility,
+            team_format=team_format,
+            ontology=ontology,
         )
         for solution in solutions
     ]
+    # Keep the backend's ordering between distinct objectives; recommendations
+    # only break exact objective ties (before response metrics are rounded).
+    objective_ranks = {}
+    ranking = []
+    for index, (solution, payload) in enumerate(zip(solutions, payloads, strict=True)):
+        objective = (solution.metrics.composite_score, solution.metrics.mix_balancer_quality_total)
+        rank = index if objective == (None, None) else objective_ranks.setdefault(objective, index)
+        ranking.append((rank, sum(len(team["format_advisories"]) for team in payload["teams"]), index))
+    payloads = [payloads[index] for _, _, index in sorted(ranking)]
 
     emit_progress(
         progress_callback,
@@ -332,13 +386,3 @@ def balance_teams(
         message=f"Prepared {len(payloads)} variants",
     )
     return payloads
-
-
-def balance_teams_tournament(
-    input_data: dict[str, typing.Any],
-    config_overrides: dict[str, typing.Any] | None = None,
-    progress_callback: ProgressCallback | None = None,
-    role_mask: dict[str, int] | None = None,
-) -> list[dict[str, typing.Any]]:
-    """Return a Pareto front of balance solutions for the same payload format."""
-    return balance_teams(input_data, config_overrides, progress_callback, role_mask, algorithm="tournament_balancer")

@@ -1,33 +1,32 @@
 """Pick-ban ruleset v2 — the pure engine behind the constructor.
 
-No DB, no service imports: every service may import this. The design document
-is ``docs/plans/2026-09-28-pick-ban-constructor.md``; each module carries the
-section it implements.
+No DB, no service imports: every service may import this.
 
-- :mod:`.schema` — the ruleset document and the resolved step (§1, §3)
-- :mod:`.registry` — condition leaves, constraint specs, the evaluator (§2)
-- :mod:`.validate` — what may be saved (§1, §2)
-- :mod:`.compile` — phase selection, round resolution, v1 conversion (§3, §11)
-- :mod:`.runtime` — submissions, cursor, eligibility, projection (§5)
-- :mod:`.presets` / :mod:`.preview` — starting points and the series preview (§6, §10, §12)
+- :mod:`.schema` — the ruleset document and the resolved step
+- :mod:`.registry` — condition leaves, constraint specs, the evaluator
+- :mod:`.validate` — what may be saved
+- :mod:`.compile` — phase selection, round resolution, v1 conversion
+- :mod:`.runtime` — submissions, cursor, eligibility, projection
+- :mod:`.presets` / :mod:`.preview` — starting points and the series preview
 """
 
 from .compile import (
     LEAD_BANS,
+    UnassignedSide,
+    bind_members,
     build_sequence_for_best_of,
     build_slot_sequence,
     phase_matches,
     resolve_round,
-    resolve_sides,
+    resolve_actors,
     ruleset_from_v1,
     select_phase,
     steps_from_v1_tokens,
 )
-from .presets import PRESETS, PRESETS_BY_ID, Preset
+from .presets import GENERIC_PRESETS, GENERIC_PRESETS_BY_ID, Preset, UnknownDiscipline, mix_ban_preset, presets_for
 from .preview import preview_series
 from .registry import (
     CONSTRAINTS,
-    HERO_GROUPS,
     LEAVES,
     AppliedItem,
     ConstraintSpec,
@@ -49,7 +48,8 @@ from .runtime import (
     PICKED,
     PROTECTED,
     REVEALED,
-    SYSTEM_PICKED_BY,
+    DECIDER_KIND,
+    TEAM_KIND,
     VOIDED,
     CarriedBan,
     DisputeState,
@@ -59,11 +59,13 @@ from .runtime import (
     SubmissionLike,
     TargetPlayer,
     applied_items,
+    assigned_sides,
     carried_bans,
     current_attempt,
     current_step,
     dispute_target,
     effective_min,
+    fill_member_answers,
     filter_pool,
     eligible_items,
     history_of,
@@ -71,7 +73,8 @@ from .runtime import (
     random_fill,
     ready_to_reveal,
     resolve_system_step,
-    side_submission,
+    actor_columns,
+    actor_submission,
     step_progress,
     undo_target,
     validate_items,
@@ -94,8 +97,8 @@ from .validate import validate_ruleset
 
 __all__ = (
     "CONSTRAINTS",
-    "HERO_GROUPS",
     "LEAD_BANS",
+    "UnassignedSide",
     "LEAVES",
     "AVAILABLE",
     "BANNED",
@@ -104,10 +107,11 @@ __all__ = (
     "PICKED",
     "PROTECTED",
     "REVEALED",
-    "SYSTEM_PICKED_BY",
+    "DECIDER_KIND",
+    "TEAM_KIND",
     "VOIDED",
-    "PRESETS",
-    "PRESETS_BY_ID",
+    "GENERIC_PRESETS",
+    "GENERIC_PRESETS_BY_ID",
     "AppliedItem",
     "CarriedBan",
     "Condition",
@@ -124,6 +128,7 @@ __all__ = (
     "ParamSpec",
     "Phase",
     "Preset",
+    "UnknownDiscipline",
     "ResolvedStep",
     "RoundCtx",
     "Ruleset",
@@ -133,6 +138,8 @@ __all__ = (
     "SubmissionLike",
     "TargetPlayer",
     "applied_items",
+    "assigned_sides",
+    "bind_members",
     "build_sequence_for_best_of",
     "build_slot_sequence",
     "carried_bans",
@@ -141,25 +148,29 @@ __all__ = (
     "current_step",
     "dispute_target",
     "effective_min",
+    "fill_member_answers",
     "filter_pool",
     "eligible_items",
     "evaluate",
     "history_of",
     "leaf",
+    "mix_ban_preset",
     "normalize_group",
     "parse_ruleset",
     "phase_matches",
+    "presets_for",
     "preview_series",
     "project_entries",
     "random_fill",
     "ready_to_reveal",
     "resolve_round",
-    "resolve_sides",
+    "resolve_actors",
     "resolve_system_step",
     "resolved_steps_from_json",
     "ruleset_from_v1",
     "select_phase",
-    "side_submission",
+    "actor_columns",
+    "actor_submission",
     "step_progress",
     "steps_from_v1_tokens",
     "undo_target",

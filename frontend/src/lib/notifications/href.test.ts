@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { notificationHref } from "@/lib/notifications/href";
 import type { NotificationItem } from "@/types/notification.types";
@@ -13,6 +13,8 @@ const item: NotificationItem = {
   expires_at: null,
   is_read: false
 };
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("notification destinations", () => {
   it("opens the participant surface from numeric tournament snapshots", () => {
@@ -58,7 +60,7 @@ describe("notification destinations", () => {
       notificationHref({
         ...item,
         kind: "encounter.dispute_review",
-        payload: { tournament_id: 42, encounter_id: 87, position: 0, home_team_name: "A", away_team_name: "B" }
+        payload: { tournament_id: 42, encounter_id: 87, position: 0, team_names: ["A", "B"] }
       })
     ).toBe("/tournaments/42/pregame/87");
   });
@@ -72,8 +74,7 @@ describe("notification destinations", () => {
           tournament_id: 42,
           encounter_id: 87,
           scheduled_at: "2026-09-25T18:00:00Z",
-          home_team_name: "A",
-          away_team_name: "B"
+          team_names: ["A", "B"]
         }
       })
     ).toBe("/tournaments/42/pregame/87");
@@ -82,6 +83,23 @@ describe("notification destinations", () => {
         notificationHref({ ...item, kind, payload: { tournament_id: 42, tournament_name: "Cup" } })
       ).toBe("/tournaments/42");
       expect(notificationHref({ ...item, kind, payload: { tournament_name: "Cup" } })).toBeNull();
+    }
+  });
+
+  // The bell is read on whatever host the reader is on, often another community's, where the mix is not
+  // reachable; so the room link is the platform's, like the Discord DM's `PUBLIC_SITE_URL` link.
+  it("sends a mix captain to the lobby's own room on the platform host", async () => {
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://platform.test");
+    // Dynamic on purpose: `config/site` reads the env at module load, like the production build inlines it.
+    const { notificationHref: platformHref } = await import("@/lib/notifications/href");
+    for (const kind of ["mix.ban_room_opened", "mix.draft_started"]) {
+      expect(
+        platformHref({ ...item, kind, workspace_id: 5, payload: { custom_game_id: 12, mix_name: "Friday", lobby: "B" } })
+      ).toBe("https://platform.test/balancer/mix/12/lobby/B");
+      expect(platformHref({ ...item, kind, payload: { custom_game_id: 12, lobby: "../admin" } })).toBeNull();
+      expect(platformHref({ ...item, kind, payload: { custom_game_id: "12", lobby: "B" } })).toBeNull();
+      expect(platformHref({ ...item, kind, payload: { lobby: "B" } })).toBeNull();
     }
   });
 

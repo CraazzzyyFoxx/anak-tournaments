@@ -81,6 +81,9 @@ PERMISSION_CATALOG: tuple[PermissionSpec, ...] = (
     _permission("subscription", "update", "Trigger a subscription re-check"),
     _permission("stream", "read", "Read stream live-status and polling health"),
     _permission("stream", "update", "Trigger a stream live-status re-poll"),
+    # Canonical match ingestion through a workspace API key. A key's scope still
+    # intersects its owner's real permission; there is no separate grant system.
+    _permission("stats", "ingest", "Submit canonical match observations"),
     # Workspace-scoped announcements. The platform-wide ones are deliberately
     # NOT reachable through these: a banner every visitor sees is gated on the
     # superuser flag, not on a grant an owner can hand out inside a tenant.
@@ -166,7 +169,7 @@ def _host_permission_names() -> tuple[str, ...]:
     seeing rosters, standings, etc. like anyone else -- but on top of that gets
     ``custom_game`` create/update/delete so they can actually run one. See
     ``_require_mix`` in ``balancer-service/src/rpc/custom.py``: membership alone
-    no longer opens mixes, this is the grant that does.
+    alone does not open mixes, this is the grant that does.
     """
     extra = (p.name for p in PERMISSION_CATALOG if p.resource == "custom_game")
     return tuple(dict.fromkeys((*_player_permission_names(), *extra)))

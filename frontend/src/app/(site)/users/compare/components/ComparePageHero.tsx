@@ -6,85 +6,34 @@ import { useTranslations } from "next-intl";
 
 import type { CompareScope } from "@/app/(site)/users/compare/types";
 import { PageHero, HeroCoord } from "@/components/site/PageHero";
+import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Spinner } from "@/components/ui/spinner";
-import type { UserCompareBaselineMode } from "@/types/user.types";
-
-import { getComparePageHeroModel } from "./compare-page-hero.model";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { GameFilterHint } from "@/components/workspace/GameFilterHint";
 
 interface ComparePageHeroProps {
-  hasSubject: boolean;
-  hasData: boolean;
-  isLoading: boolean;
-  isRefreshing: boolean;
+  /**
+   * Under "all games" the page shows one game it picked itself: its name, worn by a chip that opens the site's game
+   * switcher. `null` when the switcher already names the game.
+   */
+  gameHint: string | null;
   scope: CompareScope;
-  baseline: UserCompareBaselineMode;
-  baselineSummary: string;
-  sampleSize?: number;
-  metricCount: number;
+  onScopeChange: (scope: CompareScope) => void;
 }
 
-const ComparePageHero = ({
-  hasSubject,
-  hasData,
-  isLoading,
-  isRefreshing,
-  scope,
-  baseline,
-  baselineSummary,
-  sampleSize,
-  metricCount
-}: ComparePageHeroProps) => {
+/** The page's header (the comparison starts right under it): which game, and what is compared. */
+const ComparePageHero = ({ gameHint, scope, onScopeChange }: ComparePageHeroProps) => {
   const t = useTranslations();
-  const model = getComparePageHeroModel({
-    hasSubject,
-    hasData,
-    isLoading,
-    scope,
-    baseline,
-    sampleSize,
-    metricCount
-  });
-
-  const baselineLabel = {
-    global: t("users.compare.hero.global"),
-    cohort: t("users.compare.hero.cohort"),
-    target_user: t("users.compare.hero.target")
-  }[model.baseline];
-
-  const stats = [
-    {
-      label: t("users.compare.hero.scope"),
-      value:
-        model.scope === "hero" ? t("users.compare.hero.heroMap") : t("users.compare.hero.overall"),
-      sub: t("users.compare.hero.activeView")
-    },
-    {
-      label: t("users.compare.hero.baseline"),
-      value: baselineLabel,
-      sub: baselineSummary
-    },
-    {
-      label: t("users.compare.hero.sample"),
-      value: model.sampleSize,
-      sub: t("users.compare.hero.players")
-    },
-    {
-      label: t("users.compare.hero.metrics"),
-      value: model.metricCount,
-      sub: isRefreshing ? t("users.compare.hero.refreshing") : t("users.compare.hero.metricsReady"),
-      refreshing: isRefreshing
-    }
-  ];
 
   return (
     <PageHero
+      compact
       eyebrow={
         <HeroCoord className="inline-flex items-center gap-2">
           <Link href="/users" className="transition-colors hover:text-[color:var(--aqt-teal)]">
             {t("users.compare.hero.usersBreadcrumb")}
           </Link>
-          <ChevronRight className="h-3 w-3 opacity-50" />
+          <ChevronRight aria-hidden className="h-3 w-3 opacity-50" />
           <span>{t("users.compare.hero.breadcrumb")}</span>
         </HeroCoord>
       }
@@ -93,13 +42,10 @@ const ComparePageHero = ({
       actions={
         <Popover>
           <PopoverTrigger asChild>
-            <button
-              type="button"
-              className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.025)] px-3 text-xs font-semibold text-[color:var(--aqt-fg-muted)] transition-colors hover:border-[color:var(--aqt-border-strong)] hover:text-[color:var(--aqt-fg)]"
-            >
-              <CircleHelp className="h-4 w-4" />
+            <Button variant="outline" size="sm">
+              <CircleHelp aria-hidden />
               {t("users.compare.hero.guideAction")}
-            </button>
+            </Button>
           </PopoverTrigger>
           <PopoverContent align="start" className="w-90 max-w-[calc(100vw-2rem)]">
             <div className="space-y-2">
@@ -119,21 +65,28 @@ const ComparePageHero = ({
         </Popover>
       }
       aside={
-        <div className="grid grid-cols-2 gap-x-7 gap-y-5 text-left lg:text-right">
-          {stats.map((stat) => (
-            <div key={stat.label} className="min-w-0 lg:flex lg:flex-col lg:items-end">
-              <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-                {stat.label}
-              </span>
-              <span className="mt-1 block max-w-full truncate font-onest text-[clamp(1.35rem,2vw,1.9rem)] font-bold leading-none tabular-nums text-[color:var(--aqt-fg)]">
-                {stat.value}
-              </span>
-              <span className="mt-1 flex max-w-full items-start gap-1 text-label text-[color:var(--aqt-fg-dim)] lg:justify-end">
-                {stat.refreshing ? <Spinner className="mt-px size-3 shrink-0" /> : null}
-                <span className="line-clamp-2" title={stat.sub}>{stat.sub}</span>
-              </span>
-            </div>
-          ))}
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:justify-end">
+          {gameHint ? (
+            <GameFilterHint className="self-start sm:self-auto">
+              {t("common.discipline.gameHint", { game: gameHint })}
+            </GameFilterHint>
+          ) : null}
+          <ToggleGroup
+            type="single"
+            variant="pill"
+            size="sm"
+            value={scope}
+            onValueChange={(value) => onScopeChange(value as CompareScope)}
+            aria-label={t("users.compare.filters.compareScope")}
+            className="w-full sm:w-auto"
+          >
+            <ToggleGroupItem value="overall" className="flex-1 whitespace-nowrap">
+              {t("users.compare.filters.overallPerformance")}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="hero" className="flex-1 whitespace-nowrap">
+              {t("users.compare.filters.heroMapPerformance")}
+            </ToggleGroupItem>
+          </ToggleGroup>
         </div>
       }
     />

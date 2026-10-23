@@ -2,6 +2,7 @@
 
 import { Check } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface Step {
@@ -33,10 +34,12 @@ export default function StepIndicator({ steps, current, onSelect }: Readonly<Ste
                 )}
               />
             )}
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="inline"
               onClick={() => onSelect(i)}
-              className="group flex cursor-pointer items-center gap-1.5 rounded-full sm:pr-2 transition-colors hover:bg-[color:var(--aqt-overlay-1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="group gap-1.5 rounded-full sm:pr-2"
               aria-current={isActive ? "step" : undefined}
             >
               <div
@@ -61,7 +64,7 @@ export default function StepIndicator({ steps, current, onSelect }: Readonly<Ste
               >
                 {step.label}
               </span>
-            </button>
+            </Button>
           </div>
         );
       })}

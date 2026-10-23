@@ -158,18 +158,19 @@ function button(label: string) {
 }
 
 /**
- * The two image editors are told apart by their captions, not by document
- * order: reordering the cards must not silently repoint a case at the other
+ * The two image editors are told apart by their row labels, not by document
+ * order: reordering the rows must not silently repoint a case at the other
  * slot, which is the very mix-up the first branding case exists to catch.
  */
 function slot(caption: "cover" | "logo") {
-  const label = [...container.querySelectorAll("span")].find(
+  const label = [...container.querySelectorAll("label")].find(
     (node) => node.textContent?.trim() === caption
   );
-  const column = label?.parentElement ?? null;
+  // The `SettingRow` that holds the label also holds its control.
+  const row = label?.closest(".grid") ?? null;
   return {
-    file: column?.querySelector<HTMLInputElement>('input[type="file"]') ?? null,
-    remove: column?.querySelector<HTMLButtonElement>('button[aria-label="remove"]') ?? null
+    file: row?.querySelector<HTMLInputElement>('input[type="file"]') ?? null,
+    remove: row?.querySelector<HTMLButtonElement>('button[aria-label="remove"]') ?? null
   };
 }
 

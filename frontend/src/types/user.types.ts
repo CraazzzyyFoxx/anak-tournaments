@@ -1,19 +1,54 @@
-import type { PlayerRoleOption } from "@/lib/roster/player-role";
-import { Hero, HeroPlaytime } from "@/types/hero.types";
-import { Score } from "@/types/encounter.types";
-import { MapRead } from "@/types/map.types";
-import { LogStatsName } from "@/types/stats.types";
+import type { RoleRef } from "@/lib/roster/role-ref";
+import type { Schema } from "@/types/api";
+import type { CatalogEntityRead, CatalogEntityRef } from "@/types/catalog.types";
+import type { RawSourceStatus } from "@/types/encounter.types";
 import type { PaginatedResponse } from "@/types/pagination.types";
 import { UserTournamentStat } from "@/types/statistics.types";
 import { DivisionGridVersion } from "@/types/workspace.types";
 
-export type SocialProvider = "battlenet" | "discord" | "twitch" | "boosty" | "vk" | "youtube";
+/** One character's share (0..1) of the observed playtime of the returned set — a fraction, not a duration. */
+export interface CharacterPlaytime {
+  entity: CatalogEntityRead;
+  playtime: number;
+}
+
+/** A stat's best single-match value, with where it happened. */
+export type CharacterStatBest = Schema<"stats.CharacterStatBest">;
+
+/** One stat of one character for a player: career total, best match and per-10 averages (player and everyone). */
+type CharacterStat = Schema<"stats.CharacterStat">;
+
+/** A character's career-best game in its class's headline stat (tank: blocked, damage: hero damage, support: healing). */
+type CharacterRecord = Schema<"stats.CharacterRecord">;
+
+export interface CharacterWithUserStats {
+  character: CatalogEntityRead;
+  stats: CharacterStat[];
+  /** Scored games on the character in the read's scope (hero time over 60 s); draws are games, not wins. */
+  games: number;
+  win: number;
+  loss: number;
+  draw: number;
+  /** Every player's winrate (0..1) on the character across the game, the `avg_10_all` population; `null` without games. */
+  win_rate_all: number | null;
+  record: CharacterRecord | null;
+}
+
+/** A character without its per-stat best-match records: what an overview card reads (smaller RSC props). */
+export interface CharacterSummary extends Omit<CharacterWithUserStats, "stats"> {
+  stats: Omit<CharacterStat, "best" | "best_all">[];
+}
+
+export type SocialProvider =
+  "battlenet" | "discord" | "twitch" | "boosty" | "vk" | "youtube" | "riot" | "steam";
 
 export interface SocialAccount {
   id: number;
   user_id: number;
   provider: SocialProvider;
   username: string;
+  /** The provider's display name where `username` is an opaque id (Steam persona name). */
+  display_name?: string | null;
   url: string | null;
   is_verified: boolean;
   is_primary: boolean;
@@ -37,30 +72,46 @@ export interface User {
   stream_visible?: boolean;
 }
 
-export interface UserRole {
-  role: string;
+/** A role's record in one game: maps, tournaments and the division it was last rated at (`null`: never rated). */
+export interface UserRoleSummary {
+  role: RoleRef | null;
   tournaments: number;
   maps_won: number;
   maps: number;
-  division: number;
+  division: number | null;
+}
+
+/** A profile role, with the grid its `division` is drawn on. */
+export interface UserRole extends UserRoleSummary {
   division_grid_version: DivisionGridVersion | null;
+}
+
+/** One game of a cross-game profile (spec §6.6): its roles, tournaments and wins. */
+export interface UserGameSummary {
+  discipline: string;
+  roles: UserRoleSummary[];
+  tournaments_count: number;
+  tournaments_won: number;
 }
 
 export interface UserTournamentWithStats {
   id: number;
   name: string;
-  division: number;
+  /** The tournament's owner workspace and game: its role and division are drawn in that scope. */
+  workspace_id: number;
+  discipline: string;
+  division: number | null;
   /** Grid the `division` was resolved against — render its icon on this grid,
    * not the workspace default. */
   division_grid_version: DivisionGridVersion | null;
-  role: string;
+  role: RoleRef | null;
   group_placement: number;
   playoff_placement: number;
   maps_won: number;
   maps: number;
   playtime: number;
 
-  stats: Record<LogStatsName, UserTournamentStat>;
+  stats: Record<string, UserTournamentStat>;
 }
 
 /**
@@ -74,19 +125,18 @@ export interface UserTournamentWithStats {
 export interface UserTournamentSummary {
   id: number;
   name: string;
+  discipline: string;
   is_league: boolean;
   is_finished?: boolean;
   status?: string | null;
-  division_grid_version: DivisionGridVersion | null;
 }
 
 interface UserTournamentPlayer {
   id: number;
   name: string;
-  role: string | null;
-  sub_role: string | null;
-  rank: number;
-  division: number;
+  role: RoleRef | null;
+  rank: number | null;
+  division: number | null;
   user_id: number;
   is_substitution: boolean;
   is_newcomer: boolean;
@@ -95,8 +145,8 @@ interface UserTournamentPlayer {
   relative_player?: number | null;
   /** Average MVP placement across the player's matches (1 = MVP/best). */
   avg_mvp?: number | null;
-  /** Player's top signature heroes (same shape as per-match `heroes`). */
-  heroes?: Hero[];
+  /** Player's top signature characters. */
+  characters?: CatalogEntityRef[];
 }
 
 interface UserEncounterTournament {
@@ -120,61 +170,78 @@ interface UserEncounterStageItemSummary {
 interface UserEncounterTeamPlayerRef {
   id: number;
   user_id: number;
-  role: string | null;
+  role: RoleRef | null;
   name: string;
 }
 
+/** One live seat of an encounter: `id` is the participation, `team_id` the source team (null once deleted). */
 interface UserEncounterTeamSummary {
   id: number;
+  slot: number;
+  team_id: number | null;
   name: string;
+  score: number;
+  placement: number | null;
   players: UserEncounterTeamPlayerRef[];
 }
 
-export interface MatchWithUserStats {
-  id: number;
-  home_team_id: number | null;
-  away_team_id: number | null;
-  score: Score;
-  time: number | null;
-  log_name: string | null;
-  encounter_id: number;
-  map_id: number;
-  map_index?: number | null;
-  code: string | null;
-  map: MapRead | null;
-  performance: number | null;
-  impact_rank?: number | null;
-  impact_points?: number | null;
-  overperformance_score?: number | null;
-  overperformance_badge?: boolean;
-  heroes: Hero[];
+/** One native observation of a stat; `segment` 0 with null member/entity is a member's whole-match total when `workspace_member_id` is set. */
+type UserNativeFact = Schema<"stats.NativeFact">;
+
+/** The viewer's own seat and whole-match totals in one match; absent when the viewer's seat was not observed. */
+interface UserMatchViewer {
+  encounter_team_id: number;
+  workspace_member_id: number;
+  /** Segment-0, no-entity facts of the viewer by stat code; an absent key is missing, never zero. */
+  facts: Record<string, number>;
+  /** The characters the viewer played in this match (module eligibility rule applied by the server). */
+  characters: CatalogEntityRead[];
+}
+
+/**
+ * A match inside a user-scoped encounter: the native header (participants with official result and observed
+ * team facts) plus the viewer's facts and every observed member's whole-match totals of the stats the game's match
+ * renderer ranks the viewer against (its `member_total_stats`; Overwatch: `overperformance_score`). No derived
+ * value (placement, badge) rides on the wire: a discipline's renderer derives them from `viewer.facts` against
+ * `member_totals`.
+ */
+export interface MatchWithUserStats
+  extends Omit<Schema<"stats.MatchReadWithUserStats">, "map" | "raw_status" | "viewer" | "member_totals"> {
+  raw_status: RawSourceStatus | null;
+  /** Always expanded, with its catalog mode as `map.parent`; the match's own mode is `mode`. */
+  map: CatalogEntityRead;
+  viewer: UserMatchViewer | null;
+  member_totals: UserNativeFact[];
 }
 
 export interface EncounterWithUserStats {
   id: number;
   name: string;
-  home_team_id: number | null;
-  away_team_id: number | null;
-  score: Score;
+  slot_count: number;
   round: number;
   best_of: number;
   tournament_id: number;
+  /** The encounter's game: a cross-game list (spec §6.6) marks each row with it. */
+  discipline: string;
   status: string;
   closeness: number | null;
   has_logs: boolean;
   result_status: string;
+  /** The source team the viewer played for. */
   user_team_id: number | null;
   tournament: UserEncounterTournament | null;
   stage: UserEncounterStageSummary | null;
   stage_item: UserEncounterStageItemSummary | null;
-  home_team: UserEncounterTeamSummary | null;
-  away_team: UserEncounterTeamSummary | null;
+  /** The live seats in slot order; a retired participation is history. */
+  teams: UserEncounterTeamSummary[];
   matches: MatchWithUserStats[];
 }
 
 export interface UserTournament {
   id: number;
   name: string;
+  workspace_id: number;
+  discipline: string;
   is_league: boolean;
   team_id: number;
   team: string;
@@ -187,15 +254,23 @@ export interface UserTournament {
   draw: number;
   maps_won: number;
   maps_lost: number;
-  division: number;
-  division_grid_version: DivisionGridVersion | null;
-  role: string;
+  division: number | null;
+  /** The grid `division` was resolved against: one of the list's `division_grid_versions`. */
+  division_grid_version_id: number | null;
+  role: RoleRef | null;
+}
 
-  /** Only populated after a lazy fetch of `/tournaments/{id}/encounters` for
-   *  the tournament currently open in the dossier — the list endpoint omits
-   *  it so a career-spanning history doesn't ship every event's full
-   *  encounter/match log up front. */
-  encounters?: EncounterWithUserStats[];
+/** `/users/{id}/tournaments`: the rows, and once each the grid versions they name. */
+export interface UserTournamentList {
+  results: UserTournament[];
+  division_grid_versions: DivisionGridVersion[];
+}
+
+/** A history row as the dossier draws it: its grid resolved from the list, and its encounters, read lazily
+ *  (`/tournaments/{id}/encounters`) for the selected event only. */
+export interface UserTournamentEntry extends UserTournament {
+  division_grid_version: DivisionGridVersion | null;
+  encounters: EncounterWithUserStats[];
 }
 
 /** A player's career in one read, shaped for the draft room's player card. */
@@ -209,15 +284,15 @@ export interface UserDraftCard {
   mvp_maps: number | null;
   best_placement: number | null;
   avg_placement: number | null;
-  roles: { role: "tank" | "damage" | "support"; maps: number; maps_won: number }[];
-  /** Every hero played, most maps first. */
-  heroes: { hero: Hero; role: "tank" | "damage" | "support"; maps: number; maps_won: number }[];
+  roles: { role: RoleRef | null; maps: number; maps_won: number }[];
+  /** Every character played, most maps first. */
+  characters?: { character: CatalogEntityRead; maps: number; maps_won: number }[];
   /** Newest first, at most five. */
   recent_tournaments: {
     id: number;
     name: string;
     date: string | null;
-    role: "tank" | "damage" | "support" | null;
+    role: RoleRef | null;
     rank: number | null;
     placement: number | null;
     teams_count: number | null;
@@ -233,27 +308,29 @@ export interface UserProfile {
   avg_placement: number | null;
   avg_playoff_placement: number | null;
   avg_group_placement: number | null;
-  most_played_hero: Hero;
-  heroes_count?: number;
+  most_played_character: CatalogEntityRead | null;
+  characters_count: number;
 
   roles: UserRole[];
-  hero_statistics: HeroPlaytime[];
+  character_statistics: CharacterPlaytime[];
   tournaments: UserTournamentSummary[];
+  /** Without a game: one summary per game played, most tournaments first. Empty under a game. */
+  games: UserGameSummary[];
 }
 
 export interface UserMapRead {
-  map: MapRead;
+  map: CatalogEntityRead;
   count: number;
   win: number;
   loss: number;
   draw: number;
   win_rate: number;
-  heroes?: HeroPlaytime[];
-  hero_stats?: UserMapHeroStats[] | null;
+  characters?: CharacterPlaytime[];
+  character_stats?: UserMapCharacterStats[] | null;
 }
 
-export interface UserMapHeroStats {
-  hero: Hero;
+export interface UserMapCharacterStats {
+  character: CatalogEntityRead;
   games: number;
   win: number;
   loss: number;
@@ -264,7 +341,7 @@ export interface UserMapHeroStats {
 }
 
 interface UserMapHighlight {
-  map: MapRead;
+  map: CatalogEntityRead;
   count: number;
   win: number;
   loss: number;
@@ -293,7 +370,7 @@ export interface UserBestTeammate {
   tournaments: number;
   maps: number;
   winrate: number;
-  stats: Record<LogStatsName, number>;
+  stats: Record<string, number | null>;
 }
 
 interface UserOpponentStat {
@@ -334,23 +411,20 @@ export interface MinimizedUser {
   name: string;
 }
 
-/** The canonical player role — re-exported from `@/lib/roster/player-role` (single source of truth). */
-export type UserRoleType = PlayerRoleOption;
-
 export interface UserOverviewRoleDivision {
-  role: UserRoleType;
-  division: number;
+  role: RoleRef | null;
+  /** `null` in the all-workspaces read of a game without a native ladder: no division to show. */
+  division: number | null;
   /**
-   * The grid version `division` belongs to — the workspace's target grid in
-   * workspace scope, the tournament's own effective grid in all-workspaces
-   * scope (where ranks are never normalized across grids). Resolve it against
-   * the response's `division_grids`.
+   * The grid version `division` belongs to (the workspace's target grid in workspace scope); resolve it against
+   * the response's `division_grids`. `null` in the all-workspaces read: `division` is then a number on the game's
+   * native ladder (`metadata.native_ladder`), each tournament's own tier mapped onto it.
    */
   division_grid_version_id: number | null;
 }
 
-export interface UserOverviewHero {
-  hero: Hero;
+interface UserOverviewCharacter {
+  character: CatalogEntityRead;
   playtime_seconds: number;
 }
 
@@ -366,8 +440,11 @@ interface UserOverviewBase {
   id: number;
   name: string;
   avatar_url: string | null;
+  /** The games the player played, installed order; listed whether or not the read names a game. */
+  disciplines: string[];
+  /** Game-bound: empty in the all-games read. */
   roles: UserOverviewRoleDivision[];
-  top_heroes: UserOverviewHero[];
+  top_characters: UserOverviewCharacter[];
   tournaments_count: number;
   achievements_count: number;
   maps_won: number;
@@ -383,7 +460,7 @@ export interface UserOverviewRow extends UserOverviewBase {
   averages: UserOverviewAverages;
 }
 
-export interface UserOverviewDivisionCount {
+interface UserOverviewDivisionCount {
   division: number;
   count: number;
 }
@@ -396,14 +473,13 @@ export interface UserOverviewStats {
   median_tournaments_per_player: number;
   active_last_30d: number;
   active_last_30d_pct: number;
-  tank_count: number;
-  damage_count: number;
-  support_count: number;
+  /** Distinct players per role code of the game's rated dimension (codes nobody played are absent). */
+  role_counts: Record<string, number>;
   /** "Plays anything": multi-role or explicit flex — wider than the chip below. */
   flex_count: number;
-  /** Users the `role=Flex` chip itself matches, under the other filters. */
+  /** Users the open-slot (`role=flex`) chip itself matches, under the other filters. */
   flex_declared_count: number;
-  /** Per division, ignoring the `divisions` filter so the facet stays usable. */
+  /** Per division, ignoring the `divisions` filter so the facet stays usable; native-ladder numbers across workspaces. */
   division_counts: UserOverviewDivisionCount[];
 }
 
@@ -421,11 +497,11 @@ export interface UserCatalogResponse {
   letters: UserCatalogLetter[];
   total: number;
   available_letters: string[];
-  /** Every grid version referenced by a role in this response, once. */
+  /** Every grid version referenced by a role in this response, once; empty in the all-workspaces read. */
   division_grids: DivisionGridVersion[];
 }
 
-/** The users index page, plus the grid versions its role divisions point at. */
+/** The users index page, plus the grid versions its role divisions point at (none in the all-workspaces read). */
 export interface UserOverviewResponse extends PaginatedResponse<UserOverviewRow> {
   division_grids: DivisionGridVersion[];
 }
@@ -441,7 +517,7 @@ interface UserCompareBaselineInfo {
   mode: UserCompareBaselineMode;
   sample_size: number;
   target_user: UserCompareUser | null;
-  role: UserRoleType | null;
+  role: RoleRef | null;
   div_min: number | null;
   div_max: number | null;
 }
@@ -467,8 +543,8 @@ export interface UserCompareResponse {
   metrics: UserCompareMetric[];
 }
 
-interface UserHeroCompareMetric {
-  stat: LogStatsName;
+interface UserCharacterCompareMetric {
+  stat: string;
   left_value: number;
   right_value: number;
   delta: number;
@@ -477,14 +553,14 @@ interface UserHeroCompareMetric {
   higher_is_better: boolean;
 }
 
-export interface UserHeroCompareResponse {
+export interface UserCharacterCompareResponse {
   subject: UserCompareUser;
   target: UserCompareUser | null;
   baseline: UserCompareBaselineInfo;
-  subject_hero: Hero | null;
-  target_hero: Hero | null;
-  map: MapRead | null;
+  subject_character: CatalogEntityRead | null;
+  target_character: CatalogEntityRead | null;
+  map: CatalogEntityRead | null;
   left_playtime_seconds: number;
   right_playtime_seconds: number;
-  metrics: UserHeroCompareMetric[];
+  metrics: UserCharacterCompareMetric[];
 }

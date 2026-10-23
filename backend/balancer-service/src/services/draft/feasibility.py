@@ -17,13 +17,14 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import HERO_TYPE_CLASSES, DraftAutopickStrategy, DraftPlayerStatus, DraftStatus, HeroClass
+from shared.core.enums import DraftAutopickStrategy, DraftPlayerStatus, DraftStatus
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import DISCIPLINES
 from shared.domain.roster_shape import RosterShape
-from shared.models.balancer.draft import DraftPick, DraftSession
-from shared.repository.balance import BalancerTournamentConfigRepository
+from shared.models.draft import DraftPick, DraftSession
 from shared.repository.draft import DraftPickRepository, DraftPlayerRepository, DraftTeamRepository
-from shared.services.roster_shape_access import get_effective_roster_shape
+from src.domain.balancer.config.defaults import AlgorithmConfig, apply_config_overrides, default_role_settings
+from src.domain.balancer.config.public_contract import normalize_config_payload
 from src.domain.draft import fit as sug
 from src.domain.draft import rules
 from src.domain.draft.entities import (
@@ -40,8 +41,6 @@ from src.domain.draft.feasibility import (
     build_feasibility_state,
     evaluate_pick_options,
 )
-from src.services.balancer.config.defaults import AlgorithmConfig, apply_config_overrides
-from src.services.balancer.config.public_contract import normalize_config_payload
 from src.services.draft import loaders
 from src.services.draft import realtime as draft_rt
 from src.services.draft.rosters import DraftRosterService, draft_rosters
@@ -92,13 +91,11 @@ class DraftFeasibilityService:
         teams_repo: DraftTeamRepository = DraftTeamRepository(),
         players_repo: DraftPlayerRepository = DraftPlayerRepository(),
         picks_repo: DraftPickRepository = DraftPickRepository(),
-        tournament_configs: BalancerTournamentConfigRepository = BalancerTournamentConfigRepository(),
         rosters: DraftRosterService = draft_rosters,
     ) -> None:
         self.teams_repo = teams_repo
         self.players_repo = players_repo
         self.picks_repo = picks_repo
-        self.tournament_configs = tournament_configs
         self.rosters = rosters
 
     async def load_snapshot(self, session: AsyncSession, draft_session: DraftSession) -> DraftSnapshot:
@@ -118,35 +115,29 @@ class DraftFeasibilityService:
         )
 
     async def resolve_shape(self, session: AsyncSession, draft_session: DraftSession) -> RosterShape:
-        """The roster shape this draft's teams must fill.
-
-        The single place that knows which ids a draft resolves its shape from, so
-        callers never re-derive the tournament/workspace precedence. Both levels are
-        cache-backed, so calling this per request step is cheap.
-        """
-        return await get_effective_roster_shape(
-            session,
-            tournament_id=draft_session.tournament_id,
-            workspace_id=draft_session.workspace_id,
-        )
+        """The roster shape this draft's teams must fill. The single place callers ask; ``loaders.shape`` knows the
+        owner."""
+        return await loaders.shape(session, draft_session)
 
     async def resolve_role_impact(
         self,
         session: AsyncSession,
         draft_session: DraftSession,
-    ) -> dict[HeroClass, float]:
-        """Base per-role impact for this draft: defaults <- the tournament's stored config.
+    ) -> dict[str, float]:
+        """Base per-role impact for this draft: defaults <- the owner's stored knobs (``loaders.role_overrides``).
 
         Read live on every call rather than captured at session start, so the
         operator moving a role's weight in the balancer drawer moves what the
         draft's autopick, /suggestions and /fit consider a good fit too.
         """
-        stored = await self.tournament_configs.get_by_tournament(session, draft_session.tournament_id)
         config = apply_config_overrides(
-            AlgorithmConfig(),
-            normalize_config_payload(stored.config_json if stored is not None else None),
+            AlgorithmConfig(role_settings=default_role_settings(draft_session.discipline)),
+            normalize_config_payload(await loaders.role_overrides(session, draft_session)),
         )
-        return {role: config.role_settings[role.slot_code].impact for role in HERO_TYPE_CLASSES}
+        return {
+            role.code: config.role_settings[role.code].impact if role.code in config.role_settings else 1.0
+            for role in DISCIPLINES[draft_session.discipline].rated_dimension.roles
+        }
 
     async def state_from_snapshot(
         self,
@@ -170,18 +161,16 @@ class DraftFeasibilityService:
         """``load_snapshot`` shared by every read of the same board state in this process.
 
         Fit and the pick queue are asked per team, and every captain and admin
-        re-asks on every draft event: ~50 full snapshot loads per event, each
-        re-resolving every registration, saturated three workers (2026-09-30).
-        The players, picks and rosters are one answer for all of them, keyed
-        like the board. Teams are re-read per call because a captain's private
-        ``pick_queue`` changes without an event.
+        re-asks on every draft event, so the players, picks and rosters are one
+        answer for all of them, keyed like the board. Teams are re-read per call
+        because a captain's private ``pick_queue`` changes without an event.
 
         READ PATHS ONLY. The rows are detached from the session that loaded them
         and shared by concurrent readers: nothing may mutate them, and a write
         that resolves after mutating must see its own change, which a shared
         snapshot of the prior state would hide.
         """
-        event_id = await draft_rt.last_event_id(session, draft_session.tournament_id)
+        event_id = await draft_rt.last_event_id(session, draft_session.id)
         key = f"{draft_session.id}:{draft_session.version}:{event_id or 0}"
         now = time.monotonic()
         for stale in [k for k, (at, _) in _read_snapshots.items() if now - at > _READ_SNAPSHOT_TTL_SECONDS]:
@@ -274,12 +263,13 @@ class DraftFeasibilityService:
         if current is None:
             raise HTTPException(status_code=409, detail="Draft has no current pick")
         snapshot = await self.load_snapshot(session, draft_session)
-        available = [p for p in snapshot.players if p.status == "available"]
+        available = [p for p in snapshot.players if p.status == DraftPlayerStatus.AVAILABLE.value]
         shape = await self.resolve_shape(session, draft_session)
         counts = rules.team_slot_counts(
             snapshot.players, snapshot.picks, current.draft_team_id, shape, snapshot.rosters
         )
-        capacity = rules.role_openings(shape, counts)
+        impact = await self.resolve_role_impact(session, draft_session)
+        capacity = rules.role_openings(shape, counts, impact)
         # Same construction as autopick's, from the same snapshot rosters, so
         # a suggestion and the autopick that follows it cannot disagree.
         fit_players = sug.fit_players(available, snapshot.rosters)
@@ -293,7 +283,7 @@ class DraftFeasibilityService:
         ranked = sug.rank_suggestions(
             fit_players,
             capacity,
-            rules.team_fit_config(shape, counts, await self.resolve_role_impact(session, draft_session)),
+            rules.team_fit_config(shape, counts, impact),
             strategy=DraftAutopickStrategy(draft_session.autopick_strategy),
             limit=5,
             allowed_options=safe_options,
@@ -320,7 +310,8 @@ class DraftFeasibilityService:
         snapshot = await self.load_read_snapshot(session, draft_session)
         shape = await self.resolve_shape(session, draft_session)
         counts = rules.team_slot_counts(snapshot.players, snapshot.picks, team_id, shape, snapshot.rosters)
-        capacity = rules.role_openings(shape, counts)
+        impact = await self.resolve_role_impact(session, draft_session)
+        capacity = rules.role_openings(shape, counts, impact)
         if not any(opening > 0 for opening in capacity.values()):
             return []  # this team's roster is full
         available = [p for p in snapshot.players if p.status == DraftPlayerStatus.AVAILABLE.value]
@@ -328,7 +319,7 @@ class DraftFeasibilityService:
         results = sug.candidates(
             players,
             capacity,
-            rules.team_fit_config(shape, counts, await self.resolve_role_impact(session, draft_session)),
+            rules.team_fit_config(shape, counts, impact),
             DraftAutopickStrategy(draft_session.autopick_strategy),
         )
         by_id = {player.player_id: player for player in players}

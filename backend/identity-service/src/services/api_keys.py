@@ -10,30 +10,38 @@ from __future__ import annotations
 
 import hmac
 import secrets
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from loguru import logger
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared import quota
+from shared import models, quota
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.pagination import paginated_dict
-from shared.models import QuotaApiKeyLimit
 from shared.quota import admin as quota_admin
 from shared.rbac import SCOPE_PAIRS, normalize_scopes, scope_pairs, unknown_scopes
-from shared.repository import ApiKeyRepository, RoleRepository, WorkspaceMemberRepository, WorkspaceRepository
+from shared.repository import (
+    ApiKeyRepository,
+    QuotaApiKeyLimitRepository,
+    RoleRepository,
+    WorkspaceMemberRepository,
+    WorkspaceRepository,
+)
 from shared.rpc.identity import rehydrate_user
 from shared.schemas.quota import QuotaLimitsPayload, QuotaScopePolicy, QuotaUsageRead
-from shared.services.audit import record_audit
-from src import models, schemas
+from src import schemas
 from src.core import key_derivation
 from src.core.config import settings
+from src.services.audit import record_operator_audit
 from src.services.token_payload import TokenPayloadBuilder, token_payloads
 
 __all__ = ("ApiKeyService", "api_keys")
+
+# ``last_used_at`` is display-grade: every keyed request validates its key, so
+# writing it on each validation would turn the gateway's hot path into a write path.
+_LAST_USED_RESOLUTION = timedelta(seconds=60)
 
 
 def _now() -> datetime:
@@ -67,6 +75,7 @@ class ApiKeyService:
         workspaces: WorkspaceRepository = WorkspaceRepository(),
         members: WorkspaceMemberRepository = WorkspaceMemberRepository(),
         roles: RoleRepository = RoleRepository(),
+        quota_limits: QuotaApiKeyLimitRepository = QuotaApiKeyLimitRepository(),
         payloads: TokenPayloadBuilder = token_payloads,
         config: Any = settings,
     ) -> None:
@@ -74,6 +83,7 @@ class ApiKeyService:
         self.workspaces = workspaces
         self.members = members
         self.roles = roles
+        self.quota_limits = quota_limits
         self.payloads = payloads
         self.config = config
         # Domain-separated subkey for hashing API-key secrets (never the raw JWT secret).
@@ -99,10 +109,10 @@ class ApiKeyService:
         legacy = key_derivation.legacy_hmac_sha256_hex(self.config.JWT_SECRET_KEY, secret)
         return hmac.compare_digest(stored_hash, legacy)
 
-    @staticmethod
-    def _split_key(raw_key: str) -> tuple[str, str] | None:
+    @classmethod
+    def _split_key(cls, raw_key: str) -> tuple[str, str] | None:
         parts = raw_key.split("_")
-        if len(parts) != 4 or parts[1] != "sk" or parts[0] not in ("owt", "aqt"):
+        if len(parts) != 4 or f"{parts[0]}_{parts[1]}" not in (cls.PREFIX, *cls._LEGACY_PREFIXES):
             return None
         public_id = parts[2].strip()
         secret = parts[3].strip()
@@ -169,9 +179,7 @@ class ApiKeyService:
         member = await self.members.get_member(session, workspace_id=workspace_id, auth_user_id=user.id)
         if member is None:
             return False
-        # No legacy role-name shortcut here: it bypassed RBAC entirely, so a
-        # workspace role narrowed to exclude ``team.create`` would still have
-        # passed on the strength of its name alone. Owner is covered below by the
+        # Decided by RBAC alone, never by role name: the owner is covered by the
         # wildcard ``*``/``*`` grant behind ``admin.*``.
         workspace_rbac = await self.roles.workspace_rbac_for_user(session, user.id, [workspace_id])
         _, permissions = workspace_rbac.get(workspace_id, ([], []))
@@ -357,12 +365,10 @@ class ApiKeyService:
         await self.keys.create(session, row)
         # Never the secret, its hash, or the public id: an API key is identified in
         # the journal by its row id and human name, and by nothing that authenticates.
-        await record_audit(
+        await record_operator_audit(
             session,
+            user,
             action="api_key.create",
-            source="admin",
-            actor=user,
-            actor_label=user.username or user.email,
             workspace_id=row.workspace_id,
             entity_type="api_key",
             entity_id=row.id,
@@ -396,12 +402,10 @@ class ApiKeyService:
         await self.ensure_can_manage(session, user=user, workspace_id=row.workspace_id)
         before_name = row.name
         row.name = self._clean_name(payload.name)
-        await record_audit(
+        await record_operator_audit(
             session,
+            user,
             action="api_key.update",
-            source="admin",
-            actor=user,
-            actor_label=user.username or user.email,
             workspace_id=row.workspace_id,
             entity_type="api_key",
             entity_id=row.id,
@@ -432,12 +436,10 @@ class ApiKeyService:
             row.revoked_at = _now()
             # Inside the branch: revoking an already-revoked key changes nothing and
             # must not add a second "revoked" row to the journal.
-            await record_audit(
+            await record_operator_audit(
                 session,
+                user,
                 action="api_key.revoke",
-                source="admin",
-                actor=user,
-                actor_label=user.username or user.email,
                 workspace_id=row.workspace_id,
                 entity_type="api_key",
                 entity_id=row.id,
@@ -470,12 +472,9 @@ class ApiKeyService:
         await self.ensure_can_manage(session, user=user, workspace_id=row.workspace_id)
         return row
 
-    @staticmethod
-    async def _quota_override(session: AsyncSession, api_key_id: int) -> dict[str, int | None]:
+    async def _quota_override(self, session: AsyncSession, api_key_id: int) -> dict[str, int | None]:
         """The override row as a flat dimension map, all-``None`` when absent."""
-        row = (
-            await session.execute(select(QuotaApiKeyLimit).where(QuotaApiKeyLimit.api_key_id == api_key_id))
-        ).scalar_one_or_none()
+        row = await self.quota_limits.get_for(session, api_key_id=api_key_id)
         return {name: (getattr(row, name) if row is not None else None) for name in quota_admin.DIMENSIONS}
 
     async def _quota_usage(self, session: AsyncSession, row: models.ApiKey) -> QuotaUsageRead:
@@ -527,12 +526,10 @@ class ApiKeyService:
             # capacity.
             allow_raise=user.is_superuser,
         )
-        await record_audit(
+        await record_operator_audit(
             session,
+            user,
             action="api_key.quota_update",
-            source="admin",
-            actor=user,
-            actor_label=user.username or user.email,
             workspace_id=row.workspace_id,
             entity_type="api_key",
             entity_id=row.id,
@@ -618,8 +615,10 @@ class ApiKeyService:
             if owner.has_workspace_permission(api_key.workspace_id, resource, action)
         ]
 
-        api_key.last_used_at = _now()
-        await session.commit()
+        now = _now()
+        if api_key.last_used_at is None or now - api_key.last_used_at >= _LAST_USED_RESOLUTION:
+            api_key.last_used_at = now
+            await session.commit()
 
         return schemas.TokenPayload(
             sub=api_key.user.id,
@@ -635,9 +634,8 @@ class ApiKeyService:
             # Global permissions stay empty by construction: the key is scoped to
             # one workspace, and a global grant would reach every other one.
             permissions=[],
-            # The deny overlay rides along. A deny outranks every allow, so
-            # omitting it -- as this used to -- let a key do precisely what its
-            # owner had been explicitly forbidden.
+            # The deny overlay rides along: a deny outranks every allow, so
+            # without it a key could do precisely what its owner is forbidden.
             denies=owner_payload.denies,
             workspaces=[
                 schemas.WorkspaceMembership(

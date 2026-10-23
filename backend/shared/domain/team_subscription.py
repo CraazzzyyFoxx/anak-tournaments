@@ -1,9 +1,9 @@
 """Team-scoped subscription coverage.
 
-When ``BalancerRegistrationForm.subscription_scope`` is ``team``, the
+When ``RegistrationForm.subscription_scope`` is ``team``, the
 workspace rule still decides *what* counts, but *who* is covered is the
 registered team rather than each player. Coverage is a stamp on
-``balancer.registration_team`` (who redeemed, which provider, which tier, when
+``registration.team`` (who redeemed, which provider, which tier, when
 it expires). Validity follows that stored expiry — it does not re-query the
 redeemer's personal entitlement on every gate. Captaincy transfer therefore
 cannot drop a paid roster on the floor.

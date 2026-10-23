@@ -6,10 +6,10 @@
 //     fail on submit;
 //  2. `?role=` is the filter's only store: it is read on mount and written by
 //     the chip, so a shared link lands on the same narrowed list;
-//  3. one role change end to end — the cell keeps its inline editor (the one
-//     deliberate exception to "details go in a dialog"), and picking a role
-//     PATCHes the member's whole role set;
-//  4. Add member grants exactly one role — the backend stores a single role.
+//  3. roles are one set end to end — the cell keeps its inline editor (the one
+//     deliberate exception to "details go in a dialog"), and each click grants
+//     or revokes one role while PATCHing the member's whole role set;
+//  4. Add member grants exactly the one role picked.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -28,6 +28,7 @@ const listRolesAll = vi.fn();
 const updateMemberRole = vi.fn();
 const removeMember = vi.fn();
 const addMember = vi.fn();
+const listUsers = vi.fn();
 
 let permitted = true;
 
@@ -57,7 +58,7 @@ vi.mock("@/stores/workspace.store", () => ({
 vi.mock("@/services/rbac.service", () => ({
   rbacService: {
     listRolesAll: (...args: unknown[]) => listRolesAll(...args),
-    listUsersAll: () => Promise.resolve([{ id: 7, username: "nova" }])
+    listUsers: (...args: unknown[]) => listUsers(...args)
   }
 }));
 vi.mock("@/services/workspace.service", () => ({
@@ -73,8 +74,8 @@ vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() }
 }));
 
-// `caster` is deliberately custom: the chip lists every scoped role, not the
-// five system names the row editor offers.
+// `caster` is deliberately custom: it must read as custom wherever roles are
+// listed, so it can never pass for a system role.
 const ROLES = [
   { id: 3, name: "admin", is_system: true, description: null },
   { id: 4, name: "player", is_system: true, description: null },
@@ -148,6 +149,17 @@ function commandItem(label: string) {
   );
 }
 
+/** Types into the open picker's search box, then waits out its debounce. */
+async function search(text: string) {
+  const input = document.querySelector<HTMLInputElement>("[cmdk-input]");
+  expect(input).toBeTruthy();
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, text);
+    input!.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await settle(3, 300);
+}
+
 function lastRoleId(): unknown {
   return (getMembers.mock.calls.at(-1)?.[1] as { role_id?: unknown } | undefined)?.role_id;
 }
@@ -169,6 +181,12 @@ beforeEach(() => {
   updateMemberRole.mockReset().mockResolvedValue(undefined);
   removeMember.mockReset().mockResolvedValue(undefined);
   addMember.mockReset().mockResolvedValue(undefined);
+  listUsers.mockReset().mockResolvedValue({
+    results: [{ id: 7, username: "nova", email: "nova@example.test" }],
+    total: 1,
+    page: 1,
+    per_page: 20
+  });
 });
 
 afterEach(async () => {
@@ -186,9 +204,9 @@ describe("admin Members", () => {
     permitted = false;
     const container = await mount();
 
-    expect(container.textContent).toContain("player");
+    expect(container.textContent).toContain("Player · caster · custom");
     expect(
-      container.querySelector('[aria-label="Workspace role for vitorio"]')
+      container.querySelector('[aria-label="Workspace roles for vitorio"]')
     ).toBeNull();
     expect(container.querySelector('[aria-label="Actions for vitorio"]')).toBeNull();
   });
@@ -197,7 +215,7 @@ describe("admin Members", () => {
     const container = await mount();
 
     expect(
-      container.querySelector('[aria-label="Workspace role for vitorio"]')
+      container.querySelector('[aria-label="Workspace roles for vitorio"]')
     ).not.toBeNull();
     expect(container.querySelector('[aria-label="Actions for vitorio"]')).not.toBeNull();
   });
@@ -226,28 +244,33 @@ describe("admin Members", () => {
     expect(lastExcludeRoleIds()).toEqual([9, 3]);
   });
 
-  it("writes ?exclude_role= when the exclude chip is picked", async () => {
+  it("toggles several exclude roles in one open picker", async () => {
     const container = await mount();
 
     await click(container.querySelector('[aria-label="Add filter"]'));
     await click(commandItem("Exclude role"));
     await click(commandItem("caster"));
+    await click(commandItem("Admin"));
 
-    expect(window.location.search).toContain("exclude_role=9");
-    expect(lastExcludeRoleIds()).toEqual([9]);
+    expect(window.location.search).toContain(`exclude_role=${encodeURIComponent("9,3")}`);
+    expect(lastExcludeRoleIds()).toEqual([9, 3]);
+
+    await click(commandItem("caster"));
+
+    expect(lastExcludeRoleIds()).toEqual([3]);
   });
 
-  it("changes a member's system role from the cell, keeping their custom roles", async () => {
+  it("grants and revokes single roles from the cell, keeping the rest", async () => {
     const container = await mount();
 
-    await click(container.querySelector('[aria-label="Workspace role for vitorio"]'));
-    await click(
-      Array.from(document.querySelectorAll('[role="option"]')).find(
-        (option) => option.textContent?.trim() === "Admin"
-      )
-    );
+    await click(container.querySelector('[aria-label="Workspace roles for vitorio"]'));
+    await click(commandItem("Admin"));
 
-    expect(updateMemberRole).toHaveBeenCalledWith(1, 42, [3, 9]);
+    expect(updateMemberRole).toHaveBeenLastCalledWith(1, 42, [4, 9, 3]);
+
+    await click(commandItem("Player"));
+
+    expect(updateMemberRole).toHaveBeenLastCalledWith(1, 42, [9]);
   });
 
   it("adds a member with the one role picked in the dialog", async () => {
@@ -258,6 +281,10 @@ describe("admin Members", () => {
     await click(button("Add member"));
     const dialog = document.querySelector('[role="dialog"]')!;
     await click(button("Select user…", dialog));
+    // The picker searches the server: nothing is listed until two characters are typed.
+    expect(commandItem("nova")).toBeUndefined();
+    await search("no");
+    expect(listUsers).toHaveBeenLastCalledWith(expect.objectContaining({ search: "no", workspace_id: 1 }));
     await click(commandItem("nova"));
     const roleLabel = Array.from(dialog.querySelectorAll("label")).find(
       (label) => label.textContent === "Role"

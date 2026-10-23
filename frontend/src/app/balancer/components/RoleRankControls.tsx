@@ -1,16 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useTranslations } from "next-intl";
 
 import DivisionIcon from "@/components/DivisionIcon";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { NumberInput } from "@/components/ui/number-input";
-import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { Slider } from "@/components/ui/slider";
+import { tint } from "@/lib/colors";
 import {
   getDivisionLabel,
   resolveDivisionFromRank,
   resolveRankFromDivision,
-  sortTiersAscending,
+  sortTiersAscending
 } from "@/lib/divisions/grid";
+import { roleColor, type RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { DivisionGrid } from "@/types/workspace.types";
 
@@ -18,44 +24,52 @@ import type { DivisionGrid } from "@/types/workspace.types";
  * Role tinting for a rank card. Shared rather than per-sheet because the
  * tournament sheet and the mix sheet edit the same thing and had already
  * drifted into two different colour vocabularies for it.
+ *
+ * The tint is the role's own presentation colour from the owner game's ontology (`roleRankAccent`); a role
+ * without one, or a rank that belongs to no single role, reads neutral. Nothing here knows a game's roles.
  */
 export interface RoleRankAccent {
-  /** Card frame for the active state. */
-  row: string;
-  text: string;
-  chip: string;
-  /** `accent-color` plus the slider's gradient stop, so it lands in `style`. */
-  sliderColor: string;
+  /** A CSS colour, or `null` for the neutral tone. */
+  color: string | null;
 }
 
-export const ROLE_RANK_ACCENTS: Record<string, RoleRankAccent> = {
-  tank: {
-    row: "border-sky-400/40 bg-sky-500/[0.07] shadow-[0_0_0_1px_rgba(56,189,248,0.08)]",
-    text: "text-sky-200",
-    chip: "border-sky-300/30 bg-sky-500/12 text-sky-200",
-    sliderColor: "var(--aqt-tank)",
-  },
-  damage: {
-    row: "border-orange-400/40 bg-orange-500/[0.07] shadow-[0_0_0_1px_rgba(251,146,60,0.08)]",
-    text: "text-orange-200",
-    chip: "border-orange-300/30 bg-orange-500/12 text-orange-200",
-    sliderColor: "var(--aqt-damage)",
-  },
-  support: {
-    row: "border-emerald-400/40 bg-emerald-500/[0.07] shadow-[0_0_0_1px_rgba(52,211,153,0.08)]",
-    text: "text-emerald-200",
-    chip: "border-emerald-300/30 bg-emerald-500/12 text-emerald-200",
-    sliderColor: "var(--aqt-support)",
-  },
-};
+export function roleRankAccent(ontology: RoleOntology | null | undefined, code: string): RoleRankAccent {
+  return { color: roleColor(ontology, code) };
+}
 
-/** For a rank that belongs to no single role — a whole-player override, say. */
-export const NEUTRAL_RANK_ACCENT: RoleRankAccent = {
-  row: "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)]",
-  text: "text-[color:var(--aqt-fg-muted)]",
-  chip: "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] text-[color:var(--aqt-fg-muted)]",
-  sliderColor: "var(--aqt-teal)",
-};
+/** Card frame for the active state. */
+export function accentRowStyle({ color }: RoleRankAccent): CSSProperties {
+  return color
+    ? {
+        borderColor: tint(color, 40),
+        backgroundColor: tint(color, 7),
+        boxShadow: `0 0 0 1px ${tint(color, 8)}`
+      }
+    : { borderColor: "var(--aqt-border-2)", backgroundColor: "var(--aqt-overlay-2)" };
+}
+
+export function accentTextStyle({ color }: RoleRankAccent): CSSProperties {
+  return { color: color ?? "var(--aqt-fg-muted)" };
+}
+
+/** A role-tinted label chip (a rank's source, "First", a sub-role): the role's colour, neutral without one. */
+export function AccentBadge({
+  accent,
+  className,
+  children
+}: Readonly<{ accent: RoleRankAccent; className?: string; children: ReactNode }>) {
+  return (
+    <Badge
+      palette="aqt"
+      tone={accent.color ? undefined : "neutral"}
+      size="sm"
+      className={className}
+      style={accent.color ? ({ "--badge-hue": accent.color } as CSSProperties) : undefined}
+    >
+      {children}
+    </Badge>
+  );
+}
 
 /** Long enough that a slider drag or a four-digit number is one write, not twenty. */
 const RANK_WRITE_DELAY_MS = 400;
@@ -97,11 +111,11 @@ export function useDebouncedRank(committed: number | null, commit: (rank: number
       clearTimeout(timer.current);
       setDraft(rank);
       commit(rank);
-    },
+    }
   };
 }
 
-function gridBounds(grid: DivisionGrid): { min: number; max: number } {
+function gridBounds(grid: DivisionGrid): { min: number; max: number | undefined } {
   if (!grid.tiers.length) {
     return { min: 0, max: 5000 };
   }
@@ -109,13 +123,13 @@ function gridBounds(grid: DivisionGrid): { min: number; max: number } {
   const mins = grid.tiers.map((tier) => tier.rank_min);
   const maxes = grid.tiers
     .map((tier) => tier.rank_max)
-    .filter((value): value is number => value !== null);
+    .filter((value): value is number => value != null);
 
-  return { min: Math.min(...mins), max: Math.max(...maxes, ...mins) };
+  return {
+    min: Math.min(...mins),
+    max: grid.tiers.some((tier) => tier.rank_max == null) ? undefined : Math.max(...maxes, ...mins)
+  };
 }
-
-const LABEL_CLASS =
-  "text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]";
 
 type RoleRankControlsProps = {
   /** The rank these controls read and write; `null` renders as unset. */
@@ -129,15 +143,8 @@ type RoleRankControlsProps = {
   /** Only rendered when there is something to clear. */
   onClear?: (() => void) | null;
   onChange: (rankValue: number | null, divisionNumber: number | null) => void;
-  /**
-   * The grid these controls label and slide against. Omitted = the workspace
-   * grid, which is right for the tournament and workspace sheets.
-   *
-   * A mix MUST pass `OW_REFERENCE_GRID`: balancer-service resolves a mix's
-   * ranks against the global, OW-synced grid (`workspace_id=None`), so reading
-   * them through a workspace's tiers renames the same number.
-   */
-  grid?: DivisionGrid;
+  /** The owner game's grid these controls label and slide against. */
+  grid: DivisionGrid;
 };
 
 /**
@@ -150,8 +157,7 @@ type RoleRankControlsProps = {
  * edit "what rank does this player have on this role", and two copies of that
  * had already produced two different ways to clear it.
  *
- * The grid defaults to the workspace's rather than being required of every
- * caller; only the mix surfaces, which live on the global OW grid, pass one.
+ * The owner passes its resolved grid; there is no workspace-default fallback.
  */
 export function RoleRankControls({
   rankValue,
@@ -161,10 +167,11 @@ export function RoleRankControls({
   disabled = false,
   onClear,
   onChange,
-  grid: gridOverride,
+  grid
 }: Readonly<RoleRankControlsProps>) {
-  const workspaceGrid = useDivisionGrid();
-  const grid = gridOverride ?? workspaceGrid;
+  const t = useTranslations("balancerTool.playerEdit.rank");
+  const tCommon = useTranslations("common");
+  const sliderColor = accent.color ?? "var(--aqt-teal)";
   const bounds = useMemo(() => gridBounds(grid), [grid]);
   const tiers = useMemo(() => sortTiersAscending(grid), [grid]);
 
@@ -172,50 +179,44 @@ export function RoleRankControls({
   const divisionName = getDivisionLabel(grid, divisionNumber);
   const sliderIndex = Math.max(
     tiers.findIndex((tier) => tier.number === divisionNumber),
-    0,
+    0
   );
-  const fillPercent = tiers.length <= 1 ? 100 : (sliderIndex / (tiers.length - 1)) * 100;
 
   return (
     <>
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-2">
-          <span className={LABEL_CLASS}>Skill rating</span>
+          <Eyebrow tone="dim">{t("skillRating")}</Eyebrow>
           {rankValue == null ? (
-            <span className="text-label text-[color:var(--aqt-fg-dim)]">No rank</span>
+            <span className="text-label text-[color:var(--aqt-fg-dim)]">{t("noRank")}</span>
           ) : (
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1 text-label">
               <span
-                className={cn(
-                  "flex items-center gap-1 text-label font-semibold",
-                  active ? accent.text : "text-[color:var(--aqt-fg-dim)]",
-                )}
+                className="flex items-center gap-1 font-semibold"
+                style={active ? accentTextStyle(accent) : { color: "var(--aqt-fg-dim)" }}
               >
                 {rankValue}
                 {sourceLabel ? (
-                  <span
-                    className={cn(
-                      "inline-flex h-4 items-center rounded-md border px-1.5 text-label uppercase",
-                      accent.chip,
-                    )}
-                  >
+                  <AccentBadge accent={accent} className="uppercase">
                     {sourceLabel}
-                  </span>
+                  </AccentBadge>
                 ) : null}
               </span>
               {/* Emptying the number field also clears, but nothing said so: the
                   slider under it reads as a required value, and the only visible
                   way out was deleting the whole role. */}
               {onClear ? (
-                <button
+                <Button
                   type="button"
+                  variant="ghost-destructive"
+                  size="inline"
                   disabled={disabled}
                   onClick={onClear}
-                  title="Clear this role's rank"
-                  className="rounded px-1 text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)] transition-colors hover:text-rose-200 disabled:opacity-50"
+                  title={t("clearHint")}
+                  className="px-1 uppercase tracking-label"
                 >
-                  Clear
-                </button>
+                  {t("clear")}
+                </Button>
               ) : null}
             </span>
           )}
@@ -225,55 +226,53 @@ export function RoleRankControls({
           min={bounds.min}
           max={bounds.max}
           disabled={disabled}
+          size="sm"
           className={cn(
-            "h-7 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 text-xs text-[color:var(--aqt-fg)] shadow-none focus-visible:ring-1 focus-visible:ring-primary/40",
-            !active && "text-[color:var(--aqt-fg-dim)]",
+            "h-7 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 text-[color:var(--aqt-fg)] shadow-none focus-visible:ring-1 focus-visible:ring-primary/40",
+            !active && "text-[color:var(--aqt-fg-dim)]"
           )}
           value={rankValue}
           onValueChange={(next) => onChange(next, resolveDivisionFromRank(grid, next))}
         />
-        <input
-          type="range"
+        <Slider
+          accent={sliderColor}
           min={0}
           max={Math.max(tiers.length - 1, 0)}
           step={1}
           disabled={disabled || !active}
-          value={sliderIndex}
-          onChange={(event) => {
-            const nextDivision = tiers[Number(event.target.value)]?.number ?? null;
+          value={[sliderIndex]}
+          onValueChange={([index]) => {
+            const nextDivision = tiers[index]?.number ?? null;
             onChange(resolveRankFromDivision(grid, nextDivision), nextDivision);
-          }}
-          className={cn(
-            "h-1 w-full cursor-pointer appearance-none rounded-full bg-[color:var(--aqt-overlay-3)]",
-            (disabled || !active) && "cursor-not-allowed opacity-50",
-          )}
-          style={{
-            accentColor: accent.sliderColor,
-            background: `linear-gradient(90deg, ${accent.sliderColor} 0%, ${accent.sliderColor} ${fillPercent}%, rgba(255,255,255,0.08) ${fillPercent}%, rgba(255,255,255,0.08) 100%)`,
           }}
         />
       </div>
 
       <div className="space-y-1">
-        <span className={LABEL_CLASS}>Rank</span>
+        <Eyebrow tone="dim">{t("rank")}</Eyebrow>
         <div
           className={cn(
             "flex min-h-[36px] items-center gap-1.5 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 py-1",
-            !active && "text-[color:var(--aqt-fg-dim)]",
+            !active && "text-[color:var(--aqt-fg-dim)]"
           )}
           title={divisionName ?? undefined}
         >
           {divisionNumber != null ? (
             <>
-              <DivisionIcon division={divisionNumber} tournamentGrid={grid} width={20} height={20} />
+              <DivisionIcon
+                division={divisionNumber}
+                tournamentGrid={grid}
+                width={20}
+                height={20}
+              />
               <div className="min-w-0">
                 <div className="truncate text-label font-medium text-[color:var(--aqt-fg-muted)]">
-                  {divisionName ?? `Division ${divisionNumber}`}
+                  {divisionName ?? tCommon("divisionWithId", { id: divisionNumber })}
                 </div>
               </div>
             </>
           ) : (
-            <span className="text-label text-[color:var(--aqt-fg-dim)]">No rank yet</span>
+            <span className="text-label text-[color:var(--aqt-fg-dim)]">{t("noRankYet")}</span>
           )}
         </div>
       </div>

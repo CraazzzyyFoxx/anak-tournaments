@@ -7,16 +7,25 @@ import { TriangleAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import captainService from "@/services/captain.service";
-import type { CaptainReport, MatchReportForm } from "@/types/encounter.types";
+import type {
+  CaptainReport,
+  Encounter,
+  EncounterTeam,
+  MatchReportForm,
+  ReplayCode
+} from "@/types/encounter.types";
+import { duelSeats, type DuelSlot } from "@/lib/encounter/seats";
 import styles from "@/components/match/EncounterDetail.module.css";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 
 interface EncounterCaptainReportsProps {
   encounterId: number;
-  homeTeamId: number | null;
-  awayTeamId: number | null;
-  homeName: string;
-  awayName: string;
+  teams: Encounter["teams"];
+}
+
+/** The score a report gave one seat; null when the report has no line for it. */
+function reportedScore(report: CaptainReport, seat: EncounterTeam | null): number | null {
+  return report.results.find((line) => line.encounter_team_id === seat?.id)?.score ?? null;
 }
 
 /**
@@ -29,10 +38,7 @@ interface EncounterCaptainReportsProps {
  */
 export default function EncounterCaptainReports({
   encounterId,
-  homeTeamId,
-  awayTeamId,
-  homeName,
-  awayName
+  teams
 }: Readonly<EncounterCaptainReportsProps>) {
   const t = useTranslations();
   const reportsQuery = useQuery({
@@ -45,20 +51,18 @@ export default function EncounterCaptainReports({
   const reports = reportsQuery.data?.reports ?? [];
   if (reports.length === 0) return null;
 
+  const [seatOne, seatTwo] = duelSeats(teams);
   const disagree =
     reports.length > 1 &&
     reports.some(
       (report) =>
-        report.home_score !== reports[0].home_score || report.away_score !== reports[0].away_score
+        reportedScore(report, seatOne) !== reportedScore(reports[0], seatOne) ||
+        reportedScore(report, seatTwo) !== reportedScore(reports[0], seatTwo)
     );
 
-  const sideName = (report: CaptainReport): string => {
-    if (report.side === "home") return homeName;
-    if (report.side === "away") return awayName;
-    if (report.team_id === homeTeamId) return homeName;
-    if (report.team_id === awayTeamId) return awayName;
-    return t("common.unknown");
-  };
+  const seatOf = (report: CaptainReport): EncounterTeam | null =>
+    teams.find((seat) => seat.id === report.encounter_team_id) ?? null;
+  const seatNameOf = (report: CaptainReport): string => seatOf(report)?.name ?? t("common.unknown");
 
   return (
     // Own the section: an encounter whose captains never filed anything renders
@@ -82,9 +86,14 @@ export default function EncounterCaptainReports({
             <ReportCard
               key={report.id}
               report={report}
-              teamName={sideName(report)}
-              side={report.side ?? (report.team_id === awayTeamId ? "away" : "home")}
+              teamName={seatNameOf(report)}
+              slot={seatOf(report)?.slot === 2 ? 2 : 1}
+              seatOne={seatOne}
+              seatTwo={seatTwo}
               form={reportsQuery.data?.form}
+              replayCodes={(reportsQuery.data?.replay_codes ?? []).filter(
+                (code) => code.encounter_team_id === report.encounter_team_id
+              )}
             />
           ))}
         </div>
@@ -96,13 +105,20 @@ export default function EncounterCaptainReports({
 function ReportCard({
   report,
   teamName,
-  side,
-  form
+  slot,
+  seatOne,
+  seatTwo,
+  form,
+  replayCodes
 }: Readonly<{
   report: CaptainReport;
   teamName: string;
-  side: "home" | "away";
+  slot: DuelSlot;
+  seatOne: EncounterTeam | null;
+  seatTwo: EncounterTeam | null;
   form?: MatchReportForm;
+  /** This participation's codes by position (`game_team.replay_code`). */
+  replayCodes: ReplayCode[];
 }>) {
   const t = useTranslations();
   const format = useFormatter();
@@ -110,7 +126,7 @@ function ReportCard({
   const customFields = form?.custom_fields ?? [];
 
   return (
-    <div className={cn(styles.card, side === "home" ? styles.sideHome : styles.sideAway)}>
+    <div className={cn(styles.card, slot === 2 ? styles.slotTwo : styles.slotOne)}>
       <div className={styles.rosterHead}>
         <h3 className={styles.rosterName}>{teamName}</h3>
         <span className={styles.cardSub}>
@@ -134,11 +150,11 @@ function ReportCard({
         <div className={styles.reportField}>
           <span className={styles.label}>{t("encounters.detail.reportedScore")}</span>
           <span className={styles.reportScore}>
-            <span className={styles.scoreHome}>{report.home_score}</span>
+            <span className={styles.scoreOne}>{reportedScore(report, seatOne)}</span>
             <span aria-hidden className={styles.scoreSep}>
               :
             </span>
-            <span className={styles.scoreAway}>{report.away_score}</span>
+            <span className={styles.scoreTwo}>{reportedScore(report, seatTwo)}</span>
           </span>
         </div>
 
@@ -151,15 +167,15 @@ function ReportCard({
           </div>
         ) : null}
 
-        {report.map_codes.length > 0 ? (
+        {replayCodes.length > 0 ? (
           <div className={styles.reportField}>
             <span className={styles.label}>{t("encounters.detail.reportedCodes")}</span>
             <span className={styles.reportCodes}>
-              {[...report.map_codes]
-                .sort((a, b) => a.map_index - b.map_index)
-                .map((entry) => (
-                  <span key={entry.id} className={styles.reportCode}>
-                    {t("common.matchLogs.map", { index: entry.map_index + 1 })} · {entry.code}
+              {[...replayCodes]
+                .sort((a, b) => a.position - b.position)
+                .map(({ position, code }) => (
+                  <span key={position} className={styles.reportCode}>
+                    {t("common.matchLogs.map", { index: position })} · {code}
                   </span>
                 ))}
             </span>

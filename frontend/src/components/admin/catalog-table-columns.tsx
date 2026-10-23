@@ -11,12 +11,12 @@
 
 import { ColumnDef } from "@tanstack/react-table";
 
-import { Badge } from "@/components/ui/badge";
+import { columnMeta } from "@/components/data-table";
 
 /**
- * "Aliases" column: a badge with the alias count, or an em-dash when there
- * are none. `getAliases` reads the row's alias array so the column works for
- * any catalogue entity shape.
+ * "Aliases" column: the alias count as plain text, nothing when there are
+ * none. `getAliases` reads the row's alias array so the column works for any
+ * catalogue entity shape.
  */
 export function createAliasesColumn<T>(
   getAliases: (row: T) => string[] | undefined,
@@ -27,13 +27,10 @@ export function createAliasesColumn<T>(
     header: label,
     size: 96,
     enableSorting: false,
+    meta: columnMeta<T>({ align: "center" }),
     cell: ({ row }) => {
       const count = getAliases(row.original)?.length ?? 0;
-      return count > 0 ? (
-        <Badge variant="secondary">{count}</Badge>
-      ) : (
-        <span className="text-sm text-muted-foreground">—</span>
-      );
+      return count > 0 ? <span className="tabular-nums">{count}</span> : null;
     },
   };
 }

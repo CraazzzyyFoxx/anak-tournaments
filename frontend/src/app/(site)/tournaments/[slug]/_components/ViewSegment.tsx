@@ -6,7 +6,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { cn } from "@/lib/utils";
 
-export type ViewSegmentOption<V extends string> = {
+type ViewSegmentOption<V extends string> = {
   value: V;
   label: ReactNode;
   /** Optional accessible name when `label` is an icon. */

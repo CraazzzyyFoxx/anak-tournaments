@@ -8,17 +8,26 @@ import { cn } from "@/lib/utils";
 
 import userService from "@/services/user.service";
 import { UserMapsSummary } from "@/types/user.types";
-import { CardSurface, ProfileStat } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface, ProfileStat } from "@/components/profile/atoms";
 import MapRow from "@/app/(site)/users/components/maps/MapRow";
 import MapsFilters from "@/app/(site)/users/components/maps/MapsFilters";
 import { DataPagination } from "@/components/ui/data-pagination";
+import { Eyebrow } from "@/components/ui/eyebrow";
+import { RowButton } from "@/components/ui/row-button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { winrateColor } from "@/lib/colors";
 import { userQueryKeys } from "@/lib/users/query-keys";
 import type { StatsScope } from "@/lib/site/stats-scope";
+import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 
 interface Props {
   userId: number;
+  /** The game's profile tournaments: the tournament filter's options. */
+  tournaments: { id: number; name: string }[];
   scope: StatsScope;
+  discipline: string;
+  /** The viewed workspace axis the game's metadata is read on. */
+  axis: WorkspaceAxis;
 }
 
 const MODE_ORDER = ["Control", "Escort", "Hybrid", "Flashpoint", "Push", "Assault"] as const;
@@ -26,7 +35,7 @@ const MODE_ORDER = ["Control", "Escort", "Hybrid", "Flashpoint", "Push", "Assaul
 type SortKey = "winrate" | "count" | "name";
 type OrderKey = "asc" | "desc";
 
-const MapsView = ({ userId, scope }: Props) => {
+const MapsView = ({ userId, tournaments, scope, discipline, axis }: Props) => {
   const t = useTranslations();
   const [modeFilter, setModeFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -47,16 +56,11 @@ const MapsView = ({ userId, scope }: Props) => {
     setPage(1);
   }
 
-  const tournamentsQuery = useQuery({
-    queryKey: userQueryKeys.tournaments(userId, scope),
-    queryFn: () => userService.getUserTournaments(userId, scope === "all" ? "all" : undefined),
-    staleTime: 5 * 60 * 1000
-  });
-
+  const mapFilters = { query: debouncedSearch, minCount, tournamentId };
   const mapsQuery = useQuery({
-    queryKey: userQueryKeys.maps(userId, debouncedSearch, minCount, tournamentId, scope),
+    queryKey: userQueryKeys.maps(userId, scope, discipline, mapFilters),
     queryFn: () =>
-      userService.getUserMaps(userId, {
+      userService.getUserMaps(userId, discipline, {
         page: 1,
         perPage: -1,
         sort: "winrate",
@@ -70,9 +74,9 @@ const MapsView = ({ userId, scope }: Props) => {
   });
 
   const summaryQuery = useQuery({
-    queryKey: userQueryKeys.mapsSummary(userId, debouncedSearch, minCount, tournamentId, scope),
+    queryKey: userQueryKeys.mapsSummary(userId, scope, discipline, mapFilters),
     queryFn: () =>
-      userService.getUserMapsSummary(userId, {
+      userService.getUserMapsSummary(userId, discipline, {
         query: debouncedSearch.trim(),
         minCount,
         tournamentId,
@@ -91,7 +95,7 @@ const MapsView = ({ userId, scope }: Props) => {
       { mode: string; maps: Set<number>; games: number; win: number; loss: number; draw: number }
     >();
     allMaps.forEach((row) => {
-      const mode = row.map.gamemode?.name ?? t("common.unknown");
+      const mode = row.map.parent?.name ?? t("common.unknown");
       const b = buckets.get(mode) ?? { mode, maps: new Set<number>(), games: 0, win: 0, loss: 0, draw: 0 };
       b.maps.add(row.map.id);
       b.games += row.count;
@@ -109,7 +113,7 @@ const MapsView = ({ userId, scope }: Props) => {
 
   const sortedMaps = useMemo(() => {
     let rows = [...allMaps];
-    if (modeFilter) rows = rows.filter((r) => r.map.gamemode?.name === modeFilter);
+    if (modeFilter) rows = rows.filter((r) => r.map.parent?.name === modeFilter);
     rows.sort((a, b) => {
       let cmp = 0;
       if (sort === "winrate") cmp = a.win_rate - b.win_rate;
@@ -155,7 +159,7 @@ const MapsView = ({ userId, scope }: Props) => {
             }
             sub={
               summary?.most_played
-                ? [summary.most_played.map.name, summary.most_played.map.gamemode?.name].filter(Boolean).join(" · ")
+                ? [summary.most_played.map.name, summary.most_played.map.parent?.name].filter(Boolean).join(" · ")
                 : "—"
             }
           />
@@ -196,16 +200,12 @@ const MapsView = ({ userId, scope }: Props) => {
             const wr = totalDecisive > 0 ? (b.win / totalDecisive) * 100 : 0;
             const active = modeFilter === b.mode;
             return (
-              <button
+              <RowButton
                 key={b.mode}
-                type="button"
                 onClick={() => setModeFilter(active ? null : b.mode)}
                 aria-pressed={active}
                 title={active ? t("users.maps.clearModeFilter") : t("users.maps.filterByMode", { mode: b.mode })}
-                className={cn(
-                  "cursor-pointer rounded-lg p-2 text-left transition-colors hover:bg-[hsl(0_0%_100%/0.03)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]",
-                  active && "bg-[hsl(0_0%_100%/0.05)]"
-                )}
+                className={cn("rounded-lg p-2", active && "bg-[color:var(--aqt-overlay-3)]")}
               >
                 <ProfileStat
                   size="md"
@@ -221,7 +221,7 @@ const MapsView = ({ userId, scope }: Props) => {
                     />
                   </div>
                 </ProfileStat>
-              </button>
+              </RowButton>
             );
           })}
         </div>
@@ -231,9 +231,7 @@ const MapsView = ({ userId, scope }: Props) => {
       <MapsFilters
         tournamentId={tournamentId}
         onTournamentIdChange={setTournamentId}
-        tournaments={tournamentsQuery.data ?? []}
-        tournamentsLoading={tournamentsQuery.isLoading}
-        tournamentsError={tournamentsQuery.isError}
+        tournaments={tournaments}
         minCount={minCount}
         onMinCountChange={setMinCount}
         perPage={perPage}
@@ -248,21 +246,38 @@ const MapsView = ({ userId, scope }: Props) => {
 
       {/* Map rows */}
       <CardSurface flush>
-        <div className="grid grid-cols-[64px_1fr_1fr_minmax(0,1.2fr)_60px_50px] items-center gap-3.5 border-b border-[color:var(--aqt-border)] px-[18px] py-3 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+        <Eyebrow
+          as="div"
+          className="grid grid-cols-[64px_1fr_1fr_minmax(0,1.2fr)_60px_50px] items-center gap-3.5 border-b border-[color:var(--aqt-border)] px-[18px] py-3"
+        >
           <div />
           <div>{t("users.maps.colMap")}</div>
           <div>{t("users.maps.colWinrate")}</div>
-          <div>{t("common.heroes")}</div>
+          <div>{t("common.characters")}</div>
           <div className="text-right">{t("users.maps.colRecord")}</div>
           <div className="text-right">{t("users.maps.colGames")}</div>
-        </div>
+        </Eyebrow>
         {pageMaps.map((row) => (
-          <MapRow key={row.map.id} row={row} />
+          <MapRow key={row.map.id} row={row} discipline={discipline} axis={axis} />
         ))}
         {pageMaps.length === 0 ? (
-          <div className="py-10 text-center text-[color:var(--aqt-fg-dim)]">
-            {mapsQuery.isLoading ? t("common.loading") : t("users.maps.noMaps")}
-          </div>
+          mapsQuery.isLoading ? (
+            <div role="status">
+              <span className="sr-only">{t("common.loading")}</span>
+              {[0, 1, 2, 3, 4].map((row) => (
+                <div
+                  key={row}
+                  aria-hidden
+                  className="flex items-center gap-3.5 border-b border-[color:var(--aqt-border)] px-[18px] py-[11px] last:border-b-0"
+                >
+                  <Skeleton className="h-8 w-14" />
+                  <Skeleton className="h-4 flex-1" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="py-10 text-center text-[color:var(--aqt-fg-dim)]">{t("users.maps.noMaps")}</div>
+          )
         ) : null}
 
         {/* Pagination footer */}
@@ -272,7 +287,7 @@ const MapsView = ({ userId, scope }: Props) => {
             totalPages={pages}
             onPageChange={setPage}
             className="border-t border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.012)] px-[18px] py-3.5"
-            summary={
+            leading={
               <span className="aqt-tnum text-caption text-[color:var(--aqt-fg-dim)]">
                 {t("common.showingRange", {
                   start: String((page - 1) * perPage + 1),

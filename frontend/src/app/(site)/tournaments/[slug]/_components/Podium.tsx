@@ -2,6 +2,7 @@ import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { useTranslations } from "next-intl";
 
 import { TeamLogo } from "@/components/TeamName";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/utils";
 import type { TeamNameInput } from "@/components/TeamName";
 
@@ -32,12 +33,7 @@ export function Podium({ first, second, third, className }: Readonly<PodiumProps
     const champion = place === 1;
     const body = (
       <>
-        <span
-          className={cn(
-            "text-label uppercase tracking-label",
-            champion ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg-faint)]"
-          )}
-        >
+        <span className={cn(eyebrowClass(), champion && "text-[color:var(--aqt-teal)]")}>
           {t(`tournamentDetail.podium.place${place}`)}
         </span>
         <TeamLogo team={team} size={champion ? "xl" : "md"} className="mx-auto mt-3" />

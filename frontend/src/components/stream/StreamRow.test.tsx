@@ -11,7 +11,7 @@
 // card grid this replaced did wrong.
 import { NextIntlClientProvider } from "next-intl";
 import React, { act } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
@@ -25,6 +25,7 @@ declare global {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 let container: HTMLDivElement;
+let root: Root;
 
 function streamEntry(overrides: Partial<StreamEntry> = {}): StreamEntry {
   return {
@@ -44,7 +45,6 @@ function streamEntry(overrides: Partial<StreamEntry> = {}): StreamEntry {
 
 function render(entry: StreamEntry, { isSelected = false, selectable = true, now = null as number | null } = {}) {
   const onSelect = vi.fn();
-  const root = createRoot(container);
   act(() =>
     root.render(
       <NextIntlClientProvider locale="en" messages={en}>
@@ -63,9 +63,11 @@ function render(entry: StreamEntry, { isSelected = false, selectable = true, now
 beforeEach(() => {
   container = document.createElement("div");
   document.body.appendChild(container);
+  root = createRoot(container);
 });
 
 afterEach(() => {
+  act(() => root.unmount());
   container.remove();
 });
 
@@ -115,7 +117,7 @@ describe("StreamRow", () => {
     render(streamEntry({ player: { id: 7, name: "someplayer", avatar_url: null, team: null } }));
     expect(container.textContent).toContain("someplayer");
 
-    container.innerHTML = "";
+    // Same root: a second `createRoot` on a live container is a React error.
     render(streamEntry({ player: null }));
     expect(container.textContent).toContain("somestreamer");
   });

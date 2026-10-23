@@ -23,28 +23,16 @@ best-effort clean up afterwards rather than relying purely on rollback.
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import pytest
 import sqlalchemy as sa
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-
-def _ensure_test_env() -> None:
-    env = {
-        "DEBUG": "true",
-    }
-    for key, value in env.items():
-        os.environ.setdefault(key, value)
-
-
-_ensure_test_env()
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
@@ -57,7 +45,6 @@ from shared.models.identity.rbac import user_roles  # noqa: E402
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.models.tournament import Tournament, TournamentPhaseSchedule  # noqa: E402
 from shared.rbac import get_workspace_system_role  # noqa: E402
-from shared.services.division_grid.access import get_default_division_grid_version_id  # noqa: E402
 from shared.testing import real_db_sessionmaker as _db_sessions  # noqa: E402
 from src.services.registration import service as reg_service  # noqa: E402
 from src.services.registration import windows  # noqa: E402
@@ -72,13 +59,9 @@ _SCHEMA = FormSchema(
 
 async def _make_workspace(session) -> Workspace:
     suffix = uuid.uuid4().hex[:12]
-    grid_version_id = await get_default_division_grid_version_id(session)
-    if grid_version_id is None:
-        pytest.skip("no default division grid version configured in dev DB")
     workspace = Workspace(
         slug=f"selfreg-test-{suffix}",
         name=f"Self-Register Gate Test {suffix}",
-        default_division_grid_version_id=grid_version_id,
     )
     session.add(workspace)
     await session.flush()
@@ -230,7 +213,7 @@ def test_workspace_scoped_self_register_deny_returns_403() -> None:
 
                 async with session_maker() as session:
                     registration_count = await session.scalar(
-                        sa.text("select count(*) from balancer.registration where tournament_id = :tid"),
+                        sa.text("select count(*) from registration.registration where tournament_id = :tid"),
                         {"tid": tournament_id},
                     )
                 return raised, registration_count

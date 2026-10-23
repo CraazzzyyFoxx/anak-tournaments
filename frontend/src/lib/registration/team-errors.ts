@@ -92,6 +92,11 @@ export const REGISTRATION_TEAM_ERROR_CODES = [
   "discord_not_linked",
   "discord_guild_not_member",
   "discord_guild_unreachable",
+  // challenge-code redemption — the team cover and the solo check-in field both
+  // redeem through `subscription_codes.redeem_challenge_code`
+  "subscription_code_rejected",
+  "subscription_code_not_accepted",
+  "subscription_redeem_rate_limited",
 ] as const;
 
 export type RegistrationTeamErrorCode = (typeof REGISTRATION_TEAM_ERROR_CODES)[number];

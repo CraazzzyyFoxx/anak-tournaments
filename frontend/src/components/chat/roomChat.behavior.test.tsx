@@ -177,9 +177,39 @@ describe("room chat", () => {
     expect(document.body.textContent).not.toContain(CHAT.title);
   });
 
+  it("renders nothing, and subscribes to nothing, for a spectator of a room closed to spectators", async () => {
+    // What the server answers a watcher of a closed room: the room, closed, with nothing in it -- not a 403.
+    getEnvelope.mockResolvedValue(
+      envelope({
+        messages: [],
+        viewer: { role: "spectator", can_write: false, can_moderate: false, muted_until: null }
+      })
+    );
+    await render();
+
+    expect(document.body.textContent).toBe("");
+    expect(realtimeHandlers.has(ROOM.topic)).toBe(false);
+  });
+
+  it("hides the room from a spectator the moment it closes to spectators", async () => {
+    getEnvelope.mockResolvedValue(
+      envelope({
+        settings: { spectators_can_read: true },
+        viewer: { role: "spectator", can_write: false, can_moderate: false, muted_until: null }
+      })
+    );
+    await render();
+    expect(document.body.textContent).toContain("ready?");
+
+    await push({ event_type: "chat.visibility_changed", data: { spectators_can_read: false } });
+
+    expect(document.body.textContent).toBe("");
+  });
+
   it("gives a spectator the read-only notice instead of a composer", async () => {
     getEnvelope.mockResolvedValue(
       envelope({
+        settings: { spectators_can_read: true },
         viewer: { role: "spectator", can_write: false, can_moderate: false, muted_until: null }
       })
     );

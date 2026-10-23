@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
+
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 
 import type { TeamsView } from "./tournamentTeams.model";
 
@@ -59,15 +61,5 @@ export function useStoredTeamsView(): TeamsView | null {
  * because there is no control there to switch back with.
  */
 export function useIsNarrowViewport(): boolean {
-  const [narrow, setNarrow] = useState(false);
-
-  useEffect(() => {
-    const query = window.matchMedia("(max-width: 639px)");
-    const sync = () => setNarrow(query.matches);
-    sync();
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
-  }, []);
-
-  return narrow;
+  return useMediaQuery("(max-width: 639px)");
 }

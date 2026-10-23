@@ -1,12 +1,6 @@
-import type {
-  AdminRegistration,
-  BalancerPlayerRecord,
-  BalancerRosterKey,
-  InternalBalancePayload
-} from "@/types/balancer-admin.types";
+import type { BalancerPlayerRecord, InternalBalancePayload, InternalBalancePlayer } from "@/types/balancer-admin.types";
 import type { PlayerValidationIssue } from "@/components/balancer/workspace-helpers";
 import { getActiveRoleEntries } from "@/components/balancer/workspace-helpers";
-import { answerList } from "@/lib/forms/answers";
 
 export type { PlayerValidationIssue };
 
@@ -26,12 +20,6 @@ export type PoolSortValue =
   | "division_desc";
 
 export const POOL_LANES: PoolLane[] = ["excluded", "needs_fix", "ready"];
-
-export const POOL_LANE_LABELS: Record<PoolLane, string> = {
-  excluded: "Excluded",
-  needs_fix: "Need Fix",
-  ready: "Ready"
-};
 
 /**
  * Issue codes that are purely informational — extra balancing context, not a blocking rule.
@@ -64,45 +52,9 @@ export function getPoolDropPatch(targetLane: PoolLane): PoolDropPatch {
   return { is_in_pool: targetLane !== "excluded" };
 }
 
-/** Every BattleTag the registration carries — its primary handle first, the
- *  smurfs after — deduplicated case-insensitively. `fallbackBattleTag` stands
- *  in when there is no registration behind the row, or it answered no
- *  Battle.net identity at all. */
-export function getRegistrationBattleTags(
-  registration: Pick<AdminRegistration, "answers"> | null | undefined,
-  fallbackBattleTag: string
-): string[] {
-  const handles = registration ? answerList(registration.answers, "identity_battlenet") : [];
-  const seen = new Set<string>();
-  const tags = [handles[0] ?? fallbackBattleTag, ...handles.slice(1)]
-    .map((tag) => tag?.trim())
-    .filter((tag): tag is string => Boolean(tag));
-
-  return tags.filter((tag) => {
-    const normalizedTag = tag.toLowerCase();
-    if (seen.has(normalizedTag)) {
-      return false;
-    }
-    seen.add(normalizedTag);
-    return true;
-  });
+export function formatHandlesForClipboard(handles: string[]): string {
+  return handles.join("\n");
 }
-
-export function formatBattleTagsForClipboard(battleTags: string[]): string {
-  return battleTags.join("\n");
-}
-
-export function formatSmurfCount(count: number): string {
-  return `${count} smurf${count === 1 ? "" : "s"}`;
-}
-
-export const PRESET_LABELS: Record<string, string> = {
-  CUSTOM: "Custom",
-  DEFAULT: "Standard",
-  PREFERENCE_FOCUSED: "Preference Focused",
-  COMBINED: "Combined",
-  HIGH_QUALITY: "High Quality"
-};
 
 export const TEAM_BADGE_ACCENTS = [
   "border-blue-400/20 bg-blue-500/10 text-blue-200",
@@ -117,10 +69,6 @@ export const TEAM_BADGE_ACCENTS = [
   "border-indigo-400/20 bg-indigo-500/10 text-indigo-200"
 ];
 
-export const BALANCE_ROSTER_KEYS: BalancerRosterKey[] = ["Tank", "Damage", "Support", "Flex"];
-
-export const PANEL_CLASS = "rounded-xl border border-border bg-card";
-
 /**
  * Secondary-control chrome for the whole tool. `rounded-lg` steps down from the
  * `rounded-xl` panels these sit in, and every surface is a token: the previous
@@ -130,30 +78,12 @@ export const PANEL_CLASS = "rounded-xl border border-border bg-card";
 export const MUTED_BUTTON_CLASS =
   "rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]";
 
-/** `MUTED_BUTTON_CLASS` at the tool's dense toolbar height. */
-export const TOOLBAR_BUTTON_CLASS = `h-8 px-3 text-sm ${MUTED_BUTTON_CLASS}`;
+/** `MUTED_BUTTON_CLASS` for the tool's dense toolbar; pair with `Button size="sm"`. */
+export const TOOLBAR_BUTTON_CLASS = `px-3 ${MUTED_BUTTON_CLASS}`;
 
 /** Square icon-button chrome shared by both balancer sidebars. */
 export const ICON_BUTTON_CLASS =
   "h-8 w-8 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]";
-
-/** One accent per role, so a rank number carries its role without a second label. */
-export const ROLE_TEXT_ACCENTS: Record<string, string> = {
-  tank: "text-sky-300",
-  damage: "text-orange-300",
-  support: "text-emerald-300"
-};
-
-/**
- * `Name#1234` → a bright name plus a dim `#1234`, so a row reads as one
- * identity instead of one long string with the discriminator competing for
- * attention. Tags without a discriminator come back whole.
- */
-export function splitBattleTag(battleTag: string): { name: string; suffix: string | null } {
-  const index = battleTag.lastIndexOf("#");
-  if (index <= 0) return { name: battleTag, suffix: null };
-  return { name: battleTag.slice(0, index), suffix: battleTag.slice(index) };
-}
 
 export function createVariantLabel(index: number): string {
   return `Balance ${index}`;
@@ -171,7 +101,7 @@ export function sortPlayerStates(
 ): PlayerValidationState[] {
   return [...playerStates].sort((left, right) => {
     if (sortValue === "name_asc") {
-      return left.player.battle_tag.localeCompare(right.player.battle_tag);
+      return left.player.identity.localeCompare(right.player.identity);
     }
     if (sortValue === "division_asc") {
       return getPrimaryDivision(left.player) - getPrimaryDivision(right.player);
@@ -200,27 +130,28 @@ export function calculateTeamAverageValueFromPayload(
   return calculateTeamTotalFromPayload(team) / totalPlayers;
 }
 
+/** Every player of a team, whichever bucket (role or open slot) of the owner game holds them. */
+function teamPlayers(team: InternalBalancePayload["teams"][number]): InternalBalancePlayer[] {
+  return Object.values(team.roster).flat();
+}
+
 export function calculateTeamTotalFromPayload(
   team: InternalBalancePayload["teams"][number]
 ): number {
-  return BALANCE_ROSTER_KEYS.reduce(
-    (sum, roleKey) =>
-      sum + team.roster[roleKey].reduce((roleSum, player) => roleSum + player.assigned_rating, 0),
-    0
-  );
+  return teamPlayers(team).reduce((sum, player) => sum + player.assigned_rating, 0);
 }
 
 export function countTeamPlayers(team: InternalBalancePayload["teams"][number]): number {
-  return BALANCE_ROSTER_KEYS.reduce((sum, roleKey) => sum + team.roster[roleKey].length, 0);
+  return teamPlayers(team).length;
 }
 
 export function calculateOffRoleCountFromPayload(
   team: InternalBalancePayload["teams"][number]
 ): number {
-  return BALANCE_ROSTER_KEYS.reduce(
-    (sum, roleKey) =>
+  return Object.entries(team.roster).reduce(
+    (sum, [roleKey, players]) =>
       sum +
-      team.roster[roleKey].filter((player) => {
+      players.filter((player) => {
         if (player.is_flex) {
           return false;
         }
@@ -246,18 +177,11 @@ export function sampleStdDev(values: number[]): number {
   return variance > 0 ? Math.sqrt(variance) : 0;
 }
 
-/** All per-player assigned ratings of a team, flattened across role buckets. */
-function collectTeamRatings(team: InternalBalancePayload["teams"][number]): number[] {
-  return BALANCE_ROSTER_KEYS.flatMap((roleKey) =>
-    team.roster[roleKey].map((player) => player.assigned_rating)
-  );
-}
-
 /** Intra-team rating spread (mirrors backend `Team.intra_std`). */
 export function calculateTeamVarianceFromPayload(
   team: InternalBalancePayload["teams"][number]
 ): number {
-  return sampleStdDev(collectTeamRatings(team));
+  return sampleStdDev(teamPlayers(team).map((player) => player.assigned_rating));
 }
 
 /** Total and max role-discomfort across a team (mirrors `Team.discomfort` / `max_pain`). */
@@ -266,13 +190,11 @@ export function calculateTeamDiscomfortFromPayload(
 ): { total: number; max: number } {
   let total = 0;
   let max = 0;
-  for (const roleKey of BALANCE_ROSTER_KEYS) {
-    for (const player of team.roster[roleKey]) {
-      const discomfort = player.role_discomfort ?? 0;
-      total += discomfort;
-      if (discomfort > max) {
-        max = discomfort;
-      }
+  for (const player of teamPlayers(team)) {
+    const discomfort = player.role_discomfort ?? 0;
+    total += discomfort;
+    if (discomfort > max) {
+      max = discomfort;
     }
   }
   return { total, max };
@@ -286,9 +208,9 @@ export function calculateSubRoleCollisionsFromPayload(
   team: InternalBalancePayload["teams"][number]
 ): number {
   let collisions = 0;
-  for (const roleKey of BALANCE_ROSTER_KEYS) {
+  for (const players of Object.values(team.roster)) {
     const counts = new Map<string, number>();
-    for (const player of team.roster[roleKey]) {
+    for (const player of players) {
       const subRole = player.sub_role;
       if (!subRole) {
         continue;

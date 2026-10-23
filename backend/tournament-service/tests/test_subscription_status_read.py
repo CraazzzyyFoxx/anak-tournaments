@@ -180,11 +180,14 @@ class TestVerdictNarrowing(IsolatedAsyncioTestCase):
         assert "999" not in dumped
         assert read.verdicts["boosty"].reason == "no_mapped_role"
 
-    async def test_carries_the_composed_outcome_and_rule(self):
+    async def test_carries_the_composed_outcome_and_no_server_worded_rule(self):
+        """The rule line is worded by the client in the reader's locale, from the
+        form's requirement; a server sentence here shipped "уровень"/"или" to
+        English users."""
         read, _ = await _status({"boosty": _verdict(SubscriptionState.ACTIVE)}, set())
         assert read.required is True
         assert read.outcome == Outcome.SATISFIED.value
-        assert read.rule
+        assert "rule" not in read.model_dump()
 
 
 class TestBlocksRegistration(IsolatedAsyncioTestCase):

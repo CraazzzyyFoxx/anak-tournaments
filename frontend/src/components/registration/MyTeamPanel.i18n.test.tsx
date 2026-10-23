@@ -20,6 +20,8 @@ import type { RegistrationTeam } from "@/types/registration-team.types";
 
 import MyTeamPanel from "./MyTeamPanel";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
@@ -99,7 +101,12 @@ const TEAM: RegistrationTeam = {
   max_substitutes: 2,
 };
 
-async function renderPanel(locale: "en" | "ru", isCaptain: boolean) {
+async function renderPanel(
+  locale: "en" | "ru",
+  isCaptain: boolean,
+  discipline = "overwatch",
+  team: RegistrationTeam = TEAM,
+) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -110,9 +117,10 @@ async function renderPanel(locale: "en" | "ru", isCaptain: boolean) {
       <NextIntlClientProvider locale={locale} messages={MESSAGES[locale]}>
         <QueryClientProvider client={client}>
           <MyTeamPanel
+            discipline={discipline}
             workspaceId={1}
             tournamentId={1}
-            team={TEAM}
+            team={team}
             isCaptain={isCaptain}
             registrationOpen
             checkInAvailable={false}
@@ -120,6 +128,12 @@ async function renderPanel(locale: "en" | "ru", isCaptain: boolean) {
         </QueryClientProvider>
       </NextIntlClientProvider>,
     );
+  });
+  // Slot names come from the owner game's metadata, which resolves after the first render.
+  await act(async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, 0);
+    await promise;
   });
   return { container, root };
 }
@@ -191,6 +205,75 @@ describe("MyTeamPanel i18n", () => {
     expect(text).toContain(`2× ${slot.support}`);
     expect(text).not.toContain("1x damage");
     expect(text).not.toContain("1× DPS");
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+});
+
+describe("MyTeamPanel in a one-role game", () => {
+  /** Deadlock's `{agent: 6}` roster: every member holds the one role, two places are open and none offered. */
+  const ONE_ROLE_TEAM: RegistrationTeam = {
+    ...TEAM,
+    members: TEAM.members.map((member) => ({ ...member, slot_code: "agent" })),
+    invites: [],
+    open_slots: { agent: 2 },
+    shortfall: "2x agent",
+  };
+
+  for (const [locale, shortfall] of [
+    ["en", "Still needed: 2 players"],
+    ["ru", "Нужно ещё: 2 игрока"],
+  ] as const) {
+    it(`counts the open places and names no role in ${locale}`, async () => {
+      const { container, root } = await renderPanel(locale, true, "deadlock", ONE_ROLE_TEAM);
+      const text = container.textContent ?? "";
+      const invite = MESSAGES[locale].registrationTeams.invite.action;
+
+      expect(text).not.toMatch(/registrationTeams\./);
+      expect(text).toContain(shortfall);
+      expect(text).not.toContain("Agent");
+      // Every place is the one role: no slot to move a member to...
+      expect(
+        container.querySelector(`[role="combobox"][aria-label="${MESSAGES[locale].registrationTeams.invite.slotLabel}"]`)
+      ).toBeNull();
+      // ...and each open place invites a player, as the footer does, not "to the Agent slot".
+      const invites = [...container.querySelectorAll("button")].filter((button) => button.textContent === invite);
+      expect(invites).toHaveLength(3);
+
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    });
+  }
+
+  it("lists a pending invite with no slot glyph", async () => {
+    const { container, root } = await renderPanel("en", true, "deadlock", {
+      ...ONE_ROLE_TEAM,
+      invites: [{ ...TEAM.invites[0], slot_code: "agent" }],
+    });
+    const invite = [...container.querySelectorAll("li")].find((li) =>
+      li.textContent?.includes(en.registrationTeams.invite.linkLabel),
+    );
+
+    expect(invite).toBeDefined();
+    // The glyph of a role this list cannot name drew as a "?" captioned "Unknown role: agent".
+    expect(invite?.querySelector('[role="img"]')).toBeNull();
+    expect(invite?.textContent).not.toContain("?");
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("names a multi-role invite's slot by its role, not as an unknown one", async () => {
+    const { container, root } = await renderPanel("en", true);
+
+    expect(container.querySelector('[aria-label^="Unknown role"]')).toBeNull();
 
     await act(async () => {
       root.unmount();

@@ -4,8 +4,9 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
-import { EYEBROW_CLASS } from "@/components/kit/tone";
-import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 
 export interface NextActionHeroProps {
   eyebrow: string;
@@ -23,21 +24,17 @@ export interface NextActionHeroProps {
  */
 export function NextActionHero({ eyebrow, title, href, cta }: Readonly<NextActionHeroProps>) {
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
+    <Card variant="flat" className="flex flex-wrap items-center gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
-        <p className={cn(EYEBROW_CLASS, "text-primary/80")}>{eyebrow}</p>
+        <p className={eyebrowClass("muted")}>{eyebrow}</p>
         <p className="mt-0.5 text-sm font-medium text-foreground">{title}</p>
       </div>
-      <Link
-        href={href}
-        className={cn(
-          "inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground",
-          "transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-        )}
-      >
-        {cta}
-        <ArrowRight aria-hidden className="size-3.5" />
-      </Link>
-    </div>
+      <Button asChild size="sm" className="shrink-0 gap-1.5">
+        <Link href={href}>
+          {cta}
+          <ArrowRight aria-hidden />
+        </Link>
+      </Button>
+    </Card>
   );
 }

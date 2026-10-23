@@ -1,8 +1,11 @@
 "use client";
 
 import { AlertCircle, BarChart2, CheckCircle2, ChevronDown, Shuffle, Sparkles, UserX } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type { FeasibilityReport } from "@/types/balancer.types";
@@ -31,6 +34,7 @@ const CHIP_CLASS = "rounded-full whitespace-nowrap tabular-nums";
  * better — per-role supply, the structural off-role floor, flex headroom — sit one click away.
  */
 export function BalanceStatsRow({ stats }: Readonly<{ stats: VariantStats }>) {
+  const t = useTranslations("balancerTool.page.stats");
   if (!stats) {
     return null;
   }
@@ -45,21 +49,24 @@ export function BalanceStatsRow({ stats }: Readonly<{ stats: VariantStats }>) {
     <div className="flex flex-wrap items-center gap-2">
       {stats.composite_score != null ? (
         <Badge
-          title={`balance=${stats.balance_objective_norm?.toFixed(3) ?? stats.balance_objective?.toFixed(3) ?? "—"} comfort=${stats.comfort_objective_norm?.toFixed(3) ?? stats.comfort_objective?.toFixed(3) ?? "—"} (normalized 0..1)`}
+          title={t("objectives", {
+            balance: stats.balance_objective_norm?.toFixed(3) ?? stats.balance_objective?.toFixed(3) ?? "—",
+            comfort: stats.comfort_objective_norm?.toFixed(3) ?? stats.comfort_objective?.toFixed(3) ?? "—"
+          })}
           className={cn(CHIP_CLASS, "border-emerald-400/20 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/10")}
         >
           <Sparkles className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-          Quality {stats.composite_score.toFixed(2)}
+          {t("quality", { score: stats.composite_score.toFixed(2) })}
         </Badge>
       ) : null}
 
       {stats.mmr_std_dev != null ? (
         <Badge
-          title="Standard deviation of team MMR — lower means the teams are closer together."
+          title={t("stdDevHint")}
           className={cn(CHIP_CLASS, "border-blue-400/20 bg-blue-500/10 text-blue-200 hover:bg-blue-500/10")}
         >
           <BarChart2 className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-          StdDev {stats.mmr_std_dev.toFixed(1)}
+          {t("stdDev", { value: stats.mmr_std_dev.toFixed(1) })}
         </Badge>
       ) : null}
 
@@ -67,41 +74,43 @@ export function BalanceStatsRow({ stats }: Readonly<{ stats: VariantStats }>) {
 
       {benched != null && benched > 0 ? (
         <Badge
-          title={`${benched} players did not make a team.`}
+          title={t("benchedHint", { count: benched })}
           className={cn(CHIP_CLASS, "border-rose-400/20 bg-rose-500/10 text-rose-200 hover:bg-rose-500/10")}
         >
           <UserX className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-          Benched {benched}
+          {t("benched", { count: benched })}
         </Badge>
       ) : null}
 
       {collisions != null && collisions > 0 ? (
         <Badge
-          title={`${collisions} teams pair players with the same sub-role.`}
+          title={t("collisionsHint", { count: collisions })}
           className={cn(CHIP_CLASS, "border-primary/30 bg-primary/10 text-primary hover:bg-primary/10")}
         >
           <Shuffle className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-          Collisions {collisions}
+          {t("collisions", { count: collisions })}
         </Badge>
       ) : null}
 
       {feasibility ? (
         <Popover>
           <PopoverTrigger asChild>
-            <button
+            <Button
               type="button"
-              aria-label="Pool diagnostics: role supply, off-role floor, flex headroom"
+              variant="outline"
+              size="xs"
+              aria-label={t("poolAria")}
               className={cn(
-                "inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold tabular-nums transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                "rounded-full tabular-nums",
                 shortfall > 0
                   ? "border-rose-400/25 bg-rose-500/10 text-rose-200 hover:bg-rose-500/15"
-                  : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]",
+                  : "text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]",
               )}
             >
-              Pool{shortfall > 0 ? ` −${shortfall}` : ""}
-              <ChevronDown className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
-            </button>
+              {t("pool")}
+              {shortfall > 0 ? ` −${shortfall}` : ""}
+              <ChevronDown aria-hidden="true" />
+            </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-72 p-0">
             <PoolDiagnostics stats={stats} feasibility={feasibility} />
@@ -113,6 +122,7 @@ export function BalanceStatsRow({ stats }: Readonly<{ stats: VariantStats }>) {
 }
 
 function OffRoleChip({ stats }: Readonly<{ stats: NonNullable<VariantStats> }>) {
+  const t = useTranslations("balancerTool.page.stats");
   const count = stats.off_role_count;
   if (count == null) {
     return null;
@@ -123,19 +133,17 @@ function OffRoleChip({ stats }: Readonly<{ stats: NonNullable<VariantStats> }>) 
   const isPerfect = count === 0;
   const isOptimal = aboveMin === 0 && count > 0;
   const ratePart = stats.off_role_rate != null ? ` (${(stats.off_role_rate * 100).toFixed(1)}%)` : "";
-  const suffix = isOptimal ? " (optimal)" : aboveMin != null && aboveMin > 0 ? ` (+${aboveMin})` : "";
+  const suffix = isOptimal ? ` (${t("optimal")})` : aboveMin != null && aboveMin > 0 ? ` (+${aboveMin})` : "";
 
   const title = (() => {
-    if (isPerfect) return "All players assigned to their first preference.";
+    if (isPerfect) return t("offRolePerfect");
     if (isOptimal) {
-      return structuralMin != null
-        ? `${count} off-role assignments — structural minimum for this dataset (no balancer can do better).`
-        : `${count} off-role assignments.`;
+      return structuralMin != null ? t("offRoleMinimum", { count }) : t("offRoleCount", { count });
     }
     if (aboveMin != null && structuralMin != null) {
-      return `${count} off-role assignments — ${aboveMin} above the structural minimum of ${structuralMin}.`;
+      return t("offRoleAboveMin", { count, above: aboveMin, min: structuralMin });
     }
-    return `${count} off-role assignments.`;
+    return t("offRoleCount", { count });
   })();
 
   const Icon = isPerfect || isOptimal ? CheckCircle2 : AlertCircle;
@@ -151,7 +159,7 @@ function OffRoleChip({ stats }: Readonly<{ stats: NonNullable<VariantStats> }>) 
       )}
     >
       <Icon className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-      Off-role {count}
+      {t("offRole", { count })}
       {ratePart}
       {suffix}
     </Badge>
@@ -165,28 +173,29 @@ function PoolDiagnostics({
   stats: NonNullable<VariantStats>;
   feasibility: FeasibilityReport;
 }>) {
+  const t = useTranslations("balancerTool.page.stats");
   const rows: Array<{ label: string; value: string; hint?: string; tone?: "warn" }> = [];
 
   if (feasibility.structural_min_off_role > 0) {
     rows.push({
-      label: "Off-role floor",
+      label: t("offRoleFloor"),
       value: String(feasibility.structural_min_off_role),
-      hint: "Forced by the pool — no balancer can go below this.",
+      hint: t("offRoleFloorHint"),
     });
   }
-  rows.push({ label: "Flex players", value: String(feasibility.flex_player_count) });
+  rows.push({ label: t("flexPlayers"), value: String(feasibility.flex_player_count) });
   if (stats.sub_role_collision_count === 0) {
-    rows.push({ label: "Sub-role collisions", value: "0" });
+    rows.push({ label: t("collisionsLabel"), value: "0" });
   }
   if (stats.unbalanced_count === 0) {
-    rows.push({ label: "Benched", value: "0" });
+    rows.push({ label: t("benchedLabel"), value: "0" });
   }
 
   return (
     <div className="text-xs">
-      <div className="border-b border-border/60 px-3 py-2 text-label font-medium uppercase tracking-label text-muted-foreground">
-        Role supply
-      </div>
+      <Eyebrow as="div" tone="muted" className="border-b border-border/60 px-3 py-2">
+        {t("roleSupply")}
+      </Eyebrow>
       <table className="w-full">
         <tbody>
           {feasibility.roles.map((role) => {
@@ -201,7 +210,7 @@ function PoolDiagnostics({
                   {role.supply}/{role.demand}
                 </td>
                 <td className="py-1.5 pl-2 text-right tabular-nums text-muted-foreground">
-                  {role.flex_supply > 0 ? `+${role.flex_supply}f` : ""}
+                  {role.flex_supply > 0 ? t("flexSupply", { count: role.flex_supply }) : ""}
                 </td>
                 <td
                   className={cn(
@@ -209,7 +218,7 @@ function PoolDiagnostics({
                     delta < 0 ? "text-rose-300" : "text-emerald-300",
                   )}
                 >
-                  {delta < 0 ? `short ${-delta}` : delta > 0 ? `+${delta}` : "even"}
+                  {delta < 0 ? t("short", { count: -delta }) : delta > 0 ? `+${delta}` : t("even")}
                 </td>
               </tr>
             );

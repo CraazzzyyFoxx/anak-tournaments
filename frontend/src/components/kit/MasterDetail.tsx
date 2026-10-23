@@ -5,6 +5,10 @@ import { useTranslations } from "next-intl";
 import { ChevronLeft } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { RowButton } from "@/components/ui/row-button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 export interface MasterDetailProps {
   list: ReactNode;
@@ -65,5 +69,68 @@ export function MasterDetail({
         )}
       </div>
     </div>
+  );
+}
+
+export interface MasterListItem<K extends string | number> {
+  key: K;
+  label: string;
+  /** Decorative mark before the label, e.g. a role icon. */
+  icon?: ReactNode;
+}
+
+/**
+ * The plain T4 list column: one frame of named rows, the selected one marked
+ * with `aria-current`. Selecting is navigation, so `onSelect` writes the
+ * caller's query param (with `mode: "push"`, see `MasterDetail`). Lists with a
+ * toolbar of their own (search, per-row actions) keep their own component.
+ */
+export function MasterList<K extends string | number>({
+  label,
+  items,
+  selectedKey,
+  onSelect
+}: Readonly<{
+  /** Accessible name of the `<nav>`. */
+  label: string;
+  items: readonly MasterListItem<K>[];
+  selectedKey: K | null | undefined;
+  onSelect: (key: K) => void;
+}>) {
+  return (
+    <Card asChild variant="flat" className="p-2">
+      <nav aria-label={label}>
+        <ul className="flex flex-col gap-0.5">
+          {items.map((item) => {
+            const isSelected = item.key === selectedKey;
+            return (
+              <li key={item.key}>
+                <RowButton
+                  aria-current={isSelected ? "true" : undefined}
+                  onClick={() => onSelect(item.key)}
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-muted-foreground hover:text-foreground aria-[current=true]:text-foreground"
+                >
+                  {item.icon}
+                  <span className={cn("min-w-0 flex-1 truncate text-sm", isSelected && "font-medium")}>
+                    {item.label}
+                  </span>
+                </RowButton>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+    </Card>
+  );
+}
+
+/** `MasterList` while its rows load: the same frame with placeholder rows. */
+export function MasterListSkeleton() {
+  return (
+    <Card aria-hidden variant="flat" className="flex flex-col gap-0.5 p-2">
+      {[0, 1, 2, 3].map((row) => (
+        <Skeleton key={row} className="h-8 w-full rounded-md" />
+      ))}
+    </Card>
   );
 }

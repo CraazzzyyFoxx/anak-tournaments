@@ -1,14 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDebounce } from "use-debounce";
 
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
-import { clampDivisionToGrid, getDefaultDivisionGrid } from "@/lib/divisions/grid";
+import { clampDivisionToGrid } from "@/lib/divisions/grid";
 import type { StatsScope } from "@/lib/site/stats-scope";
 import { parsePositiveInt } from "@/app/(site)/users/components/shared/list-utils";
-import type { UserRoleType } from "@/types/user.types";
+import type { DisciplineMetadata } from "@/types/discipline.types";
+import type { DivisionGrid } from "@/types/workspace.types";
 
 import {
   DEFAULT_MIN_ENCOUNTERS,
@@ -18,6 +19,7 @@ import {
   parseMinEncounters,
   parseOrder,
   parsePerPage,
+  parseRoleChip,
   parseSort,
   parseView,
   type OrderValue,
@@ -32,7 +34,8 @@ export interface UsersIndexParams {
   sort: SortValue;
   order: OrderValue;
   view: ViewMode;
-  role: UserRoleType | undefined;
+  /** A rated role code of the game, or the open slot (`flex`); `undefined` lists every player. */
+  role: string | undefined;
   /** Division numbers from `?div=3,5,7`; empty means no division filter. */
   divisions: number[];
   /** `?logs=1`: only players with parsed match logs. */
@@ -46,10 +49,12 @@ export interface UsersIndexParams {
 
 export interface UsersIndexParamControls {
   params: UsersIndexParams;
+  /** The grid the division facet and `?div=` are read against. */
+  divisionGrid: DivisionGrid;
   /** Live search box value; the URL only follows it once typing settles. */
   searchInput: string;
   setSearchInput: (value: string) => void;
-  setRole: (value: "all" | UserRoleType) => void;
+  setRole: (value: string | undefined) => void;
   setDivisions: (value: number[]) => void;
   setHasLogs: (value: boolean) => void;
   setMinEncounters: (value: number) => void;
@@ -69,18 +74,32 @@ export interface UsersIndexParamControls {
  * screen. `useQueryParams` already resets `page` whenever any other param
  * changes, so paging passes only `page` and is left alone.
  */
-export function useUsersIndexParams(scope: StatsScope): UsersIndexParamControls {
+export function useUsersIndexParams(
+  scope: StatsScope,
+  /** The browsed game; `null` under "all games" (no role or division filter applies) or while unresolved. */
+  discipline: string | null,
+  /** Its metadata; `null` while it loads — an explicit `?role=` is kept as typed until then. */
+  metadata: DisciplineMetadata | null
+): UsersIndexParamControls {
   const { searchParams, setParams } = useQueryParams();
-  const workspaceGrid = useDivisionGrid();
-  // All-workspaces divisions span every grid, so the filter is plain tier
-  // numbers from the reference grid rather than this workspace's own.
-  const divisionGrid = scope === "all" ? getDefaultDivisionGrid() : workspaceGrid;
+  const workspaceGrid = useDivisionGrid(discipline ?? undefined);
+  // All-workspaces divisions span every grid, so the filter is plain tier numbers of the game's own native
+  // ladder (none → no division facet) rather than this workspace's grid — never another game's ladder.
+  const divisionGrid = useMemo(
+    () => (scope === "all" ? { tiers: [...(metadata?.native_ladder ?? [])] } : workspaceGrid),
+    [scope, metadata, workspaceGrid]
+  );
+  const rawRole = searchParams?.get("role") ?? null;
 
   const query = searchParams?.get("query") ?? "";
   const sort = parseSort(searchParams?.get("sort") ?? null);
-  const divisions = parseDivisions(searchParams?.get("div") ?? null).filter(
-    (division) => clampDivisionToGrid(divisionGrid, division) === division
-  );
+  // Roles and divisions are one game's: under "all games" a leftover `?role=`/`?div=` narrows nothing.
+  const divisions =
+    discipline === null
+      ? []
+      : parseDivisions(searchParams?.get("div") ?? null).filter(
+          (division) => clampDivisionToGrid(divisionGrid, division) === division
+        );
   const params: UsersIndexParams = {
     page: parsePositiveInt(searchParams?.get("page") ?? null, 1),
     perPage: parsePerPage(searchParams?.get("per_page") ?? null),
@@ -88,7 +107,7 @@ export function useUsersIndexParams(scope: StatsScope): UsersIndexParamControls 
     sort,
     order: parseOrder(searchParams?.get("order") ?? null, sort),
     view: parseView(searchParams?.get("view") ?? null),
-    role: (searchParams?.get("role") as UserRoleType | null) ?? undefined,
+    role: discipline === null ? undefined : metadata ? parseRoleChip(metadata, rawRole) : (rawRole ?? undefined),
     divisions,
     hasLogs: searchParams?.get("logs") === "1",
     minEncounters: parseMinEncounters(searchParams?.get("min_encounters") ?? null),
@@ -123,11 +142,14 @@ export function useUsersIndexParams(scope: StatsScope): UsersIndexParamControls 
 
   return {
     params,
+    divisionGrid,
     searchInput,
     setSearchInput,
-    setRole: (value) => setParams({ role: value === "all" ? undefined : value }),
+    setRole: (value) => setParams({ role: value }),
     setDivisions: (value) =>
-      setParams({ div: value.length === 0 ? undefined : [...value].sort((a, b) => a - b).join(",") }),
+      setParams({
+        div: value.length === 0 ? undefined : [...value].sort((a, b) => a - b).join(",")
+      }),
     setHasLogs: (value) => setParams({ logs: value ? "1" : undefined }),
     // The default is implied, never written: a shared link should not carry a
     // param the user never touched.

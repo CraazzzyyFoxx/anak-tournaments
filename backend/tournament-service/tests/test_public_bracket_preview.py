@@ -8,7 +8,6 @@ check, a visible tournament's path would draw a hidden tournament's stage.
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,7 +18,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 from tests._rpc_fakes import CapturingBroker, FakeSessionMaker  # noqa: E402
 

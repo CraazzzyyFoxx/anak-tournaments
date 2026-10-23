@@ -6,7 +6,7 @@ Three sources, resolved into one answer:
    organizer's switch, and it is CLOSED by default -- a question is frozen at
    submit unless somebody opened it in the builder. That is why this resolves an
    ALLOWLIST (``writable_keys``) rather than a deny list: a question this server
-   does not recognise, or a schema written before the flag existed, is locked.
+   does not recognise, or a stored schema without the flag, is locked.
 2. **The system floors three keys**, whatever the schema says, because changing
    them after the fact silently re-points something the organizer already acted
    on -- see :func:`_floor`.
@@ -28,10 +28,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from shared import models
 from shared.core.social import GAME_PROVIDERS
 from shared.domain.forms import FormSchema, identity_key
 from shared.services.registration_window import is_registration_late
-from src import models
 from src.services.registration._common import is_included_in_balancer
 from src.services.registration.answers import answer_service
 from src.services.registration.windows import is_registration_open
@@ -53,7 +53,7 @@ class SelfEditPolicy:
 
 
 def submitted_late(
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
     tournament: models.Tournament,
 ) -> bool:
     """Whether this row was signed up AFTER the registration window's ``ends_at``.
@@ -76,7 +76,7 @@ def submitted_late(
 
 
 def _floor(
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
     tournament: models.Tournament,
 ) -> frozenset[str]:
     """Keys the organizer cannot open, and why.
@@ -101,7 +101,7 @@ def _floor(
     return frozenset(locked)
 
 
-def _answered_keys(registration: models.BalancerRegistration) -> frozenset[str]:
+def _answered_keys(registration: models.Registration) -> frozenset[str]:
     """The questions this row has an answer for.
 
     ``answers_of`` covers the answer COLUMNS, the identity rows and the custom
@@ -120,7 +120,7 @@ def _answered_keys(registration: models.BalancerRegistration) -> frozenset[str]:
 
 
 def self_edit_policy(
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
     tournament: models.Tournament,
     schema: FormSchema,
     *,

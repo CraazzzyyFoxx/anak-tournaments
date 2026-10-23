@@ -12,8 +12,8 @@ import {
   type Draft
 } from "@/components/bracket/editor/templateDraft";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
-import { EYEBROW_CLASS, TONE_TEXT } from "@/components/kit/tone";
-import { Badge } from "@/components/ui/badge";
+import { TONE_TEXT } from "@/components/ui/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
 import { NumberInput } from "@/components/ui/number-input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -141,8 +141,8 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
         <h3 id="bracket-layout-heading" className="text-sm font-semibold text-foreground">
           {t("title")}
         </h3>
-        <p className={EYEBROW_CLASS}>
-          {templateQuery.data?.custom ? <Badge variant="outline">{t("custom")}</Badge> : t("generated")}
+        <p className={eyebrowClass("muted")}>
+          {templateQuery.data?.custom ? t("custom") : t("generated")}
         </p>
       </div>
 
@@ -151,7 +151,7 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
           {t("hasMatches")}
         </p>
       ) : templateQuery.isPending ? (
-        <Skeleton className="h-64 w-full rounded-2xl" />
+        <Skeleton className="h-64 w-full rounded-xl" />
       ) : template === null ? (
         <p className="text-sm text-muted-foreground">
           {t("empty")}
@@ -166,7 +166,8 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
                 min={2}
                 max={512}
                 aria-label={t("upper")}
-                className="h-8 w-20"
+                size="sm"
+                className="w-20"
                 value={draft.upper_seeds}
                 onValueChange={(next) => {
                   if (next != null) dispatch({ type: "setSeeds", upper: next, lower: draft.lower_seeds });
@@ -180,7 +181,8 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
                 min={0}
                 max={512}
                 aria-label={t("lower")}
-                className="h-8 w-20"
+                size="sm"
+                className="w-20"
                 value={draft.lower_seeds}
                 onValueChange={(next) => {
                   if (next != null) dispatch({ type: "setSeeds", upper: draft.upper_seeds, lower: next });
@@ -229,21 +231,20 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
           />
 
           {problems.length > 0 ? (
-            <ul className="space-y-1" aria-label={t("problems")}>
+            <ul className="space-y-1 text-xs" aria-label={t("problems")}>
               {problems.map((problem, index) => (
                 <li key={`${problem.code}-${problem.match_id}-${index}`}>
-                  <button
+                  <Button
                     type="button"
-                    className={cn(
-                      "w-full rounded-md border border-danger/30 bg-danger/10 px-2 py-1 text-left text-xs",
-                      TONE_TEXT.danger
-                    )}
+                    variant="link"
+                    size="inline"
+                    className={cn("whitespace-normal text-left", TONE_TEXT.danger)}
                     onClick={() => setHighlightMatchId(problem.match_id)}
                   >
                     {problem.match_id === null
                       ? problem.message
                       : `M${problem.match_id}: ${problem.message}`}
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>

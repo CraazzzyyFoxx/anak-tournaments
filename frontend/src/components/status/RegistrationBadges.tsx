@@ -15,14 +15,10 @@ import type { LucideIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import StatusMetaBadge from "@/components/status/StatusMetaBadge";
 import { SocialIcon } from "@/components/social/SocialIcon";
-import {
-  STATUS_CHIP_CLASS,
-  STATUS_TONE_PILL,
-  StatusIconBadge,
-  type StatusTone
-} from "@/components/status/StatusIconBadge";
+import { StatusIconBadge } from "@/components/status/StatusIconBadge";
+import { Badge } from "@/components/ui/badge";
+import type { Tone } from "@/components/ui/tone";
 import { formatAdmissionReason } from "@/lib/registration/admission";
-import { cn } from "@/lib/utils";
 import type {
   Admission,
   StatusMeta,
@@ -34,29 +30,14 @@ interface StatusBadgeProps {
   status?: string | null;
   meta?: StatusMeta | null;
   className?: string;
-  compact?: boolean;
 }
 
-export function RegistrationStatusBadge({ status, meta, className, compact }: Readonly<StatusBadgeProps>) {
-  return (
-    <StatusMetaBadge
-      meta={meta}
-      fallbackValue={status ?? undefined}
-      className={className}
-      compact={compact}
-    />
-  );
+export function RegistrationStatusBadge({ status, meta, className }: Readonly<StatusBadgeProps>) {
+  return <StatusMetaBadge meta={meta} fallbackValue={status ?? undefined} className={className} />;
 }
 
-export function BalancerStatusBadge({ status, meta, className, compact }: Readonly<StatusBadgeProps>) {
-  return (
-    <StatusMetaBadge
-      meta={meta}
-      fallbackValue={status ?? "not_in_balancer"}
-      className={className}
-      compact={compact}
-    />
-  );
+export function BalancerStatusBadge({ status, meta, className }: Readonly<StatusBadgeProps>) {
+  return <StatusMetaBadge meta={meta} fallbackValue={status ?? "not_in_balancer"} className={className} />;
 }
 
 interface CheckInStatusBadgeProps {
@@ -72,7 +53,7 @@ export function CheckInStatusBadge({ checkedIn, className }: Readonly<CheckInSta
     <StatusIconBadge
       icon={isCheckedIn ? CheckCircle2 : Circle}
       label={isCheckedIn ? t("common.checkedIn") : t("common.notCheckedIn")}
-      tone={isCheckedIn ? "positive" : "neutral"}
+      tone={isCheckedIn ? "success" : "neutral"}
       className={className}
     />
   );
@@ -88,16 +69,12 @@ function FlagBadge({
   hint,
   className,
   ...props
-}: Readonly<FlagBadgeProps & { icon: LucideIcon; tone: StatusTone; label: string; hint: string }>) {
+}: Readonly<FlagBadgeProps & { icon: LucideIcon; tone: Tone; label: string; hint: string }>) {
   return (
-    <span
-      title={hint}
-      className={cn(STATUS_CHIP_CLASS, STATUS_TONE_PILL[tone], className)}
-      {...props}
-    >
+    <Badge palette="aqt" size="sm" tone={tone} title={hint} className={className} {...props}>
       <Icon className="size-3 shrink-0" aria-hidden />
       {label}
-    </span>
+    </Badge>
   );
 }
 
@@ -187,7 +164,7 @@ export function AdmissionStatusBadge({
             ? `${t("common.admissionStatus.notAdmitted")}: ${why}`
             : t("common.admissionStatus.notAdmitted")
         }
-        tone="negative"
+        tone="danger"
         className={className}
       />
     );
@@ -213,7 +190,7 @@ export function AdmissionStatusBadge({
             ? `${t("common.admissionStatus.admitted")} — ${t("common.admissionStatus.overridden")}: ${why}`
             : `${t("common.admissionStatus.admitted")} — ${t("common.admissionStatus.overridden")}`
         }
-        tone="positive"
+        tone="success"
         className={className}
       />
     );
@@ -223,7 +200,7 @@ export function AdmissionStatusBadge({
     <StatusIconBadge
       icon={CheckCircle2}
       label={t("common.admissionStatus.admitted")}
-      tone="positive"
+      tone="success"
       className={className}
     />
   );
@@ -253,7 +230,7 @@ export function ProfileStatusBadge({ profilesOpen, className }: Readonly<Profile
       <StatusIconBadge
         icon={Unlock}
         label={t("common.profileOpen")}
-        tone="positive"
+        tone="success"
         className={className}
       />
     );
@@ -263,7 +240,7 @@ export function ProfileStatusBadge({ profilesOpen, className }: Readonly<Profile
       <StatusIconBadge
         icon={Lock}
         label={t("common.profileClosed")}
-        tone="negative"
+        tone="danger"
         className={className}
       />
     );
@@ -309,7 +286,7 @@ export function SubscriptionStatusBadge({ outcome, className }: Readonly<Subscri
       <StatusIconBadge
         icon={HeartHandshake}
         label={t("common.subscription.satisfied")}
-        tone="positive"
+        tone="success"
         className={className}
       />
     );
@@ -319,7 +296,7 @@ export function SubscriptionStatusBadge({ outcome, className }: Readonly<Subscri
       <StatusIconBadge
         icon={HeartCrack}
         label={t("common.subscription.refused")}
-        tone="negative"
+        tone="danger"
         className={className}
       />
     );
@@ -362,30 +339,24 @@ export function SubscriptionProviderBadge({
   const t = useTranslations();
 
   let icon = Circle;
-  let tone: StatusTone = "neutral";
+  let tone: Tone = "neutral";
   let detail = t("common.subscription.unchecked");
   if (verdict?.state === "active") {
     icon = HeartHandshake;
-    tone = "positive";
+    tone = "success";
     detail = verdict.tier_label ?? t("common.subscription.active");
   } else if (verdict?.state === "inactive") {
     icon = HeartCrack;
-    tone = "negative";
+    tone = "danger";
     detail = t("common.subscription.none");
   }
   const Icon = icon;
 
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-label font-medium",
-        STATUS_TONE_PILL[tone],
-        className
-      )}
-    >
+    <Badge palette="aqt" size="sm" tone={tone} className={className}>
       <Icon className="size-3.5 shrink-0" aria-hidden />
       <SocialIcon provider={provider} size={12} className="shrink-0" decorative />
       {`${providerLabel}: ${detail}`}
-    </span>
+    </Badge>
   );
 }

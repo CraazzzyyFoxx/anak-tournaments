@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { skipToken, useQuery } from "@tanstack/react-query";
 
 import {
   bracketRoundShape,
@@ -12,10 +12,10 @@ import { useTournamentQuery } from "@/hooks/useTournamentClientData";
 import { FFA_STAGE_TYPES } from "@/lib/bracket/projection";
 import { UNKNOWN_ROUND_SHAPE, type BracketRoundShape } from "@/lib/bracket/round-name";
 import { getPublicPageQueryPresentation } from "@/lib/public-page-query-presentation";
+import { tournamentCharacterPlaytimeQueryOptions } from "@/lib/tournament/character-playtime-query";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { pickCurrentStage } from "@/lib/tournament/stages";
 import encounterService from "@/services/encounter.service";
-import heroService from "@/services/hero.service";
 import registrationService from "@/services/registration.service";
 import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
@@ -101,11 +101,11 @@ export function useTournamentOverviewData(tournamentId: number, slug: string) {
   // lobbies across the tournament, and the encounter list never answers one.
   const ffa = useFfaStageLobbies(tournament, variant !== null && variant !== "registration");
 
-  // Same key as `TournamentHeroPlaytimePage`.
+  // Same key and read as the statistics section (`tournamentCharacterPlaytimeQueryOptions`).
   const heroesQuery = useQuery({
-    queryKey: tournamentQueryKeys.heroPlaytime(tournamentId),
-    queryFn: () => heroService.getHeroPlaytime(1, -1, "all", tournamentId, { workspaceId }),
-    enabled: tournament !== undefined && variant === "completed"
+    queryKey: tournamentQueryKeys.characterPlaytime(tournamentId),
+    queryFn: tournament ? tournamentCharacterPlaytimeQueryOptions(tournament).queryFn : skipToken,
+    enabled: variant === "completed"
   });
 
   const streamsQuery = useTournamentStreamsQuery(variant === "live" ? tournamentId : undefined);

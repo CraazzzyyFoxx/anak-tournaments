@@ -130,9 +130,9 @@ jobs:
           - image: owt-tournament
             context: ./backend
             build-args: APP_PATH=tournament
-          - image: owt-parser
+          - image: owt-stats
             context: ./backend
-            build-args: APP_PATH=parser
+            build-args: APP_PATH=stats
           - image: owt-balancer
             context: ./backend
             build-args: APP_PATH=balancer
@@ -188,7 +188,7 @@ jobs:
           cache-to: type=registry,ref=ghcr.io/craazzzyyfoxx/${{ matrix.image }}:buildcache,mode=max
           build-args: |
             ${{ matrix.build-args }}
-            NEXT_PUBLIC_SITE_NAME=Overwatch Tournaments
+            NEXT_PUBLIC_SITE_NAME=${{ vars.NEXT_PUBLIC_SITE_NAME || 'OWT' }}
             NEXT_PUBLIC_SITE_URL=https://owt.craazzzyyfoxx.me
             NEXT_PUBLIC_SITE_ICON=${{ vars.NEXT_PUBLIC_SITE_ICON }}
             NEXT_PUBLIC_SITE_FAVICON=${{ vars.NEXT_PUBLIC_SITE_FAVICON }}

@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
 
 from shared.core.enums import (
     DraftAutopickStrategy,
@@ -20,12 +20,14 @@ from shared.core.enums import (
     DraftPlayerStatus,
     DraftPoolSource,
     DraftStatus,
-    HeroClass,
 )
-from shared.domain.roster_shape import RegistrationRoleCode, RosterShape
+from shared.domain.player_sub_roles import workspace_sub_role_slug
+from shared.domain.roster_shape import RosterShape
+from shared.schemas.base import BaseRead
+from shared.schemas.identity import PlayerIdentityRead
+from shared.schemas.role import RoleRef
 from shared.schemas.roster_slots import RosterShapeRead
 from src.domain.draft.ranks import seat_role, slot_rank
-from src.schemas.base import BaseRead
 
 __all__ = (
     "QUEUE_MAX_PLAYERS",
@@ -34,8 +36,6 @@ __all__ = (
     "DraftFeasibilityResponse",
     "DraftJournalEntry",
     "DraftJournalResponse",
-    "DraftOrderEntry",
-    "DraftOrderRequest",
     "DraftPickAutopickRequest",
     "DraftPickExtendRequest",
     "DraftPickOverrideRequest",
@@ -67,19 +67,17 @@ __all__ = (
 _ReadConfig = ConfigDict(from_attributes=True)
 
 
-def _role_slot_code(value: Any) -> Any:
-    """Accept the domain's ``HeroClass`` next to the wire slot code.
+def _within(field: str, low: int, high: int) -> AfterValidator:
+    def check(value: int) -> int:
+        if not low <= value <= high:
+            raise ValueError(f"{field} must be between {low} and {high}")
+        return value
 
-    ``domain/draft`` thinks in ``HeroClass`` (``HeroClass.damage``), every read
-    model here carries its slot code string (``damage``). Coercing in the field means
-    a handler that hands a read model a domain role gets the right JSON instead
-    of a ``ValidationError`` that turns the whole response into a 500 —
-    ``HeroClass.flex`` still fails, since no pick can name it.
-    """
-    return value.slot_code if isinstance(value, HeroClass) else value
+    return AfterValidator(check)
 
 
-DraftRoleRead = Annotated[RegistrationRoleCode, BeforeValidator(_role_slot_code)]
+_PickTimeSeconds = Annotated[int, _within("pick_time_seconds", 10, 600)]
+_OvertimeSeconds = Annotated[int, _within("overtime_seconds", 0, 300)]
 
 
 # --------------------------------------------------------------------------- #
@@ -95,45 +93,30 @@ class DraftSessionCreateRequest(BaseModel):
 
     pool_source: DraftPoolSource = DraftPoolSource.BALANCER_BALANCE
     source_balance_id: int | None = None
-    pick_time_seconds: int = 45
+    pick_time_seconds: _PickTimeSeconds = 45
     # Grace period after the main clock, before the autopick. 0 = no overtime.
-    overtime_seconds: int = 0
+    overtime_seconds: _OvertimeSeconds = 0
     autopick_strategy: DraftAutopickStrategy = DraftAutopickStrategy.BEST_FIT
     allow_admin_override: bool = True
     settings: dict[str, Any] = Field(default_factory=dict)
 
-    @field_validator("pick_time_seconds")
-    @classmethod
-    def _pick_time_range(cls, v: int) -> int:
-        if not 10 <= v <= 600:
-            raise ValueError("pick_time_seconds must be between 10 and 600")
-        return v
-
-    @field_validator("overtime_seconds")
-    @classmethod
-    def _overtime_range(cls, v: int) -> int:
-        if not 0 <= v <= 300:
-            raise ValueError("overtime_seconds must be between 0 and 300")
-        return v
-
 
 class DraftPoolCaptainInput(BaseModel):
-    """A captain chosen from the balancer pool (by balancer.registration id)."""
+    """A captain chosen from the balancer pool (by registration.registration id)."""
 
     registration_id: int
     name: str | None = None
     #: The role this captain is seated on; ``None`` = their lead role. Must be
     #: one they play and one the roster has a slot for (422 otherwise).
-    role: RegistrationRoleCode | None = None
+    role: RoleRef | None = None
 
 
 class DraftSeedRequest(BaseModel):
     """Who captains. Everything else about a player comes from their registration.
 
-    There is no manual variant any more: a draft player is a reference to a
-    balancer registration, so a seat with hand-typed roles and ranks could not
-    be resolved by the engine and would reintroduce exactly the second source of
-    truth this contract exists to remove.
+    A draft player is a reference to a balancer registration, so there is no
+    manual seat: hand-typed roles and ranks could not be resolved by the engine
+    and would be a second source of truth.
     """
 
     source_balance_id: int | None = None
@@ -147,51 +130,18 @@ class DraftSeedRequest(BaseModel):
 
 
 class DraftSessionPatchRequest(BaseModel):
-    pick_time_seconds: int | None = None
-    overtime_seconds: int | None = None
+    pick_time_seconds: _PickTimeSeconds | None = None
+    overtime_seconds: _OvertimeSeconds | None = None
     autopick_strategy: DraftAutopickStrategy | None = None
     allow_admin_override: bool | None = None
     rounds: int | None = None
     settings: dict[str, Any] | None = None
 
-    @field_validator("pick_time_seconds")
-    @classmethod
-    def _pick_time_range(cls, v: int | None) -> int | None:
-        if v is not None and not 10 <= v <= 600:
-            raise ValueError("pick_time_seconds must be between 10 and 600")
-        return v
-
-    @field_validator("overtime_seconds")
-    @classmethod
-    def _overtime_range(cls, v: int | None) -> int | None:
-        if v is not None and not 0 <= v <= 300:
-            raise ValueError("overtime_seconds must be between 0 and 300")
-        return v
-
-
-class DraftOrderEntry(BaseModel):
-    draft_team_id: int
-    draft_position: int
-
-
-class DraftOrderRequest(BaseModel):
-    order: list[DraftOrderEntry]
-
-    @model_validator(mode="after")
-    def _positions_are_permutation(self) -> DraftOrderRequest:
-        positions = sorted(e.draft_position for e in self.order)
-        if positions != list(range(1, len(self.order) + 1)):
-            raise ValueError("draft_position values must be a permutation of 1..N")
-        team_ids = [e.draft_team_id for e in self.order]
-        if len(set(team_ids)) != len(team_ids):
-            raise ValueError("draft_team_id values must be unique")
-        return self
-
 
 class DraftPickSelectRequest(BaseModel):
     player_id: int
     expected_version: int
-    target_role: RegistrationRoleCode | None = None
+    target_role: RoleRef | None = None
 
 
 class DraftPickAutopickRequest(BaseModel):
@@ -209,21 +159,14 @@ class DraftPickExtendRequest(BaseModel):
     """
 
     expected_version: int
-    seconds: int
-
-    @field_validator("seconds")
-    @classmethod
-    def _seconds_range(cls, v: int) -> int:
-        if not 5 <= v <= 300:
-            raise ValueError("seconds must be between 5 and 300")
-        return v
+    seconds: Annotated[int, _within("seconds", 5, 300)]
 
 
 class DraftPickOverrideRequest(BaseModel):
     expected_version: int
     player_id: int | None = None
     draft_team_id: int | None = None
-    target_role: RegistrationRoleCode | None = None
+    target_role: RoleRef | None = None
     note: str | None = None
 
 
@@ -235,7 +178,7 @@ class DraftRoleEditRequest(BaseModel):
     is not playable, so adding one without a number would change nothing.
     """
 
-    role: RegistrationRoleCode
+    role: RoleRef
     rank_value: int = Field(gt=0)
     reason: str
     expected_version: int
@@ -292,27 +235,33 @@ class DraftPlayerRead(BaseRead):
     model_config = _ReadConfig
 
     session_id: int
-    #: The balancer registration this seat IS. The client uses it to link
+    #: The balancer registration this seat IS (tournament); ``None`` for a mix seat. The client uses it to link
     #: straight to the pool row an organizer must edit to change a rank.
-    registration_id: int
+    registration_id: int | None
     user_id: int | None
-    battle_tag: str | None
+    #: The workspace member this seat is: a mix seat's anchor, a tournament seat's when its registrant has one.
+    workspace_member_id: int | None
+    #: The seat's primary handle for the tournament's identity provider; null when the registrant gave none.
+    identity: PlayerIdentityRead | None
+    #: The player's canonical ``players.user.name``: what a ``/users/<name>`` profile link is built from.
+    player_name: str | None
     #: The role this player leads with, over their PLAYABLE roles. ``None`` when
     #: the balancer ranks them on no role at all -- possible mid-draft if an
     #: organizer clears their ranks. Clients must render that as "no role", not
     #: substitute a default; feasibility reports it as a shortage.
-    primary_role: str | None
-    sub_role: str | None
+    primary_role: RoleRef | None
     is_flex: bool
     status: DraftPlayerStatus
+    #: The crown: this seat is its team's current captain (the one who picks). A mix host may hand a team to a
+    #: teammate mid-draft, so it can differ from the seeded seat, which keeps ``captain_role``.
     is_captain: bool
     drafted_by_team_id: int | None
     #: A captain's seat role -- the one the organizer pinned while it stays
     #: playable, else their lead role. ``None`` for everyone who is not a
     #: captain: their role on a roster is the pick's ``target_role``.
-    captain_role: str | None = None
+    captain_role: RoleRef | None = None
     #: Playable off-roles, priority-ordered. Empty, never null.
-    secondary_roles: list[str] = Field(default_factory=list)
+    secondary_roles: list[RoleRef] = Field(default_factory=list)
     #: ``{slot_code: rank}`` over playable roles. A missing key means the role is
     #: not playable -- clients render a dash there and never borrow another
     #: role's number.
@@ -320,11 +269,10 @@ class DraftPlayerRead(BaseRead):
     #: ``{slot_code: registration|workspace|ow}`` -- which layer that rank came
     #: from, so an organizer can see why a number is what it is.
     role_sources: dict[str, str] = Field(default_factory=dict)
-    #: ``{slot_code: sub_role}`` over playable roles that declare one -- the
-    #: per-role twin of ``sub_role``, which only ever answers for the lead role.
-    #: A role without a sub-role is absent, never empty-string.
+    #: ``{top-level code: sub-role slug}`` over playable roles that declare one.
     role_sub_roles: dict[str, str] = Field(default_factory=dict)
-    role_top_heroes: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+    #: ``{slot_code: [{entity_id, slug, image_path}]}`` -- the registrant's declared top characters per role.
+    role_top_characters: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     #: The registration's ``public_notes``: captains read them in the Player
     #: Inspector. The wire name stays ``notes`` -- clients depend on it, and the
     #: organizers-only ``organizer_notes``/``admin_notes`` are deliberately NOT
@@ -347,7 +295,11 @@ class DraftPlayerRead(BaseRead):
         *,
         shape: Any,
         custom_fields: list[Any],
+        dimension: str,
+        crowned: bool | None = None,
     ) -> DraftPlayerRead:
+        """``crowned`` is the crown the board shows -- whether this seat is its team's current captain -- when the
+        caller knows; ``None`` reads the seed flag. ``captain_role`` stays the seeded seat's: it has no pick."""
         from src.services.draft.board import player_custom_fields
 
         seat = seat_role(roster, player.captain_role)
@@ -359,19 +311,28 @@ class DraftPlayerRead(BaseRead):
             session_id=player.session_id,
             registration_id=player.registration_id,
             user_id=player.user_id,
-            battle_tag=roster.battle_tag if roster is not None else None,
-            primary_role=lead.role.slot_code if lead is not None else None,
-            sub_role=roster.sub_role if roster is not None else None,
+            workspace_member_id=player.workspace_member_id,
+            identity=roster.identity if roster is not None else None,
+            player_name=roster.player_name if roster is not None else None,
+            primary_role=RoleRef.of(dimension, lead.role, lead.subrole) if lead is not None else None,
             is_flex=bool(roster.is_full_flex) if roster is not None else False,
             status=player.status,
-            is_captain=player.is_captain,
+            is_captain=player.is_captain if crowned is None else crowned,
             drafted_by_team_id=player.drafted_by_team_id,
-            captain_role=seat.slot_code if (player.is_captain and seat is not None) else None,
-            secondary_roles=[role.slot_code for role in roster.secondary_roles] if roster is not None else [],
+            captain_role=RoleRef.of(dimension, seat) if player.is_captain else None,
+            secondary_roles=[
+                RoleRef.of(dimension, code, roster.role_sub_roles.get(code)) for code in roster.secondary_roles
+            ]
+            if roster is not None
+            else [],
             role_ranks=roster.role_ranks if roster is not None else {},
             role_sources=roster.role_sources if roster is not None else {},
-            role_sub_roles=roster.role_sub_roles if roster is not None else {},
-            role_top_heroes=roster.role_top_heroes if roster is not None else {},
+            role_sub_roles={
+                role: workspace_sub_role_slug(role, subrole) for role, subrole in roster.role_sub_roles.items()
+            }
+            if roster is not None
+            else {},
+            role_top_characters=roster.role_top_characters if roster is not None else {},
             notes=roster.public_notes if roster is not None else None,
             # The player's OWN role under role slots -- a support main is not
             # worth their damage rank on the pool card, and a captain seated on
@@ -391,7 +352,7 @@ class DraftPickRead(BaseRead):
     round_no: int
     pick_in_round: int
     draft_team_id: int
-    target_role: str | None
+    target_role: RoleRef | None
     target_rank_value: int | None
     status: DraftPickStatus
     picked_player_id: int | None
@@ -405,12 +366,29 @@ class DraftPickRead(BaseRead):
     overtime_started_at: datetime | None
     version: int
 
+    @classmethod
+    def from_pick(cls, pick: Any, *, dimension: str) -> DraftPickRead:
+        return cls.model_validate(
+            {
+                **{name: getattr(pick, name) for name in cls.model_fields},
+                "target_role": RoleRef.of(dimension, pick.target_role),
+            }
+        )
+
+
+_DERIVED_SESSION_FIELDS = frozenset({"roster_shape", "discipline"})
+
 
 class DraftSessionRead(BaseRead):
     model_config = _ReadConfig
 
-    tournament_id: int
+    tournament_id: int | None
+    #: The mix owning this draft and the lobby it forms teams for; both ``None`` for a tournament draft (spec §9.1).
+    custom_game_id: int | None = None
+    lobby_index: int | None = None
     workspace_id: int
+    #: The owner's discipline (a column of the session).
+    discipline: str
     status: DraftStatus
     blocked_reason: str | None
     format: DraftFormat
@@ -432,19 +410,25 @@ class DraftSessionRead(BaseRead):
     created_at: datetime | None = None
 
     @classmethod
-    def from_session(cls, draft_session: Any, *, shape: RosterShape) -> DraftSessionRead:
-        """The row plus the roster shape the row does not store.
+    def from_session(cls, draft_session: Any, *, shape: RosterShape, discipline: str) -> DraftSessionRead:
+        """The row plus what the row does not store: the roster shape and the owner's discipline.
 
         Every other field maps straight off the ORM object, but the shape is
-        resolved from the tournament/workspace override chain, so it has to be
-        handed in. Building the payload off ``model_fields`` keeps that the ONLY
-        difference: add a column, and it is picked up here without an edit.
+        resolved from the tournament/workspace override chain and the discipline
+        belongs to the tournament, so both have to be handed in. Building the
+        payload off ``model_fields`` keeps those the ONLY differences: add a
+        column, and it is picked up here without an edit.
         """
         payload: dict[str, Any] = {
-            name: getattr(draft_session, name) for name in cls.model_fields if name != "roster_shape"
+            name: getattr(draft_session, name) for name in cls.model_fields if name not in _DERIVED_SESSION_FIELDS
         }
         payload["roster_shape"] = RosterShapeRead.from_shape(shape)
+        payload["discipline"] = discipline
         return cls.model_validate(payload)
+
+
+class DraftExportResponse(DraftSessionRead):
+    advisories: list[str] = Field(default_factory=list)
 
 
 class DraftBoardSnapshot(BaseModel):
@@ -461,7 +445,7 @@ class DraftBoardSnapshot(BaseModel):
 
 class DraftSuggestion(BaseModel):
     player_id: int
-    role: DraftRoleRead
+    role: RoleRef
     fit_score: float
     breakdown: dict[str, float] = Field(default_factory=dict)
 
@@ -504,7 +488,7 @@ class DraftPickOptionRead(BaseModel):
     model_config = _ReadConfig
 
     player_id: int
-    role: DraftRoleRead
+    role: RoleRef
     is_safe: bool
     reason_code: str | None = None
     unmatched_slots: list[DraftSlotRead] = Field(default_factory=list)
@@ -520,7 +504,7 @@ class DraftPickOptionsResponse(BaseModel):
 
 class DraftRoleEditResponse(BaseModel):
     player_id: int
-    role: DraftRoleRead
+    role: RoleRef
     player_version: int
     committed: bool
     before: DraftFeasibilityResponse
@@ -561,7 +545,7 @@ class DraftTeamFitScore(BaseModel):
     player_id: int
     #: ``None`` under a role-less (all-flex) shape, where no seat has a role and
     #: a player therefore has exactly one entry.
-    role: DraftRoleRead | None = None
+    role: RoleRef | None = None
     #: 1..99, min-max normalized across THIS response; 50 when every candidate
     #: scores the same. Raw fit is an unbounded heuristic, so only the ordering
     #: within one answer means anything.
@@ -589,7 +573,7 @@ class DraftAutopickPreview(BaseModel):
 
     player_id: int
     #: ``None`` under a role-less (all-flex) shape.
-    role: DraftRoleRead | None = None
+    role: RoleRef | None = None
     source: Literal["queue", "fit"]
 
 
@@ -613,7 +597,7 @@ class DraftJournalEntry(BaseModel):
     pick_no: int | None = None
     team_id: int | None = None
     player_id: int | None = None
-    role: DraftRoleRead | None = None
+    role: RoleRef | None = None
     seconds: int | None = None
 
 

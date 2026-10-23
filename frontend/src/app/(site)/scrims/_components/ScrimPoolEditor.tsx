@@ -18,7 +18,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
 import { Switch } from "@/components/ui/switch";
-import { cn } from "@/lib/utils";
 import type { PickBanRuleset, PickBanRulesetStep } from "@/types/tournament.types";
 
 import {
@@ -29,9 +28,8 @@ import {
   type PickBanDraft,
   type PickBanValidationIssue
 } from "@/lib/tournament/pick-ban-config";
-import { Spinner } from "@/components/ui/spinner";
-import { useHeroesCatalog } from "@/hooks/useHeroesCatalog";
-import { useMapsCatalog } from "@/hooks/useMapsCatalog";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 
 /**
  * A room's hand-authored pick-ban rules.
@@ -185,10 +183,12 @@ function ItemPicker({
         aria-describedby={`${ids}-hint`}
       />
       {isLoading ? (
-        <p className="text-muted-foreground flex items-center gap-2 text-xs">
-          <Spinner className="size-3.5" />
-          {loadingLabel}
-        </p>
+        <div role="status" className="flex flex-wrap gap-2 rounded-lg border p-2">
+          <span className="sr-only">{loadingLabel}</span>
+          {[0, 1, 2, 3].map((chip) => (
+            <Skeleton key={chip} aria-hidden className="h-8 w-20" />
+          ))}
+        </div>
       ) : visible.length === 0 ? (
         <p className="text-muted-foreground text-xs">{emptyLabel}</p>
       ) : (
@@ -200,10 +200,9 @@ function ItemPicker({
                 key={option.id}
                 type="button"
                 size="sm"
-                variant={selected ? "default" : "outline"}
+                variant={selected ? "accent" : "outline"}
                 aria-pressed={selected}
                 onClick={() => onToggle(option.id)}
-                className={cn("h-8", selected && "font-semibold")}
               >
                 {selected ? <Check aria-hidden className="size-3.5" /> : null}
                 {option.name}
@@ -225,10 +224,13 @@ function ItemPicker({
 }
 
 export function ScrimPoolEditor({
+  discipline,
   pool,
   disabled,
   onChange
 }: Readonly<{
+  /** The game whose maps and characters the room's rules draw on. */
+  discipline: string;
   pool: ScrimPoolDraft;
   disabled?: boolean;
   onChange: (next: ScrimPoolDraft) => void;
@@ -236,16 +238,16 @@ export function ScrimPoolEditor({
   const t = useTranslations("scrims.pool");
   const ids = useId();
 
-  const mapsQuery = useMapsCatalog({ withGamemode: true });
+  const mapsQuery = useCatalogEntities(discipline, "map");
   // Only fetched once hero bans are switched on: a map-only room never pays for it.
-  const heroesQuery = useHeroesCatalog({ enabled: pool.hero != null });
+  const heroesQuery = useCatalogEntities(discipline, "character", { enabled: pool.hero != null });
 
   const mapOptions = useMemo<ItemOption[]>(
     () =>
       (mapsQuery.data ?? [])
         // Off-rotation maps are not something a scrim vetoes; the organizer's
         // editor holds the same line.
-        .filter((map) => map.in_competitive !== false)
+        .filter((map) => map.attrs.in_competitive !== false)
         .map((map) => ({ id: map.id, name: map.name })),
     [mapsQuery.data]
   );

@@ -16,9 +16,9 @@
 
 import type { DivisionGridMappingRule, DivisionTier } from "@/types/workspace.types";
 
-import { bandsFromTiers, LADDER, type Band } from "./draftReducer";
+import { bandsFromTiers, type Band, type Ladder } from "./draftReducer";
 
-export interface MappingCandidate {
+interface MappingCandidate {
   band: Band;
   /** Rank values shared with the source division. */
   overlap: number;
@@ -37,24 +37,25 @@ export interface MappingRow {
   coverage: number;
 }
 
-const OW_FLOORS = new Set(LADDER.map((rank) => rank.rank_min));
-const LADDER_BOTTOM = LADDER[LADDER.length - 1].rank_min;
-
 /**
  * A finite top for the open-ended divisions, so they get a comparable width.
- * When both grids sit on the OW ladder that is where the ladder physically ends
- * (4999), which makes the overlap exactly the ladder's rank count; elsewhere it
- * is one step of the finest division above the highest floor.
+ * When every grid sits on the discipline's native ladder that is where the ladder physically ends
+ * (its top floor plus one step, minus one), which makes the overlap exactly the ladder's rank count;
+ * elsewhere (and without a ladder) it is one step of the finest division above the highest floor.
  */
-function openCeiling(lists: Band[][]): number {
-  // Only a bottom division may start under Bronze 5 and still be a ladder band.
-  const onLadder = lists.every((list) =>
-    list.every(
-      (band, index) =>
-        OW_FLOORS.has(band.rankMin) || (index === list.length - 1 && band.rankMin <= LADDER_BOTTOM)
-    )
-  );
-  if (onLadder) return LADDER[0].rank_min + (LADDER[0].rank_min - LADDER[1].rank_min) - 1;
+function openCeiling(ladder: Ladder | null, lists: Band[][]): number {
+  // Only a bottom division may start under the bottom rank and still be a ladder band.
+  const floors = ladder ? new Set(ladder.ranks.map((rank) => rank.rank_min)) : null;
+  const onLadder =
+    ladder !== null &&
+    floors !== null &&
+    lists.every((list) =>
+      list.every(
+        (band, index) =>
+          floors.has(band.rankMin) || (index === list.length - 1 && band.rankMin <= ladder.floor)
+      )
+    );
+  if (ladder && onLadder) return ladder.ranks[0].rank_min + ladder.step - 1;
   const all = lists.flat();
   const widths = all.flatMap((band) =>
     band.rankMax !== null && band.rankMax >= band.rankMin ? [band.rankMax - band.rankMin + 1] : []
@@ -63,12 +64,12 @@ function openCeiling(lists: Band[][]): number {
   return Math.max(...all.map((band) => band.rankMin)) + step - 1;
 }
 
-export function autoMap(sourceTiers: DivisionTier[], bands: Band[]): MappingRow[] {
-  const sources = bandsFromTiers(sourceTiers);
+export function autoMap(ladder: Ladder | null, sourceTiers: DivisionTier[], bands: Band[]): MappingRow[] {
+  const sources = bandsFromTiers(ladder, sourceTiers);
   if (bands.length === 0) {
     return sources.map((source) => ({ source, candidates: [], kind: "split", coverage: 0 }));
   }
-  const ceiling = openCeiling([sources, bands]);
+  const ceiling = openCeiling(ladder, [sources, bands]);
   // Below its bottom floor a grid still resolves into its bottom division.
   const floor = Math.min(...[...sources, ...bands].map((band) => band.rankMin));
   const span = (band: Band, list: Band[]): [number, number] => [

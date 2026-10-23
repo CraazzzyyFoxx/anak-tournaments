@@ -1,8 +1,8 @@
 """Workspace-scoped binary side effects: branding icons, catalog assets, match logs.
 
-Lifted out of ``src/rpc/binary.py`` so that transport only decodes base64 and
-gates permissions. Everything with a consequence lives here: the S3 calls, the
-``workspace`` row read/write, the ``audit_log`` row and the transaction boundary.
+The transport (``src/rpc/binary.py``) only decodes base64 and gates permissions.
+Everything with a consequence lives here: the S3 calls, the ``workspace`` row
+read/write, the ``audit_log`` row and the transaction boundary.
 
 The two icon writes mutate the workspace, so each appends one ``audit_log`` row in
 the same transaction as the write.
@@ -10,16 +10,18 @@ the same transaction as the write.
 
 from __future__ import annotations
 
+import hashlib
+import re
 from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.clients.s3.upload import upload_asset, upload_avatar
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import WorkspaceRepository
 from shared.services.audit import record_audit
-from src import models
 from src.core.clients import s3_client
 from src.services.workspace.service import WorkspaceService
 from src.services.workspace.service import workspaces as _workspaces
@@ -176,42 +178,64 @@ class WorkspaceBinaryService:
     # --- match logs ---------------------------------------------------------
 
     def _match_log_ref_query(self, match_id: int) -> sa.Select:
-        """The log reference for one match: its file name plus the tournament id
-        that keys the S3 prefix. A two-table join, so it stays a query here rather
-        than hiding behind a CRUD repository."""
+        match, job, encounter = models.StatsMatch, models.IngestJob, models.Encounter
         return (
-            sa.select(models.Match.log_name, models.Encounter.tournament_id)
-            .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-            .where(models.Match.id == match_id)
+            sa.select(job.raw_ref, job.filename, encounter.tournament_id, job.raw_status, job.content_hash)
+            .select_from(match)
+            .join(
+                encounter,
+                sa.and_(
+                    encounter.id == match.encounter_id,
+                    encounter.workspace_id == match.workspace_id,
+                    encounter.discipline == match.discipline,
+                ),
+            )
+            .outerjoin(
+                job,
+                sa.and_(
+                    job.id == match.ingest_job_id,
+                    job.workspace_id == match.workspace_id,
+                    job.discipline == match.discipline,
+                ),
+            )
+            .where(match.id == match_id, encounter.tournament_id.isnot(None))
         )
 
-    async def resolve_match_log_ref(self, session: AsyncSession, match_id: int) -> tuple[str, int]:
-        """The log filename and owning tournament id for one match, or a 404.
-
-        Split from the S3 fetch so a caller can gate tournament visibility
-        (hidden tournaments) on the resolved ``tournament_id`` before paying for
-        the S3 round trip.
-        """
+    async def resolve_match_log_ref(
+        self, session: AsyncSession, match_id: int
+    ) -> tuple[str | None, str | None, int, models.RawSourceStatus | None, str | None]:
+        """Resolve owner and provenance only; availability is checked after authorization."""
         row = (await session.execute(self._match_log_ref_query(match_id))).first()
         if row is None:
             raise HTTPException(status_code=404, detail="Match not found")
-        log_name, tournament_id = row
-        filename = (log_name or "").rsplit("/", 1)[-1]
-        if not filename or ".." in filename:
-            raise HTTPException(status_code=404, detail="No log available for this match")
-        return filename, tournament_id
+        raw_ref, display_name, tournament_id, raw_status, content_hash = row
+        filename = (display_name or raw_ref or "").replace("\\", "/").rsplit("/", 1)[-1]
+        return raw_ref, filename or None, tournament_id, raw_status, content_hash
 
-    async def fetch_log_bytes(self, tournament_id: int, filename: str) -> bytes:
-        """Fetch one already-resolved log's raw bytes from S3."""
-        data_bytes = await s3_client.get_object(f"logs/{tournament_id}/{filename}")
+    async def fetch_log_bytes(
+        self,
+        raw_ref: str | None,
+        *,
+        raw_status: models.RawSourceStatus | None,
+        content_hash: str | None,
+    ) -> bytes:
+        """Refuse unsafe provenance and verify bytes, only after the caller's visibility gate."""
+        if not raw_ref or raw_status is None:
+            raise HTTPException(status_code=404, detail="No log available for this match")
+        if raw_status == models.RawSourceStatus.MISSING:
+            raise HTTPException(status_code=404, detail="Log source is missing")
+        if raw_status == models.RawSourceStatus.CONFLICT:
+            raise HTTPException(status_code=409, detail="Log source has conflicting provenance")
+        if raw_status != models.RawSourceStatus.AVAILABLE:
+            raise HTTPException(status_code=409, detail="Log source has not been verified")
+        if content_hash is None or re.fullmatch(r"[0-9a-fA-F]{64}", content_hash) is None:
+            raise HTTPException(status_code=409, detail="Log source has no verified SHA-256")
+        data_bytes = await s3_client.get_object(raw_ref)
         if data_bytes is None:
             raise HTTPException(status_code=404, detail="Log file not found")
+        if hashlib.sha256(data_bytes).hexdigest() != content_hash.lower():
+            raise HTTPException(status_code=409, detail="Log file SHA-256 does not match the preserved source hash")
         return data_bytes
-
-    async def match_log(self, session: AsyncSession, match_id: int) -> tuple[str, bytes]:
-        """Fetch a match's raw log from S3 as ``(filename, bytes)``."""
-        filename, tournament_id = await self.resolve_match_log_ref(session, match_id)
-        return filename, await self.fetch_log_bytes(tournament_id, filename)
 
 
 workspace_binary = WorkspaceBinaryService()

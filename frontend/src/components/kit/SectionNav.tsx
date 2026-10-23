@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { useLayoutEffect, useRef } from "react";
 
 import {
   Select,
@@ -13,10 +14,13 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
+import { SettingsOutlineList } from "@/components/kit/SettingsOutline";
+import { playEnter, type Edge } from "@/components/kit/SettingsContinuation";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { cn } from "@/lib/utils";
 
-export interface SectionNavItem {
+interface SectionNavItem {
   key: string;
   label: string;
   href: string;
@@ -36,12 +40,38 @@ export interface SectionNavProps {
 }
 
 /**
+ * The page a rail pick just opened, and where it enters from: below for an
+ * item under the current one, above for one over it — the way a scroll
+ * between them would go. Consumed by `useSectionNavEntrance` on the next
+ * route change, whatever that change turns out to be.
+ */
+let picked: { href: string; edge: Edge } | null = null;
+
+/**
+ * Ref for the content column beside the rail: a rail pick plays the scroll
+ * chain's entrance on it, so picking a section moves like scrolling to it.
+ */
+export function useSectionNavEntrance<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const pathname = usePathname();
+  const reduced = usePrefersReducedMotion();
+  // Before paint, so the new page never shows a frame before its first keyframe.
+  useLayoutEffect(() => {
+    const pick = picked;
+    picked = null;
+    if (pick?.href === pathname && !reduced) playEnter(ref.current, pick.edge);
+  }, [pathname, reduced]);
+  return ref;
+}
+
+/**
  * The section rail for every T5 settings screen.
  *
  * A settings hub has too many sections for a tab row (tournament settings has
- * eleven), so they become a vertical list of links. Below `md` there is no
- * room for a 200px rail beside a form, so the same list becomes a `Select` —
- * still one URL per section, so a link to "Danger zone" is shareable.
+ * eleven), so they become a vertical list of links. Below `lg` the admin
+ * sidebar and a 200px rail would leave the form a sliver, so the same list
+ * becomes a `Select` — still one URL per section, so a link to "Danger zone"
+ * is shareable.
  */
 export function SectionNav({ groups, activeKey }: Readonly<SectionNavProps>) {
   const t = useTranslations("kit.actions");
@@ -51,15 +81,24 @@ export function SectionNav({ groups, activeKey }: Readonly<SectionNavProps>) {
     .filter((group) => group.items.length > 0);
   const allItems = visibleGroups.flatMap((group) => group.items);
   const active = allItems.find((item) => item.key === activeKey);
+  const activeIndex = active ? allItems.indexOf(active) : -1;
+  const pick = (item: SectionNavItem) => {
+    picked = { href: item.href, edge: allItems.indexOf(item) < activeIndex ? "bottom" : "top" };
+  };
+
+  // One section is not a choice: no rail, no select.
+  if (allItems.length < 2) return null;
 
   return (
     <>
-      <div className="md:hidden">
+      <div className="lg:hidden">
         <Select
           value={active?.key ?? ""}
           onValueChange={(key) => {
             const target = allItems.find((item) => item.key === key);
-            if (target) router.push(target.href);
+            if (!target) return;
+            pick(target);
+            router.push(target.href);
           }}
         >
           <SelectTrigger aria-label={t("settingsSection")}>
@@ -80,10 +119,15 @@ export function SectionNav({ groups, activeKey }: Readonly<SectionNavProps>) {
         </Select>
       </div>
 
-      <nav aria-label={t("settingsSections")} className="hidden w-[200px] shrink-0 md:block">
+      {/* Sticky below the admin top bar (`h-12`), so a long form never scrolls
+          the way out of reach. */}
+      <nav
+        aria-label={t("settingsSections")}
+        className="hidden w-[200px] shrink-0 lg:sticky lg:top-16 lg:block lg:max-h-[calc(100dvh-5rem)] lg:self-start lg:overflow-y-auto"
+      >
         {visibleGroups.map((group) => (
           <div key={group.label ?? "ungrouped"} className="mb-4 last:mb-0">
-            {group.label ? <p className={cn(EYEBROW_CLASS, "mb-1.5 px-2")}>{group.label}</p> : null}
+            {group.label ? <p className={cn(eyebrowClass("muted"), "mb-1.5 px-2")}>{group.label}</p> : null}
             <ul className="space-y-0.5">
               {group.items.map((item) => {
                 const isActive = item.key === activeKey;
@@ -92,6 +136,13 @@ export function SectionNav({ groups, activeKey }: Readonly<SectionNavProps>) {
                     <Link
                       href={item.href}
                       aria-current={isActive ? "page" : undefined}
+                      onClick={(event) => {
+                        // A new-tab click leaves this page where it is.
+                        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+                          return;
+                        }
+                        pick(item);
+                      }}
                       className={cn(
                         "block rounded-md px-2 py-1.5 text-sm transition-colors",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -103,6 +154,9 @@ export function SectionNav({ groups, activeKey }: Readonly<SectionNavProps>) {
                     >
                       {item.label}
                     </Link>
+                    {/* The open page's groups, when a `SettingsOutlineProvider`
+                        wraps this rail and the page has enough of them. */}
+                    {isActive ? <SettingsOutlineList /> : null}
                   </li>
                 );
               })}

@@ -1,10 +1,4 @@
-"""Shared utility functions and constants for the balancer subsystem.
-
-This module contains pure functions and constants used by both the legacy
-sheet-based balancer (balancer.py) and the registration-based balancer
-(balancer_registration.py). Consolidating them here eliminates duplication
-and ensures consistent behavior across both systems.
-"""
+"""Pure helpers and constants for Google Sheets registration parsing and sync."""
 
 from __future__ import annotations
 
@@ -17,7 +11,6 @@ from urllib.parse import parse_qs, urlparse
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -25,9 +18,6 @@ from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 
 GOOGLE_SHEET_FETCH_TIMEOUT = 20.0
 """Timeout (in seconds) for fetching data from Google Sheets."""
-
-UNKNOWN_PRIORITY_SENTINEL = 99
-"""Sentinel value used when a role's priority is unknown or unset."""
 
 DEFAULT_SORT_PRIORITY_SENTINEL = 999
 """Sentinel value for sorting roles with unset priority to the end."""
@@ -47,14 +37,11 @@ arrives padded, wrapped in prose or joined to a neighbour — not to decide
 whether a handle is acceptable. Validation happens later, against the canon.
 """
 
-VALID_ROLES = set(REGISTRATION_ROLE_CODES)
-ROLE_ORDER = REGISTRATION_ROLE_CODES
-
 
 class RoleSubroleEntry(TypedDict):
     """Structured role + optional sub-role token — mirrors Pydantic/SQL model shape."""
 
-    role: str  # "tank" | "damage" | "support" | "flex"
+    role: str  # A discipline role code, or the open-slot token.
     subrole: str | None
 
 
@@ -69,9 +56,6 @@ DEFAULT_BOOLEAN_TRUE_VALUES = {
     "буду",
     "конечно",
 }
-
-# Legacy alias (same values, used in balancer.py)
-STREAM_TRUE_VALUES = DEFAULT_BOOLEAN_TRUE_VALUES
 
 
 # ---------------------------------------------------------------------------
@@ -172,10 +156,6 @@ def parse_datetime(value: str | None) -> datetime | None:
     except ValueError:
         return None
     return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
-
-
-# Alias for backward compatibility in balancer.py callers
-parse_submitted_at = parse_datetime
 
 
 def parse_boolean_value(value: str | None, true_values: set[str] | None = None) -> bool:

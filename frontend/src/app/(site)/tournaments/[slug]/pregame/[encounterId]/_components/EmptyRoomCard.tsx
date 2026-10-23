@@ -46,7 +46,7 @@ export function EmptyRoomCard({
           {action}
           <Button variant="outline" asChild>
             <Link href={returnTo}>
-              <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
+              <ArrowLeft aria-hidden />
               {t("back")}
             </Link>
           </Button>

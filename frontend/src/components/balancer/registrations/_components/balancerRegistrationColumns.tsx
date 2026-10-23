@@ -1,5 +1,7 @@
 "use client";
 
+import { roleOf, subRoleSlugOf } from "@/lib/roster/role-ref";
+import type { LadderedOntology } from "@/lib/roster/ontology";
 import type { ColumnDef, Row } from "@tanstack/react-table";
 
 import { columnMeta } from "@/components/data-table";
@@ -71,6 +73,8 @@ export function buildBalancerRegistrationColumns(
     save: (registration: AdminRegistration, next: string) => Promise<unknown>;
     canEdit: (registration: AdminRegistration) => boolean;
   },
+  /** The tournament owner's role dictionary the roles column names and draws roles from; its native ladder crests answers. */
+  ontology: LadderedOntology | null = null,
 ): ColumnDef<AdminRegistration>[] {
   // Built apart from the list below only to keep its old place between check-in
   // and admission instead of being appended after the admin columns.
@@ -110,7 +114,7 @@ export function buildBalancerRegistrationColumns(
     // Free-form answers: the old client-side sort had no case for them either.
     enableSorting: false,
     cell: ({ row }) => (
-      <AnswerValue value={row.original.answers?.[field.key] ?? null} kind={field.kind} />
+      <AnswerValue value={row.original.answers?.[field.key] ?? null} kind={field.kind} ontology={ontology} />
     ),
     meta: columnMeta<AdminRegistration>({
       category: "admin",
@@ -154,7 +158,9 @@ export function buildBalancerRegistrationColumns(
       // the roles here computed the same number a second time, which is the one
       // way it could ever disagree with the engine.
       accessorFn: (registration) => registration.best_rank ?? 0,
-      cell: ({ row }) => <RolesCell roles={row.original.roles} catalog={subroleCatalog} />,
+      cell: ({ row }) => (
+        <RolesCell roles={row.original.roles} catalog={subroleCatalog} ontology={ontology} />
+      ),
       meta: columnMeta<AdminRegistration>({
         category: "core",
         defaultHidden: false,
@@ -166,7 +172,7 @@ export function buildBalancerRegistrationColumns(
         className: "min-w-[136px]",
         searchValue: (registration) =>
           registration.roles
-            .map((role) => [role.role, role.subrole, role.rank_value].filter(Boolean).join(" "))
+            .map((role) => [roleOf(role.role), subRoleSlugOf(role.role), role.rank_value].filter(Boolean).join(" "))
             .join(" "),
       }),
     },
@@ -355,6 +361,7 @@ export function buildBalancerRegistrationColumns(
         category: "admin",
         defaultHidden: true,
         responsive: "md",
+        align: "center",
         filter: {
           param: "source",
           mode: "single",
@@ -414,6 +421,7 @@ export function buildBalancerRegistrationColumns(
         category: "admin",
         defaultHidden: true,
         responsive: "lg",
+        align: "center",
         className: "min-w-[180px]",
         searchValue: (registration) =>
           registration.balancer_status === "excluded"

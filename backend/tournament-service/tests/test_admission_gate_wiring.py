@@ -20,7 +20,7 @@ decision table, and duplicating either would give three places to update and two
 of them would rot.
 
 No database: ``_common_service.get_registration_form`` and
-``build_admission_resolver`` are the two seams ``admission.py`` reaches the world
+``subscription_resolver`` are the two seams ``admission.py`` reaches the world
 through, and both are patched. The session is a stub that answers the one
 ``battle_tag_state`` read ``resolve_profiles_open`` issues.
 
@@ -40,13 +40,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.core.errors import BaseAPIException  # noqa: E402
-from shared.services.admission import AdmissionStage, RequirementState  # noqa: E402
 from shared.services.subscriptions import (  # noqa: E402
     SubscriptionRequirement,
     SubscriptionState,
     SubscriptionVerdict,
     evaluate_requirement,
 )
+from src.services.admission import AdmissionStage, RequirementState  # noqa: E402
 from src.services.registration import admission  # noqa: E402
 from tests._subscription_fakes import resolver_rule as _rule  # noqa: E402
 
@@ -79,8 +79,9 @@ def _verdict(state: str, tier: int | None = None, *, reason: str | None = None) 
 
 ACTIVE_2 = _verdict(SubscriptionState.ACTIVE, 2)
 INACTIVE = _verdict(SubscriptionState.INACTIVE, reason="not_subscribed")
-#: An outage, which is the case that must never refuse anybody.
-UNKNOWN = _verdict(SubscriptionState.UNKNOWN, reason="provider_unavailable")
+#: The organizer's misconfiguration, which must never refuse anybody. (An outage --
+#: ``provider_unavailable`` -- refuses; ``test_admission_subscription`` pins that.)
+UNKNOWN = _verdict(SubscriptionState.UNKNOWN, reason="guild_not_configured")
 
 
 # --------------------------------------------------------------------------- #
@@ -223,7 +224,7 @@ class _GateCase(IsolatedAsyncioTestCase):
 
         with (
             mock.patch.object(admission, "_common_service") as forms,
-            mock.patch.object(admission, "build_admission_resolver", return_value=resolver),
+            mock.patch.object(admission, "subscription_resolver", return_value=resolver),
         ):
             forms.get_registration_form = mock.AsyncMock(return_value=form)
             evaluation = await admission.assert_admitted_at(
@@ -313,8 +314,8 @@ class TestClosedProfileRefusesCheckIn(_GateCase):
 
 
 class TestSubscriptionFailsOpenAtCheckIn(_GateCase):
-    """Only a CONFIRMED refusal blocks -- the invariant whose regression cost is
-    ejecting a paying subscriber from a live check-in."""
+    """A rule the organizer left unanswerable does not block -- the invariant whose
+    regression cost is ejecting a paying subscriber from a live check-in."""
 
     async def test_undetermined_does_not_raise(self):
         evaluation, resolver, _session = await self.gate(

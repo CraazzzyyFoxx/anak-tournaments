@@ -20,6 +20,8 @@ export const IDENTITY_PROVIDERS = [
   "boosty",
   "vk",
   "youtube",
+  "riot",
+  "steam"
 ] as const;
 
 export type IdentityProvider = (typeof IDENTITY_PROVIDERS)[number];
@@ -36,8 +38,8 @@ export function identityKey<P extends string>(provider: P): `identity_${P}` {
  *
  * Returns the literal union, not `string`: a caller that localises a provider
  * (`registration.accounts.${provider}`) is checked against the message
- * catalogue only if the six names are known here, which is exactly how a
- * seventh provider added without its two strings becomes a compile error rather
+ * catalogue only if the provider names are known here, so adding a provider
+ * without its two strings becomes a compile error rather
  * than a question labelled `identity_vk`.
  */
 export function identityProvider(key: string): IdentityProvider | null {
@@ -46,7 +48,7 @@ export function identityProvider(key: string): IdentityProvider | null {
   return IDENTITY_PROVIDERS.includes(provider) ? provider : null;
 }
 
-/** Spread as a typed tuple rest so `BuiltinFieldKey` stays a union of the ELEVEN
+/** Spread as a typed tuple rest so `BuiltinFieldKey` stays a union of
  *  literals. `.map()` alone widens to `string`, and the admin builder localises a
  *  builtin by key against a typed message dictionary, which only accepts the
  *  literals. (Naming that dictionary's namespace here would make the zone
@@ -78,7 +80,7 @@ export function isBuiltinKey(key: string): key is BuiltinFieldKey {
  * (`is_builtin_key(key) or key.startswith(IDENTITY_KEY_PREFIX)`).
  *
  * Wider than {@link isBuiltinKey} on purpose: the whole `identity_` prefix is
- * reserved, not just the six providers this build knows, so a question labelled
+ * reserved, not just the providers this build knows, so a question labelled
  * "Identity card" cannot occupy a namespace a later server release means to
  * own. And it does not depend on what the form currently asks — dropping the
  * `identity_battlenet` builtin must not free its key for a custom field the
@@ -91,7 +93,7 @@ export function isReservedFieldKey(key: string): boolean {
 /**
  * The visibility the catalog FIXES for a builtin, mirroring
  * `BuiltinSpec.fixed_visibility`. `null` where the organizer may choose (every
- * identity but the game one).
+ * identity but the game ones).
  *
  * The builder reads this to DISABLE the visibility selector rather than let an
  * organizer pick a value the schema validator would reject.
@@ -99,17 +101,29 @@ export function isReservedFieldKey(key: string): boolean {
 const FIXED_VISIBILITY: Record<string, Visibility> = {
   // The game handle is the roster's public face, as the BattleTag column was.
   identity_battlenet: "public",
+  identity_riot: "public",
+  identity_steam: "public",
   roles: "public",
   stream_pov: "public",
   // A reserve hidden from the roster cannot be found when a replacement is
   // needed, so the catalog pins this one public too.
   reserve: "public",
   public_notes: "public",
-  organizer_notes: "organizers",
+  organizer_notes: "organizers"
 };
 
 export function builtinFixedVisibility(key: string): Visibility | null {
   return FIXED_VISIBILITY[key] ?? null;
+}
+
+/**
+ * Whether an identity key is a GAME account (`identity_battlenet`, `identity_riot`): the catalog pins exactly
+ * these public, because the owner game's primary handle is the roster's face. Only the owner game's own key has a
+ * roster column; every other game's answer (and every one while the owner is unresolved) lists alternate accounts
+ * a generic answer column would print in full, so no generic column is ever built for one.
+ */
+export function isGameIdentityKey(key: string): boolean {
+  return identityProvider(key) !== null && builtinFixedVisibility(key) === "public";
 }
 
 /** Which params editor a builtin needs, or `null` when it takes no params. */

@@ -7,18 +7,22 @@ import { cn } from "@/lib/utils"
  * Card surface. Renders a `<div>` by default; pass `asChild` with the element
  * the card actually is wherever it belongs in the page outline — the same
  * escape hatch `CardTitle` has: `<Card asChild><section aria-label="…">`.
+ *
+ * `variant="flat"` drops the shadow: a frame around a list or a table column
+ * that sits level with the page rather than lifted off it.
  */
 const Card = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement> & { asChild?: boolean }
->(({ className, asChild, ...props }, ref) => {
+  React.HTMLAttributes<HTMLDivElement> & { asChild?: boolean; variant?: "default" | "flat" }
+>(({ className, asChild, variant = "default", ...props }, ref) => {
   const Comp = asChild ? Slot : "div"
   return (
     <Comp
       ref={ref}
       data-ui="card"
       className={cn(
-        "rounded-xl border bg-card text-card-foreground shadow",
+        "rounded-xl border bg-card text-card-foreground",
+        variant === "default" && "shadow",
         className
       )}
       {...props}

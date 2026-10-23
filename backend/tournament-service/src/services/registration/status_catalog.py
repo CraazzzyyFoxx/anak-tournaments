@@ -3,16 +3,16 @@ from __future__ import annotations
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.balancer_registration_statuses import (
+from shared import models
+from shared.core import http_status as status
+from shared.core.errors import BaseAPIException as HTTPException
+from shared.registration_statuses import (
     StatusScope,
     get_builtin_status_values,
     invalidate_status_metas_cache,
     normalize_status_slug,
 )
-from shared.core import http_status as status
-from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import RegistrationStatusRepository, WorkspaceRepository
-from src import models
 
 __all__ = ("RegistrationStatusCatalogService", "status_catalog_service")
 
@@ -57,14 +57,14 @@ class RegistrationStatusCatalogService:
         self,
         session: AsyncSession,
         workspace_id: int,
-    ) -> list[models.BalancerRegistrationStatus]:
+    ) -> list[models.RegistrationStatus]:
         await self.ensure_workspace_exists(session, workspace_id)
         # ``list_for_workspace`` already orders global-before-workspace and
         # builtin-before-custom, which is exactly the precedence the merge below
         # relies on: assigning into ``merged`` in that order lets a workspace row
         # (and a custom row) overwrite the global/builtin it shadows.
         rows = await self.status_repo.list_for_workspace(session, workspace_id=workspace_id)
-        merged: dict[tuple[str, str], models.BalancerRegistrationStatus] = {}
+        merged: dict[tuple[str, str], models.RegistrationStatus] = {}
         for row in rows:
             merged[(row.scope, row.slug)] = row
         return sorted(
@@ -81,18 +81,18 @@ class RegistrationStatusCatalogService:
         self,
         session: AsyncSession,
         workspace_id: int,
-    ) -> list[models.BalancerRegistrationStatus]:
+    ) -> list[models.RegistrationStatus]:
         await self.ensure_workspace_exists(session, workspace_id)
         result = await session.execute(
             self.status_repo.select()
             .where(
-                models.BalancerRegistrationStatus.workspace_id == workspace_id,
-                models.BalancerRegistrationStatus.kind == "custom",
+                models.RegistrationStatus.workspace_id == workspace_id,
+                models.RegistrationStatus.kind == "custom",
             )
             .order_by(
-                models.BalancerRegistrationStatus.scope.asc(),
-                models.BalancerRegistrationStatus.name.asc(),
-                models.BalancerRegistrationStatus.id.asc(),
+                models.RegistrationStatus.scope.asc(),
+                models.RegistrationStatus.name.asc(),
+                models.RegistrationStatus.id.asc(),
             )
         )
         return list(result.scalars().all())
@@ -102,7 +102,7 @@ class RegistrationStatusCatalogService:
         session: AsyncSession,
         workspace_id: int,
         status_id: int,
-    ) -> models.BalancerRegistrationStatus:
+    ) -> models.RegistrationStatus:
         status_row = await self.status_repo.get_by(
             session,
             id=status_id,
@@ -122,7 +122,7 @@ class RegistrationStatusCatalogService:
         *,
         scope: StatusScope,
         slug: str,
-    ) -> models.BalancerRegistrationStatus:
+    ) -> models.RegistrationStatus:
         status_row = await self.status_repo.get_by_slug(
             session,
             workspace_id=None,
@@ -153,12 +153,12 @@ class RegistrationStatusCatalogService:
             )
 
         filters: list[sa.ColumnElement[bool]] = [
-            models.BalancerRegistrationStatus.workspace_id == workspace_id,
-            models.BalancerRegistrationStatus.scope == scope,
-            models.BalancerRegistrationStatus.slug == slug,
+            models.RegistrationStatus.workspace_id == workspace_id,
+            models.RegistrationStatus.scope == scope,
+            models.RegistrationStatus.slug == slug,
         ]
         if exclude_status_id is not None:
-            filters.append(models.BalancerRegistrationStatus.id != exclude_status_id)
+            filters.append(models.RegistrationStatus.id != exclude_status_id)
 
         if await self.status_repo.exists(session, filters=filters):
             raise HTTPException(
@@ -178,7 +178,7 @@ class RegistrationStatusCatalogService:
         description: str | None,
         excludes_from_balancer: bool = False,
         excludes_from_ready: bool = False,
-    ) -> models.BalancerRegistrationStatus:
+    ) -> models.RegistrationStatus:
         await self.ensure_workspace_exists(session, workspace_id)
         slug = _normalize_name_to_slug(name)
         await self._ensure_custom_slug_available(
@@ -187,7 +187,7 @@ class RegistrationStatusCatalogService:
             scope=scope,
             slug=slug,
         )
-        status_row = models.BalancerRegistrationStatus(
+        status_row = models.RegistrationStatus(
             workspace_id=workspace_id,
             scope=scope,
             slug=slug,
@@ -218,7 +218,7 @@ class RegistrationStatusCatalogService:
         description: str | None,
         excludes_from_balancer: bool | None = None,
         excludes_from_ready: bool | None = None,
-    ) -> models.BalancerRegistrationStatus:
+    ) -> models.RegistrationStatus:
         status_row = await self.get_custom_status_by_id(session, workspace_id, status_id)
 
         if name is not None:
@@ -254,15 +254,13 @@ class RegistrationStatusCatalogService:
     ) -> None:
         status_row = await self.get_custom_status_by_id(session, workspace_id, status_id)
         registration_column = (
-            models.BalancerRegistration.status
-            if status_row.scope == "registration"
-            else models.BalancerRegistration.balancer_status
+            models.Registration.status if status_row.scope == "registration" else models.Registration.balancer_status
         )
-        # Analytical: BalancerRegistration has no denormalized workspace_id column —
+        # Analytical: Registration has no denormalized workspace_id column —
         # scope via the owning tournament (registrations are always tournament-scoped).
         in_use = await session.scalar(
-            sa.select(sa.func.count(models.BalancerRegistration.id))
-            .join(models.Tournament, models.Tournament.id == models.BalancerRegistration.tournament_id)
+            sa.select(sa.func.count(models.Registration.id))
+            .join(models.Tournament, models.Tournament.id == models.Registration.tournament_id)
             .where(
                 models.Tournament.workspace_id == workspace_id,
                 registration_column == status_row.slug,
@@ -289,7 +287,7 @@ class RegistrationStatusCatalogService:
         icon_color: str | None,
         name: str | None,
         description: str | None,
-    ) -> models.BalancerRegistrationStatus:
+    ) -> models.RegistrationStatus:
         await self.ensure_workspace_exists(session, workspace_id)
         if slug not in get_builtin_status_values(scope):
             raise HTTPException(
@@ -306,7 +304,7 @@ class RegistrationStatusCatalogService:
         )
         is_new = status_row is None
         if status_row is None:
-            status_row = models.BalancerRegistrationStatus(
+            status_row = models.RegistrationStatus(
                 workspace_id=workspace_id,
                 scope=scope,
                 slug=slug,
@@ -332,8 +330,8 @@ class RegistrationStatusCatalogService:
         if description is not None:
             status_row.description = description.strip() or None
 
-        # Persisted after the field edits so a fresh override is still ONE insert,
-        # exactly as the previous ``session.add`` + single ``commit`` behaved.
+        # Created after the field edits: the repository's create() flushes, so a fresh
+        # override stays ONE insert instead of an INSERT plus an UPDATE.
         if is_new:
             await self.status_repo.create(session, status_row)
         await session.commit()

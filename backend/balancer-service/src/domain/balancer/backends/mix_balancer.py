@@ -6,9 +6,9 @@ from loguru import logger
 
 from src.domain.balancer import native
 from src.domain.balancer.backends.base import BalanceMetrics, BalanceSolution
+from src.domain.balancer.config.defaults import AlgorithmConfig
 from src.domain.balancer.entities import Player
 from src.domain.balancer.progress import ProgressCallback
-from src.services.balancer.config.defaults import AlgorithmConfig
 
 
 def build_metrics(metrics: dict[str, Any]) -> BalanceMetrics:
@@ -32,8 +32,7 @@ def quality_coefficients(tilt: float) -> tuple[float, float, float]:
 
     ``0`` weighs only how evenly the two teams' ranks split, ``1`` only how
     many players got a preferred role, and ``0.5`` reproduces the engine's own
-    defaults (every coefficient ``1.0``) -- so a mix that never touches the
-    knob balances exactly as it did before the knob existed.
+    defaults (every coefficient ``1.0``).
 
     Uniformity carries no coefficient in the engine at all, so even a full
     comfort tilt keeps some pressure towards evenly spread teams.
@@ -75,6 +74,7 @@ class MixBalancerBackend:
             native.build_roles(
                 config.role_mask,
                 config.role_settings,
+                config.open_slot_settings,
                 lambda settings: {"weight": settings.mix_weight},
             ),
             {

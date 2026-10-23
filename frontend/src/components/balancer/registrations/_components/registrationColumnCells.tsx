@@ -1,16 +1,21 @@
 "use client";
 
+import { roleOf, subRoleSlugOf } from "@/lib/roster/role-ref";
 import type { SortingFn } from "@tanstack/react-table";
 import { useTranslations, type DateTimeFormatOptions } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { StatusPill } from "@/components/kit/StatusPill";
-import { TONE_CLASS } from "@/components/kit/tone";
+import { TONE_CLASS } from "@/components/ui/tone";
 import { Badge } from "@/components/ui/badge";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { formatAdmissionReason, primaryAdmissionReason } from "@/lib/registration/admission";
 import { cn } from "@/lib/utils";
-import { ROLE_LABELS, getRoleIconName, getSubroleLabel } from "@/lib/roster/roles";
+import { getSubroleLabel } from "@/lib/roster/roles";
+import { findRole, type RoleOntology } from "@/lib/roster/ontology";
+import { useRoleName } from "@/hooks/useRoleName";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { answerList } from "@/lib/forms/answers";
 import type { AdminRegistration, AdminRegistrationRole } from "@/types/balancer-admin.types";
 import type { SubroleCatalog } from "@/types/registration.types";
@@ -22,7 +27,7 @@ import type { SubroleCatalog } from "@/types/registration.types";
  * other builtins are named in the UI language (`builtinAnswerLabel`).
  */
 export const BUILTIN_ANSWER_LABELS: Record<string, string> = {
-  identity_battlenet: "BattleTags",
+  identity_battlenet: "Battle.net",
   identity_discord: "Discord",
   identity_twitch: "Twitch",
   identity_boosty: "Boosty",
@@ -152,11 +157,16 @@ export function ParticipantCell({
 export function RolesCell({
   roles,
   catalog,
+  ontology,
 }: Readonly<{
   roles: AdminRegistrationRole[];
   catalog?: SubroleCatalog;
+  /** The tournament owner's role dictionary: role names and glyphs. `null` while it loads. */
+  ontology: RoleOntology | null;
 }>) {
   const t = useTranslations("registrationsAdmin.columns");
+  const slotLabel = useSlotLabel(ontology);
+  const nameOf = useRoleName();
   if (!roles || roles.length === 0) {
     return <span className="text-[color:var(--aqt-fg-dim)]">—</span>;
   }
@@ -176,14 +186,18 @@ export function RolesCell({
   return (
     <div className="flex flex-wrap items-start justify-center gap-x-1 gap-y-2">
       {sortedRoles.map((role) => {
-        const subroleLabel = role.subrole ? getSubroleLabel(catalog, role.role, role.subrole) : null;
+        const subroleSlug = subRoleSlugOf(role.role);
+        const subroleLabel = subroleSlug ? getSubroleLabel(catalog, roleOf(role.role), subroleSlug) : null;
+        // The exact leaf the registration stored (`damage_hitscan`, not its parent `damage`): the dictionary names it
+        // and carries its presentation overrides; a leaf it does not know keeps the label the catalog gave it.
+        const leaf = ontology ? findRole(ontology, role.role) : null;
         return (
           <div
-            key={`${role.role}-${role.subrole ?? "base"}-${role.priority}`}
+            key={`${roleOf(role.role)}-${subroleSlug ?? "base"}-${role.priority}`}
             className={cn("inline-flex min-w-8 flex-col items-center gap-0.5", !role.is_active && "opacity-50")}
             title={[
-              ROLE_LABELS[role.role] ?? role.role,
-              subroleLabel,
+              slotLabel(roleOf(role.role)),
+              subroleSlug ? (leaf ? nameOf(leaf) : subroleLabel) : null,
               role.rank_value != null ? `${role.rank_value}` : t("noRank"),
               role.is_primary ? t("primary") : null,
             ]
@@ -198,11 +212,11 @@ export function RolesCell({
                   : "text-[color:var(--aqt-fg-muted)]",
               )}
             >
-              <PlayerRoleIcon role={getRoleIconName(role.role)} size={20} />
+              <PlayerRoleIcon role={role.role} ontology={ontology} size={20} />
             </span>
-            <span className="text-center text-label font-semibold uppercase leading-none tracking-label text-[color:var(--aqt-fg-dim)]">
+            <Eyebrow tone="dim" className="text-center leading-none">
               {subroleLabel ?? role.rank_value ?? ""}
-            </span>
+            </Eyebrow>
           </div>
         );
       })}

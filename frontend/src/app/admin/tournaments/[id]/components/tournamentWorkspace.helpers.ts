@@ -1,6 +1,5 @@
 import type { Tournament, TournamentStatus } from "@/types/tournament.types";
-import type { Tone } from "@/components/kit/tone";
-import type { DateFormatter } from "@/components/kit/format-time";
+import type { Tone } from "@/components/ui/tone";
 import type { TournamentPhaseScheduleEntryInput, TournamentUpdateInput } from "@/types/admin.types";
 import { utcToZonedInput, zonedInputToUtc } from "@/lib/workspace/timezone";
 import {
@@ -8,9 +7,7 @@ import {
   isSchedulablePhase,
   type SchedulablePhase
 } from "@/lib/tournament/lifecycle";
-import type { RosterSlotMap } from "@/lib/roster/shape";
 import type { DraftFormatSettings } from "@/types/draft.types";
-import { normalizeSlots } from "@/lib/roster/shape-editor-model";
 import { normalizeChallongeSlug } from "@/lib/tournament/challonge";
 
 export type PhaseScheduleFormState = Record<
@@ -38,26 +35,16 @@ export type TournamentFormState = {
   allow_late_registration: boolean;
   discord_broadcasts_enabled: boolean;
   discord_dms_enabled: boolean;
+  logs_official: boolean;
   phase_schedule: PhaseScheduleFormState;
   division_grid_version_id: number | null;
   team_formation: string;
-  /**
-   * Roster shape override; `null` = inherit. Normalized on the way in so the
-   * tab's `JSON.stringify` dirty check does not trip over key order.
-   */
-  roster_slots_json: RosterSlotMap | null;
   /** Draft format rule; `null` = snake. The server normalizes the shape. */
   draft_format_json: DraftFormatSettings | null;
 };
 
-/** A tournament day. Stored as a UTC midnight, so read in UTC — any other zone shifts it. */
-export function formatDate(format: DateFormatter, value?: Date | string | null) {
-  if (!value) return "-";
-  return format.dateTime(new Date(value), { dateStyle: "medium", timeZone: "UTC" });
-}
-
 /**
- * Tone of the hub header's status pill.
+ * Tone of a tournament's status pill (hub header, tournaments list).
  *
  * Statuses are not qualities, so this is not a good/bad scale: `live` is the
  * one that wants attention, a finished tournament is neutral, everything
@@ -131,12 +118,10 @@ export function getTournamentForm(tournament: Tournament, timezone: string): Tou
     allow_late_registration: tournament.allow_late_registration ?? false,
     discord_broadcasts_enabled: tournament.discord_broadcasts_enabled ?? true,
     discord_dms_enabled: tournament.discord_dms_enabled ?? true,
+    logs_official: tournament.logs_official ?? false,
     phase_schedule: getPhaseScheduleForm(tournament, timezone),
     division_grid_version_id: tournament.division_grid_version_id ?? null,
     team_formation: tournament.team_formation ?? "balancer",
-    roster_slots_json: tournament.roster_slots_json
-      ? normalizeSlots(tournament.roster_slots_json)
-      : null,
     draft_format_json: tournament.draft_format_json ?? null
   };
 }
@@ -145,12 +130,11 @@ export function getTournamentForm(tournament: Tournament, timezone: string): Tou
 // `TournamentFormState` (minus `phase_schedule`, which travels through
 // `setTournamentSchedule` instead). Kept in one place so the diff below and
 // `getTournamentForm` above cannot drift out of sync field-by-field.
-type TournamentUpdateValues = Required<Omit<TournamentUpdateInput, "description" | "rules" | "challonge_slug" | "division_grid_version_id" | "roster_slots_json" | "draft_format_json">> & {
+type TournamentUpdateValues = Required<Omit<TournamentUpdateInput, "description" | "rules" | "challonge_slug" | "division_grid_version_id" | "draft_format_json">> & {
   description: string | null;
   rules: string | null;
   challonge_slug: string | null;
   division_grid_version_id: number | null;
-  roster_slots_json: RosterSlotMap | null;
   draft_format_json: DraftFormatSettings | null;
 };
 
@@ -177,9 +161,9 @@ function normalizeTournamentFormValues(form: TournamentFormState): TournamentUpd
     allow_late_registration: form.allow_late_registration,
     discord_broadcasts_enabled: form.discord_broadcasts_enabled,
     discord_dms_enabled: form.discord_dms_enabled,
+    logs_official: form.logs_official,
     division_grid_version_id: form.division_grid_version_id,
     team_formation: form.team_formation,
-    roster_slots_json: form.roster_slots_json,
     draft_format_json: form.draft_format_json
   };
 }

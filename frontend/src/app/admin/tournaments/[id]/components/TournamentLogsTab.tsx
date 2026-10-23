@@ -1,52 +1,30 @@
 "use client";
 
 import { useIsFetching, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ColumnDef } from "@tanstack/react-table";
-import {
-  CheckCircle2,
-  ChevronRight,
-  Clock3,
-  FolderInput,
-  Link2,
-  Loader2,
-  RefreshCw,
-  RotateCcw,
-  XCircle
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
-import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
-
-import { columnMeta, createKebabColumn, DataTable } from "@/components/data-table";
-import { StatusPill } from "@/components/kit/StatusPill";
-import { type Tone } from "@/components/kit/tone";
-import type { DateFormatter } from "@/components/kit/format-time";
+import { DataTable } from "@/components/data-table";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
-import SearchableImageSelect from "@/components/ui/searchable-image-select";
-import { encounterScopeLabel } from "@/components/admin/encounters/EncounterCells";
-import { UNKNOWN_ROUND_SHAPE } from "@/lib/bracket/round-name";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { useFilters, type FilterDef } from "@/components/kit/useFilters";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useInvalidation } from "@/hooks/useInvalidation";
 import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
-import type {
-  LogProcessingRecord,
-  LogProcessingStats,
-  LogProcessingStatus
-} from "@/types/admin.types";
+import { AttachLogDialog } from "./AttachLogDialog";
+import {
+  getLogFileName,
+  getRetryKind,
+  logOperationErrorCode,
+  retryRequestFor
+} from "./logs.helpers";
+import { LOG_FILTERS, STATUS_META, formatLogTime, isRetryable, type LogFilter } from "./logs-tab/model";
+import { useLogColumns } from "./logs-tab/useLogColumns";
+import { getApiErrorMessage } from "@/lib/api/error";
+import type { LogBindRequest, LogProcessingRecord } from "@/types/admin.types";
 import type { Encounter } from "@/types/encounter.types";
 import { TournamentLogUploadDialog } from "@/components/logs/TournamentLogUploadDialog";
 import {
@@ -65,155 +43,12 @@ const PAGE_SIZE = 25;
  */
 const ACTIVE_QUEUE_POLL_MS = 10_000;
 
-type LogFilter = LogProcessingStatus;
-
-const STATUS_META: Record<LogProcessingStatus, { key: "queued" | "processing" | "processed" | "failed"; icon: LucideIcon; tone: Tone }> = {
-  pending: { key: "queued", icon: Clock3, tone: "neutral" },
-  processing: { key: "processing", icon: Loader2, tone: "info" },
-  done: { key: "processed", icon: CheckCircle2, tone: "success" },
-  failed: { key: "failed", icon: XCircle, tone: "danger" }
-};
-
-/** Chip order is scan order: the states that need action come first. */
-const LOG_FILTERS: LogFilter[] = ["failed", "processing", "pending", "done"];
-
-const SOURCE_LABELS: Record<LogProcessingRecord["source"], "sourceUpload" | "sourceDiscord" | "sourceManual"> = {
-  upload: "sourceUpload",
-  discord: "sourceDiscord",
-  manual: "sourceManual"
-};
-
 interface TournamentLogsTabProps {
   /** `null` = every tournament in the workspace. */
   tournamentId: number | null;
   workspaceId: number | null;
   encounters: Encounter[];
   canUploadLogs: boolean;
-}
-
-function getLogFileName(filename: string) {
-  return filename.split(/[\\/]/).at(-1) ?? filename;
-}
-
-function formatDuration(record: LogProcessingRecord) {
-  if (!record.started_at || !record.finished_at) {
-    return record.status === "processing" ? "running" : "-";
-  }
-
-  const durationMs = new Date(record.finished_at).getTime() - new Date(record.started_at).getTime();
-  if (!Number.isFinite(durationMs) || durationMs < 0) return "-";
-  return `${(durationMs / 1000).toFixed(1)}s`;
-}
-
-/** Matches `formatSyncTime` in ChallongeIntegrationSection so both admin logs read alike. */
-function formatLogTime(format: DateFormatter, value: string) {
-  return format.dateTime(new Date(value), {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
-
-function getErrorSummary(errorMessage: string | null) {
-  if (!errorMessage) return null;
-
-  const codeMatch = errorMessage.match(/['"]code['"]:\s*['"]([^'"]+)['"]/);
-  const statusMatch = errorMessage.match(/^(\d{3})/);
-  const code = codeMatch?.[1]?.replaceAll("_", " ");
-
-  if (code) {
-    const formattedCode = code.charAt(0).toUpperCase() + code.slice(1);
-    return statusMatch ? `${statusMatch[1]} · ${formattedCode}` : formattedCode;
-  }
-
-  return errorMessage.replace(/^(\d{3}:\s*)?/, "").slice(0, 120);
-}
-
-function LogStatusBadge({ status }: Readonly<{ status: LogProcessingStatus }>) {
-  const t = useTranslations("adminTournament.logs");
-  const meta = STATUS_META[status];
-  const Icon = meta.icon;
-
-  return (
-    <StatusPill tone={meta.tone} className="px-1.5">
-      <Icon className={cn("size-3", status === "processing" && "animate-spin")} aria-hidden />
-      {t(meta.key)}
-    </StatusPill>
-  );
-}
-
-/** Counts come from the server aggregate, so a chip shows its real size. */
-function getFilterCount(filter: LogFilter, stats: LogProcessingStats | undefined) {
-  return stats ? stats[filter] : undefined;
-}
-
-/** Two encounters of one pair share a name, so the stage and round tell them apart. */
-function encounterOptionLabel(
-  encounter: Encounter,
-  formatRound: ReturnType<typeof useBracketRoundLabel>
-) {
-  return `${encounter.name} · ${encounterScopeLabel(encounter)} · ${formatRound(encounter.round, UNKNOWN_ROUND_SHAPE)}`;
-}
-
-function AttachLogDialog({
-  record,
-  encounters,
-  isPending,
-  onAttach,
-  onClose
-}: Readonly<{
-  record: LogProcessingRecord | null;
-  encounters: Encounter[];
-  isPending: boolean;
-  onAttach: (encounterId: number) => void;
-  onClose: () => void;
-}>) {
-  const t = useTranslations("adminTournament.logs");
-  const formatRound = useBracketRoundLabel();
-  const [picked, setPicked] = useState<string | undefined>(undefined);
-  const value =
-    picked ?? (record?.attached_encounter_id != null ? String(record.attached_encounter_id) : undefined);
-
-  return (
-    <Dialog
-      open={record != null}
-      onOpenChange={(open) => {
-        if (open) return;
-        setPicked(undefined);
-        onClose();
-      }}
-    >
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{t("attachTitle")}</DialogTitle>
-          <DialogDescription className="break-all">
-            {t("attachDescriptionWithFile", { filename: record ? getLogFileName(record.filename) : "" })}
-          </DialogDescription>
-        </DialogHeader>
-        <SearchableImageSelect
-          value={value}
-          onValueChange={setPicked}
-          options={encounters.map((encounter) => ({
-            value: String(encounter.id),
-            label: encounterOptionLabel(encounter, formatRound)
-          }))}
-          placeholder={t("pickEncounter")}
-          searchPlaceholder={t("searchEncounter")}
-          triggerClassName="h-9"
-        />
-        <DialogFooter>
-          <Button
-            disabled={value === undefined || isPending}
-            onClick={() => value !== undefined && onAttach(Number(value))}
-          >
-            {isPending ? <Spinner /> : <Link2 aria-hidden />}
-            {t("attach")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 export function TournamentLogsTab({
@@ -271,7 +106,8 @@ export function TournamentLogsTab({
         options: LOG_FILTERS.map((filter) => ({
           value: filter,
           label: t(STATUS_META[filter].key),
-          count: getFilterCount(filter, stats)
+          // Counts come from the server aggregate, so a chip shows its real size.
+          count: stats?.[filter]
         }))
       }
     ],
@@ -295,25 +131,38 @@ export function TournamentLogsTab({
     tournamentId
   });
 
+  const failureMessage = (reason: unknown) => {
+    const code = logOperationErrorCode(reason);
+    return code ? tx(`opError.${code}`) : getApiErrorMessage(reason);
+  };
+
   const retryMutation = useMutation({
-    mutationFn: async (recordIds: number[]) => {
+    // Each row is its own request: a done row reparses with the revision captured when the page was read, so
+    // a stale, busy or superseded row fails alone and is reported by name.
+    mutationFn: async (records: LogProcessingRecord[]) => {
       const results = await Promise.allSettled(
-        recordIds.map((recordId) => adminService.retryLogRecord(recordId))
+        records.map((record) => adminService.retryLogRecord(record.id, retryRequestFor(record)))
       );
-      return results.filter((result) => result.status === "rejected").length;
+      return results.flatMap((result, index) =>
+        result.status === "rejected" ? [{ record: records[index]!, reason: result.reason }] : []
+      );
     },
-    onSuccess: (failedCount, recordIds) => {
-      const queued = recordIds.length - failedCount;
-      if (failedCount > 0) {
-        notify.error(t("retryQueuedSummary", { queued, total: recordIds.length }), {
-          description: tx("retryQueued", { count: failedCount })
+    onSuccess: (failures, records) => {
+      const ok = records.length - failures.length;
+      if (failures.length > 0) {
+        notify.error(tx("retryPartial", { ok, total: records.length }), {
+          description: (
+            <ul className="list-disc pl-4">
+              {failures.map(({ record, reason }) => (
+                <li key={record.id}>{`${getLogFileName(record.filename)}: ${failureMessage(reason)}`}</li>
+              ))}
+            </ul>
+          )
         });
+      } else if (records.some((record) => getRetryKind(record) === "reparse")) {
+        notify.success(tx("retryProcessed", { count: ok }));
       } else {
-        notify.success(
-          queued === 1
-            ? t("retryQueuedSingle")
-            : t("retryQueuedPlural", { count: queued })
-        );
+        notify.success(ok === 1 ? t("retryQueuedSingle") : t("retryQueuedPlural", { count: ok }));
       }
       refreshAll();
     }
@@ -329,167 +178,68 @@ export function TournamentLogsTab({
 
   const [attachTarget, setAttachTarget] = useState<LogProcessingRecord | null>(null);
   const attachMutation = useMutation({
-    mutationFn: ({ recordId, encounterId }: { recordId: number; encounterId: number }) =>
-      adminService.retryLogRecord(recordId, encounterId),
+    mutationFn: ({ recordId, encounterId, encounterGameId }: {
+      recordId: number; encounterId: number; encounterGameId: number;
+    }) => adminService.retryLogRecord(recordId, {
+      encounter_id: encounterId,
+      encounter_game_id: encounterGameId
+    }),
     onSuccess: () => {
       notify.success(t("attachedQueued"));
       setAttachTarget(null);
       refreshAll();
+    },
+    onError: (error) => notify.apiError(error)
+  });
+
+  const bindMutation = useMutation({
+    mutationFn: ({ recordId, request }: { recordId: number; request: LogBindRequest }) =>
+      adminService.bindLogRecord(recordId, request),
+    onSuccess: (job) => {
+      if (job.status === "done") {
+        notify.success(tx("bound"));
+      } else {
+        notify.error(tx("boundNotDone", { status: t(STATUS_META[job.status].key) }), { description: job.error?.message });
+      }
+      setAttachTarget(null);
+      refreshAll();
+    },
+    onError: (error) => {
+      const code = logOperationErrorCode(error);
+      if (code == null) return notify.apiError(error);
+      notify.error(tx(`opError.${code}`), { description: getApiErrorMessage(error) });
+      // The operator's view is stale: re-read the list and the game's occupancy before another attempt.
+      if (code === "stale_revision" || code === "expected_revision_required" || code === "stale_binding") {
+        refreshAll();
+      }
     }
   });
 
-  const columns: ColumnDef<LogProcessingRecord>[] = [
-    {
-      id: "file",
-      header: t("file"),
-      accessorFn: (record) => getLogFileName(record.filename),
-      enableSorting: false,
-      cell: ({ row }) => {
-        const record = row.original;
-        return (
-          <p
-            className="max-w-[22rem] truncate font-mono text-xs"
-            title={tx("titleHint", { filename: record.filename, source: t(SOURCE_LABELS[record.source]), uploader: record.uploader_name ?? t("unknownUploader"), attempts: record.attempts > 1 ? record.attempts : 0 })}
-          >
-            {getLogFileName(record.filename)}
-          </p>
-        );
-      }
-    },
-    {
-      id: "encounter",
-      header: t("encounter"),
-      accessorFn: (record) => record.attached_encounter_name ?? "",
-      enableSorting: false,
-      cell: ({ row }) => (
-        <p className="max-w-[16rem] truncate text-xs text-muted-foreground">
-          {row.original.attached_encounter_name ?? t("notAttached")}
-        </p>
-      )
-    },
-    {
-      id: "status",
-      header: t("status"),
-      accessorFn: (record) => t(STATUS_META[record.status].key),
-      size: 136,
-      enableSorting: false,
-      cell: ({ row }) => (
-        <div className="flex items-center gap-1.5">
-          <LogStatusBadge status={row.original.status} />
-          {row.original.attempts > 1 ? (
-            <span className="text-xs tabular-nums text-muted-foreground">
-              ×{row.original.attempts}
-            </span>
-          ) : null}
-        </div>
-      )
-    },
-    {
-      id: "error",
-      header: t("error"),
-      accessorFn: (record) => record.error_message ?? "",
-      enableSorting: false,
-      cell: ({ row }) => {
-        const errorSummary = getErrorSummary(row.original.error_message);
-        if (!errorSummary) return null;
-        return (
-          <details className="group max-w-[28rem]">
-            <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded text-xs text-danger focus-visible:outline-2 focus-visible:outline-offset-2">
-              <ChevronRight
-                className="size-3 shrink-0 transition-transform group-open:rotate-90"
-                aria-hidden
-              />
-              {errorSummary}
-            </summary>
-            <pre
-              tabIndex={0}
-              className="mt-1.5 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/20 p-2 text-xs text-muted-foreground"
-            >
-              {row.original.error_message}
-            </pre>
-          </details>
-        );
-      }
-    },
-    {
-      id: "created_at",
-      header: t("uploaded"),
-      accessorFn: (record) => record.created_at,
-      size: 128,
-      enableSorting: false,
-      meta: columnMeta<LogProcessingRecord>({ align: "right", numeric: true }),
-      cell: ({ row }) => (
-        <span className="text-xs text-muted-foreground">
-          {formatLogTime(format, row.original.created_at)}
-        </span>
-      )
-    },
-    {
-      id: "duration",
-      header: t("duration"),
-      accessorFn: (record) => formatDuration(record),
-      size: 88,
-      enableSorting: false,
-      meta: columnMeta<LogProcessingRecord>({ align: "right", numeric: true }),
-      cell: ({ row }) => (
-        <span className="text-xs text-muted-foreground">{formatDuration(row.original)}</span>
-      )
-    },
-    // "Queued"/"Processing" rows go stale when the worker drops their queue
-    // message; the reaper requeues them on its own schedule, this is the
-    // operator's shortcut past the wait.
-    createKebabColumn<LogProcessingRecord>(
-      (record) => [
-        {
-          label: record.status === "failed" ? tx("retryLog") : tx("requeueLog"),
-          icon: RotateCcw,
-          hidden: record.status === "done",
-          onSelect: () => retryMutation.mutate([record.id])
-        },
-        // A processed log already filed its match; only an unfinished one can
-        // be re-filed. The workspace-wide console holds no encounter list.
-        {
-          label: t("attachTo"),
-          icon: Link2,
-          hidden: record.status === "done" || encounters.length === 0,
-          onSelect: () => setAttachTarget(record)
-        }
-      ],
-      { rowLabel: (record) => getLogFileName(record.filename) }
-    )
-  ];
+  const columns = useLogColumns({
+    noEncounters: tournamentId != null && encounters.length === 0,
+    onRetry: retryMutation.mutate,
+    onAttach: setAttachTarget
+  });
 
   return (
     <TooltipProvider>
       <div className="flex flex-col gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <FolderInput className="size-4 shrink-0 text-primary" aria-hidden />
-            <h2 className="text-base font-semibold">{t("title")}</h2>
-          </div>
-          <p className="mt-1 text-pretty text-sm text-muted-foreground">
-            {t("description")}
-          </p>
-        </div>
-
-        {stats && stats.failed > 0 ? (
-          <div className="flex flex-col gap-2 rounded-lg border border-danger/25 bg-danger/5 px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
-            <p className="min-w-0 text-danger">
-              {t("failedToProcess", { count: stats.failed })}
-            </p>
-            {statusFilter !== "failed" ? (
+        {/* N failed -> Show failed (§15): the failures are the work on this tab. */}
+        {stats && stats.failed > 0 && statusFilter !== "failed" ? (
+          <Alert role="status">
+            <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+              <span>{t("failedToProcess", { count: stats.failed })}</span>
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 shrink-0 text-xs"
+                className="shrink-0"
                 onClick={() => filters.set("status", "failed")}
               >
                 {t("showFailed")}
               </Button>
-            ) : null}
-          </div>
+            </AlertDescription>
+          </Alert>
         ) : null}
-
         <DataTable<LogProcessingRecord>
           columns={columns}
           getRowId={(record) => String(record.id)}
@@ -522,22 +272,22 @@ export function TournamentLogsTab({
             });
             return { results: response.items, total: response.total, page, per_page: pageSize };
           }}
-          enableRowSelection={(row) => row.original.status !== "done"}
+          enableRowSelection={(row) => isRetryable(row.original)}
           bulkActions={(selected, clearSelection) => (
             <Button
               variant="outline"
               size="sm"
               className="h-8"
-              disabled={retryMutation.isPending}
-              onClick={() =>
-                retryMutation.mutate(
-                  selected.map((record) => record.id),
-                  { onSuccess: clearSelection }
-                )
-              }
+              disabled={retryMutation.isPending || !selected.some(isRetryable)}
+              onClick={() => {
+                const retryable = selected.filter(isRetryable);
+                if (retryable.length > 0) {
+                  retryMutation.mutate(retryable, { onSuccess: clearSelection });
+                }
+              }}
             >
-              {retryMutation.isPending ? <Spinner /> : <RotateCcw aria-hidden />}
-              {t("retry")} {selected.length}
+              {retryMutation.isPending ? <Spinner /> : null}
+              {tx("retrySelected", { count: selected.length })}
             </Button>
           )}
           toolbar={
@@ -547,16 +297,16 @@ export function TournamentLogsTab({
               trailing={
                 stats ? (
                   <p className="hidden shrink-0 text-xs text-muted-foreground sm:block">
-                    {tx("summary", {
-                      count: stats.total,
-                      average:
-                        stats.avg_duration_seconds != null
-                          ? `${stats.avg_duration_seconds.toFixed(1)}s`
-                          : "-"
-                    })}
                     {stats.last_created_at
-                      ? tx("newest", { time: formatLogTime(format, stats.last_created_at) })
-                      : null}
+                      ? tx("summaryNewest", {
+                          count: stats.total,
+                          average: stats.avg_duration_seconds?.toFixed(1) ?? "none",
+                          time: formatLogTime(format, stats.last_created_at)
+                        })
+                      : tx("summary", {
+                          count: stats.total,
+                          average: stats.avg_duration_seconds?.toFixed(1) ?? "none"
+                        })}
                   </p>
                 ) : null
               }
@@ -603,7 +353,7 @@ export function TournamentLogsTab({
                     onClick={refreshAll}
                     disabled={isFetching}
                   >
-                    <RefreshCw className={cn(isFetching && "animate-spin")} aria-hidden />
+                    {isFetching ? <Spinner /> : <RefreshCw aria-hidden />}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>{t("refresh")}</TooltipContent>
@@ -612,15 +362,24 @@ export function TournamentLogsTab({
           }
         />
       </div>
-      <AttachLogDialog
-        record={attachTarget}
-        encounters={encounters}
-        isPending={attachMutation.isPending}
-        onAttach={(encounterId) =>
-          attachTarget && attachMutation.mutate({ recordId: attachTarget.id, encounterId })
-        }
-        onClose={() => setAttachTarget(null)}
-      />
+      {attachTarget ? (
+        <AttachLogDialog
+          key={attachTarget.id}
+          record={attachTarget}
+          encounters={encounters.filter((encounter) =>
+            attachTarget.tournament_id == null || encounter.tournament_id === attachTarget.tournament_id
+          )}
+          pickTournament={tournamentId == null}
+          historyKey={historyKey}
+          workspaceId={workspaceId}
+          isPending={attachMutation.isPending || bindMutation.isPending}
+          onAttach={(encounterId, encounterGameId) =>
+            attachMutation.mutate({ recordId: attachTarget.id, encounterId, encounterGameId })
+          }
+          onBind={(request) => bindMutation.mutate({ recordId: attachTarget.id, request })}
+          onClose={() => setAttachTarget(null)}
+        />
+      ) : null}
     </TooltipProvider>
   );
 }

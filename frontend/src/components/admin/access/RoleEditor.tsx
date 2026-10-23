@@ -2,14 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Globe, MoreHorizontal, ShieldAlert, Trash2 } from "lucide-react";
+import { Lock, MoreHorizontal, Trash2 } from "lucide-react";
 
 import {
   PermissionPicker,
   type PermissionCatalogEntry
 } from "@/components/admin/access/PermissionPicker";
 import { SaveBar } from "@/components/kit/SaveBar";
-import { TONE_CLASS } from "@/components/kit/tone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,7 +21,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
 import { rbacService } from "@/services/rbac.service";
 import type { RbacPermission, RbacRole, RbacRoleDetail } from "@/types/rbac.types";
 import { accessQueryKeys } from "@/lib/access/query-keys";
@@ -158,118 +156,105 @@ function RoleForm({
   const patch = (next: Partial<RoleDraft>) => setDraft({ ...(draft ?? baseline), ...next });
 
   return (
-    <div className="min-w-0 rounded-xl border border-border bg-card">
-      <div className="flex flex-wrap items-start gap-3 border-b border-border px-4 py-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="min-w-0 truncate font-display text-lg font-semibold text-foreground">
-              {detail.name}
-            </h2>
-            <Badge tone={detail.is_system ? "neutral" : "info"} className="shrink-0">
-              {detail.is_system ? t("systemRole") : t("customRole")}
-            </Badge>
+    <div className="min-w-0 space-y-6">
+      <div className="space-y-3">
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <h2 className="min-w-0 truncate font-display text-lg font-semibold text-foreground">
+                {detail.name}
+              </h2>
+              {detail.is_system ? (
+                <Badge variant="outline" className="shrink-0 text-muted-foreground">
+                  <Lock aria-hidden className="size-3" />
+                  {tc("system")}
+                </Badge>
+              ) : null}
+            </div>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {detail.workspace_id
+                ? (workspaceName ?? tc("workspaceFallback", { id: detail.workspace_id }))
+                : tc("global")}
+            </p>
           </div>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
-            {detail.workspace_id ? (
-              <>
-                <Building2 aria-hidden className="size-3.5" />
-                <span>{workspaceName ?? `Workspace #${detail.workspace_id}`}</span>
-              </>
-            ) : (
-              <>
-                <Globe aria-hidden className="size-3.5" />
-                <span>{tc("global")}</span>
-              </>
-            )}
-            <span aria-hidden>·</span>
-            <span className="tabular-nums">{t("permissionCount", { count: detail.permissions.length })}</span>
-          </p>
+
+          {canDelete && !detail.is_system ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="icon" variant="ghost" aria-label={t("actions", { name: detail.name })}>
+                  <MoreHorizontal aria-hidden className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  className="gap-2 text-danger focus:text-danger"
+                  onSelect={onRequestDelete}
+                >
+                  <Trash2 aria-hidden className="size-3.5" />
+                  {tc("deleteRole")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
         </div>
 
-        {canDelete && !detail.is_system ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="icon" variant="ghost" aria-label={t("actions", { name: detail.name })}>
-                <MoreHorizontal aria-hidden className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                className="gap-2 text-danger focus:text-danger"
-                onSelect={onRequestDelete}
-              >
-                <Trash2 aria-hidden className="size-3.5" />
-                {tc("deleteRole")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
+        {readOnly ? (
+          <>
+            {detail.description ? (
+              <p className="max-w-prose text-sm text-foreground/90">{detail.description}</p>
+            ) : null}
+            {detail.is_system ? (
+              <p className="max-w-prose text-xs text-muted-foreground">{t("systemDescription")}</p>
+            ) : null}
+          </>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="role-name">{tc("name")}</Label>
+              <Input
+                id="role-name"
+                value={current.name}
+                onChange={(event) => patch({ name: event.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="role-description">{tc("description")}</Label>
+              <Input
+                id="role-description"
+                value={current.description}
+                placeholder={t("descriptionPlaceholder")}
+                onChange={(event) => patch({ description: event.target.value })}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="space-y-4 p-4">
-        {detail.is_system ? (
-          <p
-            className={cn(
-              "flex items-start gap-2 rounded-md border p-3 text-sm",
-              TONE_CLASS.warning
-            )}
-          >
-            <ShieldAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
-            <span>
-              {t("systemDescription")}
-            </span>
-          </p>
-        ) : null}
+      <PermissionPicker
+        mode="chips"
+        readOnly={readOnly}
+        catalog={catalog}
+        wildcards={wildcards}
+        value={current.granted}
+        onChange={(granted) => patch({ granted })}
+      />
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="role-name">{tc("name")}</Label>
-            <Input
-              id="role-name"
-              value={current.name}
-              disabled={readOnly}
-              placeholder="support_admin"
-              onChange={(event) => patch({ name: event.target.value })}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="role-description">{tc("description")}</Label>
-            <Input
-              id="role-description"
-              value={current.description}
-              disabled={readOnly}
-              placeholder={t("descriptionPlaceholder")}
-              onChange={(event) => patch({ description: event.target.value })}
-            />
-          </div>
-        </div>
-
-        <PermissionPicker
-          mode="matrix"
-          readOnly={readOnly}
-          catalog={catalog}
-          wildcards={wildcards}
-          value={current.granted}
-          onChange={(granted) => patch({ granted })}
-        />
-
-        <SaveBar
-          dirty={dirty}
-          saving={saveMutation.isPending}
-          primaryLabel={tc("saveRole")}
-          summary={t("changedSummary", { count: changedCount, name: detail.name })}
-          onDiscard={() => setDraft(null)}
-          onSave={() =>
-            saveMutation.mutate({
-              name: current.name.trim(),
-              description: current.description,
-              permission_ids: [...current.granted]
-                .map((name) => permissionIdByName.get(name))
-                .filter((id): id is number => id !== undefined)
-            })
-          }
-        />
-      </div>
+      <SaveBar
+        dirty={dirty}
+        saving={saveMutation.isPending}
+        primaryLabel={tc("saveRole")}
+        summary={t("changedSummary", { count: changedCount, name: detail.name })}
+        onDiscard={() => setDraft(null)}
+        onSave={() =>
+          saveMutation.mutate({
+            name: current.name.trim(),
+            description: current.description,
+            permission_ids: [...current.granted]
+              .map((name) => permissionIdByName.get(name))
+              .filter((id): id is number => id !== undefined)
+          })
+        }
+      />
     </div>
   );
 }

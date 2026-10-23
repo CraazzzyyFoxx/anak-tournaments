@@ -6,10 +6,6 @@ from shared.core.config import BaseServiceSettings
 
 
 class AppConfig(BaseServiceSettings):
-    project_name: str = "OWT — Analytics"
-    debug: bool = False
-    port: int = 8006
-
     redis_url: RedisDsn
 
     # RabbitMQ
@@ -86,13 +82,6 @@ class AppConfig(BaseServiceSettings):
     # 0.5 = median) at/above this flags a consistent scoreboard-topper that the
     # expectation-adjusted impact/local_zscore under-credit.
     smurf_mvp_dominance: float = 0.75
-
-    # Read-side cache TTL (matches the app-service default).
-    tournaments_cache_ttl: int = 60 * 5
-
-    @property
-    def broker_url(self) -> str | None:
-        return self.rabbitmq_url
 
 
 settings = AppConfig()

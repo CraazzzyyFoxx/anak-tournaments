@@ -1,6 +1,6 @@
 """Admin-only emergency role additions during a live draft.
 
-The write lands on the REGISTRATION (``balancer.registration_role``), not on a
+The write lands on the REGISTRATION (``registration.role``), not on a
 draft-local copy: the balancer is the only writer of roles and ranks, so the
 draft board, the pool verdict and the balance job all see the edit at once and
 cannot disagree about it. The draft's own contribution is the guard (may this
@@ -15,23 +15,43 @@ from __future__ import annotations
 
 import asyncio
 
-import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import HeroClass
 from shared.domain.roster import PlayerRoster
-from shared.models.balancer.draft import DraftAuditEvent, DraftPlayer, DraftSession
-from shared.models.registration.registration import BalancerRegistrationRole
+from shared.models.draft import DraftAuditEvent, DraftPlayer, DraftSession
+from shared.models.registration.registration import RegistrationRole
+from shared.repository import CatalogRoleRepository
 from shared.repository.draft import DraftAuditEventRepository, DraftPlayerRepository
-from shared.repository.registration import BalancerRegistrationRoleRepository
+from shared.repository.registration import RegistrationRoleRepository
+from shared.repository.tournament import TournamentRepository
+from shared.schemas.role import RoleRef
+from src import schemas
 from src.domain.draft import rules
-from src.domain.draft.entities import DraftFeasibilityReport, RoleEditPreview, RoleEditResult
+from src.domain.draft.entities import DraftFeasibilityReport, RoleEditPreview
+from src.domain.draft.errors import err as _err
 from src.services.draft import loaders
-from src.services.draft._errors import err as _err
+from src.services.draft import realtime as draft_rt
 from src.services.draft.feasibility import DraftFeasibilityService, feasibility_service
 from src.services.draft.rosters import DraftRosterService, draft_rosters
 
 __all__ = ("DraftRoleEditService", "role_edit_service")
+
+
+def _player_updated_payload(
+    *,
+    session_id: int,
+    player_id: int,
+    role: RoleRef,
+    player_version: int,
+    is_feasible: bool,
+) -> dict:
+    return {
+        "session_id": session_id,
+        "player_id": player_id,
+        "role": role.model_dump(),
+        "player_version": player_version,
+        "is_feasible": is_feasible,
+    }
 
 
 class DraftRoleEditService:
@@ -40,13 +60,15 @@ class DraftRoleEditService:
         *,
         players_repo: DraftPlayerRepository = DraftPlayerRepository(),
         audit_repo: DraftAuditEventRepository = DraftAuditEventRepository(),
-        roles_repo: BalancerRegistrationRoleRepository = BalancerRegistrationRoleRepository(),
+        roles_repo: RegistrationRoleRepository = RegistrationRoleRepository(),
+        tournaments_repo: TournamentRepository = TournamentRepository(),
         feasibility: DraftFeasibilityService = feasibility_service,
         rosters: DraftRosterService = draft_rosters,
     ) -> None:
         self.players_repo = players_repo
         self.audit_repo = audit_repo
         self.roles_repo = roles_repo
+        self.tournaments_repo = tournaments_repo
         self.feasibility = feasibility
         self.rosters = rosters
 
@@ -76,7 +98,7 @@ class DraftRoleEditService:
             return []
         return [
             {
-                "role": entry.role.slot_code,
+                "role": entry.role,
                 "rank_value": entry.rank,
                 "rank_source": entry.source,
                 "is_primary": entry.is_primary,
@@ -90,7 +112,7 @@ class DraftRoleEditService:
         session: AsyncSession,
         registration_id: int,
         *,
-        role: HeroClass,
+        role: str,
         rank_value: int,
     ) -> None:
         """Add or re-activate the role on the registration, with its rank.
@@ -99,28 +121,23 @@ class DraftRoleEditService:
         import whose rank did not parse), which is the common case for a role the
         organizer now has to add by hand.
         """
-        existing = await session.scalar(
-            sa.select(BalancerRegistrationRole).where(
-                BalancerRegistrationRole.registration_id == registration_id,
-                BalancerRegistrationRole.role == role.slot_code,
-            )
-        )
+        existing = await self.roles_repo.get_by_registration_and_role(session, registration_id, role)
         if existing is not None:
             existing.rank_value = rank_value
             existing.is_active = True
             return
-        next_priority = (
-            await session.scalar(
-                sa.select(sa.func.coalesce(sa.func.max(BalancerRegistrationRole.priority), -1)).where(
-                    BalancerRegistrationRole.registration_id == registration_id
-                )
-            )
-        ) + 1
+        next_priority = await self.roles_repo.next_priority(session, registration_id)
+        tournament = await self.tournaments_repo.get_for_registration(session, registration_id)
+        catalog_roles = await CatalogRoleRepository().rated_rows(
+            session, discipline=tournament.discipline, workspace_id=tournament.workspace_id
+        )
+        leaf = catalog_roles[role]
         await self.roles_repo.create(
             session,
-            BalancerRegistrationRole(
+            RegistrationRole(
                 registration_id=registration_id,
-                role=role.slot_code,
+                catalog_role=leaf,
+                dimension_id=leaf.dimension_id,
                 is_primary=False,
                 priority=next_priority,
                 rank_value=rank_value,
@@ -135,7 +152,7 @@ class DraftRoleEditService:
         player: DraftPlayer,
         roster: PlayerRoster | None,
         *,
-        role: HeroClass,
+        role: str,
         rank_value: int,
         reason: str,
         actor_auth_user_id: int,
@@ -147,7 +164,7 @@ class DraftRoleEditService:
         before_version = player.version
         await self._write_registration_role(session, player.registration_id, role=role, rank_value=rank_value)
         # The seat's version is the optimistic token the preview was taken
-        # against, so it moves even though the roles now live elsewhere.
+        # against, so it moves even though the roles live on the registration.
         player.version += 1
         await session.flush()
         after_roster = (await self.rosters.load(session, draft_session, [player])).get(player.id)
@@ -179,13 +196,17 @@ class DraftRoleEditService:
         draft_session: DraftSession,
         *,
         player_id: int,
-        role: HeroClass,
+        role: str,
         rank_value: int,
         reason: str,
         expected_version: int,
         actor_auth_user_id: int,
         preview_only: bool,
-    ) -> RoleEditResult:
+    ) -> schemas.DraftRoleEditResponse:
+        """Preview a role addition, or write it and publish ``draft.player_updated``."""
+        if draft_session.tournament_id is None:
+            # A mix seat's ranks are the host's book, edited in the mix (spec §9.1), not a registration's roles.
+            raise _err("role_edit_tournament_only", "Edit a mix player's ranks in the mix", status_code=422)
         player = await self.players_repo.get_for_update(
             session, player_id, session_id=draft_session.id, options=loaders.player_options()
         )
@@ -204,33 +225,42 @@ class DraftRoleEditService:
         state = await self.feasibility.load_feasibility_state(session, draft_session)
         # Two bipartite matchings (before/after) — pure CPU, run off the event loop.
         preview = await asyncio.to_thread(rules.preview_role_addition, state, player_id=player.id, role=role)
-        if preview_only:
-            return RoleEditResult(
-                player_id=player.id,
+        if not preview_only:
+            await self.apply_role_edit(
+                session,
+                draft_session,
+                player,
+                roster,
                 role=role,
-                player_version=player.version,
-                committed=False,
+                rank_value=rank_value,
+                reason=normalized_reason,
+                actor_auth_user_id=actor_auth_user_id,
                 preview=preview,
             )
-        await self.apply_role_edit(
-            session,
-            draft_session,
-            player,
-            roster,
-            role=role,
-            rank_value=rank_value,
-            reason=normalized_reason,
-            actor_auth_user_id=actor_auth_user_id,
-            preview=preview,
-        )
-        await session.flush()
-        return RoleEditResult(
+            await session.flush()
+        dimension = await loaders.rated_dimension(session, draft_session)
+        response = schemas.DraftRoleEditResponse(
             player_id=player.id,
-            role=role,
+            role=RoleRef.of(dimension, role),
             player_version=player.version,
-            committed=True,
-            preview=preview,
+            committed=not preview_only,
+            before=schemas.DraftFeasibilityResponse.model_validate(preview.before),
+            after=schemas.DraftFeasibilityResponse.model_validate(preview.after),
         )
+        if response.committed:
+            await draft_rt.publish_draft_event(
+                session,
+                draft_session=draft_session,
+                event_type="draft.player_updated",
+                payload=_player_updated_payload(
+                    session_id=draft_session.id,
+                    player_id=player.id,
+                    role=response.role,
+                    player_version=player.version,
+                    is_feasible=preview.after.is_feasible,
+                ),
+            )
+        return response
 
 
 role_edit_service = DraftRoleEditService()

@@ -11,7 +11,7 @@ player statistics, registration, and admin tooling on top of the OWT backend API
 - [TanStack Query](https://tanstack.com/query) and [TanStack Table](https://tanstack.com/table) for data
 - [Zustand](https://github.com/pmndrs/zustand) for client state
 - [Recharts](https://recharts.org/) and [XYFlow](https://reactflow.dev/) for visualizations
-- [Vitest](https://vitest.dev) (happy-dom) for unit / smoke tests, [Sentry](https://sentry.io/) for monitoring
+- [Vitest](https://vitest.dev) (happy-dom) for unit / smoke tests, [Playwright](https://playwright.dev) for end-to-end tests, [Sentry](https://sentry.io/) for monitoring
 
 ## Getting started
 
@@ -25,6 +25,38 @@ bun run dev
 The repository uses [Bun](https://bun.sh/) (`bun.lock`); `npm install` / `npm run dev` also work.
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+## End-to-end tests
+
+`e2e/` drives the whole system — gateway API and browser — against an isolated stack
+(`docker-compose.e2e.yml`: project `owt-e2e`, an empty tmpfs database, nginx on
+`127.0.0.1:8090` only). From the repository root:
+
+```bash
+make e2e-up                                   # build, start, migrate the empty DB
+make e2e                                      # every project
+make e2e E2E_ARGS="--project=api"             # one project, or a spec path / -g filter
+make e2e-down                                 # the database is gone with it
+```
+
+- Projects: `api` (gateway contract, auth matrix over every route), `web` (desktop
+  1440×900, signed in as a platform admin), `mobile` (Pixel 7, tests tagged `@mobile`),
+  `readonly` (anonymous GETs, safe against any deployment:
+  `E2E_BASE_URL=https://… bunx playwright test --project=readonly`).
+- `e2e/global.setup.ts` registers a platform superuser per run (password login, promoted
+  in SQL); specs create their own workspaces, so they are order-independent.
+- A passing web test fails if the page logged an uncaught error or a console error
+  (`e2e/support/fixtures.ts`).
+- `e2e/support/route-table.ts` is generated from the gateway's `RouteSpec` tables:
+  `bun e2e/scripts/gen-route-table.ts` after adding a route; the auth matrix fails on drift.
+- `e2e/support/routes.ts` lists every `page.tsx`; the page smoke fails on a page it doesn't list.
+- Python workers in this stack don't hot-reload: restart a service after a backend change
+  (`docker compose -p owt-e2e -f docker-compose.yml -f docker-compose.e2e.yml restart tournament-svc`).
+- The stack runs whatever source `E2E_TREE` (default: this checkout) holds, uncommitted edits
+  included. For a run that work in progress can't break, start it from a detached worktree:
+  `git worktree add --detach ../owt-e2e-tree HEAD`, copy `backend/env/*.env`, `.env` and
+  `proxy/xray.json` into it, then `make e2e-up E2E_TREE=../owt-e2e-tree`.
+- Running several Playwright processes at once? Give each its own `--output` directory.
 
 ## Route zones
 
@@ -148,12 +180,37 @@ are saved without changing the official score; confirmation no longer hides the 
 
 The **One ban per opponent player** board shows each opponent's logged heroes inside their
 roster row, below the name and role. Heroes come only from the immediately previous series
-position in this encounter, deduplicated across that map's rounds. Captain-report placeholders
-and other players' heroes are excluded. The first map, a missing previous log, or legacy rows
-without enough position information show no history rather than falling back to older maps
+position in this encounter, deduplicated across that map's rounds. Every returned statistics
+match is a parsed log; captain reports and replay codes are separate game/report data.
+Other players' heroes are excluded. The first map, a missing previous log, or a response
+without enough position information shows no history rather than falling back to older maps
 or account-wide statistics. Long hero lists scroll within the row.
+Targets are tournament registration IDs: source roster metadata resolves each target's linked
+user, then heroes are read from either observed participation by that user identity. Missing
+roster linkage shows no history; registration/member IDs and display names are never substitutes.
 The board reuses the match-detail cache; room refreshes invalidate parsed match details.
 Displaying history does not change ban eligibility.
+
+Statistics matches no longer expose source or replay-code fields. Encounter scoreboards retain
+the official game result source, observed slot scores, map position and raw-log download when
+available. Admin parsed maps remain inspectable without a raw log or recorded duration; missing
+duration is not displayed as zero. Parsed-map search covers log names and teams, not replay codes.
+
+Admin log history retains native job IDs and source kinds, including jobs whose tournament hint
+was cleared by deletion. **Awaiting link** is a separate, filterable status with its own aggregate
+count: it is neither processed nor failed, and an awaiting-only queue does not keep polling.
+To resolve a log, choose an encounter and an actual noncancelled game loaded from its detail API.
+Options show the series position, map and game ID so repeated maps are distinguishable; the retry
+submits `encounter_id` and `encounter_game_id`, never a position substituted for an ID.
+Changing encounters clears the game selection. Loading, empty and failed game reads cannot submit;
+retry rejection keeps the dialog open. The server enforces authorization, scope, map/teams and
+existing-binding constraints. Uploads and participation replay codes are unchanged.
+
+Historical match details remain readable when a source team has been deleted: the surviving
+scoreboard stays visible, while unavailable team statistics and comparisons use a neutral dash.
+Timeline observations with missing players, teams, heroes or optional kill fields remain in order,
+including duplicates and event-only history. Unknown actor teams are not credited to either side,
+and a missing fight identifier is not treated as fight zero.
 
 **Upload match logs** uses the File System Access API (`showDirectoryPicker`, read-only).
 The first click selects a folder; its native `FileSystemDirectoryHandle` is structured-cloned
@@ -175,6 +232,10 @@ tournament; an empty rules template does not replace a parent's pool. Slot candi
 reserve maps are accepted. Maps outside the pool fail with `map_not_in_pool`, preserving
 existing data. Without a configured pool, any catalog-resolved map remains allowed.
 This checks the configured pool, not the current veto's chosen map or next series position.
+A game whose maps belong to no mode (Deadlock) may also name modes in a shared pool (the
+pre-game editor offers them; slots never hold one). Once a pool names a mode, a log of any
+other mode fails with `mode_not_in_pool`; maps are checked only against the pool's maps, and a
+room vetoes maps only.
 
 ## Notifications
 
@@ -216,7 +277,7 @@ the screen.
 The site name and main icon/logo are configurable via environment variables.
 
 - Copy `frontend/.env.example` to `frontend/.env` (or `frontend/.env.local`)
-- Set `NEXT_PUBLIC_SITE_NAME` (e.g. "Overwatch Tournaments") — the deployment's name in page
+- Set `NEXT_PUBLIC_SITE_NAME` (e.g. "OWT"; unset or empty means "OWT") — the deployment's name in page
   metadata and the sign-in dialog. The header and footer wordmark is the fixed `BRAND_NAME` ("OWT")
   in `src/config/site.ts`.
 - Set `NEXT_PUBLIC_SITE_ICON` (e.g. "/logo.webp")

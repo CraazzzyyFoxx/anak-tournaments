@@ -1,24 +1,35 @@
 "use client";
 
+import { roleOf } from "@/lib/roster/role-ref";
 import { ChevronDown } from "lucide-react";
 import { useMemo } from "react";
 import type { CSSProperties } from "react";
 import { useTranslations } from "next-intl";
 
+import { HandleLabel } from "@/components/HandleLabel";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import DivisionIcon from "@/components/DivisionIcon";
-import { HeroStrip } from "@/components/hero/HeroImage";
+import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
+import { Card } from "@/components/ui/card";
 import { answerFlag } from "@/lib/forms/answers";
 import { resolveDivisionFromRank } from "@/lib/divisions/grid";
-import { isRoleSlotCode, orderSlotCodes, ROSTER_SLOT_CODES } from "@/lib/roster/shape";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import {
+  ratedDimension,
+  roleColor,
+  showsRoles,
+  slotCodeOrder,
+  slotRank,
+  type RoleOntology
+} from "@/lib/roster/ontology";
+import { isRoleSlot, OPEN_SLOT_CODE, slotCodesOf } from "@/lib/roster/shape";
 import type { RosterShape } from "@/lib/roster/shape";
 import { cn } from "@/lib/utils";
-import type { Hero } from "@/types/hero.types";
+import type { CatalogEntityChip } from "@/types/catalog.types";
 import type { Registration, RegistrationRole } from "@/types/registration.types";
 import type { DivisionGrid } from "@/types/workspace.types";
 import { getPlayerSlug } from "@/lib/player";
 
-import { getRoleLabel } from "./participantsColumns.model";
 import { TournamentPageState } from "../../_components/TournamentPageState";
 
 /** The one status that means "was in, took themselves out" (§6 ④). */
@@ -31,24 +42,12 @@ const WITHDRAWN_STATUS = "withdrawn";
  */
 const VISIBLE_PER_COLUMN = 10;
 
-/** Icon names `PlayerRoleIcon` knows, keyed by the registration role code. */
-const ROLE_TO_ICON: Record<string, string> = {
-  tank: "Tank",
-  damage: "Damage",
-  support: "Support",
-  flex: "Flex"
-};
-
 /**
- * One colour per column, exposed as `--pool-role` on the card so the accent
- * rail, the icon chip and the leading positions all read from a single value.
+ * A column whose role declares no colour reads as this neutral. One colour per column is exposed as
+ * `--pool-role` on the card, so the accent rail, the icon chip and the leading positions all read from
+ * a single value — the role's own presentation color from the owner game's ontology.
  */
-const ROLE_COLOR: Record<string, string> = {
-  tank: "var(--aqt-tank)",
-  damage: "var(--aqt-damage)",
-  support: "var(--aqt-support)",
-  flex: "var(--aqt-teal)"
-};
+const NEUTRAL_ROLE_COLOR = "var(--aqt-fg-muted)";
 
 /** Positions that wear the role colour — the top of a role is the headline. */
 const HIGHLIGHTED_POSITIONS = 3;
@@ -86,7 +85,9 @@ export interface ParticipantsPoolProps {
   /** Drives which role columns exist; `null` falls back to the declared roles. */
   rosterShape: RosterShape | null;
   divisionGrid: DivisionGrid;
-  heroesMap: Map<string, Hero>;
+  heroesMap: Map<string, CatalogEntityChip>;
+  /** The owner game's scoped ontology (role names, glyphs, colors); `null` while it loads. */
+  ontology: RoleOntology | null;
   search: string;
   division: number | null;
   /** Clears search + division for the filtered-empty state. */
@@ -124,13 +125,13 @@ export function poolDivisionOptions(
   return [...present].sort((left, right) => left - right);
 }
 
-/** Heroes for one role, resolved through the catalogue with a slug fallback. */
-function topHeroes(role: RegistrationRole, heroesMap: Map<string, Hero>, limit: number): Hero[] {
-  const heroes: Hero[] = [];
-  for (const slug of role.top_heroes ?? []) {
+/** Characters for one role, resolved through the catalogue with a slug fallback. */
+function topHeroes(role: RegistrationRole, heroesMap: Map<string, CatalogEntityChip>, limit: number): CatalogEntityChip[] {
+  const heroes: CatalogEntityChip[] = [];
+  for (const slug of role.top_characters ?? []) {
     if (!slug || heroes.length >= limit) continue;
     const hero = heroesMap.get(slug);
-    heroes.push(hero ?? ({ name: slug, slug, image_path: "", role: role.role } as Hero));
+    heroes.push(hero ?? { name: slug, slug, image_path: null, attrs: {} });
   }
   return heroes;
 }
@@ -140,27 +141,24 @@ function PoolRow({
   position,
   heroesMap,
   divisionGrid,
+  ontology,
   showDivision,
   showHeroes
 }: Readonly<{
   entry: PoolEntry;
   position: number;
-  heroesMap: Map<string, Hero>;
+  heroesMap: Map<string, CatalogEntityChip>;
   divisionGrid: DivisionGrid;
+  ontology: RoleOntology | null;
   showDivision: boolean;
   showHeroes: boolean;
 }>) {
   const t = useTranslations();
+  const roleLabel = useSlotLabel(ontology);
   const { registration, role, division, isFlex } = entry;
   const rank = role.rank_value ?? null;
   const heroes = topHeroes(role, heroesMap, 3);
   const battleTag = registration.primary_handle ?? "\u2014";
-  // BattleTags are `Name#1234`; the discriminator is how you tell two Kennys
-  // apart and nothing else, so it stays present and stops competing with the
-  // name for attention.
-  const hash = battleTag.indexOf("#");
-  const name = hash > 0 ? battleTag.slice(0, hash) : battleTag;
-  const discriminator = hash > 0 ? battleTag.slice(hash) : "";
   // A multi-role player is listed in every role column; in the columns of their
   // secondary roles the name is dimmed. That says "also plays this" without a
   // glyph — in a flex tournament nearly every row would carry the glyph and it
@@ -169,19 +167,15 @@ function PoolRow({
   const flexTitle = isFlex
     ? t("tournamentDetail.participantsPool.flexTitle", {
         roles: (registration.roles ?? [])
-          .map((declared) => getRoleLabel(declared.role, t))
+          .map((declared) => roleLabel(roleOf(declared.role)))
           .join(" · ")
       })
     : null;
 
-  const label = (
-    <>
-      <span className="truncate">{name}</span>
-      {discriminator ? (
-        <span className="shrink-0 text-[color:var(--aqt-fg-faint)]">{discriminator}</span>
-      ) : null}
-    </>
-  );
+  // BattleTags are `Name#1234`; the discriminator is how you tell two Kennys
+  // apart and nothing else, so it stays present and stops competing with the
+  // name for attention.
+  const label = <HandleLabel handle={battleTag} />;
 
   return (
     <li
@@ -249,7 +243,7 @@ function PoolRow({
         </span>
       ) : null}
       {showHeroes ? (
-        <HeroStrip heroes={heroes} size={20} limit={3} className="justify-self-end" />
+        <CatalogEntityStrip entities={heroes} size={20} limit={3} className="justify-self-end" />
       ) : null}
     </li>
   );
@@ -260,20 +254,27 @@ function RoleColumn({
   entries,
   heroesMap,
   divisionGrid,
+  ontology,
   showDivision
 }: Readonly<{
   role: string;
   entries: PoolEntry[];
-  heroesMap: Map<string, Hero>;
+  heroesMap: Map<string, CatalogEntityChip>;
   divisionGrid: DivisionGrid;
+  ontology: RoleOntology | null;
   showDivision: boolean;
 }>) {
   const t = useTranslations();
+  const roleLabel = useSlotLabel(ontology);
+  const rated = ontology ? ratedDimension(ontology) : null;
+  // A one-role game has one column, and it is everybody: named by no role.
+  const named = showsRoles(ontology);
+  const title = named ? roleLabel(role) : t("tournamentDetail.participantsPool.players");
   const visible = entries.slice(0, VISIBLE_PER_COLUMN);
   const rest = entries.slice(VISIBLE_PER_COLUMN);
   // Reserving the hero track in a column nobody filled in leaves a stripe of
   // nothing next to every name.
-  const showHeroes = entries.some((entry) => (entry.role.top_heroes?.length ?? 0) > 0);
+  const showHeroes = entries.some((entry) => (entry.role.top_characters?.length ?? 0) > 0);
 
   const renderRow = (entry: PoolEntry, index: number) => (
     <PoolRow
@@ -282,58 +283,69 @@ function RoleColumn({
       position={index + 1}
       heroesMap={heroesMap}
       divisionGrid={divisionGrid}
+      ontology={ontology}
       showDivision={showDivision}
       showHeroes={showHeroes}
     />
   );
 
   return (
-    <section
-      className="relative overflow-hidden rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-2 pt-3"
-      style={{ "--pool-role": ROLE_COLOR[role] ?? "var(--aqt-fg-muted)" } as CSSProperties}
-      aria-label={t("tournamentDetail.participantsPool.columnLabel", {
-        role: getRoleLabel(role, t),
-        count: entries.length
-      })}
-      data-pool-column={role}
-    >
-      {/* The column's identity: a role-tinted edge, readable before the label. */}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,var(--pool-role),transparent_75%)]"
-      />
-      <h3 className="mb-2 flex items-center gap-2 px-1.5">
-        <span className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md border border-[color:color-mix(in_srgb,var(--pool-role)_26%,transparent)] bg-[color:color-mix(in_srgb,var(--pool-role)_12%,transparent)] text-[color:var(--pool-role)]">
-          <PlayerRoleIcon role={ROLE_TO_ICON[role] ?? role} size={13} decorative />
-        </span>
-        <span className="aqt-display text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg)]">
-          {getRoleLabel(role, t)}
-        </span>
-        <span className="aqt-tnum ml-auto rounded-md bg-[color:var(--aqt-overlay-2)] px-1.5 py-px text-label tabular-nums text-[color:var(--aqt-fg-muted)]">
-          {entries.length}
-        </span>
-      </h3>
-      {entries.length === 0 ? (
-        <p className="px-1.5 py-1 text-xs text-[color:var(--aqt-fg-dim)]">
-          {t("tournamentDetail.participantsPool.columnEmpty")}
-        </p>
-      ) : (
-        <ul>{visible.map(renderRow)}</ul>
-      )}
-      {rest.length > 0 ? (
-        <details className="group mt-1 border-t border-[color:var(--aqt-border)] pt-1">
-          <summary className="flex cursor-pointer list-none items-center gap-1 rounded-md px-1.5 py-1 text-label text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-2)] hover:text-[color:var(--aqt-fg)]">
-            <ChevronDown
-              size={12}
-              aria-hidden
-              className="transition-transform group-open:rotate-180"
-            />
-            {t("tournamentDetail.participantsPool.more", { count: rest.length })}
-          </summary>
-          <ul>{rest.map((entry, index) => renderRow(entry, index + VISIBLE_PER_COLUMN))}</ul>
-        </details>
-      ) : null}
-    </section>
+    <Card asChild variant="flat">
+      <section
+        className="relative overflow-hidden p-2 pt-3"
+        style={{ "--pool-role": roleColor(ontology, role) ?? NEUTRAL_ROLE_COLOR } as CSSProperties}
+        aria-label={
+          named
+            ? t("tournamentDetail.participantsPool.columnLabel", { role: title, count: entries.length })
+            : title
+        }
+        data-pool-column={role}
+      >
+        {/* The column's identity: a role-tinted edge, readable before the label. */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,var(--pool-role),transparent_75%)]"
+        />
+        <h3 className="mb-2 flex items-center gap-2 px-1.5">
+          {named ? (
+            <span className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md border border-[color:color-mix(in_srgb,var(--pool-role)_26%,transparent)] bg-[color:color-mix(in_srgb,var(--pool-role)_12%,transparent)] text-[color:var(--pool-role)]">
+              <PlayerRoleIcon
+                role={rated ? { dimension: rated.code, role } : null}
+                ontology={ontology}
+                size={13}
+                decorative
+              />
+            </span>
+          ) : null}
+          <span className="aqt-display text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg)]">
+            {title}
+          </span>
+          <span className="aqt-tnum ml-auto rounded-md bg-[color:var(--aqt-overlay-2)] px-1.5 py-px text-label tabular-nums text-[color:var(--aqt-fg-muted)]">
+            {entries.length}
+          </span>
+        </h3>
+        {entries.length === 0 ? (
+          <p className="px-1.5 py-1 text-xs text-[color:var(--aqt-fg-dim)]">
+            {t("tournamentDetail.participantsPool.columnEmpty")}
+          </p>
+        ) : (
+          <ul>{visible.map(renderRow)}</ul>
+        )}
+        {rest.length > 0 ? (
+          <details className="group mt-1 border-t border-[color:var(--aqt-border)] pt-1">
+            <summary className="flex cursor-pointer list-none items-center gap-1 rounded-md px-1.5 py-1 text-label text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-2)] hover:text-[color:var(--aqt-fg)]">
+              <ChevronDown
+                size={12}
+                aria-hidden
+                className="transition-transform group-open:rotate-180"
+              />
+              {t("tournamentDetail.participantsPool.more", { count: rest.length })}
+            </summary>
+            <ul>{rest.map((entry, index) => renderRow(entry, index + VISIBLE_PER_COLUMN))}</ul>
+          </details>
+        ) : null}
+      </section>
+    </Card>
   );
 }
 
@@ -348,6 +360,7 @@ export default function ParticipantsPool({
   rosterShape,
   divisionGrid,
   heroesMap,
+  ontology,
   search,
   division,
   onResetFilters
@@ -361,30 +374,25 @@ export default function ParticipantsPool({
     [registrations]
   );
 
-  // Columns come from the roster shape's role slots, never a hardcoded trio.
+  // Columns come from the roster shape's role slots, never a fixed list of roles.
   // `flex` is dropped: it is a wildcard slot, not a role anybody registers as,
   // so a FLEX column would be permanently empty. Any role a player declared
   // that the shape does not list is appended, so nobody becomes invisible.
   const roleColumns = useMemo(() => {
-    const fromShape = rosterShape ? orderSlotCodes(rosterShape.slots).filter(isRoleSlotCode) : [];
+    const fromShape = rosterShape ? slotCodesOf(rosterShape.slots).filter(isRoleSlot) : [];
+    const order = slotCodeOrder(ontology);
     const declared = new Set<string>();
     for (const registration of active) {
       for (const role of registration.roles ?? []) {
-        if (role.role) declared.add(role.role);
+        if (roleOf(role.role)) declared.add(roleOf(role.role));
       }
     }
     const extra = [...declared]
-      .filter((role) => !fromShape.includes(role as (typeof fromShape)[number]) && role !== "flex")
-      .sort((left, right) => {
-        // Unknown codes sort after every canonical one, then alphabetically.
-        const leftIndex = ROSTER_SLOT_CODES.indexOf(left as (typeof ROSTER_SLOT_CODES)[number]);
-        const rightIndex = ROSTER_SLOT_CODES.indexOf(right as (typeof ROSTER_SLOT_CODES)[number]);
-        const leftRank = leftIndex === -1 ? ROSTER_SLOT_CODES.length : leftIndex;
-        const rightRank = rightIndex === -1 ? ROSTER_SLOT_CODES.length : rightIndex;
-        return leftRank - rightRank || left.localeCompare(right);
-      });
-    return [...fromShape, ...extra] as string[];
-  }, [active, rosterShape]);
+      .filter((role) => !fromShape.includes(role) && role !== OPEN_SLOT_CODE)
+      // Roles the game does not declare sort after every declared one, then alphabetically.
+      .sort((left, right) => slotRank(order, left) - slotRank(order, right) || left.localeCompare(right));
+    return [...fromShape, ...extra];
+  }, [active, ontology, rosterShape]);
 
   const normalizedSearch = search.trim().toLowerCase();
 
@@ -402,7 +410,7 @@ export default function ParticipantsPool({
       const roles = registration.roles ?? [];
       const isFlex = roles.length > 1;
       for (const role of roles) {
-        const bucket = grouped.get(role.role);
+        const bucket = grouped.get(roleOf(role.role));
         if (!bucket) continue;
         const entryDivision = resolveDivisionFromRank(divisionGrid, role.rank_value);
         if (division != null && entryDivision !== division) continue;
@@ -497,6 +505,7 @@ export default function ParticipantsPool({
               entries={entriesByRole.get(role) ?? []}
               heroesMap={heroesMap}
               divisionGrid={divisionGrid}
+              ontology={ontology}
               showDivision={showDivision}
             />
           ))}
@@ -504,50 +513,54 @@ export default function ParticipantsPool({
       ) : null}
 
       {reserves.length > 0 ? (
-        <section
-          aria-label={t("tournamentDetail.participantsPool.reserve", {
-            count: reserves.length
-          })}
-          className="rounded-xl border border-[color:color-mix(in_srgb,var(--aqt-blue)_25%,transparent)] bg-[color:var(--aqt-card)] px-3 py-2"
-          data-pool-reserve="true"
-        >
-          <h3 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-blue)]">
-            {t("tournamentDetail.participantsPool.reserve", { count: reserves.length })}
-          </h3>
-          <p className="mt-0.5 text-xs text-[color:var(--aqt-fg-dim)]">
-            {t("tournamentDetail.participantsPool.reserveDesc")}
-          </p>
-          <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
-            {reserves.map((registration) => (
-              <li key={registration.id} className="text-xs text-[color:var(--aqt-fg-muted)]">
-                {registration.primary_handle ?? "\u2014"}
-              </li>
-            ))}
-          </ul>
-        </section>
+        <Card asChild variant="flat">
+          <section
+            aria-label={t("tournamentDetail.participantsPool.reserve", {
+              count: reserves.length
+            })}
+            className="border-[color:color-mix(in_srgb,var(--aqt-blue)_25%,transparent)] px-3 py-2"
+            data-pool-reserve="true"
+          >
+            <h3 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-blue)]">
+              {t("tournamentDetail.participantsPool.reserve", { count: reserves.length })}
+            </h3>
+            <p className="mt-0.5 text-xs text-[color:var(--aqt-fg-dim)]">
+              {t("tournamentDetail.participantsPool.reserveDesc")}
+            </p>
+            <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              {reserves.map((registration) => (
+                <li key={registration.id} className="text-xs text-[color:var(--aqt-fg-muted)]">
+                  {registration.primary_handle ?? "\u2014"}
+                </li>
+              ))}
+            </ul>
+          </section>
+        </Card>
       ) : null}
 
       {withdrawn.length > 0 ? (
-        <details className="group rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-3 py-2">
-          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-fg)]">
-            <ChevronDown
-              size={12}
-              aria-hidden
-              className="transition-transform group-open:rotate-180"
-            />
-            {t("tournamentDetail.participantsPool.withdrawn", { count: withdrawn.length })}
-          </summary>
-          <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
-            {withdrawn.map((registration) => (
-              <li
-                key={registration.id}
-                className="text-xs text-[color:var(--aqt-fg-dim)] line-through"
-              >
-                {registration.primary_handle ?? "\u2014"}
-              </li>
-            ))}
-          </ul>
-        </details>
+        <Card asChild variant="flat">
+          <details className="group px-3 py-2">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-fg)]">
+              <ChevronDown
+                size={12}
+                aria-hidden
+                className="transition-transform group-open:rotate-180"
+              />
+              {t("tournamentDetail.participantsPool.withdrawn", { count: withdrawn.length })}
+            </summary>
+            <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              {withdrawn.map((registration) => (
+                <li
+                  key={registration.id}
+                  className="text-xs text-[color:var(--aqt-fg-dim)] line-through"
+                >
+                  {registration.primary_handle ?? "\u2014"}
+                </li>
+              ))}
+            </ul>
+          </details>
+        </Card>
       ) : null}
     </div>
   );

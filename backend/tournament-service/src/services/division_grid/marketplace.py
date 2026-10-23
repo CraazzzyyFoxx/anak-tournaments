@@ -14,8 +14,10 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.clients import S3Client
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.division_grid import stamp_canonical_numbers
 from shared.repository import (
     DivisionGridMappingRepository,
     DivisionGridRepository,
@@ -24,7 +26,8 @@ from shared.repository import (
     WorkspaceRepository,
 )
 from shared.services.division_grid import cache as division_grid_cache
-from src import models, schemas
+from shared.services.ontology import assert_discipline_enabled
+from src import schemas
 from src.services.division_grid.service import DivisionGridService, division_grid_service
 
 __all__ = (
@@ -215,7 +218,7 @@ def build_source_fingerprint(
     *,
     source_version_id: int | None = None,
     include_icons: bool = True,
-    include_ow_rank_mappings: bool = True,
+    include_native_rank_mappings: bool = True,
 ) -> str:
     version_key_by_id: dict[int, tuple[str, int]] = {}
     tier_key_by_id: dict[int, tuple[str, int, str]] = {}
@@ -242,8 +245,9 @@ def build_source_fingerprint(
                         "rank_min": tier.rank_min,
                         "rank_max": tier.rank_max,
                         "icon_url": tier.icon_url,
-                        "ow_rank_min": tier.ow_rank_min,
-                        "ow_rank_max": tier.ow_rank_max,
+                        # Hash payload keys: renaming them would re-import every unchanged library grid.
+                        "ow_rank_min": tier.native_rank_min,
+                        "ow_rank_max": tier.native_rank_max,
                     }
                 )
             versions_payload.append(
@@ -290,7 +294,8 @@ def build_source_fingerprint(
             "grids": grids_payload,
             "mappings": mappings_payload,
             "include_icons": include_icons,
-            "include_ow_rank_mappings": include_ow_rank_mappings,
+            # Hash input of the stored ``source_fingerprint``: the historical key keeps unchanged grids unchanged.
+            "include_ow_rank_mappings": include_native_rank_mappings,
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -406,19 +411,15 @@ class MarketplaceService:
     ) -> list[schemas.DivisionGridMarketplaceWorkspaceRead]:
         """List other workspaces exposing an importable division grid.
 
-        The marketplace is cross-tenant by design: the caller already proved
-        ``division_grid.read`` on ``target_workspace_id`` (checked by the RPC
-        handler before this runs), so any admin able to open that workspace's
-        grid page may browse every OTHER workspace's grids to import from --
-        not only ones they personally also belong to. This mirrors
-        ``WorkspaceService.get_all``: ``is_hidden`` only gates discoverability,
-        so a hidden source workspace stays restricted to its own
+        Cross-tenant by design: the caller already proved ``division_grid.read``
+        on ``target_workspace_id`` (the RPC handler checks it), so they may browse
+        every OTHER workspace's grids to import from, not only ones they belong
+        to. As in ``WorkspaceService.get_all``, ``is_hidden`` only gates
+        discoverability: a hidden source workspace stays restricted to its own
         members/superusers instead of the whole platform.
         """
         member_ids = set(user.get_workspace_ids())
 
-        # Multi-join grid/version aggregation: a service-level analytical query,
-        # deliberately not hidden behind a CRUD repository method.
         query = (
             sa.select(
                 models.Workspace.id,
@@ -499,8 +500,6 @@ class MarketplaceService:
         if not source_version_ids:
             return []
 
-        # Both endpoints constrained to the same id set — broader than
-        # DivisionGridMappingRepository.get_for_versions' single (source, target).
         result = await session.execute(
             self.mapping_repo.select()
             .options(*_MAPPING_RULES_OPTIONS)
@@ -521,7 +520,7 @@ class MarketplaceService:
         source_grids: Sequence[models.DivisionGrid],
         source_version_id: int | None = None,
         include_icons: bool = True,
-        include_ow_rank_mappings: bool = True,
+        include_native_rank_mappings: bool = True,
     ) -> schemas.DivisionGridMarketplacePreflightResult:
         selected_versions = _selected_source_versions(source_grids, source_version_id)
         selected_version_ids = {version.id for version in selected_versions}
@@ -586,7 +585,7 @@ class MarketplaceService:
                 mappings,
                 source_version_id=source_version_id,
                 include_icons=include_icons,
-                include_ow_rank_mappings=include_ow_rank_mappings,
+                include_native_rank_mappings=include_native_rank_mappings,
             ),
         )
 
@@ -627,8 +626,11 @@ class MarketplaceService:
         expected_source_fingerprint: str | None = None,
         source_version_id: int | None = None,
         include_icons: bool = True,
-        include_ow_rank_mappings: bool = True,
+        include_native_rank_mappings: bool = True,
     ) -> schemas.DivisionGridMarketplaceImportResult:
+        # Validate the whole batch before copying or archiving any grid.
+        for source_grid in source_grids:
+            assert_discipline_enabled(target_workspace, source_grid.discipline)
         copied_keys: list[str] = []
         version_id_map: dict[int, int] = {}
         tier_id_map: dict[int, int] = {}
@@ -648,7 +650,7 @@ class MarketplaceService:
             mappings,
             source_version_id=source_version_id,
             include_icons=include_icons,
-            include_ow_rank_mappings=include_ow_rank_mappings,
+            include_native_rank_mappings=include_native_rank_mappings,
         )
         source_fingerprints: dict[int, str] = {}
         for source_grid in source_grids:
@@ -667,7 +669,7 @@ class MarketplaceService:
                 grid_mappings,
                 source_version_id=source_version_id,
                 include_icons=include_icons,
-                include_ow_rank_mappings=include_ow_rank_mappings,
+                include_native_rank_mappings=include_native_rank_mappings,
             )
         if expected_source_fingerprint is not None and source_fingerprint != expected_source_fingerprint:
             raise HTTPException(
@@ -763,6 +765,7 @@ class MarketplaceService:
                     session,
                     models.DivisionGrid(
                         workspace_id=target_workspace.id,
+                        discipline=source_grid.discipline,
                         slug=target_slug,
                         name=source_grid.name,
                         description=source_grid.description,
@@ -860,13 +863,18 @@ class MarketplaceService:
                                     rank_min=source_tier.rank_min,
                                     rank_max=source_tier.rank_max,
                                     icon_url=copied.public_url,
-                                    ow_rank_min=source_tier.ow_rank_min if include_ow_rank_mappings else None,
-                                    ow_rank_max=source_tier.ow_rank_max if include_ow_rank_mappings else None,
+                                    native_rank_min=source_tier.native_rank_min
+                                    if include_native_rank_mappings
+                                    else None,
+                                    native_rank_max=source_tier.native_rank_max
+                                    if include_native_rank_mappings
+                                    else None,
                                 ),
                                 source_tier.id,
                             )
                         )
 
+                    stamp_canonical_numbers([tier for tier, _ in pending_tiers], target_grid.discipline)
                     # One INSERT batch per version instead of a flush per tier.
                     await self.tier_repo.create_many(session, [tier for tier, _ in pending_tiers])
                     for target_tier, source_tier_id in pending_tiers:

@@ -72,12 +72,18 @@ vi.mock("@/lib/notify", () => ({
 // Server action — nothing to revalidate in a DOM test.
 vi.mock("@/app/actions/users", () => ({ revalidateUser: vi.fn() }));
 
-const replace = vi.fn((url: string) => {
-  window.history.replaceState(null, "", url);
-  rerender?.();
-});
+// Every URL write re-renders from the new `useSearchParams` in the app — the
+// router's `replace` and, through Next's History patch, the inspector's native
+// `replaceState`. Both land here as "write `window.history`, poke the harness".
+const replace = vi.fn((url: string) => window.history.replaceState(null, "", url));
 
 let rerender: (() => void) | null = null;
+
+const nativeReplaceState = window.history.replaceState.bind(window.history);
+window.history.replaceState = (data, unused, url) => {
+  nativeReplaceState(data, unused, url);
+  rerender?.();
+};
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin/people",
@@ -255,7 +261,7 @@ describe("People", () => {
     permitted = false;
     const container = await mount();
 
-    expect(container.textContent).toContain("Unauthorized");
+    expect(container.textContent).toContain("No access");
     expect(getUsers).not.toHaveBeenCalled();
   });
 
@@ -264,7 +270,8 @@ describe("People", () => {
     await waitFor(() => container.textContent?.includes("nnniik#2515"), "the first identity");
 
     expect(bodyRows(container)).toHaveLength(2);
-    expect(container.textContent).toContain("No identities linked");
+    // An identity with no handles shows an empty cell, not a placeholder.
+    expect(container.textContent).not.toContain("No identities linked");
     expect(container.textContent).toContain("Not linked");
     expect(getUsers).toHaveBeenCalledWith(
       expect.objectContaining({ page: 1, per_page: 20 })
@@ -311,7 +318,7 @@ describe("People", () => {
       () => document.querySelector('aside[aria-label="Row inspector"], [role="dialog"]'),
       "the inspector"
     );
-    expect(inspector.textContent).toContain("Identity #11");
+    expect(inspector.textContent).toContain("#11");
     expect(
       document.querySelector('a[href="/admin/people/11"]')?.textContent
     ).toContain("Open page");
@@ -334,7 +341,7 @@ describe("People", () => {
 
     await click(button("Create identity"));
     const nameField = await waitFor(
-      () => document.querySelector<HTMLInputElement>('input[placeholder^="Player name"]'),
+      () => document.querySelector<HTMLInputElement>('input[placeholder="Karnage#22778"]'),
       "the name field"
     );
     await type(nameField, "Fresh#1111");

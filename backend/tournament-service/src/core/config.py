@@ -4,10 +4,6 @@ from shared.core.config import BaseServiceSettings
 
 
 class Settings(BaseServiceSettings):
-    project_name: str = "OWT Tournament Service"
-    port: int = 8004
-    api_v1_str: str = "/api/v1"
-
     redis_url: RedisDsn
     rabbitmq_url: str = "amqp://guest:guest@rabbitmq:5672"
     challonge_username: str = ""
@@ -21,18 +17,13 @@ class Settings(BaseServiceSettings):
     encounters_cache_ttl: int = 60 * 5
     # Match detail pages can change mid-series (live score edits), so they rely
     # on a short TTL instead of targeted invalidation (the key has no
-    # tournament_id for the invalidation patterns to match on).
+    # tournament_id to name a tournament's cache generations by).
     match_cache_ttl: int = 30
 
-    # Subscription-entitlement providers. Both optional: without them the
-    # resolver still answers, reporting `unknown` (fail open) with a reason, so a
-    # missing credential degrades the gate to "not enforced" rather than
-    # refusing every patron.
-    #
-    # `discord_token` is the SAME bot token discord-service already uses; the bot
-    # is already present in organizers' guilds. Reading one member's roles needs
-    # no privileged intent (see the design doc's fact table).
-    discord_token: str | None = None
+    # Subscription-entitlement provider credentials. Optional: without it Twitch
+    # still answers `unknown` (fail open) with a reason, so a missing credential
+    # degrades the gate to "not enforced" rather than refusing every patron.
+    # Boosty (Discord roles) asks discord-service over the broker; no bot token here.
     twitch_client_id: str | None = None
 
     @property

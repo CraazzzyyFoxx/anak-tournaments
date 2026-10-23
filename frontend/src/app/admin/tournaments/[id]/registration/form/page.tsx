@@ -1,21 +1,9 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import dynamic from "next/dynamic";
-import { useParams } from "next/navigation";
-import { tabFallback } from "../../hubQueries";
-
-const RegistrationFormBuilder = dynamic(
-  () => import("@/components/balancer/form/RegistrationFormBuilder"),
-  { loading: () => tabFallback }
-);
-
-export default function RegistrationFormSubRoutePage() {
-  const params = useParams<{ id: string }>();
-  const tournamentId = Number(params.id);
-
-  return (
-    <RegistrationFormBuilder
-      tournamentId={Number.isFinite(tournamentId) && tournamentId > 0 ? tournamentId : null}
-    />
-  );
+/** The questionnaire builder moved to Settings › Registration; old links land there. */
+export default async function RegistrationFormRedirect({
+  params
+}: Readonly<{ params: Promise<{ id: string }> }>) {
+  const { id } = await params;
+  redirect(`/admin/tournaments/${id}/settings/registration`);
 }

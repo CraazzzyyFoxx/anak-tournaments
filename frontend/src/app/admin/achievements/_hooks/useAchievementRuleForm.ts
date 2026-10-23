@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import adminService from "@/services/admin.service";
 import { achievementQueryKeys } from "@/lib/achievements/query-keys";
 import { hasUnsavedChanges } from "@/lib/form-change";
+import { ALL_DISCIPLINES } from "@/lib/site/discipline-scope";
 import { MAX_ACHIEVEMENT_IMAGE_BYTES } from "@/lib/uploads";
 import type {
   AchievementRule,
@@ -23,17 +24,23 @@ import {
 export interface AchievementRuleForm {
   open: boolean;
   editingRule: AchievementRule | null;
+  /**
+   * The game the open form belongs to: the rule's own when editing (immutable),
+   * the draft's when creating. `null` while the dialog is closed.
+   */
+  discipline: string | null;
   formData: AchievementRuleCreateInput | AchievementRuleUpdateInput;
   setFormData: (data: AchievementRuleCreateInput | AchievementRuleUpdateInput) => void;
   imagePreview: string | null;
   imageError: string | null;
-  imageInputRef: React.RefObject<HTMLInputElement | null>;
   isDirty: boolean;
   isSubmitting: boolean;
   /** Message of the failed create or update, whichever the dialog is running. */
   error?: string;
   openCreate: () => void;
   openEdit: (rule: AchievementRule) => void;
+  /** Moves a create draft to another game (its game field); the other game's character is dropped. */
+  chooseDiscipline: (code: string) => void;
   /** Closes the dialog and drops the draft, image included. */
   reset: () => void;
   pickImage: (file: File) => void;
@@ -42,25 +49,38 @@ export interface AchievementRuleForm {
 }
 
 /**
- * The create/edit dialog's state and the two mutations behind it. Creating with
- * an image is two round-trips — the rule has to exist before its badge can be
- * uploaded against its slug — so the upload lives inside the create mutation
- * rather than in a second call site.
+ * The create/edit dialog's state and the two mutations behind it, for the list
+ * and for a rule's own page. Saving with an image is two round-trips — the
+ * rule has to exist before its badge can be uploaded against its slug — so the
+ * upload lives inside each mutation rather than in a second call site.
+ *
+ * `selectedDiscipline` is where a new rule starts. A form already open keeps the
+ * game it was opened for: a create draft is tied to its own `discipline` and an
+ * edit to the rule's immutable one, so changing the page's game neither
+ * reassigns an edit nor re-targets a half-written draft — closing it goes
+ * through the dialog's own unsaved-changes prompt.
  */
-export function useAchievementRuleForm(workspaceId: number | null): AchievementRuleForm {
+export function useAchievementRuleForm(
+  workspaceId: number | null,
+  selectedDiscipline: string | null
+): AchievementRuleForm {
   const t = useTranslations("adminAchievements");
   const queryClient = useQueryClient();
-  const listKey = achievementQueryKeys.adminList(workspaceId);
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<AchievementRule | null>(null);
-  const [formData, setFormData] = useState<AchievementRuleCreateInput | AchievementRuleUpdateInput>({
-    ...emptyAchievementForm,
-  });
+  const [formData, setFormData] = useState<AchievementRuleCreateInput | AchievementRuleUpdateInput>(() =>
+    emptyAchievementForm(selectedDiscipline ?? "")
+  );
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const invalidateRules = (discipline: string) => {
+    queryClient.invalidateQueries({ queryKey: achievementQueryKeys.adminList(workspaceId, discipline) });
+    queryClient.invalidateQueries({ queryKey: achievementQueryKeys.adminList(workspaceId, ALL_DISCIPLINES) });
+    queryClient.invalidateQueries({ queryKey: achievementQueryKeys.publicLists() });
+  };
 
   const createMutation = useMutation({
     mutationFn: async (data: AchievementRuleCreateInput) => {
@@ -73,37 +93,48 @@ export function useAchievementRuleForm(workspaceId: number | null): AchievementR
       }
       return created;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: listKey });
+    onSuccess: (created) => {
+      invalidateRules(created.discipline);
       setCreateDialogOpen(false);
-      setFormData({ ...emptyAchievementForm });
+      setFormData(emptyAchievementForm(selectedDiscipline ?? created.discipline));
       setImageFile(null);
       setImagePreview(null);
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: AchievementRuleUpdateInput }) =>
-      adminService.updateAchievementRule(workspaceId!, id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: listKey });
+    mutationFn: async ({ id, data }: { id: number; data: AchievementRuleUpdateInput }) => {
+      const updated = await adminService.updateAchievementRule(workspaceId!, id, data);
+      if (imageFile && updated.slug) {
+        const uploadResult = await adminService.uploadAchievementImage(updated.slug, imageFile, workspaceId!);
+        await adminService.updateAchievementRule(workspaceId!, id, { image_url: uploadResult.public_url });
+      }
+      return updated;
+    },
+    onSuccess: (updated) => {
+      invalidateRules(updated.discipline);
+      queryClient.invalidateQueries({ queryKey: achievementQueryKeys.rule(workspaceId, updated.id) });
       setEditingRule(null);
-      setFormData({ ...emptyAchievementForm });
+      setFormData(emptyAchievementForm(selectedDiscipline ?? updated.discipline));
+      setImageFile(null);
+      setImagePreview(null);
     },
   });
 
   const reset = () => {
     setCreateDialogOpen(false);
     setEditingRule(null);
-    setFormData({ ...emptyAchievementForm });
+    setFormData(emptyAchievementForm(selectedDiscipline ?? ""));
     setImageFile(null);
     setImagePreview(null);
+    setImageError(null);
   };
 
   const openCreate = () => {
+    if (!selectedDiscipline) return;
     createMutation.reset();
     updateMutation.reset();
-    setFormData({ ...emptyAchievementForm });
+    setFormData(emptyAchievementForm(selectedDiscipline));
     setCreateDialogOpen(true);
   };
 
@@ -112,6 +143,9 @@ export function useAchievementRuleForm(workspaceId: number | null): AchievementR
     setEditingRule(rule);
     setFormData(achievementFormDataWithSlug(rule));
   };
+
+  const chooseDiscipline = (code: string) =>
+    setFormData({ ...(formData as AchievementRuleCreateInput), discipline: code, entity_id: null });
 
   const pickImage = (file: File) => {
     if (file.size > MAX_ACHIEVEMENT_IMAGE_BYTES) {
@@ -138,23 +172,29 @@ export function useAchievementRuleForm(workspaceId: number | null): AchievementR
     }
   };
 
-  const formInitial = editingRule ? achievementFormDataWithSlug(editingRule) : emptyAchievementForm;
+  const open = createDialogOpen || !!editingRule;
+  const draftDiscipline = (formData as AchievementRuleCreateInput).discipline;
+  const discipline = editingRule ? editingRule.discipline : createDialogOpen ? draftDiscipline : null;
+  const formInitial = editingRule
+    ? achievementFormDataWithSlug(editingRule)
+    : emptyAchievementForm(draftDiscipline ?? "");
 
   return {
-    open: createDialogOpen || !!editingRule,
+    open,
     editingRule,
+    discipline,
     formData,
     setFormData,
     imagePreview,
     imageError,
-    imageInputRef,
-    isDirty: (createDialogOpen || !!editingRule) && hasUnsavedChanges(formData, formInitial),
+    isDirty: open && hasUnsavedChanges(formData, formInitial),
     isSubmitting: createMutation.isPending || updateMutation.isPending,
     error: (editingRule ? updateMutation.error : createMutation.error) instanceof Error
       ? (editingRule ? updateMutation.error : createMutation.error)?.message
       : undefined,
     openCreate,
     openEdit,
+    chooseDiscipline,
     reset,
     pickImage,
     clearImage,

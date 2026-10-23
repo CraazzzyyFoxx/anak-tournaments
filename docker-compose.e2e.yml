@@ -1,0 +1,162 @@
+# Isolated stack for the Playwright suite (frontend/e2e). Layered over
+# docker-compose.yml under its own project so it never touches the dev stack's
+# volumes or the database the dev env files point at:
+#
+#   docker compose -p owt-e2e -f docker-compose.yml -f docker-compose.e2e.yml up -d --build --wait
+#
+# `make e2e-up` / `make e2e` wrap it. The database lives on tmpfs: every `up`
+# after a `down` starts empty and is migrated by `make e2e-up`.
+# Entry point: http://localhost:${E2E_PORT:-8090} (nginx). No other host ports.
+
+x-e2e-env: &e2e-env
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: anak_e2e
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres
+  TRACING_ENABLED: "false"
+  # Uploads must never reach the real bucket the dev env names. A refused
+  # local port fails at once; an unresolvable host waits on DNS for ~50 s.
+  S3_ENDPOINT_URL: http://127.0.0.1:9
+  OWT_APPLY_LEGACY_DROP: "1"
+  # One login lasts the whole run: the suite holds plain bearer tokens.
+  ACCESS_TOKEN_EXPIRE_MINUTES: "720"
+  # DEBUG logs every RPC payload (whole division grids): noise and memory.
+  LOG_LEVEL: INFO
+
+x-e2e-db: &e2e-db
+  depends_on:
+    postgres:
+      condition: service_healthy
+  # The images' HTTP probe does not fit headless workers, and `up --wait`
+  # rejects a service with none: report healthy once running.
+  healthcheck:
+    test: ["CMD", "true"]
+    interval: 5s
+  # Parallel suites push a worker past the dev 512M (OOM kill → 504s); a
+  # dead consumer must come back on its own.
+  restart: unless-stopped
+  deploy:
+    resources:
+      limits:
+        memory: 1024M
+
+services:
+  postgres:
+    profiles: !reset []
+    environment:
+      POSTGRES_DB: anak_e2e
+    volumes: !reset []
+    tmpfs:
+      - /var/lib/postgresql/data
+    deploy: !reset {}
+
+  redis:
+    ports: !reset []
+    volumes: !reset []
+    # Eight parallel suites' cache scans time out at the dev 0.25 CPU
+    # (`redis.exceptions.TimeoutError` in the workers → 500s).
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+
+  rabbitmq:
+    ports: !reset []
+    volumes: !reset
+      - ./monitoring/rabbitmq/dev-loopback.conf:/etc/rabbitmq/conf.d/10-dev-monitoring.conf:ro
+    # Nine workers' RPC queues push the dev limits past the memory alarm, and
+    # at 0.25 CPU `rabbitmq-diagnostics ping` outlives its 5 s probe.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+    healthcheck:
+      timeout: 20s
+
+  # No `--reload`: it doesn't fire on this bind mount anyway (restart a service
+  # after a backend change), and its supervisor outlives an OOM-killed worker,
+  # leaving a "running" container with no consumer (every call 504s).
+  app-svc:
+    <<: *e2e-db
+    environment: *e2e-env
+    command: faststream run serve:app
+  identity-svc:
+    <<: *e2e-db
+    environment: *e2e-env
+    command: faststream run serve:app
+    healthcheck: !override
+      test: ["CMD", "true"]
+      interval: 5s
+  tournament-svc:
+    <<: *e2e-db
+    environment: *e2e-env
+    command: faststream run serve:app
+  balancer-svc:
+    <<: *e2e-db
+    environment: *e2e-env
+    command: faststream run serve:app
+  stats-svc:
+    <<: *e2e-db
+    environment: *e2e-env
+    command: faststream run serve_rpc:app
+  stats-worker:
+    <<: *e2e-db
+    environment: *e2e-env
+    command: faststream run serve_worker:app
+  analytics-svc:
+    <<: *e2e-db
+    environment: *e2e-env
+    command: faststream run serve_rpc:app
+  stream-svc:
+    <<: *e2e-db
+    environment: *e2e-env
+    command: faststream run serve:app
+
+  gateway:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports: !reset []
+    environment:
+      <<: *e2e-env
+      GATEWAY_DOCS_ADMIN: "true"
+      GATEWAY_WS_ALLOWED_ORIGINS: http://localhost:${E2E_PORT:-8090}
+      UPSTREAM_FRONTEND: http://frontend:3000
+      # Every test registers and signs in its own users from one IP.
+      GATEWAY_AUTH_RATE_LIMIT: "100000"
+
+  # A production build, not `next dev`: a cold dev compile per route made a
+  # full run take hours, its HMR storms aborted renders, and its overlay is not
+  # what users get. Rebuild after a frontend change: `make e2e-up` does.
+  frontend:
+    image: registry.craazzzyyfoxx.me/owt-frontend:e2e
+    build: !override
+      context: ./frontend
+      dockerfile: prod.Dockerfile
+      args:
+        NEXT_PUBLIC_SITE_NAME: OWT
+        NEXT_PUBLIC_SITE_URL: http://localhost:${E2E_PORT:-8090}
+        NEXT_PUBLIC_COOKIE_PREFIX: owt
+    ports: !reset []
+    environment: !override
+      NEXT_INTERNAL_API_URL: http://gateway:8080
+      NEXT_PUBLIC_SITE_URL: http://localhost:${E2E_PORT:-8090}
+      NEXT_PUBLIC_SITE_NAME: OWT
+    volumes: !reset []
+    tmpfs: !reset []
+    develop: !reset {}
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2048M
+
+  nginx:
+    # IPv4 loopback only: Docker Desktop's ::1 forward resets slow responses
+    # (> 30 s); a refused ::1 makes clients fall back to 127.0.0.1 at once.
+    ports: !override
+      - "127.0.0.1:${E2E_PORT:-8090}:80"

@@ -150,7 +150,7 @@ class StreamTargetRepository:
         """The "this player is actually in one of these tournaments" predicate,
         shared by both channel sources so a change to what counts as
         participation cannot drift between them."""
-        registration = models.BalancerRegistration
+        registration = models.Registration
         return [
             registration.tournament_id.in_(tournament_ids),
             registration.deleted_at.is_(None),
@@ -176,8 +176,8 @@ class StreamTargetRepository:
     ) -> Sequence[SelfDeclaredChannelRow]:
         if not tournament_ids:
             return []
-        registration = models.BalancerRegistration
-        identity = models.BalancerRegistrationIdentity
+        registration = models.Registration
+        identity = models.RegistrationIdentity
         member = models.WorkspaceMember
         user = models.User
         stmt = (
@@ -219,7 +219,7 @@ class StreamTargetRepository:
     ) -> Sequence[VerifiedChannelRow]:
         if not tournament_ids:
             return []
-        registration = models.BalancerRegistration
+        registration = models.Registration
         member = models.WorkspaceMember
         user = models.User
         account = models.SocialAccount
@@ -280,9 +280,8 @@ class StreamTargetRepository:
         on a public, cacheable read.
 
         The join walks the anchor the roster actually uses. A caller's user id is
-        a ``players.user.id``, and ``tournament.player`` no longer carries one
-        (``user_id`` was dropped in iwrefac07), so the only path to a roster row
-        is through ``workspace_member``.
+        a ``players.user.id``, and ``tournament.player`` carries none, so the
+        only path to a roster row is through ``workspace_member``.
         """
         if not user_ids:
             return []

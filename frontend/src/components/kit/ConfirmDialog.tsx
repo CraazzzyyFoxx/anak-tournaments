@@ -16,11 +16,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { TONE_TEXT } from "@/components/kit/tone";
+import { TONE_TEXT } from "@/components/ui/tone";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
 
-export type ConfirmTone = "danger" | "warning" | "neutral";
+type ConfirmTone = "danger" | "warning" | "neutral";
 
 export interface ConfirmIntent {
   title: string;
@@ -43,12 +43,6 @@ export interface ConfirmDialogProps {
    * filled in yet — confirm stays disabled without reading as "in flight". */
   confirmDisabled?: boolean;
 }
-
-const TONE_ICON: Record<ConfirmTone, string> = {
-  danger: TONE_TEXT.danger,
-  warning: TONE_TEXT.warning,
-  neutral: TONE_TEXT.neutral
-};
 
 /**
  * The single confirmation surface for the whole app — admin screens, the site
@@ -87,14 +81,16 @@ export function ConfirmDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <div className="flex items-center gap-2">
-            <AlertTriangle aria-hidden className={cn("size-5", TONE_ICON[intent.tone])} />
+            {intent.tone === "neutral" ? null : (
+              <AlertTriangle aria-hidden className={cn("size-5", TONE_TEXT[intent.tone])} />
+            )}
             <AlertDialogTitle>{intent.title}</AlertDialogTitle>
           </div>
           <AlertDialogDescription asChild>
             <div>{intent.description}</div>
           </AlertDialogDescription>
           {intent.cascade && intent.cascade.length > 0 ? (
-            <div className="mt-4 rounded-md border border-danger/20 bg-danger/10 p-3">
+            <div className="mt-4 rounded-md border border-border p-3">
               <p className="mb-2 font-medium text-danger">{t("confirm.cascade")}</p>
               <ul className="list-inside list-disc space-y-1 text-sm">
                 {intent.cascade.map((entry) => (

@@ -1,15 +1,4 @@
-"""THE engine: one place that answers "which roles does this registration play,
-and at what rank".
-
-Before this module the same question had five independent answers -- the admin
-registration serializer, ``registration/_common``'s ready/incomplete verdict,
-the browser's ``buildBalancerInput``, ``tournament-service`` ``export.py``, and
-balancer-service's ``draft/rules.map_registration``. Two of them read the raw
-``balancer.registration_role.rank_value`` column and three read the resolved
-value, so a player ranked only through the workspace canon or an Overwatch
-snapshot was fully ranked in the balancer and blank in the draft.
-
-Now there is one call path and therefore one failure mode:
+"""The one resolver of "which roles does this registration play, and at what rank".
 
     RosterEngine.for_tournament(session, tournament_id)
         -> {registration_id: PlayerRoster}
@@ -18,8 +7,8 @@ Everything downstream -- admin list, pool verdict, balancer algorithm input,
 draft pool, draft board, feasibility, autopick, draft export -- projects those
 value objects. No consumer touches ``registration_role.rank_value``,
 ``member_rank`` or the snapshot tables directly, and no consumer keeps a copy;
-the only stored derivation left in the system is the ``(role, rank)`` a
-completed draft pick freezes as a historical fact.
+the only stored derivation is the ``(role, rank)`` a completed draft pick
+freezes as a historical fact.
 """
 
 from __future__ import annotations
@@ -32,23 +21,26 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from shared.balancer_registration_statuses import balancer_pool_included_clause
-from shared.core.enums import HERO_TYPE_CLASSES, HeroClass
-from shared.core.social import SocialProvider
+from shared.core.social import display_social_handle
+from shared.disciplines import identity_provider, rated_role_codes
 from shared.division_grid import DivisionGrid
 from shared.domain.member_rank import RankScope, ResolvedRank
-from shared.domain.roster import HeroRef, PlayerRoster, RosterRole, flex_role_mode
+from shared.domain.player_sub_roles import workspace_sub_role_slug
+from shared.domain.roster import CharacterRef, PlayerRoster, RosterRole, flex_role_mode
 from shared.domain.roster_shape import RosterShape
 from shared.models.registration.registration import (
-    BalancerRegistration,
-    BalancerRegistrationForm,
-    BalancerRegistrationIdentity,
-    BalancerRegistrationRole,
-    BalancerRegistrationRoleHero,
+    Registration,
+    RegistrationForm,
+    RegistrationIdentity,
+    RegistrationRole,
+    RegistrationRoleEntity,
 )
 from shared.models.tenancy.workspace import WorkspaceMember
 from shared.models.tournament import Tournament
+from shared.registration_statuses import balancer_pool_included_clause
 from shared.repository import TournamentRepository
+from shared.schemas.identity import PlayerIdentityRead
+from shared.schemas.role import RoleRef
 from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.member_rank import TOURNAMENT_ORDER, MemberRankService, member_rank_service
 
@@ -63,33 +55,29 @@ def registration_load_options() -> list[Any]:
     ``MissingGreenlet`` in async code).
     """
     return [
-        selectinload(BalancerRegistration.roles)
-        .selectinload(BalancerRegistrationRole.hero_entries)
-        .selectinload(BalancerRegistrationRoleHero.hero),
-        selectinload(BalancerRegistration.workspace_member).selectinload(WorkspaceMember.player),
-        selectinload(BalancerRegistration.identities),
-        selectinload(BalancerRegistration.form_version),
+        selectinload(Registration.roles)
+        .selectinload(RegistrationRole.hero_entries)
+        .selectinload(RegistrationRoleEntity.entity),
+        selectinload(Registration.workspace_member).selectinload(WorkspaceMember.player),
+        selectinload(Registration.identities),
+        selectinload(Registration.form_version),
     ]
 
 
-def _primary_tag_order() -> sa.ScalarSelect[str]:
-    """The registration's primary battlenet handle, as a correlated scalar.
+def _primary_tag_order(provider: str) -> sa.ScalarSelect[str]:
+    """The event provider's primary handle, as a correlated scalar.
 
-    A scalar subquery rather than a join: a registrant with smurfs owns several
-    battlenet rows, and joining them would multiply the result.
-
-    ponytail: one game (Overwatch -> battlenet). When a second game provider
-    lands, widen this to the first ``GAME_PROVIDERS`` entry present.
+    Joining would multiply registrations that carry several handles.
     """
     return (
-        sa.select(BalancerRegistrationIdentity.handle_normalized)
+        sa.select(RegistrationIdentity.handle_normalized)
         .where(
-            BalancerRegistrationIdentity.registration_id == BalancerRegistration.id,
-            BalancerRegistrationIdentity.provider == SocialProvider.BATTLENET,
-            BalancerRegistrationIdentity.position == 0,
+            RegistrationIdentity.registration_id == Registration.id,
+            RegistrationIdentity.provider == provider,
+            RegistrationIdentity.position == 0,
         )
         .limit(1)
-        .correlate(BalancerRegistration)
+        .correlate(Registration)
         .scalar_subquery()
     )
 
@@ -97,27 +85,21 @@ def _primary_tag_order() -> sa.ScalarSelect[str]:
 def _pool_clauses(tournament_id: int) -> tuple[Any, ...]:
     """The balancer pool predicate, exactly as the panel defines it."""
     return (
-        BalancerRegistration.status == "approved",
-        BalancerRegistration.deleted_at.is_(None),
+        Registration.status == "approved",
+        Registration.deleted_at.is_(None),
         balancer_pool_included_clause(
-            BalancerRegistration.balancer_status,
+            Registration.balancer_status,
             sa.select(Tournament.workspace_id).where(Tournament.id == tournament_id).scalar_subquery(),
         ),
     )
 
 
-def _hero_refs(role: BalancerRegistrationRole) -> tuple[HeroRef, ...]:
+def _character_refs(role: RegistrationRole) -> tuple[CharacterRef, ...]:
     return tuple(
-        HeroRef(id=entry.hero.id, slug=entry.hero.slug, image_path=entry.hero.image_path)
+        CharacterRef(id=entry.entity.id, slug=entry.entity.slug, image_path=entry.entity.image_path)
         for entry in sorted(role.hero_entries or [], key=lambda entry: entry.priority)
-        if entry.hero is not None
+        if entry.entity is not None
     )
-
-
-def _parse_role(code: str | None) -> HeroClass | None:
-    """A registration role code; ``flex`` is a roster SLOT, never a rated role."""
-    parsed = HeroClass.parse(code)
-    return parsed if parsed is not None and parsed is not HeroClass.flex else None
 
 
 class RosterEngine:
@@ -147,28 +129,32 @@ class RosterEngine:
         (approved, not deleted, and a ``balancer_status`` that does not exclude) --
         this is what the draft seeds from and what the balance job balances.
         """
-        workspace_id = await self.tournaments.get_workspace_id(session, tournament_id)
+        tournament = await self.tournaments.get(session, tournament_id)
+        if tournament is None:
+            return {}
         query = (
-            sa.select(BalancerRegistration)
-            .where(BalancerRegistration.tournament_id == tournament_id)
+            sa.select(Registration)
+            .where(Registration.tournament_id == tournament_id)
             .options(*registration_load_options())
-            .order_by(_primary_tag_order().asc(), BalancerRegistration.id.asc())
+            .order_by(_primary_tag_order(identity_provider(tournament.discipline)).asc(), Registration.id.asc())
         )
         if not include_deleted:
-            query = query.where(BalancerRegistration.deleted_at.is_(None))
+            query = query.where(Registration.deleted_at.is_(None))
         if pool_only:
             query = query.where(*_pool_clauses(tournament_id))
         if registration_ids is not None:
             if not registration_ids:
                 return {}
-            query = query.where(BalancerRegistration.id.in_(list(registration_ids)))
+            query = query.where(Registration.id.in_(list(registration_ids)))
 
         registrations = list(await session.scalars(query))
         return await self.resolve(
             session,
             registrations,
-            workspace_id=workspace_id,
+            workspace_id=tournament.workspace_id,
             tournament_id=tournament_id,
+            discipline=tournament.discipline,
+            role_codes=rated_role_codes(tournament.discipline),
         )
 
     async def pool_ids(self, session: AsyncSession, tournament_id: int, registration_ids: Sequence[int]) -> set[int]:
@@ -181,9 +167,9 @@ class RosterEngine:
         if not registration_ids:
             return set()
         rows = await session.scalars(
-            sa.select(BalancerRegistration.id).where(
-                BalancerRegistration.tournament_id == tournament_id,
-                BalancerRegistration.id.in_(list(registration_ids)),
+            sa.select(Registration.id).where(
+                Registration.tournament_id == tournament_id,
+                Registration.id.in_(list(registration_ids)),
                 *_pool_clauses(tournament_id),
             )
         )
@@ -192,14 +178,16 @@ class RosterEngine:
     async def resolve(
         self,
         session: AsyncSession,
-        registrations: Sequence[BalancerRegistration],
+        registrations: Sequence[Registration],
         *,
         workspace_id: int | None,
         tournament_id: int | None = None,
-        form: BalancerRegistrationForm | None = None,
+        form: RegistrationForm | None = None,
         grid: DivisionGrid | None = None,
         order: Sequence[RankScope] = TOURNAMENT_ORDER,
         author_user_id: int | None = None,
+        role_codes: Sequence[str] | None = None,
+        discipline: str | None = None,
     ) -> dict[int, PlayerRoster]:
         """Resolve already-loaded registrations. Rows must carry
         :func:`registration_load_options`.
@@ -211,37 +199,44 @@ class RosterEngine:
             return {}
         if tournament_id is None:
             tournament_id = next((reg.tournament_id for reg in registrations), None)
+        if role_codes is None or discipline is None:
+            tournament = await self.tournaments.get(session, tournament_id)
+            discipline = discipline or tournament.discipline
+            role_codes = role_codes or rated_role_codes(discipline)
         if form is None and tournament_id is not None:
             form = await session.scalar(
-                sa.select(BalancerRegistrationForm)
+                sa.select(RegistrationForm)
                 # ``flex_role_mode`` reads the schema off the current version,
                 # which is never lazy-loadable in async code.
-                .options(selectinload(BalancerRegistrationForm.current_version))
-                .where(BalancerRegistrationForm.tournament_id == tournament_id)
+                .options(selectinload(RegistrationForm.current_version))
+                .where(RegistrationForm.tournament_id == tournament_id)
             )
         mode = flex_role_mode(form)
         if grid is None:
-            grid = await get_effective_division_grid(session, workspace_id, tournament_id)
+            grid = await get_effective_division_grid(session, workspace_id, tournament_id, discipline=discipline)
 
-        declared = {reg.id: self._declared_roles(reg, mode=mode) for reg in registrations}
+        declared = {reg.id: self._declared_roles(reg, mode=mode, role_codes=role_codes) for reg in registrations}
         resolved = await self._resolve_ranks(
             session,
             registrations,
             declared=declared,
             workspace_id=workspace_id,
+            discipline=discipline,
             grid=grid,
             order=order,
             author_user_id=author_user_id,
         )
+        provider = identity_provider(discipline)
         return {
-            reg.id: self._build(reg, declared[reg.id], resolved.get(reg.id, {}), mode=mode) for reg in registrations
+            reg.id: self._build(reg, declared[reg.id], resolved.get(reg.id, {}), mode=mode, provider=provider)
+            for reg in registrations
         }
 
     # -- role set ------------------------------------------------------------
 
     def _declared_roles(
-        self, reg: BalancerRegistration, *, mode: str
-    ) -> tuple[BalancerRegistrationRole | HeroClass, ...]:
+        self, reg: Registration, *, mode: str, role_codes: Sequence[str]
+    ) -> tuple[RegistrationRole | str, ...]:
         """The roles this registration declares, in priority order.
 
         ``optional``: the active rows, as written. ``all_roles``/``forced``: the
@@ -249,16 +244,16 @@ class RosterEngine:
         row at all synthesized after them in canonical order -- role is not a
         constraint there, so a row the sheet import left inactive (its rank did
         not parse) still names a role the player can be drafted on. A bare
-        ``HeroClass`` in the result is such a synthesized role. The registrant's
-        own priority is never replaced by the enum order: it is what the
+        string in the result is such a synthesized role. The registrant's
+        own priority is never replaced by the module order: it is what the
         balancer's discomfort is built from. A registration with no rows gets no
         lead -- there is nobody's choice to stand in for.
         """
         rows = sorted(reg.roles or [], key=lambda row: (row.priority, row.id or 0))
-        by_role: dict[HeroClass, BalancerRegistrationRole] = {}
+        by_role: dict[str, RegistrationRole] = {}
         for row in rows:
-            role = _parse_role(row.role)
-            if role is None or role in by_role:
+            role = row.role
+            if role not in role_codes or role in by_role:
                 continue
             if mode == "optional" and not row.is_active:
                 continue
@@ -266,39 +261,39 @@ class RosterEngine:
         declared = sorted(by_role.values(), key=lambda row: not row.is_primary)
         if mode == "optional":
             return tuple(declared)
-        return (*declared, *(role for role in HERO_TYPE_CLASSES if role not in by_role))
+        return (*declared, *(role for role in role_codes if role not in by_role))
 
     # -- ranks ---------------------------------------------------------------
 
     async def _resolve_ranks(
         self,
         session: AsyncSession,
-        registrations: Sequence[BalancerRegistration],
+        registrations: Sequence[Registration],
         *,
-        declared: Mapping[int, tuple[BalancerRegistrationRole | HeroClass, ...]],
+        declared: Mapping[int, tuple[RegistrationRole | str, ...]],
         workspace_id: int | None,
+        discipline: str,
         grid: DivisionGrid | None,
         order: Sequence[RankScope],
         author_user_id: int | None,
-    ) -> dict[int, dict[HeroClass, ResolvedRank]]:
+    ) -> dict[int, dict[str, ResolvedRank]]:
         """``{registration_id: {role: ResolvedRank}}`` under ``order``.
 
         The registration's own number is one layer among several: an empty
-        ``rank_value`` *inherits* the workspace canon and then the latest
-        Overwatch snapshot rather than reading as "unranked". Without a workspace
+        ``rank_value`` *inherits* the workspace canon and then the discipline's native ladder
+        rather than reading as "unranked". Without a workspace
         (no tournament in hand) or without a member (no identity to inherit
         through) only that own layer exists.
         """
-        own: dict[int, dict[HeroClass, int | None]] = {}
+        own: dict[int, dict[str, int | None]] = {}
         member_of: dict[int, int] = {}
         for reg in registrations:
             entries = declared.get(reg.id, ())
             own[reg.id] = {
-                (entry if isinstance(entry, HeroClass) else _parse_role(entry.role)): (
-                    None if isinstance(entry, HeroClass) else entry.rank_value
+                (entry if isinstance(entry, str) else entry.role): (
+                    None if isinstance(entry, str) else entry.rank_value
                 )
                 for entry in entries
-                if isinstance(entry, HeroClass) or _parse_role(entry.role) is not None
             }
             if reg.workspace_member_id is not None and own[reg.id]:
                 member_of[reg.id] = reg.workspace_member_id
@@ -312,10 +307,11 @@ class RosterEngine:
                 for registration_id, roles in own.items()
             }
 
-        roles_wanted = sorted({role.slot_code for roles in own.values() for role in roles})
+        roles_wanted = sorted({role for roles in own.values() for role in roles})
         resolved = await self.ranks.resolve(
             session,
             workspace_id=workspace_id,
+            discipline=discipline,
             members=await self._players_by_member(
                 session, workspace_id=workspace_id, member_ids=list(member_of.values())
             ),
@@ -323,7 +319,7 @@ class RosterEngine:
             order=order,
             author_user_id=author_user_id,
             registration_ranks={
-                (member_id, role.slot_code): value
+                (member_id, role): value
                 for registration_id, member_id in member_of.items()
                 for role, value in own[registration_id].items()
                 if value is not None
@@ -331,7 +327,7 @@ class RosterEngine:
             grid=grid,
         )
 
-        out: dict[int, dict[HeroClass, ResolvedRank]] = {}
+        out: dict[int, dict[str, ResolvedRank]] = {}
         for registration_id, roles in own.items():
             # The own layer doubles as the fallback, so a member the workspace
             # filter rejected cannot blank out the number the organiser typed.
@@ -343,7 +339,7 @@ class RosterEngine:
             out[registration_id] = (
                 fallback
                 if member_id is None
-                else {role: resolved.get((member_id, role.slot_code), rank) for role, rank in fallback.items()}
+                else {role: resolved.get((member_id, role), rank) for role, rank in fallback.items()}
             )
         return out
 
@@ -365,19 +361,18 @@ class RosterEngine:
 
     def _build(
         self,
-        reg: BalancerRegistration,
-        declared: tuple[BalancerRegistrationRole | HeroClass, ...],
-        resolved: Mapping[HeroClass, ResolvedRank],
+        reg: Registration,
+        declared: tuple[RegistrationRole | str, ...],
+        resolved: Mapping[str, ResolvedRank],
         *,
         mode: str,
+        provider: str,
     ) -> PlayerRoster:
         entries: list[RosterRole] = []
-        from_row: set[HeroClass] = set()
+        from_row: set[str] = set()
         for priority, entry in enumerate(declared):
-            row = None if isinstance(entry, HeroClass) else entry
-            role = entry if isinstance(entry, HeroClass) else _parse_role(entry.role)
-            if role is None:
-                continue
+            row = None if isinstance(entry, str) else entry
+            role = entry if isinstance(entry, str) else entry.role
             if row is not None:
                 from_row.add(role)
             rank = resolved.get(role, ResolvedRank(None, "none"))
@@ -389,17 +384,15 @@ class RosterEngine:
                     is_primary=bool(row.is_primary) if row is not None else False,
                     priority=priority,
                     subrole=row.subrole if row is not None else None,
-                    top_heroes=_hero_refs(row) if row is not None else (),
+                    top_characters=_character_refs(row) if row is not None else (),
                 )
             )
 
         if mode != "optional":
             # Role stops being a constraint: every role the tournament runs is
             # playable, so a role no layer ranked inherits the player's strongest
-            # number -- the balancer's eligibility for a role IS having one. The
-            # per-role catalogue still reports each role's own rating where it
-            # exists, because the draft SHOWS it: stamping the maximum over a real
-            # rating turned the role chooser into one number printed three times.
+            # number -- the balancer's eligibility for a role IS having one. A role
+            # with its own rating keeps it, because the draft's role chooser SHOWS it.
             best = max((entry.rank for entry in entries if entry.is_playable), default=None)
             if best is not None:
                 entries = [
@@ -408,7 +401,7 @@ class RosterEngine:
 
         # THE flex predicate. Over the roles the player actually declared AND can
         # play -- the raw ``registration_role`` rows also count inactive/unranked
-        # ones, which is how a single-role tank used to reach the balancer as
+        # ones, which would send a single-role tank to the balancer as
         # ``isFullFlex``. Synthesized roles carry no ``is_primary`` and must not
         # veto an ``all_roles`` registrant who marked every declared role primary.
         # ``forced`` makes every role primary by contract, whether or not the rows
@@ -423,13 +416,14 @@ class RosterEngine:
 
         member = reg.workspace_member
         player = member.player if member is not None else None
-        battle_tags = reg.handles(SocialProvider.BATTLENET)
+        primary = reg.primary_game_identity(provider=provider)
         return PlayerRoster(
             registration_id=reg.id,
-            battle_tag=battle_tags[0] if battle_tags else None,
+            identity=PlayerIdentityRead.of(provider, primary.handle if primary is not None else None),
             display_name=reg.display_name,
             player_id=member.player_id if member is not None else None,
             auth_user_id=player.auth_user_id if player is not None else None,
+            player_name=player.name if player is not None else None,
             workspace_member_id=reg.workspace_member_id,
             roles=tuple(entries),
             is_full_flex=is_full_flex,
@@ -445,7 +439,11 @@ class RosterEngine:
             is_substitute=bool(reg.is_substitute),
             identities={identity.provider: identity.handle for identity in reg.identities if identity.position == 0},
             stream_pov=bool(reg.stream_pov),
-            smurf_tags=tuple(battle_tags[1:]),
+            additional_handles=tuple(
+                display_social_handle(provider, row.handle)
+                for row in sorted(reg.identities, key=lambda row: row.position)
+                if row.provider == provider and row.position > 0
+            ),
         )
 
     # -- algorithm input -----------------------------------------------------
@@ -458,9 +456,8 @@ class RosterEngine:
     ) -> dict[str, Any]:
         """The balancer algorithm's ``xv-1`` payload, built from the same rosters.
 
-        Used to be assembled in the browser from the admin list, which is why the
-        algorithm and the draft could disagree at all. ``key`` names the field the
-        result's player uuids carry, so the caller can map a solved team back.
+        ``key`` names the field the result's player uuids carry, so the caller can
+        map a solved team back.
         """
         players: dict[str, Any] = {}
         for roster in rosters:
@@ -473,11 +470,11 @@ class RosterEngine:
                 },
                 "stats": {
                     "classes": {
-                        entry.role.slot_code: {
+                        entry.role: {
                             "isActive": True,
                             "rank": entry.rank,
                             "priority": entry.priority,
-                            "subtype": entry.subrole,
+                            "subtype": workspace_sub_role_slug(entry.role, entry.subrole) if entry.subrole else None,
                         }
                         for entry in roster.playable
                     }
@@ -493,6 +490,7 @@ class RosterEngine:
         *,
         shape: RosterShape,
         flex_role_mode: str,
+        dimension: str,
         grid: DivisionGrid | None = None,
         source: Mapping[str, Any] | None = None,
         key: str = "registration_id",
@@ -521,7 +519,7 @@ class RosterEngine:
             primary = roster.primary
             owt: dict[str, Any] = {
                 "registration_id": roster.registration_id,
-                "battle_tag": roster.battle_tag,
+                "identity": roster.identity.model_dump() if roster.identity is not None else None,
                 "display_name": roster.display_name,
                 "player_id": roster.player_id,
                 "auth_user_id": roster.auth_user_id,
@@ -532,15 +530,16 @@ class RosterEngine:
                 "flex_rating": roster.best_rank,
                 "draftable": roster.is_draftable,
                 "ranked_complete": roster.is_ranked_complete,
-                "primary_role": primary.role.slot_code if primary is not None else None,
-                "sub_role": roster.sub_role,
+                "primary_role": RoleRef.of(dimension, primary.role, primary.subrole).model_dump()
+                if primary is not None
+                else None,
                 "status": roster.status,
                 "balancer_status": roster.balancer_status,
                 "checked_in": roster.checked_in,
                 "registration_team_id": roster.registration_team_id,
                 "team_slot_code": roster.team_slot_code,
                 "is_substitute": roster.is_substitute,
-                "roles": [_role_export(entry, grid) for entry in roster.roles],
+                "roles": [_role_export(entry, grid, dimension=dimension) for entry in roster.roles],
             }
             if include_private:
                 owt["private"] = {
@@ -550,7 +549,7 @@ class RosterEngine:
                     "custom_fields": dict(roster.custom_fields),
                     "identities": dict(roster.identities),
                     "stream_pov": roster.stream_pov,
-                    "smurf_tags": list(roster.smurf_tags),
+                    "additional_handles": list(roster.additional_handles),
                 }
             players[str(getattr(roster, key))] = {
                 "identity": {
@@ -559,11 +558,11 @@ class RosterEngine:
                 },
                 "stats": {
                     "classes": {
-                        entry.role.slot_code: {
+                        entry.role: {
                             "isActive": entry.is_playable,
                             "rank": entry.rank,
                             "priority": entry.priority,
-                            "subtype": entry.subrole,
+                            "subtype": workspace_sub_role_slug(entry.role, entry.subrole) if entry.subrole else None,
                         }
                         for entry in roster.roles
                     }
@@ -592,32 +591,29 @@ def _as_dict(entry: RosterRole) -> dict[str, Any]:
         "is_primary": entry.is_primary,
         "priority": entry.priority,
         "subrole": entry.subrole,
-        "top_heroes": entry.top_heroes,
+        "top_characters": entry.top_characters,
     }
 
 
 def _export_name(roster: PlayerRoster) -> str:
-    return roster.battle_tag or roster.display_name or f"registration-{roster.registration_id}"
+    return roster.handle or roster.display_name or f"registration-{roster.registration_id}"
 
 
-def _role_export(entry: RosterRole, grid: DivisionGrid | None) -> dict[str, Any]:
+def _role_export(entry: RosterRole, grid: DivisionGrid | None, *, dimension: str) -> dict[str, Any]:
     # A tier-less grid is a legitimate workspace state (nobody configured one);
     # ``resolve_division`` raises on it, and a decorative label is never worth
     # failing the export for.
     resolvable = grid is not None and bool(grid.tiers) and entry.rank is not None
     tier = grid.resolve_division(entry.rank) if resolvable else None  # type: ignore[union-attr, arg-type]
     return {
-        "role": entry.role.slot_code,
+        "role": RoleRef.of(dimension, entry.role, entry.subrole).model_dump(),
         "rank": entry.rank,
         "source": entry.source,
         "is_primary": entry.is_primary,
         "priority": entry.priority,
-        "subrole": entry.subrole,
         "playable": entry.is_playable,
         "division": None if tier is None else {"number": tier.number, "name": tier.name},
-        "top_heroes": [
-            {"hero_id": hero.id, "slug": hero.slug, "image_path": hero.image_path} for hero in entry.top_heroes
-        ],
+        "top_characters": [character.wire() for character in entry.top_characters],
     }
 
 

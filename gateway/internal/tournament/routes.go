@@ -15,11 +15,11 @@ import "github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
 var PublicReadRoutes = []edge.RouteSpec{
 	// tournament.py
 	{Method: "GET", Pattern: "/api/v1/tournaments", Queue: "rpc.tournament.list_tournaments", AllQuery: true, Auth: edge.AuthOptional},
-	{Method: "GET", Pattern: "/api/v1/tournaments/lookup", Queue: "rpc.tournament.lookup_tournaments", Query: []string{"workspace_id", "is_league"}, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/tournaments/lookup", Queue: "rpc.tournament.lookup_tournaments", Query: []string{"workspace_id", "is_league", "discipline"}, Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/v1/tournaments/statistics/history", Queue: "rpc.tournament.statistics_history", Query: []string{"workspace_id"}, Auth: edge.AuthNone},
-	{Method: "GET", Pattern: "/api/v1/tournaments/statistics/division", Queue: "rpc.tournament.statistics_division", Query: []string{"workspace_id"}, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/tournaments/statistics/division", Queue: "rpc.tournament.statistics_division", Query: []string{"workspace_id", "discipline"}, Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/v1/tournaments/statistics/overall", Queue: "rpc.tournament.statistics_overall", Query: []string{"workspace_id"}, Auth: edge.AuthNone},
-	{Method: "GET", Pattern: "/api/v1/tournaments/facets", Queue: "rpc.tournament.tournaments_facets", Query: []string{"workspace_id", "status", "is_league", "query"}, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/tournaments/facets", Queue: "rpc.tournament.tournaments_facets", Query: []string{"workspace_id", "status", "is_league", "discipline", "query"}, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/tournaments/{id}", Queue: "rpc.tournament.get_tournament", IDParam: "id", Query: []string{"entities"}, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/tournaments/{id}/stages", Queue: "rpc.tournament.get_stages", IDParam: "id", Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/tournaments/{id}/standings", Queue: "rpc.tournament.get_standings", IDParam: "id", Query: []string{"entities"}, Auth: edge.AuthOptional},
@@ -33,6 +33,7 @@ var PublicReadRoutes = []edge.RouteSpec{
 	// encounter.py
 	{Method: "GET", Pattern: "/api/v1/encounters", Queue: "rpc.tournament.list_encounters", AllQuery: true, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/encounters/overview", Queue: "rpc.tournament.encounters_overview", AllQuery: true, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/encounters/insights", Queue: "rpc.tournament.encounters_insights", AllQuery: true, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/encounters/views", Queue: "rpc.tournament.saved_views", Query: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/encounters/{id}", Queue: "rpc.tournament.get_encounter", IDParam: "id", Query: []string{"entities"}, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/encounters/{encounter_id}/ffa", Queue: "rpc.tournament.ffa_lobby", IDParam: "encounter_id", Auth: edge.AuthOptional},

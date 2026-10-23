@@ -16,7 +16,6 @@ Design: docs/superpowers/specs/2026-08-04-forced-flex-max-rank-design.md
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -25,14 +24,17 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
-
 
 _common = importlib.import_module("src.services.registration._common")
+from shared import models  # noqa: E402
+from shared.testing.roles import rated_catalog, registration_role  # noqa: E402
+
+ROLE_CODES = ("tank", "damage", "support")
+CATALOG_ROLES = rated_catalog(sub_roles={"damage": ("hitscan",)})
 
 
 def _role(role: str, **kwargs: Any) -> Any:
-    return _common.models.BalancerRegistrationRole(role=role, **kwargs)
+    return registration_role(role=role, **kwargs)
 
 
 # ``flex_role_mode`` itself is unit-tested where it lives, in
@@ -44,19 +46,25 @@ class TestApplyAllRolesForced:
     def test_promotes_every_role_to_primary(self) -> None:
         entries = [_role("damage", is_primary=True), _role("tank", is_primary=False)]
 
-        result = _common.apply_all_roles(entries, force_primary=True)
+        result = _common.apply_all_roles(
+            entries, force_primary=True, catalog_roles=CATALOG_ROLES, role_codes=ROLE_CODES
+        )
 
         assert all(entry.is_primary for entry in result)
 
     def test_backfills_the_missing_roles(self) -> None:
-        result = _common.apply_all_roles([_role("damage", is_primary=True)], force_primary=True)
+        result = _common.apply_all_roles(
+            [_role("damage", is_primary=True)], force_primary=True, catalog_roles=CATALOG_ROLES, role_codes=ROLE_CODES
+        )
 
         assert {entry.role for entry in result} == {"tank", "damage", "support"}
 
     def test_keeps_the_submitted_order_and_renumbers_priority(self) -> None:
         entries = [_role("support", priority=0), _role("tank", priority=1)]
 
-        result = _common.apply_all_roles(entries, force_primary=True)
+        result = _common.apply_all_roles(
+            entries, force_primary=True, catalog_roles=CATALOG_ROLES, role_codes=ROLE_CODES
+        )
 
         assert [entry.role for entry in result[:2]] == ["support", "tank"]
         assert [entry.priority for entry in result] == [0, 1, 2]
@@ -65,25 +73,33 @@ class TestApplyAllRolesForced:
         """The max-rank policy is derived at read time; rows stay honest."""
         entries = [_role("damage", is_primary=True, is_active=False, rank_value=3500)]
 
-        result = _common.apply_all_roles(entries, force_primary=True)
+        result = _common.apply_all_roles(
+            entries, force_primary=True, catalog_roles=CATALOG_ROLES, role_codes=ROLE_CODES
+        )
 
         damage = next(entry for entry in result if entry.role == "damage")
         assert damage.is_active is False
         assert damage.rank_value == 3500
 
     def test_backfilled_roles_carry_no_rank(self) -> None:
-        result = _common.apply_all_roles([_role("damage", rank_value=3500)], force_primary=True)
+        result = _common.apply_all_roles(
+            [_role("damage", rank_value=3500)], force_primary=True, catalog_roles=CATALOG_ROLES, role_codes=ROLE_CODES
+        )
 
         assert [entry.rank_value for entry in result if entry.role != "damage"] == [None, None]
 
     def test_backfilled_roles_carry_no_subrole(self) -> None:
-        result = _common.apply_all_roles([_role("damage", subrole="hitscan")], force_primary=True)
+        result = _common.apply_all_roles(
+            [_role("damage", subrole="hitscan")], force_primary=True, catalog_roles=CATALOG_ROLES, role_codes=ROLE_CODES
+        )
 
         assert [entry.subrole for entry in result if entry.role != "damage"] == [None, None]
 
     def test_is_idempotent(self) -> None:
-        once = _common.apply_all_roles([_role("damage", is_primary=True)], force_primary=True)
-        twice = _common.apply_all_roles(once, force_primary=True)
+        once = _common.apply_all_roles(
+            [_role("damage", is_primary=True)], force_primary=True, catalog_roles=CATALOG_ROLES, role_codes=ROLE_CODES
+        )
+        twice = _common.apply_all_roles(once, force_primary=True, catalog_roles=CATALOG_ROLES, role_codes=ROLE_CODES)
 
         assert [(entry.role, entry.priority, entry.is_primary) for entry in twice] == [
             (entry.role, entry.priority, entry.is_primary) for entry in once
@@ -92,14 +108,16 @@ class TestApplyAllRolesForced:
     def test_a_full_submission_is_unchanged_apart_from_is_primary(self) -> None:
         entries = [_role("tank", priority=0), _role("damage", priority=1), _role("support", priority=2)]
 
-        result = _common.apply_all_roles(entries, force_primary=True)
+        result = _common.apply_all_roles(
+            entries, force_primary=True, catalog_roles=CATALOG_ROLES, role_codes=ROLE_CODES
+        )
 
         assert len(result) == 3
         assert [entry.role for entry in result] == ["tank", "damage", "support"]
 
     def test_empty_input_yields_all_three_roles(self) -> None:
         """A forced-flex tournament has no notion of a registration without roles."""
-        result = _common.apply_all_roles([], force_primary=True)
+        result = _common.apply_all_roles([], force_primary=True, catalog_roles=CATALOG_ROLES, role_codes=ROLE_CODES)
 
         assert {entry.role for entry in result} == {"tank", "damage", "support"}
         assert all(entry.is_primary for entry in result)
@@ -125,13 +143,17 @@ class TestWritePathsHonourForcedFlex:
         entries = _common.build_registration_roles(
             [self._PublicRole("damage", is_primary=True)],
             mode="forced",
+            catalog_roles=CATALOG_ROLES,
+            role_codes=ROLE_CODES,
         )
 
         assert {entry.role for entry in entries} == {"tank", "damage", "support"}
         assert all(entry.is_primary for entry in entries)
 
     def test_public_path_optional_is_unchanged(self) -> None:
-        entries = _common.build_registration_roles([self._PublicRole("damage", is_primary=True)])
+        entries = _common.build_registration_roles(
+            [self._PublicRole("damage", is_primary=True)], catalog_roles=CATALOG_ROLES, role_codes=ROLE_CODES
+        )
 
         assert [entry.role for entry in entries] == ["damage"]
 
@@ -139,19 +161,22 @@ class TestWritePathsHonourForcedFlex:
         entries = _common.build_registration_roles(
             [self._PublicRole("damage", is_primary=True, subrole="hitscan")],
             mode="forced",
+            catalog_roles=CATALOG_ROLES,
+            role_codes=ROLE_CODES,
         )
 
         damage = next(entry for entry in entries if entry.role == "damage")
-        assert damage.subrole == "hitscan"
+        assert damage.subrole == "damage_hitscan"
 
     def test_admin_path_forced(self) -> None:
-        registration = _common.models.BalancerRegistration()
+        registration = _common.models.Registration()
         registration.roles = []
 
         _common.replace_registration_roles(
             registration,
             [{"role": "support", "is_primary": False, "rank_value": 2900}],
             mode="forced",
+            catalog_roles=CATALOG_ROLES,
         )
 
         assert {entry.role for entry in registration.roles} == {"tank", "damage", "support"}
@@ -159,13 +184,14 @@ class TestWritePathsHonourForcedFlex:
 
     def test_admin_path_preserves_rank_and_is_active(self) -> None:
         """The rank policy is derived at read time; the row keeps what it was given."""
-        registration = _common.models.BalancerRegistration()
+        registration = _common.models.Registration()
         registration.roles = []
 
         _common.replace_registration_roles(
             registration,
             [{"role": "support", "is_primary": False, "rank_value": 2900}],
             mode="forced",
+            catalog_roles=CATALOG_ROLES,
         )
 
         support = next(entry for entry in registration.roles if entry.role == "support")
@@ -174,12 +200,11 @@ class TestWritePathsHonourForcedFlex:
         assert [e.rank_value for e in registration.roles if e.role != "support"] == [None, None]
 
     def test_admin_path_optional_is_unchanged(self) -> None:
-        registration = _common.models.BalancerRegistration()
+        registration = _common.models.Registration()
         registration.roles = []
 
         _common.replace_registration_roles(
-            registration,
-            [{"role": "support", "is_primary": False, "rank_value": 2900}],
+            registration, [{"role": "support", "is_primary": False, "rank_value": 2900}], catalog_roles=CATALOG_ROLES
         )
 
         assert [entry.role for entry in registration.roles] == ["support"]
@@ -187,14 +212,15 @@ class TestWritePathsHonourForcedFlex:
 
     def test_admin_path_reuses_existing_rows(self) -> None:
         """Re-syncing must not orphan the row a rank was already attached to."""
-        registration = _common.models.BalancerRegistration()
-        existing = _common.models.BalancerRegistrationRole(role="damage", rank_value=4100)
+        registration = _common.models.Registration()
+        existing = registration_role(role="damage", rank_value=4100)
         registration.roles = [existing]
 
         _common.replace_registration_roles(
             registration,
             [{"role": "damage", "is_primary": True, "rank_value": 4100}],
             mode="forced",
+            catalog_roles=CATALOG_ROLES,
         )
 
         damage = next(entry for entry in registration.roles if entry.role == "damage")
@@ -206,7 +232,9 @@ class TestApplyAllRolesWithoutForcing:
     """``all_roles`` normalizes the role SET but never the registrant's choice."""
 
     def test_backfills_the_missing_roles_as_non_primary(self) -> None:
-        result = _common.apply_all_roles([_role("damage", is_primary=True)], force_primary=False)
+        result = _common.apply_all_roles(
+            [_role("damage", is_primary=True)], force_primary=False, catalog_roles=CATALOG_ROLES, role_codes=ROLE_CODES
+        )
 
         assert {entry.role for entry in result} == {"tank", "damage", "support"}
         assert [entry.role for entry in result if entry.is_primary] == ["damage"]
@@ -214,37 +242,43 @@ class TestApplyAllRolesWithoutForcing:
     def test_leaves_a_flex_submission_flex(self) -> None:
         entries = [_role(code, is_primary=True) for code in ("tank", "damage", "support")]
 
-        result = _common.apply_all_roles(entries, force_primary=False)
+        result = _common.apply_all_roles(
+            entries, force_primary=False, catalog_roles=CATALOG_ROLES, role_codes=ROLE_CODES
+        )
 
         assert all(entry.is_primary for entry in result)
 
     def test_does_not_invent_a_priority_when_none_was_named(self) -> None:
         """The normalizer cannot guess; validation rejects this instead."""
-        result = _common.apply_all_roles([_role("damage")], force_primary=False)
+        result = _common.apply_all_roles(
+            [_role("damage")], force_primary=False, catalog_roles=CATALOG_ROLES, role_codes=ROLE_CODES
+        )
 
         assert not any(entry.is_primary for entry in result)
 
     def test_write_path_all_roles_keeps_one_primary(self) -> None:
-        registration = _common.models.BalancerRegistration()
+        registration = _common.models.Registration()
         registration.roles = []
 
         _common.replace_registration_roles(
             registration,
             [{"role": "tank", "is_primary": True, "rank_value": 3300}],
             mode="all_roles",
+            catalog_roles=CATALOG_ROLES,
         )
 
         assert {entry.role for entry in registration.roles} == {"tank", "damage", "support"}
         assert [entry.role for entry in registration.roles if entry.is_primary] == ["tank"]
 
     def test_write_path_forced_still_promotes_everything(self) -> None:
-        registration = _common.models.BalancerRegistration()
+        registration = _common.models.Registration()
         registration.roles = []
 
         _common.replace_registration_roles(
             registration,
             [{"role": "tank", "is_primary": True, "rank_value": 3300}],
             mode="forced",
+            catalog_roles=CATALOG_ROLES,
         )
 
         assert all(entry.is_primary for entry in registration.roles)
@@ -258,9 +292,35 @@ class TestApplyAllRolesWithoutForcing:
                 self.top_heroes = None
 
         entries = _common.build_registration_roles(
-            [_PublicRole("support", True)],
-            mode="all_roles",
+            [_PublicRole("support", True)], mode="all_roles", catalog_roles=CATALOG_ROLES, role_codes=ROLE_CODES
         )
 
         assert {entry.role for entry in entries} == {"tank", "damage", "support"}
         assert [entry.role for entry in entries if entry.is_primary] == ["support"]
+
+
+DEADLOCK_ROLES = rated_catalog(discipline_code="deadlock")
+
+
+def _agent(**values: Any) -> Any:
+    leaf = DEADLOCK_ROLES["agent"]
+    return models.RegistrationRole(catalog_role=leaf, dimension_id=leaf.dimension_id, **values)
+
+
+class TestAOneRoleGameAlwaysPlaysItsRole:
+    """Deadlock has one rated role and shows no role step: every role write stores that role, primary."""
+
+    def test_any_roles_answer_becomes_the_only_role_as_primary(self) -> None:
+        for answer in ([], [{"role": "agent", "is_primary": False}]):
+            entries = _common.build_registration_roles(answer, catalog_roles=DEADLOCK_ROLES, role_codes=("agent",))
+            assert [(entry.role, entry.is_primary, entry.priority) for entry in entries] == [("agent", True, 0)]
+
+    def test_a_write_naming_no_role_keeps_the_stored_row_and_its_rank(self) -> None:
+        stored = _agent(rank_value=3100, is_active=True, is_primary=False, priority=0)
+        registration = models.Registration(id=1, tournament_id=7, status="pending")
+        registration.roles = [stored]
+
+        _common.replace_registration_roles(registration, [], catalog_roles=DEADLOCK_ROLES)
+
+        assert registration.roles == [stored]
+        assert (stored.is_primary, stored.rank_value) == (True, 3100)

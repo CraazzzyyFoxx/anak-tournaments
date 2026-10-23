@@ -1,16 +1,15 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
 import { RoleEditor } from "@/components/admin/access/RoleEditor";
 import { RoleList } from "@/components/admin/access/RoleList";
-import { FilterBar } from "@/components/kit/FilterBar";
+import { RoleScopeSelect, useRoleScope } from "@/components/admin/access/RoleScopeSelect";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { MasterDetail } from "@/components/kit/MasterDetail";
-import { useFilters, type FilterDef } from "@/components/kit/useFilters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,9 +24,6 @@ import type { RbacRole } from "@/types/rbac.types";
 import { accessQueryKeys } from "@/lib/access/query-keys";
 import { useTranslations } from "next-intl";
 
-/** The `scope` chip's value for roles with `workspace_id IS NULL`. */
-const GLOBAL_SCOPE = "global";
-
 /**
  * Roles (T4, F15): the roles of one scope on the left, one role's editor on
  * the right.
@@ -41,10 +37,10 @@ export default function AccessAdminRolesPage() {
   const t = useTranslations("adminAccess.rolesUi");
   const tc = useTranslations("adminAccess.common");
   const queryClient = useQueryClient();
-  const { hasPermission, isSuperuser, canAccessPermission, canAccessAnyPermission } =
-    usePermissions();
+  const { hasPermission, canAccessPermission } = usePermissions();
   const workspaces = useWorkspaceStore((state) => state.workspaces);
   const { searchParams, setParams } = useQueryParams({ mode: "push" });
+  const { options: scopeOptions, scope, workspaceId } = useRoleScope();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
@@ -57,49 +53,6 @@ export default function AccessAdminRolesPage() {
   const [pending, setPending] = useState<
     { kind: "delete"; role: RbacRole } | { kind: "switch"; roleId: number } | null
   >(null);
-
-  const canReadGlobalRoles = isSuperuser || hasPermission("role.read");
-  const adminWorkspaces = workspaces.filter(
-    (workspace) =>
-      isSuperuser ||
-      canAccessAnyPermission(
-        ["role.read", "role.create", "role.update", "role.delete"],
-        workspace.id
-      )
-  );
-
-  const defs = useMemo<FilterDef[]>(
-    () => [
-      {
-        key: "scope",
-        label: tc("scope"),
-        kind: "single",
-        options: [
-          ...(canReadGlobalRoles ? [{ value: GLOBAL_SCOPE, label: tc("global") }] : []),
-          ...adminWorkspaces.map((workspace) => ({
-            value: String(workspace.id),
-            label: workspace.name
-          }))
-        ]
-      }
-    ],
-    [canReadGlobalRoles, adminWorkspaces, tc]
-  );
-  const filters = useFilters(defs);
-
-  // Falls back to whatever the reader may actually see: a workspace admin
-  // without the global `role.read` would otherwise land on an empty Global
-  // scope and think there are no roles at all.
-  const scopeParam = String(filters.values.scope ?? "");
-  const requestedScope =
-    scopeParam === "" ? (canReadGlobalRoles ? GLOBAL_SCOPE : "") : scopeParam;
-  const scope: string | number =
-    requestedScope === GLOBAL_SCOPE
-      ? GLOBAL_SCOPE
-      : requestedScope === ""
-        ? (adminWorkspaces[0]?.id ?? GLOBAL_SCOPE)
-        : Number(requestedScope);
-  const workspaceId = scope === GLOBAL_SCOPE ? null : (scope as number);
 
   const canReadPermissions =
     workspaceId === null
@@ -190,52 +143,67 @@ export default function AccessAdminRolesPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <FilterBar
-        defs={defs}
-        filters={filters}
-        trailing={
-          canCreateRole ? (
-            <Button
-              size="sm"
-              onClick={() => {
-                createMutation.reset();
-                setCreateOpen(true);
-              }}
-            >
-              <Plus aria-hidden className="size-4" />
-              {tc("createRole")}
-            </Button>
-          ) : undefined
-        }
-      />
-
+    <div>
       {rolesQuery.isLoading ? (
         <Skeleton className="h-72 w-full rounded-xl" />
       ) : (
         <MasterDetail
-          listWidth={260}
           list={
             <RoleList
               roles={roles}
               selectedRoleId={selectedRole?.id ?? null}
               onSelect={selectRole}
+              actions={
+                scopeOptions.length > 1 || canCreateRole ? (
+                  <div className="flex items-center gap-2">
+                    <RoleScopeSelect
+                      options={scopeOptions}
+                      value={String(scope)}
+                      onValueChange={(value) => setParams({ scope: value, role: null })}
+                      className="min-w-0 flex-1"
+                    />
+                    {canCreateRole ? (
+                      <Button
+                        size="sm"
+                        className="ml-auto shrink-0"
+                        onClick={() => {
+                          createMutation.reset();
+                          setCreateOpen(true);
+                        }}
+                      >
+                        <Plus aria-hidden className="size-4" />
+                        {tc("createRole")}
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null
+              }
             />
           }
           detail={
             selectedRole ? (
-              <RoleEditor
-                key={selectedRole.id}
-                role={selectedRole}
-                permissions={permissionsQuery.data ?? []}
-                workspaceName={
-                  workspaces.find((workspace) => workspace.id === selectedRole.workspace_id)?.name
-                }
-                canUpdate={canUpdateRole}
-                canDelete={canDeleteRole}
-                onRequestDelete={() => setPending({ kind: "delete", role: selectedRole })}
-                onDirtyChange={setEditorDirty}
-              />
+              permissionsQuery.isError && !permissionsQuery.data ? (
+                <PageStateCard
+                  state="error"
+                  title={t("permissionsLoadError")}
+                  onAction={() => void permissionsQuery.refetch()}
+                />
+              ) : permissionsQuery.isLoading ? (
+                <Skeleton className="h-72 w-full rounded-xl" />
+              ) : (
+                <RoleEditor
+                  key={selectedRole.id}
+                  role={selectedRole}
+                  permissions={permissionsQuery.data ?? []}
+                  workspaceName={
+                    workspaces.find((workspace) => workspace.id === selectedRole.workspace_id)?.name
+                  }
+                  canUpdate={canUpdateRole}
+                  canDelete={canDeleteRole}
+                  onRequestDelete={() => setPending({ kind: "delete", role: selectedRole })}
+                  onDirtyChange={setEditorDirty}
+                />
+              )
             ) : null
           }
           emptyDetail={
@@ -263,7 +231,7 @@ export default function AccessAdminRolesPage() {
           }
         }}
         title={tc("createRole")}
-        description={t("createDescription", { scope: 
+        description={t("createDescription", { scope:
           workspaceId === null
             ? tc("global")
             : (workspaces.find((workspace) => workspace.id === workspaceId)?.name ?? tc("workspace"))
@@ -286,7 +254,6 @@ export default function AccessAdminRolesPage() {
               id="create-role-name"
               required
               value={createName}
-              placeholder="support_admin"
               onChange={(event) => setCreateName(event.target.value)}
             />
           </div>

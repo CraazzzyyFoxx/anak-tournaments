@@ -1,6 +1,15 @@
 import { cookies, headers } from "next/headers";
 import { STATS_SCOPE_COOKIE, type StatsScope } from "@/lib/site/stats-scope";
 import workspaceService from "@/services/workspace.service";
+import {
+  ALL_DISCIPLINES,
+  DISCIPLINE_COOKIE,
+  LAST_GAME_COOKIE,
+  resolveWorkspaceAxis,
+  type GameScope,
+  type WorkspaceAxis
+} from "@/lib/site/discipline-scope";
+import { LEGACY_WORKSPACE_COOKIE, WORKSPACE_COOKIE } from "@/stores/workspace.store";
 
 /**
  * True when the current request is served on a white-label tenant host — a
@@ -28,6 +37,42 @@ export async function resolveStatsScope(): Promise<StatsScope> {
     return (await cookies()).get(STATS_SCOPE_COOKIE)?.value === "workspace" ? "workspace" : "all";
   } catch {
     return "all";
+  }
+}
+
+/**
+ * The server half of the game-scope inputs: the saved scope and last game (cookies) and the
+ * workspace axis the games are read for — the tenant host's workspace on a tenant host, otherwise
+ * the visitor's viewing scope. Server loaders feed this to the same resolver the client runs, so
+ * hydration agrees with SSR. Server-only.
+ */
+export interface ServerDisciplineScope {
+  stored: GameScope;
+  lastGame: string | null;
+  axis: WorkspaceAxis;
+  /** The tenant host's workspace, so a client that has not locked its store yet still reads that axis. */
+  hostLockedWorkspaceId: number | null;
+}
+
+export async function resolveServerDisciplineScope(): Promise<ServerDisciplineScope> {
+  try {
+    const [h, store] = await Promise.all([headers(), cookies()]);
+    const hostId = Number(h.get("x-owt-workspace-id"));
+    const hostLockedWorkspaceId = h.get("x-owt-host-mode") === "tenant" && hostId > 0 ? hostId : null;
+    const workspaceCookie = Number(store.get(WORKSPACE_COOKIE)?.value ?? store.get(LEGACY_WORKSPACE_COOKIE)?.value);
+    return {
+      stored: store.get(DISCIPLINE_COOKIE)?.value || ALL_DISCIPLINES,
+      lastGame: store.get(LAST_GAME_COOKIE)?.value || null,
+      hostLockedWorkspaceId,
+      axis: resolveWorkspaceAxis({
+        hostLockedWorkspaceId,
+        ownerWorkspaceId: null,
+        statsScope: store.get(STATS_SCOPE_COOKIE)?.value === "workspace" ? "workspace" : "all",
+        currentWorkspaceId: workspaceCookie > 0 ? workspaceCookie : null
+      })
+    };
+  } catch {
+    return { stored: ALL_DISCIPLINES, lastGame: null, axis: "all", hostLockedWorkspaceId: null };
   }
 }
 

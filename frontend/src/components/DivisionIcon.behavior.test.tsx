@@ -3,15 +3,20 @@
 // Rank crests are stored as whatever public S3 URL the deployment wrote, and
 // the hosts `next/image` accepts come from NEXT_PUBLIC_IMAGE_REMOTE_PATTERNS.
 // `next/image` is stubbed here for the same reason as in TeamName's test: the
-// optimizer loader rewrites src outside a Next build, while the shipped config
-// sets `images.unoptimized` and keeps it verbatim.
+// optimizer loader rewrites src to /_next/image?url=…, and the test reads the
+// stored URL.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/image", () => ({
-  // eslint-disable-next-line @next/next/no-img-element -- this IS the next/image stand-in
-  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} alt={props.alt ?? ""} />
+  default: ({
+    unoptimized: _unoptimized,
+    ...props
+  }: React.ImgHTMLAttributes<HTMLImageElement> & { unoptimized?: boolean }) => (
+    // eslint-disable-next-line @next/next/no-img-element -- this IS the next/image stand-in
+    <img {...props} alt={props.alt ?? ""} />
+  )
 }));
 
 import DivisionIcon from "./DivisionIcon";
@@ -86,5 +91,15 @@ describe("DivisionIcon", () => {
     expect(container.querySelector("img")?.getAttribute("src")).toBe(
       "https://rustfs.craazzzyyfoxx.me/aqt/assets/divisions/champion-1.png"
     );
+  });
+
+  it("draws nothing for no division, keeping a tooltip crest's cell", () => {
+    const unmount = render(<DivisionIcon division={null} />);
+    expect(container.innerHTML).toBe("");
+    unmount();
+
+    render(<DivisionIcon division={null} tooltip />);
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("span[aria-hidden]")).not.toBeNull();
   });
 });

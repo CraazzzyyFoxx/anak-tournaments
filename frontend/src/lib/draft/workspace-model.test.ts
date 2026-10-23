@@ -15,9 +15,11 @@ import {
 } from "./workspace-model";
 
 const players = [
-  { id: 1, battle_tag: "Zeta#1", primary_role: "support", secondary_roles: [], effective_rank: 2700 },
-  { id: 2, battle_tag: "Alpha#2", primary_role: "tank", secondary_roles: ["damage"], effective_rank: 3100 }
+  { id: 1, identity: { provider: "battlenet", handle: "Zeta#1" }, player_name: null, primary_role: { dimension: "player_role", role: "support" }, secondary_roles: [], effective_rank: 2700 },
+  { id: 2, identity: { provider: "battlenet", handle: "Alpha#2" }, player_name: null, primary_role: { dimension: "player_role", role: "tank" }, secondary_roles: [{ dimension: "player_role", role: "damage" }], effective_rank: 3100 }
 ] as DraftPlayer[];
+
+const ROLES = ["tank", "damage", "support"];
 
 describe("draft workspace model", () => {
   it("only resolves an exact server-approved player and role option", () => {
@@ -26,8 +28,8 @@ describe("draft workspace model", () => {
       pick_version: 3,
       draft_team_id: 5,
       options: [
-        { player_id: 2, role: "tank", is_safe: true, reason_code: null, unmatched_slots: [], blocking_player_ids: [] },
-        { player_id: 2, role: "damage", is_safe: false, reason_code: "role_shortage", unmatched_slots: [], blocking_player_ids: [1] }
+        { player_id: 2, role: { dimension: "player_role", role: "tank" }, is_safe: true, reason_code: null, unmatched_slots: [], blocking_player_ids: [] },
+        { player_id: 2, role: { dimension: "player_role", role: "damage" }, is_safe: false, reason_code: "role_shortage", unmatched_slots: [], blocking_player_ids: [1] }
       ]
     };
     expect(optionForSelection(response, 2, "tank")?.is_safe).toBe(true);
@@ -38,7 +40,7 @@ describe("draft workspace model", () => {
   it("filters and sorts the public pool with URL-safe values", () => {
     expect(filterDraftPlayers(players, { role: "all", sort: "name", query: "a" }).map((player) => player.id)).toEqual([2, 1]);
     expect(filterDraftPlayers(players, { role: "damage", sort: "rank", query: "" }).map((player) => player.id)).toEqual([2]);
-    expect(parseDraftViewParams(new URLSearchParams("role=oops&sort=name&view=teams&pool=all&teams=order&q=abc"))).toEqual({
+    expect(parseDraftViewParams(new URLSearchParams("role=oops&sort=name&view=teams&pool=all&teams=order&q=abc"), ROLES)).toEqual({
       role: "all",
       sort: "name",
       view: "teams",
@@ -47,7 +49,11 @@ describe("draft workspace model", () => {
       query: "abc"
     });
     // An unknown pool name falls back to the one everybody starts on.
-    expect(parseDraftViewParams(new URLSearchParams("pool=oops")).pool).toBe("available");
+    expect(parseDraftViewParams(new URLSearchParams("pool=oops"), ROLES).pool).toBe("available");
+    // A role is a filter only when the owner game has it: League's jungle filters, Overwatch's tank does not.
+    expect(parseDraftViewParams(new URLSearchParams("role=jungle"), ["top", "jungle"]).role).toBe("jungle");
+    expect(parseDraftViewParams(new URLSearchParams("role=tank"), ["top", "jungle"]).role).toBe("all");
+    expect(parseDraftViewParams(new URLSearchParams("role=need"), []).role).toBe("need");
   });
 
   it("derives role choices and rosters from the public board snapshot", () => {
@@ -93,21 +99,21 @@ describe("draft workspace model", () => {
 });
 
 const mkPlayer = (p: Partial<DraftPlayer>): DraftPlayer => ({
-  id: 1, session_id: 1, registration_id: 10, user_id: null, battle_tag: "Ana#1",
-  primary_role: "support", sub_role: null, is_flex: false, effective_rank: 3000,
+  id: 1, session_id: 1, registration_id: 10, user_id: null, identity: { provider: "battlenet", handle: "Ana#1" }, player_name: null,
+  primary_role: { dimension: "player_role", role: "support" }, is_flex: false, effective_rank: 3000,
   status: "available", is_captain: false, drafted_by_team_id: null,
-  secondary_roles: [], role_ranks: {}, role_sources: {}, role_top_heroes: {}, role_sub_roles: {}, notes: null,
+  secondary_roles: [], role_ranks: {}, role_sources: {}, role_top_characters: {}, role_sub_roles: {}, notes: null,
   custom_fields: [], version: 1, ...p,
 });
 
 describe("extended filterDraftPlayers search", () => {
   it("matches on sub_role", () => {
-    const players = [mkPlayer({ id: 1, battle_tag: "Zed", sub_role: "hitscan" }), mkPlayer({ id: 2, battle_tag: "Boo", sub_role: "flex" })];
+    const players = [mkPlayer({ id: 1, identity: { provider: "battlenet", handle: "Zed" }, player_name: null, primary_role: { dimension: "player_role", role: "damage_hitscan", parent: "damage" } }), mkPlayer({ id: 2, identity: { provider: "battlenet", handle: "Boo" }, player_name: null, primary_role: { dimension: "player_role", role: "support_flex", parent: "support" } })];
     const out = filterDraftPlayers(players, { role: "all", sort: "rank", query: "hitscan" });
     expect(out.map((p) => p.id)).toEqual([1]);
   });
   it("matches on role label", () => {
-    const players = [mkPlayer({ id: 1, primary_role: "tank" }), mkPlayer({ id: 2, primary_role: "support" })];
+    const players = [mkPlayer({ id: 1, primary_role: { dimension: "player_role", role: "tank" } }), mkPlayer({ id: 2, primary_role: { dimension: "player_role", role: "support" } })];
     const out = filterDraftPlayers(players, { role: "all", sort: "rank", query: "tank" });
     expect(out.map((p) => p.id)).toEqual([1]);
   });
@@ -117,18 +123,18 @@ describe("extended filterDraftPlayers search", () => {
     // pick the server rejected. A flex player ranked on all three still gets
     // all three, because all three land in primary + secondary_roles.
     const flex = mkPlayer({
-      id: 3, primary_role: "damage", secondary_roles: ["tank"], is_flex: true,
+      id: 3, primary_role: { dimension: "player_role", role: "damage" }, secondary_roles: [{ dimension: "player_role", role: "tank" }], is_flex: true,
       role_ranks: { damage: 3200, tank: 3000 },
     });
     expect(playerRoles(flex)).toEqual(["damage", "tank"]);
     expect(filterDraftPlayers([flex], { role: "support", sort: "rank", query: "" })).toEqual([]);
     const fullFlex = mkPlayer({
-      id: 5, primary_role: "damage", secondary_roles: ["tank", "support"], is_flex: true,
+      id: 5, primary_role: { dimension: "player_role", role: "damage" }, secondary_roles: [{ dimension: "player_role", role: "tank" }, { dimension: "player_role", role: "support" }], is_flex: true,
       role_ranks: { damage: 3200, tank: 3000, support: 2900 },
     });
     expect(playerRoles(fullFlex)).toEqual(["damage", "tank", "support"]);
     // Not flex: still exactly what was declared.
-    const strict = mkPlayer({ id: 4, primary_role: "damage", secondary_roles: ["tank"] });
+    const strict = mkPlayer({ id: 4, primary_role: { dimension: "player_role", role: "damage" }, secondary_roles: [{ dimension: "player_role", role: "tank" }] });
     expect(playerRoles(strict)).toEqual(["damage", "tank"]);
     expect(filterDraftPlayers([strict], { role: "support", sort: "rank", query: "" })).toEqual([]);
   });
@@ -151,19 +157,19 @@ const ALL_FLEX = { has_role_slots: false };
 
 describe("roster role/rank", () => {
   it("uses drafted target role over primary", () => {
-    const player = mkPlayer({ id: 5, primary_role: "support", role_ranks: { damage: 3500, support: 3000 } });
-    const picks = [{ id: 9, picked_player_id: 5, target_role: "damage" }] as DraftPick[];
+    const player = mkPlayer({ id: 5, primary_role: { dimension: "player_role", role: "support" }, role_ranks: { damage: 3500, support: 3000 } });
+    const picks = [{ id: 9, status: "completed", picked_player_id: 5, target_role: { dimension: "player_role", role: "damage" } }] as DraftPick[];
     expect(rosterRoleForPlayer(player, picks)).toBe("damage");
     expect(slotRankForPlayer(player, "damage", ROLE_SLOTS)).toBe(3500);
   });
   it("falls back to the primary role and that role's own rank", () => {
-    const player = mkPlayer({ id: 6, primary_role: "tank", role_ranks: { tank: 2800 } });
+    const player = mkPlayer({ id: 6, primary_role: { dimension: "player_role", role: "tank" }, role_ranks: { tank: 2800 } });
     expect(rosterRoleForPlayer(player, [])).toBe("tank");
     expect(slotRankForPlayer(player, "tank", ROLE_SLOTS)).toBe(2800);
   });
   it("seats a captain on the role the organizer pinned, not their lead role", () => {
     const captain = mkPlayer({
-      id: 7, is_captain: true, primary_role: "tank", captain_role: "damage",
+      id: 7, is_captain: true, primary_role: { dimension: "player_role", role: "tank" }, captain_role: { dimension: "player_role", role: "damage" },
       role_ranks: { tank: 2600, damage: 3900 }
     });
     expect(rosterRoleForPlayer(captain, [])).toBe("damage");
@@ -178,7 +184,7 @@ describe("roster role/rank", () => {
   it("uses effective_rank for a pool card on a role-slotted board", () => {
     const player = mkPlayer({
       id: 9,
-      primary_role: "support",
+      primary_role: { dimension: "player_role", role: "support" },
       role_ranks: { damage: 3500, support: 3000 },
       effective_rank: 3500
     });

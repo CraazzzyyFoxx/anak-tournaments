@@ -1,17 +1,20 @@
 "use client";
 
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { AlertCircle } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { AlertCircle, Crown } from "lucide-react";
 
-import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
-import DivisionIcon from "@/components/DivisionIcon";
+import { lineupSeatKey, playerTransitionName } from "@/app/balancer/mix/_room/room-model";
+import { AWAY_CHIP_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { RankCrest } from "@/components/RankCrest";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
-import { OW_REFERENCE_GRID, getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
-import { ROLES, ROLE_LABELS } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { cn } from "@/lib/utils";
 
-import type { PickupSeat } from "../pickup-lineup";
+import type { MixOwner, PickupSeat } from "../pickup-lineup";
 
 export type ActiveSeatDrag = { uuid: string; role: string; teamIndex: number; seat: PickupSeat };
 
@@ -25,21 +28,30 @@ export type ActiveSeatDrag = { uuid: string; role: string; teamIndex: number; se
  */
 export function SeatRow({
   seat,
+  owner,
   teamIndex,
   canDrag,
-  activeDrag
+  activeDrag,
+  away = false,
+  onMakeCaptain
 }: Readonly<{
   seat: PickupSeat;
+  owner: MixOwner;
   teamIndex: number;
   canDrag: boolean;
   activeDrag: ActiveSeatDrag | null;
+  /** Stepped away but still seated in this lineup (spec §7.4). */
+  away?: boolean;
+  /** Omitted -- no "Make captain" (a viewer, a live lineup, a screenshot, or this seat already wears the crown). */
+  onMakeCaptain?: () => void;
 }>) {
+  const tRoom = useTranslations("mixes.room");
+  const tTeams = useTranslations("mixes.teams");
   const dragData: ActiveSeatDrag = { uuid: seat.uuid, role: seat.role, teamIndex, seat };
   const draggable = useDraggable({ id: seat.uuid, data: dragData, disabled: !canDrag });
   const droppable = useDroppable({ id: seat.uuid, data: dragData, disabled: !canDrag });
-  const grid = OW_REFERENCE_GRID;
-  const division = resolveDivisionFromRank(grid, seat.rating);
-  const icon = ROLES.find((item) => item.code === seat.role)?.icon ?? "Support";
+  const { grid } = owner;
+  const slotLabel = useSlotLabel(owner.ontology);
   const isValidTarget =
     activeDrag != null &&
     activeDrag.uuid !== seat.uuid &&
@@ -55,6 +67,8 @@ export function SeatRow({
       }}
       {...draggable.attributes}
       {...draggable.listeners}
+      // The same name the player wears in the room, so entering it flies them from this row to their side.
+      style={{ viewTransitionName: playerTransitionName(lineupSeatKey(seat.uuid)) }}
       className={cn(
         "flex items-center gap-3 rounded-lg border px-3.5 py-3 transition-colors",
         canDrag && "touch-none active:cursor-grabbing",
@@ -65,30 +79,44 @@ export function SeatRow({
             : "border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] hover:bg-[color:var(--aqt-overlay-3)]"
       )}
     >
-      <IconTooltip
-        label={`${ROLE_LABELS[seat.role]}${seat.subRole ? ` \u00B7 ${seat.subRole}` : ""}`}
-        className="size-6 shrink-0 items-center justify-center opacity-90"
-      >
-        <PlayerRoleIcon role={icon} size={24} decorative />
-      </IconTooltip>
-      {division == null ? null : (
+      {owner.showsRoles ? (
         <IconTooltip
-          label={getDivisionLabel(grid, division) ?? String(division)}
-          className="shrink-0"
+          label={`${slotLabel(seat.role)}${seat.subRole ? ` \u00B7 ${seat.subRole}` : ""}`}
+          className="size-6 shrink-0 items-center justify-center opacity-90"
         >
-          <DivisionIcon division={division} tournamentGrid={grid} width={32} height={32} />
+          <PlayerRoleIcon role={seat.role} ontology={owner.ontology} size={24} decorative />
         </IconTooltip>
-      )}
+      ) : null}
+      <RankCrest rank={seat.rating} grid={grid} size={32} />
       <span
         className="min-w-0 flex-1 truncate text-base font-semibold text-[color:var(--aqt-fg)]"
         title={seat.name}
       >
         {seat.name}
       </span>
+      {seat.isCaptain ? (
+        <IconTooltip label={tRoom("captain")} className="flex shrink-0 items-center">
+          <Crown aria-hidden className="size-3.5 text-[color:var(--aqt-amber)]" />
+        </IconTooltip>
+      ) : onMakeCaptain ? (
+        <IconTooltip control label={tRoom("makeCaptain")}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={tRoom("makeCaptain")}
+            onClick={onMakeCaptain}
+            className="shrink-0 text-[color:var(--aqt-fg-faint)] hover:text-[color:var(--aqt-amber)]"
+          >
+            <Crown aria-hidden />
+          </Button>
+        </IconTooltip>
+      ) : null}
+      {away ? <span className={AWAY_CHIP_CLASS}>{tRoom("away")}</span> : null}
       {seat.offRole ? (
         <IconTooltip
-          label="Off-role"
-          hint="Assigned off their first-preference role"
+          label={tTeams("offRole")}
+          hint={tTeams("offRoleHint")}
           className="size-4 shrink-0 items-center justify-center text-[color:var(--aqt-amber)]"
         >
           <AlertCircle className="size-3.5" aria-hidden="true" />
@@ -100,23 +128,30 @@ export function SeatRow({
 }
 
 /** The dragged seat's own row, detached from the list, following the pointer. */
-export function SeatDragPreview({ seat }: Readonly<{ seat: PickupSeat }>) {
-  const icon = ROLES.find((item) => item.code === seat.role)?.icon ?? "Support";
+export function SeatDragPreview({ seat, owner }: Readonly<{ seat: PickupSeat; owner: MixOwner }>) {
+  const slotLabel = useSlotLabel(owner.ontology);
+  const tRoom = useTranslations("mixes.room");
   return (
-    <div
-      className={cn(
-        PANEL_CLASS,
-        "flex cursor-grabbing items-center gap-3 rounded-lg border-[color:var(--aqt-teal)] px-3.5 py-3 shadow-lg"
-      )}
+    <Card
+      variant="flat"
+      className="flex cursor-grabbing items-center gap-3 rounded-lg border-[color:var(--aqt-teal)] px-3.5 py-3 shadow-lg"
     >
-      <span className="flex size-6 shrink-0 items-center justify-center opacity-90">
-        <PlayerRoleIcon role={icon} size={24} label={ROLE_LABELS[seat.role]} decorative />
-      </span>
+      {owner.showsRoles ? (
+        <span className="flex size-6 shrink-0 items-center justify-center opacity-90">
+          <PlayerRoleIcon role={seat.role} ontology={owner.ontology} size={24} label={slotLabel(seat.role)} decorative />
+        </span>
+      ) : null}
       <span className="min-w-0 flex-1 truncate text-base font-semibold text-[color:var(--aqt-fg)]">
         {seat.name}
       </span>
+      {/* No tooltip: the pointer sits on this ghost for the whole drag. */}
+      {seat.isCaptain ? (
+        <span role="img" aria-label={tRoom("captain")} className="flex shrink-0 items-center">
+          <Crown aria-hidden className="size-3.5 text-[color:var(--aqt-amber)]" />
+        </span>
+      ) : null}
       <SeatRating seat={seat} />
-    </div>
+    </Card>
   );
 }
 
@@ -126,6 +161,7 @@ export function SeatDragPreview({ seat }: Readonly<{ seat: PickupSeat }>) {
  * when the correction actually moved it, otherwise it is noise.
  */
 function SeatRating({ seat }: Readonly<{ seat: PickupSeat }>) {
+  const t = useTranslations("mixes.teams");
   const effective = seat.rating == null ? null : Math.round(seat.rating);
   const open = seat.openRating == null ? null : Math.round(seat.openRating);
   return (
@@ -133,9 +169,9 @@ function SeatRating({ seat }: Readonly<{ seat: PickupSeat }>) {
       {open != null && effective != null && open !== effective ? (
         <span
           className="text-xs tabular-nums text-[color:var(--aqt-fg-dim)]"
-          title={`Open rating ${open}; the ranker balanced on ${effective}`}
+          title={t("openRatingHint", { open: String(open), effective: String(effective) })}
         >
-          open {open}
+          {t("openRating", { rating: String(open) })}
         </span>
       ) : null}
       <span className="text-lg font-bold tabular-nums text-[color:var(--aqt-fg)]">

@@ -3,16 +3,16 @@ import { getTranslations } from "next-intl/server";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { Column, ColumnHead, LoadError, Section, SectionHead } from "@/components/site/open-layout";
+import { Column, ColumnHead, OpenLoadError, Section, SectionHead } from "@/components/site/open-layout";
+import Image from "@/components/ui/image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getFormatter } from "@/lib/datetime/server";
-import heroService from "@/services/hero.service";
+import { orderedRoleCodes, roleName, roleTint, slotLabel } from "@/lib/roster/ontology";
+import disciplineService from "@/services/discipline.service";
 import statisticsService from "@/services/statistics.service";
-import type { HeroPlaytime } from "@/types/hero.types";
-import type {
-  TournamentDivisionStatistics,
-  TournamentStatistics
-} from "@/types/statistics.types";
+import type { DisciplineMetadata } from "@/types/discipline.types";
+import type { CharacterPlaytime } from "@/types/user.types";
+import type { TournamentDivisionStatistics, TournamentStatistics } from "@/types/statistics.types";
 import type { Workspace } from "@/types/workspace.types";
 
 import { ScopedMoreLink } from "./WorkspaceScopeLink";
@@ -20,20 +20,18 @@ import { ScopedMoreLink } from "./WorkspaceScopeLink";
 const TITLE_ID = "cs-title";
 /** How many tournaments fit the activity chart before the bars get unreadable. */
 const ACTIVITY_SPAN = 24;
-const TOP_HEROES = 5;
-
-const ROLES = [
-  { key: "Tank", color: "var(--aqt-tank)", avg: "tank_avg_div" },
-  { key: "Damage", color: "var(--aqt-damage)", avg: "damage_avg_div" },
-  { key: "Support", color: "var(--aqt-support)", avg: "support_avg_div" }
-] as const;
+const TOP_CHARACTERS = 5;
+/** Placeholder rows while the game's roles are unknown. */
+const SKELETON_ROLES = 3;
 
 const BAR_CLASS = "flex-1 min-w-[3px] max-w-9 rounded-t-[3px]";
 
+/** The section frame; `tabs` (the block's game tabs) stays above the body in every state, failed reads included. */
 async function Shell({
   workspace,
+  tabs = null,
   children
-}: Readonly<{ workspace: Workspace; children: React.ReactNode }>) {
+}: Readonly<{ workspace: Workspace; tabs?: React.ReactNode; children: React.ReactNode }>) {
   const t = await getTranslations("workspace");
   return (
     <Section labelledBy={TITLE_ID}>
@@ -48,6 +46,7 @@ async function Shell({
           </ScopedMoreLink>
         }
       />
+      {tabs ? <div className="mb-4">{tabs}</div> : null}
       {children}
     </Section>
   );
@@ -61,9 +60,7 @@ function StatsGrid({ children }: Readonly<{ children: React.ReactNode }>) {
   );
 }
 
-export async function CommunityStatsSkeleton({
-  workspace
-}: Readonly<{ workspace: Workspace }>) {
+export async function CommunityStatsSkeleton({ workspace }: Readonly<{ workspace: Workspace }>) {
   return (
     <Shell workspace={workspace}>
       <StatsGrid>
@@ -74,15 +71,15 @@ export async function CommunityStatsSkeleton({
         <Column>
           <ColumnHead title={<Skeleton className="h-3 w-44" />} />
           <div className="mt-4 grid gap-2.5">
-            {ROLES.map((role) => (
-              <Skeleton key={role.key} className="h-10 w-full" />
+            {Array.from({ length: SKELETON_ROLES }, (_, row) => (
+              <Skeleton key={row} className="h-10 w-full" />
             ))}
           </div>
         </Column>
         <Column>
           <ColumnHead title={<Skeleton className="h-3 w-36" />} />
           <div className="mt-4 grid gap-2.5">
-            {Array.from({ length: TOP_HEROES }, (_, row) => (
+            {Array.from({ length: TOP_CHARACTERS }, (_, row) => (
               <Skeleton key={row} className="h-8 w-full" />
             ))}
           </div>
@@ -92,42 +89,52 @@ export async function CommunityStatsSkeleton({
   );
 }
 
-/** Three readings of the community's whole history: turnout, skill, heroes. */
-export async function CommunityStats({ workspace }: Readonly<{ workspace: Workspace }>) {
+/**
+ * Three readings of the community's whole history: turnout, and (of the block's game) skill and characters. Under
+ * "all games" the two game-bound columns carry their own game tabs (`tabs`, spec §6.4).
+ */
+export async function CommunityStats({
+  workspace,
+  discipline,
+  tabs = null
+}: Readonly<{ workspace: Workspace; discipline: string | null; tabs?: React.ReactNode }>) {
   const workspaceId = workspace.id;
   const t = await getTranslations("workspace");
 
-  const [history, division, heroes] = await Promise.all([
+  const [history, division, ontology, characters] = await Promise.all([
     statisticsService.getTournaments({ workspaceId }).catch(() => null),
-    statisticsService.getTournamentsDivision({ workspaceId }).catch(() => null),
-    heroService
-      .getHeroPlaytime(1, TOP_HEROES, "all", null, { workspaceId })
-      .catch(() => null)
+    discipline ? statisticsService.getTournamentsDivision(discipline, { workspaceId }).catch(() => null) : null,
+    discipline ? disciplineService.metadata("all", discipline).catch(() => null) : null,
+    discipline
+      ? statisticsService
+          .getCharacterPlaytime(discipline, { axis: workspaceId, perPage: TOP_CHARACTERS })
+          .catch(() => null)
+      : null
   ]);
 
-  if (history === null && division === null && heroes === null) {
+  if (history === null && division === null && characters === null) {
     return (
-      <Shell workspace={workspace}>
-        <LoadError what={t("stats.what")} dashed />
+      <Shell workspace={workspace} tabs={tabs}>
+        <OpenLoadError what={t("stats.what")} dashed />
       </Shell>
     );
   }
 
   return (
-    <Shell workspace={workspace}>
+    <Shell workspace={workspace} tabs={tabs}>
       <StatsGrid>
         <ActivityColumn history={history} />
-        <DivisionColumn workspace={workspace} division={division} />
-        <HeroesColumn heroes={heroes?.results ?? null} />
+        {discipline ? (
+          <DivisionColumn workspace={workspace} discipline={discipline} division={division} ontology={ontology} />
+        ) : null}
+        {discipline ? <CharactersColumn characters={characters?.results ?? null} /> : null}
       </StatsGrid>
     </Shell>
   );
 }
 
 /** Turnout per tournament, newest on the right and highlighted. */
-async function ActivityColumn({
-  history
-}: Readonly<{ history: TournamentStatistics[] | null }>) {
+async function ActivityColumn({ history }: Readonly<{ history: TournamentStatistics[] | null }>) {
   const [t, format] = await Promise.all([getTranslations("workspace"), getFormatter()]);
   const rows = (history ?? []).slice(-ACTIVITY_SPAN);
 
@@ -135,7 +142,7 @@ async function ActivityColumn({
     return (
       <Column>
         <ColumnHead title={t("stats.perTournament")} />
-        {history === null ? <LoadError /> : null}
+        {history === null ? <OpenLoadError /> : null}
       </Column>
     );
   }
@@ -203,29 +210,45 @@ function shortLabel(name: string, index: number): string {
   return String(index + 1);
 }
 
-/** The community's average division, per role. */
+/** The community's average division in the browsed game, per role of that game's rated dimension. */
 async function DivisionColumn({
   workspace,
-  division
-}: Readonly<{ workspace: Workspace; division: TournamentDivisionStatistics[] | null }>) {
-  const [t, format] = await Promise.all([getTranslations("workspace"), getFormatter()]);
+  discipline,
+  division,
+  ontology
+}: Readonly<{
+  workspace: Workspace;
+  discipline: string;
+  division: TournamentDivisionStatistics[] | null;
+  ontology: DisciplineMetadata | null;
+}>) {
+  const [t, tRoles, format] = await Promise.all([
+    getTranslations("workspace"),
+    getTranslations("common.roles"),
+    getFormatter()
+  ]);
 
   if (division === null) {
     return (
       <Column>
         <ColumnHead title={t("stats.divisions")} />
-        <LoadError />
+        <OpenLoadError />
       </Column>
     );
   }
 
-  const averages = ROLES.map((role) => {
-    // A tournament with no players in a role reports null (or a 0 placeholder).
+  // A tournament reports only the roles somebody played; the column averages each over the tournaments that did.
+  const codes = orderedRoleCodes(ontology, division.flatMap((row) => Object.keys(row.role_avg_divs)));
+  const averages = codes.map((code) => {
     const values = division
-      .map((row) => row[role.avg])
-      .filter((value): value is number => typeof value === "number" && value > 0);
+      .map((row) => row.role_avg_divs[code])
+      .filter((value): value is number => value !== undefined && value > 0);
     return {
-      ...role,
+      code,
+      label: slotLabel(ontology, code, code, (role) =>
+        roleName(role, (key) => (tRoles.has(key as never) ? tRoles(key as never) : null))
+      ),
+      color: roleTint(ontology, code),
       value: values.length === 0 ? null : values.reduce((sum, v) => sum + v, 0) / values.length
     };
   });
@@ -236,17 +259,18 @@ async function DivisionColumn({
       <ul className="mt-4 grid gap-2.5">
         {averages.map((role) => (
           <li
-            key={role.key}
+            key={role.code}
             className="grid min-h-10 grid-cols-[22px_minmax(0,1fr)_36px_48px] items-center gap-2.5"
           >
-            <PlayerRoleIcon role={role.key} size={20} color={role.color} decorative />
-            <span className="text-[color:var(--aqt-fg-muted)]">{t(`roles.${role.key}`)}</span>
+            <PlayerRoleIcon role={role.code} ontology={ontology} size={20} decorative />
+            <span className="text-[color:var(--aqt-fg-muted)]">{role.label}</span>
             {role.value === null ? (
               <span />
             ) : (
               <DivisionIcon
                 division={Math.round(role.value)}
-                tournamentGrid={workspace.default_division_grid_version}
+                tournamentGrid={workspace.effective_division_grid_versions[discipline]}
+                discipline={discipline}
                 width={32}
                 height={32}
                 className="size-8 object-contain"
@@ -270,21 +294,21 @@ async function DivisionColumn({
   );
 }
 
-/** Which heroes the community's matches are actually spent on. */
-async function HeroesColumn({ heroes }: Readonly<{ heroes: HeroPlaytime[] | null }>) {
+/** Which characters the community's matches are actually spent on. */
+async function CharactersColumn({ characters }: Readonly<{ characters: CharacterPlaytime[] | null }>) {
   const [t, format] = await Promise.all([getTranslations("workspace"), getFormatter()]);
 
-  if (heroes === null || heroes.length === 0) {
+  if (characters === null || characters.length === 0) {
     return (
       <Column>
         <ColumnHead title={t("stats.topHeroes")} sub={t("stats.topHeroesSub")} />
-        {heroes === null ? <LoadError /> : null}
+        {characters === null ? <OpenLoadError /> : null}
       </Column>
     );
   }
 
   // `playtime` is already a share of the community's total play time.
-  const top = heroes.slice(0, TOP_HEROES);
+  const top = characters.slice(0, TOP_CHARACTERS);
   const leader = Math.max(...top.map((row) => row.playtime));
 
   return (
@@ -292,9 +316,8 @@ async function HeroesColumn({ heroes }: Readonly<{ heroes: HeroPlaytime[] | null
       <ColumnHead title={t("stats.topHeroes")} sub={t("stats.topHeroesSub")} />
       <ol className="mt-4 grid gap-2.5">
         {top.map((row) => {
-          const role = row.hero.type ?? row.hero.role;
-          const color =
-            ROLES.find((entry) => entry.key === role)?.color ?? "var(--aqt-fg-muted)";
+          // The character's own catalog colour, else the neutral ink — never a hue borrowed from a role.
+          const color = typeof row.entity.attrs.color === "string" ? row.entity.attrs.color : "var(--aqt-fg-muted)";
           const share = format.number(row.playtime, {
             style: "percent",
             minimumFractionDigits: 1,
@@ -302,35 +325,42 @@ async function HeroesColumn({ heroes }: Readonly<{ heroes: HeroPlaytime[] | null
           });
           return (
             <li
-              key={row.hero.id}
+              key={row.entity.id}
               className="grid min-h-8 grid-cols-[28px_84px_minmax(0,1fr)_52px] items-center gap-2.5 text-caption"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element -- hero portraits live on the asset host next/image is not configured for */}
-              <img
-                src={row.hero.image_path}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                className="size-7 rounded-full border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card-2)] object-cover"
-              />
-              <span className="truncate text-[color:var(--aqt-fg)]">{row.hero.name}</span>
+              {row.entity.image_path ? (
+                <Image
+                  src={row.entity.image_path}
+                  alt=""
+                  width={28}
+                  height={28}
+                  className="size-7 rounded-full border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card-2)] object-cover"
+                />
+              ) : (
+                <span
+                  aria-hidden
+                  className="size-7 rounded-full border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card-2)]"
+                />
+              )}
+              <span className="truncate text-[color:var(--aqt-fg)]">{row.entity.name}</span>
               <span
                 role="img"
-                aria-label={t("stats.heroAlt", {
-                  name: row.hero.name,
-                  share,
-                  role: role ? t(`roles.${role as "Tank" | "Damage" | "Support"}`).toLowerCase() : ""
-                })}
+                aria-label={t("stats.heroAlt", { name: row.entity.name, share })}
                 className="h-2 overflow-hidden rounded-[4px] bg-[color:var(--aqt-overlay-3)]"
               >
                 <i
                   className="block h-full rounded-[inherit] bg-[color:var(--hero-c)]"
                   style={
-                    { width: `${(row.playtime / leader) * 100}%`, "--hero-c": color } as CSSProperties
+                    {
+                      width: `${(row.playtime / leader) * 100}%`,
+                      "--hero-c": color
+                    } as CSSProperties
                   }
                 />
               </span>
-              <span className="text-right tabular-nums text-[color:var(--aqt-fg-dim)]">{share}</span>
+              <span className="text-right tabular-nums text-[color:var(--aqt-fg-dim)]">
+                {share}
+              </span>
             </li>
           );
         })}

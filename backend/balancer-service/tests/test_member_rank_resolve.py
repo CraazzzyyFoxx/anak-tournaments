@@ -29,7 +29,7 @@ from shared.services.member_rank import (  # noqa: E402
     MemberRankService,
 )
 
-_FETCH = "shared.services.member_rank.fetch_latest_ow_ranks_by_account"
+_FETCH = "shared.services.rank_snapshots.fetch_latest_ow_ranks_by_account"
 _ROLES = ("tank", "damage", "support")
 
 _HOST = 99
@@ -46,7 +46,9 @@ class MemberRankResolveTests(IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.ranks = MagicMock()
         self.ranks.list_layers = AsyncMock(return_value=[])
-        self.service = MemberRankService(ranks=self.ranks, members=MagicMock())
+        self.roles = MagicMock()
+        self.roles.rated_dimension_id = AsyncMock(return_value=7)
+        self.service = MemberRankService(ranks=self.ranks, members=MagicMock(), roles=self.roles)
         self.session = MagicMock()
 
     async def _mix(self, members, roles, *, author_user_id=_HOST, ow=None):
@@ -59,6 +61,7 @@ class MemberRankResolveTests(IsolatedAsyncioTestCase):
             result = await self.service.resolve(
                 self.session,
                 workspace_id=1,
+                discipline="overwatch",
                 members=members,
                 roles=list(roles),
                 order=MIX_ORDER,
@@ -93,7 +96,7 @@ class MemberRankResolveTests(IsolatedAsyncioTestCase):
 
     async def test_ow_fills_what_no_stored_layer_covers(self) -> None:
         result, fetch = await self._mix({1: 10}, ["tank"], ow={10: {"Ana#1": {"tank": 1800}}})
-        self.assertEqual(result[(1, "tank")], ResolvedRank(1800, "ow"))
+        self.assertEqual(result[(1, "tank")], ResolvedRank(1800, "native"))
         fetch.assert_awaited_once()
         self.assertEqual(fetch.await_args.args[1], [10])
 
@@ -104,7 +107,7 @@ class MemberRankResolveTests(IsolatedAsyncioTestCase):
             ["tank"],
             ow={10: {"Main#1": {"tank": 1800}, "Smurf#2": {"tank": 2900}}},
         )
-        self.assertEqual(result[(1, "tank")], ResolvedRank(2900, "ow"))
+        self.assertEqual(result[(1, "tank")], ResolvedRank(2900, "native"))
 
     async def test_ow_not_queried_when_cheap_layers_cover_every_role(self) -> None:
         self.ranks.list_layers.return_value = [_rank(member_id, role, 2000) for member_id in (1, 2) for role in _ROLES]
@@ -117,7 +120,7 @@ class MemberRankResolveTests(IsolatedAsyncioTestCase):
         fetch.assert_awaited_once()
         self.assertEqual(fetch.await_args.args[1], [20])
         self.assertEqual(result[(1, "tank")], ResolvedRank(2000, "workspace"))
-        self.assertEqual(result[(2, "tank")], ResolvedRank(1500, "ow"))
+        self.assertEqual(result[(2, "tank")], ResolvedRank(1500, "native"))
 
     async def test_member_without_a_player_cannot_reach_ow(self) -> None:
         result, fetch = await self._mix({3: None}, ["tank"])
@@ -142,6 +145,7 @@ class MemberRankResolveTests(IsolatedAsyncioTestCase):
             result = await self.service.resolve(
                 self.session,
                 workspace_id=1,
+                discipline="overwatch",
                 members={1: 10},
                 roles=["tank", "damage"],
                 order=TOURNAMENT_ORDER,
@@ -152,3 +156,22 @@ class MemberRankResolveTests(IsolatedAsyncioTestCase):
         # An empty registration role inherits the canon instead of reading as unranked.
         self.assertEqual(result[(1, "tank")], ResolvedRank(2000, "workspace"))
         self.assertEqual(result[(1, "damage")], ResolvedRank(2600, "registration"))
+
+    async def test_a_game_reads_its_own_native_layer_never_overwatchs(self) -> None:
+        lol_native = AsyncMock(return_value={10: {"support": 2775}})
+        with (
+            patch(_FETCH, new=AsyncMock(return_value={10: {"Ana#1": {"support": 1800}}})) as fetch,
+            patch("shared.disciplines.lol.ranks.native_ranks", new=lol_native),
+        ):
+            result = await self.service.resolve(
+                self.session,
+                workspace_id=1,
+                discipline="lol",
+                members={1: 10},
+                roles=["support"],
+                order=MIX_ORDER,
+                author_user_id=_HOST,
+            )
+        self.assertEqual(result[(1, "support")], ResolvedRank(2775, "native"))
+        lol_native.assert_awaited_once_with(self.session, [10])
+        fetch.assert_not_awaited()

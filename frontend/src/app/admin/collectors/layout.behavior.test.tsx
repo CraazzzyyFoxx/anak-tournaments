@@ -58,13 +58,25 @@ vi.mock("@/services/admin.service", () => ({
     getStreamPollHealth: (...args: unknown[]) => getStreamPollHealth(...args)
   }
 }));
+// Factories are hoisted above the imports, so the fixture is loaded inside one.
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/admin/collectors/rank"
+  usePathname: () => "/admin/collectors/rank",
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams()
 }));
-
 vi.mock("next/link", () => ({
-  default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
+  default: ({
+    href,
+    children,
+    prefetch: _prefetch,
+    ...rest
+  }: {
+    href: string;
+    children: React.ReactNode;
+    prefetch?: boolean | null;
+  }) => (
     <a href={href} {...rest}>
       {children}
     </a>
@@ -161,14 +173,15 @@ describe("CollectorsLayout", () => {
 
     expect(tabKeys(container)).toEqual(["rank", "subscriptions"]);
     expect(getStreamPollHealth).not.toHaveBeenCalled();
-    expect(getRankCollectionStats).toHaveBeenCalled();
+    expect(getRankCollectionStats).toHaveBeenCalledWith("overwatch");
   });
 
-  it("shows only the collectors the viewer can read", async () => {
+  it("shows only the collectors the viewer can read, and no bar for a single one", async () => {
     workspaceGrants = ["rank.read"];
     const container = await mount();
 
-    expect(tabKeys(container)).toEqual(["rank"]);
+    // One readable collector is not a choice: the bar is not drawn at all.
+    expect(tabKeys(container)).toEqual([]);
     expect(getSubscriptionCollectionStats).not.toHaveBeenCalled();
     expect(getStreamPollHealth).not.toHaveBeenCalled();
   });

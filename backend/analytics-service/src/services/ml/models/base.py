@@ -1,14 +1,8 @@
-"""Common Protocol and serialisation helpers for v2 models.
+"""Artifact serialisation helpers for v2 models.
 
-Every concrete model class is a thin wrapper around a scikit-learn / LightGBM /
-XGBoost booster + the feature column order it was trained with. The wrapper
-takes care of:
-
-- aligning incoming feature DataFrames to ``feature_order`` (extra columns
-  dropped, missing columns added as NaN),
-- delegating prediction to the underlying booster,
-- saving / loading via :mod:`joblib` (preferred over :mod:`pickle` for numpy
-  array compactness).
+The concrete model classes, the ``MLModel`` protocol and ``align_features`` belong to the discipline's analytics module
+(``shared.domain.analytics`` for the neutral contract). This module only stores and loads the whole object via
+:mod:`joblib` (preferred over :mod:`pickle` for numpy array compactness).
 
 Models are persisted as ``<algorithm_id>/<version>/<file>.joblib`` under the
 ``ANALYTICS_MODELS_DIR`` config setting.
@@ -16,53 +10,29 @@ Models are persisted as ``<algorithm_id>/<version>/<file>.joblib`` under the
 
 from __future__ import annotations
 
+import logging
 import os
+import pickle
 import tempfile
 import typing
 from pathlib import Path
 
 import joblib
-import pandas as pd
 
 from src.core import config
 
 __all__ = (
-    "MLModel",
-    "align_features",
     "artifact_path",
     "save_artifact",
     "load_artifact",
+    "load_artifact_or_none",
 )
 
+logger = logging.getLogger(__name__)
 
-@typing.runtime_checkable
-class MLModel(typing.Protocol):
-    """Common surface every v2 model exposes.
-
-    ``feature_order`` is the list of column names the underlying booster was
-    fitted on; consumers should always pass DataFrames through
-    :func:`align_features` before calling :meth:`predict`.
-    """
-
-    feature_order: list[str]
-
-    def predict(self, df: pd.DataFrame) -> pd.Series: ...
-
-
-def align_features(df: pd.DataFrame, feature_order: typing.Sequence[str]) -> pd.DataFrame:
-    """Reorder/fill ``df`` to match ``feature_order`` exactly.
-
-    Missing columns are inserted as ``NaN`` (LightGBM and XGBoost handle this
-    natively); extra columns are silently dropped. Index is preserved so the
-    caller can re-align predictions to original rows.
-    """
-    out = pd.DataFrame(index=df.index)
-    for col in feature_order:
-        if col in df.columns:
-            out[col] = df[col]
-        else:
-            out[col] = float("nan")
-    return out
+#: Module path of the concrete model classes in the pre-conversion layout: a pickle naming it was never converted
+#: (``scripts/convert_discipline_artifacts.py``).
+_OLD_MODEL_MODULES = "src.services.ml.models"
 
 
 def artifact_path(algorithm_id: int, version: str, filename: str, *, root: str | None = None) -> Path:
@@ -95,8 +65,27 @@ def save_artifact(obj: typing.Any, path: Path) -> str:
 
 
 def load_artifact(storage_uri: str) -> typing.Any:
-    """Load an object previously saved via :func:`save_artifact`."""
+    """Load an object saved via :func:`save_artifact`."""
     if storage_uri.startswith("file://"):
         return joblib.load(storage_uri.removeprefix("file://"))
-    # Future: s3://, gs:// — implement when the storage backend changes.
     raise NotImplementedError(f"Unsupported storage scheme: {storage_uri}")
+
+
+def load_artifact_or_none(storage_uri: str) -> typing.Any | None:
+    """:func:`load_artifact`, or ``None`` when the artifact is unusable and the caller has a neutral fallback.
+
+    Unusable: the file is missing, the pickle is damaged, or it names a class path of the pre-conversion layout
+    (``ModuleNotFoundError`` for ``src.services.ml.models...``: logged at ERROR, the registry row was not converted).
+    Any other failure - notably a missing estimator library - is not an artifact problem and propagates.
+    """
+    try:
+        return load_artifact(storage_uri)
+    except FileNotFoundError:
+        return None
+    except (ModuleNotFoundError, pickle.UnpicklingError) as exc:
+        if isinstance(exc, ModuleNotFoundError) and not (exc.name or "").startswith(_OLD_MODEL_MODULES):
+            raise
+        logger.error(
+            "Artifact %s is unusable (unconverted or damaged); using the neutral fallback", storage_uri, exc_info=True
+        )
+        return None

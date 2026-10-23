@@ -6,12 +6,12 @@ between those strings and the strategy registry keys silently degrades every
 verdict to ``no_strategy_for_provider`` (unknown, fail-open) — the gate stops
 enforcing and nothing errors.
 
-``TestCredentialsAreReportedHonestly`` pins the reported bug: neither service that
-resolves subscriptions was given ``DISCORD_TOKEN``/``TWITCH_CLIENT_ID``, and the
-strategies reported that as ``guild_not_accessible`` / ``missing_scope`` -- a guild
-fault and a patron's stale token, when in truth we simply had no credential. The
-credential is deployment config and can go missing again; the reason must not lie
-about whose problem it is.
+``TestCredentialsAreReportedHonestly`` pins the reported bug: a service that
+resolves subscriptions without a broker (so it cannot reach discord-service) or
+without ``TWITCH_CLIENT_ID`` used to see that reported as ``guild_not_accessible``
+/ ``missing_scope`` -- a guild fault and a patron's stale token, when in truth we
+simply had no way to ask. The wiring is deployment config and can go missing
+again; the reason must not lie about whose problem it is.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ class TestBuildStrategies:
     def test_builds_without_credentials(self):
         """Missing credentials must not raise at construction: the resolver has to
         be buildable so it can report a reasoned `unknown` per user."""
-        assert build_strategies(None, discord_bot_token=None, twitch_client_id=None)  # type: ignore[arg-type]
+        assert build_strategies(None, broker=None, twitch_client_id=None)  # type: ignore[arg-type]
 
 
 class TestBuildResolver:
@@ -54,8 +54,9 @@ class TestBuildResolver:
     def test_passes_credentials_through(self):
         resolver = build_resolver(
             None,  # type: ignore[arg-type]
-            discord_bot_token="bot-token",
+            broker=object(),
             twitch_client_id="client-id",
+            proxy="http://proxy",
         )
         assert isinstance(resolver, SubscriptionResolver)
 
@@ -71,7 +72,7 @@ class TestBuildEventSink:
 
 class TestCredentialsAreReportedHonestly(IsolatedAsyncioTestCase):
     async def _resolve(self, provider: str, config: dict) -> str:
-        strategy = build_strategies(None, discord_bot_token=None, twitch_client_id=None)[provider]  # type: ignore[arg-type]
+        strategy = build_strategies(None, broker=None, twitch_client_id=None)[provider]  # type: ignore[arg-type]
         with patch.object(strategies_module, "load_provider_user_ids", AsyncMock(return_value={1: ["external-id"]})):
             with patch.object(
                 TwitchSubscriptionStrategy, "_load_connections", AsyncMock(return_value={1: [("777", "token")]})
@@ -80,7 +81,7 @@ class TestCredentialsAreReportedHonestly(IsolatedAsyncioTestCase):
         assert verdicts[1].state == SubscriptionState.UNKNOWN
         return str(verdicts[1].evidence.get("reason"))
 
-    async def test_boosty_without_a_bot_token_blames_the_token_not_the_guild(self):
+    async def test_boosty_without_a_broker_blames_the_wiring_not_the_guild(self):
         reason = await self._resolve(
             SocialProvider.BOOSTY,
             {"guild_id": "1234567890123456789", "role_tiers": [{"role_id": "9", "tier_rank": 1}]},

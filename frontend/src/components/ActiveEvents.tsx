@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -14,7 +15,7 @@ import { isTournamentStatusActive } from "@/lib/tournament/status";
 import { tournamentHref } from "@/lib/tournament/url";
 import tournamentService from "@/services/tournament.service";
 import type { Tournament } from "@/types/tournament.types";
-import type { Workspace } from "@/types/workspace.types";
+import type { WorkspaceListItem } from "@/types/workspace.types";
 
 /**
  * "What is running right now, everywhere": the header's live counter and the
@@ -32,7 +33,7 @@ export default function ActiveEvents() {
     staleTime: 60_000
   });
 
-  const groups = useMemo<{ workspace: Workspace; tournaments: Tournament[] }[]>(() => {
+  const groups = useMemo<{ workspace: WorkspaceListItem; tournaments: Tournament[] }[]>(() => {
     if (!allTournaments?.results || workspaces.length === 0) return [];
 
     const byWorkspace = new Map<number, Tournament[]>();
@@ -66,10 +67,11 @@ export default function ActiveEvents() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           aria-label={t("nav.activeEvents.trigger", { count: total })}
-          className="inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-2.5 text-label font-medium text-[color:var(--aqt-emerald)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-[color:var(--aqt-overlay-3)]"
+          className="shrink-0 px-2.5 text-[color:var(--aqt-emerald)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-emerald)] data-[state=open]:bg-[color:var(--aqt-overlay-3)]"
         >
           <span
             aria-hidden
@@ -84,7 +86,7 @@ export default function ActiveEvents() {
               &nbsp;{t("nav.activeEvents.word", { count: total })}
             </span>
           </span>
-        </button>
+        </Button>
       </PopoverTrigger>
 
       <PopoverContent

@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { useMinuteClock } from "@/hooks/useMinuteClock";
 import { cn } from "@/lib/utils";
 import type { Tournament } from "@/types/tournament.types";
@@ -100,9 +101,9 @@ export function PhaseTimeline({
     <>
       {t(`common.statusBadge.${segment.status}`)}
       {segment.windowClosed ? (
-        <span className="ml-1.5 text-label font-normal uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+        <Eyebrow className="ml-1.5">
           {t("tournamentDetail.publicPages.schedule.closed")}
-        </span>
+        </Eyebrow>
       ) : null}
     </>
   );
@@ -170,12 +171,10 @@ export function PhaseTimeline({
   return (
     <div id={id} className={cn("scroll-mt-28", className)}>
       <div className="mb-2 flex items-baseline justify-between gap-3">
-        <h2 className="aqt-tnum text-label uppercase tracking-[0.06em] text-[color:var(--aqt-fg-faint)]">
+        <Eyebrow as="h2" className="aqt-tnum">
           {t("tournamentDetail.publicPages.schedule.title")}
-        </h2>
-        <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-          {zoneLabel}
-        </span>
+        </Eyebrow>
+        <Eyebrow>{zoneLabel}</Eyebrow>
       </div>
       <div className="sm:hidden">{verticalList}</div>
       {/* `overflow-x-auto` also clips vertically, so the 7px the "now" dot

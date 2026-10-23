@@ -36,7 +36,6 @@ function status(verdict: Record<string, unknown>): SubscriptionStatus {
     required: true,
     mode: "any",
     outcome: "refused",
-    rule: "Boosty",
     verdicts: { boosty: verdict }
   } as unknown as SubscriptionStatus;
 }

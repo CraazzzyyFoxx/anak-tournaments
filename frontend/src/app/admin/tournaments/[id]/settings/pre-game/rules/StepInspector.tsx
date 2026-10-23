@@ -17,6 +17,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import {
   PICK_BAN_ACTORS,
+  actorsMessageKey,
   PICK_BAN_STEP_ACTIONS,
   PICK_BAN_TIMEOUTS,
 } from "@/lib/tournament/pick-ban-config";
@@ -88,7 +89,11 @@ export function StepInspector({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {PICK_BAN_STEP_ACTIONS.map((action) => (
+              {/* A side step is shown as one, never offered: side steps come from a game's preset. */}
+              {(step.action === "side_pick"
+                ? [...PICK_BAN_STEP_ACTIONS, step.action]
+                : PICK_BAN_STEP_ACTIONS
+              ).map((action) => (
                 <SelectItem key={action} value={action}>
                   {t(`action.${action}`)}
                 </SelectItem>
@@ -110,13 +115,13 @@ export function StepInspector({
             <SelectContent>
               {PICK_BAN_ACTORS.map((actors) => (
                 <SelectItem key={actors} value={actors}>
-                  {t(`actors.${actors}`)}
+                  {t(`actors.${actorsMessageKey(actors)}`)}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
           <FieldDescription id={`${ids}-actors-hint`}>
-            {t(`actorsHint.${step.actors}`)}
+            {t(`actorsHint.${actorsMessageKey(step.actors)}`)}
           </FieldDescription>
         </Field>
 
@@ -341,7 +346,7 @@ function ConstraintList({
           disabled={disabled || specs.length === 0}
           onValueChange={(type) => onChange([...constraints, { type, params: {} }])}
         >
-          <SelectTrigger className="h-7 w-48 text-xs" aria-label={t("step.addConstraint")}>
+          <SelectTrigger size="sm" className="h-7 w-48" aria-label={t("step.addConstraint")}>
             <span className="flex items-center gap-1.5">
               <Plus aria-hidden className="size-3.5" />
               {t("step.addConstraint")}
@@ -360,13 +365,13 @@ function ConstraintList({
       {constraints.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t("step.noConstraints")}</p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col divide-y divide-border">
           {constraints.map((constraint, index) => {
             const spec = specs.find((candidate) => candidate.type === constraint.type);
             return (
               <li
                 key={`${constraint.type}-${index}`}
-                className="rounded-md border border-border bg-card p-2"
+                className="py-2"
               >
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-medium">{constraintLabel(constraint.type)}</span>

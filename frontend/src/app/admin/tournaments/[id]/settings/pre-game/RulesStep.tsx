@@ -6,7 +6,6 @@ import { Check, Download, RotateCcw, Upload } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -29,6 +28,7 @@ import { notify } from "@/lib/notify";
 import {
   PICK_BAN_TIMEOUTS,
   parseRulesetJson,
+  presetDraftPatch,
   type PickBanDraft,
   type SeriesLength,
 } from "@/lib/tournament/pick-ban-config";
@@ -56,6 +56,7 @@ import { useRulesCatalog } from "./rules/useRulesCatalog";
  */
 export function RulesStep({
   tournamentId,
+  discipline,
   draft,
   kind,
   series,
@@ -68,6 +69,8 @@ export function RulesStep({
   patch,
 }: Readonly<{
   tournamentId: number;
+  /** The tournament's own game: its presets and item groups, never another's. */
+  discipline: string;
   draft: PickBanDraft;
   kind: PickBanKind;
   series: SeriesLength;
@@ -83,7 +86,7 @@ export function RulesStep({
 }>) {
   const t = useTranslations("pickBan.rules");
   const ids = useId();
-  const catalogQuery = useRulesCatalog();
+  const catalogQuery = useRulesCatalog(discipline);
   const [selected, setSelected] = useState<{ phaseId: string; stepId: string } | null>(null);
 
   const ruleset = draft.ruleset;
@@ -111,7 +114,7 @@ export function RulesStep({
             const preset = presets.find((candidate) => candidate.id === id);
             if (preset == null) return;
             setSelected(null);
-            setRuleset(preset.ruleset);
+            patch(presetDraftPatch(preset));
           }}
         >
           <SelectTrigger className="w-64" aria-label={t("presets")}>
@@ -204,8 +207,7 @@ export function RulesStep({
       {validating ? <p className="text-xs text-muted-foreground">{t("validating")}</p> : null}
 
       {selectedStep != null && selectedPhase != null ? (
-        <Card>
-          <CardContent className="flex flex-col gap-4 pt-5">
+        <section className="flex flex-col gap-4 border-t border-border pt-4">
             <div className="flex flex-wrap items-center gap-2">
               <FieldTitle className="text-sm">
                 {t("inspector", {
@@ -240,8 +242,7 @@ export function RulesStep({
                 })
               }
             />
-          </CardContent>
-        </Card>
+        </section>
       ) : null}
 
       <SeriesPreview
@@ -280,8 +281,8 @@ function InheritedRuleset({
     <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
       <span>{t("overridesScope", { scope })}</span>
       {canManage ? (
-        <Button type="button" variant="ghost" size="sm" className="h-6 px-2" onClick={onReset}>
-          <RotateCcw aria-hidden className="me-1 size-3" />
+        <Button type="button" variant="ghost" size="xs" onClick={onReset}>
+          <RotateCcw aria-hidden />
           {t("useInherited")}
         </Button>
       ) : null}
@@ -350,7 +351,7 @@ function JsonTransfer({
           <Textarea
             value={text}
             rows={18}
-            className="font-mono text-xs"
+            className="font-mono"
             aria-label={t("json.importTitle")}
             aria-invalid={invalid}
             onChange={(event) => {

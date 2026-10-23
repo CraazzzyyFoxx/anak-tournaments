@@ -1,27 +1,23 @@
 """Is this tournament a scrim container? — the predicate the tournament-wide
 computation paths need.
 
-Design: ``docs/plans/2026-08-12-scrim-rooms.md`` (§4.1 for the container shape,
-§5 for the exclusion list this backs).
-
 A scrim container is a real ``Tournament`` row (it has to be — ``Encounter`` and
 ``Team`` both require one), but it is the *only* kind of tournament that has no
 standings, no bracket and no rosters by construction: each of its ``Stage`` rows
 is one ad-hoc room. Anything that computes tournament-wide results has to be
 able to recognise it.
 
-Why not ``Tournament.is_hidden``. Hidden means "visible to workspace admins and
+Not ``Tournament.is_hidden``: hidden means "visible to workspace admins and
 preview-allowlisted users" (``tournament_visibility``), and hidden **preview**
 tournaments are ordinary tournaments that legitimately do want standings,
 brackets and achievements. Filtering a computation path on ``is_hidden`` would
-silently stop preview standings from ever updating — a much worse bug than the
-one it fixed.
+silently stop preview standings from ever updating.
 
-Why the container and not the individual encounter. The recalculation these
-guards protect is tournament-scoped: it rebuilds every stage of the tournament
-it is handed. "Is this encounter a scrim?" cannot answer that — one scrim
-encounter drags in every other room in the same container. The container is
-created only by ``services/scrim/service.py:_ensure_container`` and holds
+The container, not the individual encounter: the recalculation these guards
+protect is tournament-scoped and rebuilds every stage of the tournament it is
+handed, so one scrim encounter drags in every other room in the same container.
+The container is created only by
+``tournament-service/src/services/scrim/service.py:_ensure_container`` and holds
 nothing but rooms, so container-level is exact, never over-broad.
 """
 
@@ -42,12 +38,9 @@ async def is_scrim_container(session: AsyncSession, tournament_id: int | None) -
     so the cost is a single index probe however many rooms the container has
     accumulated.
 
-    A plain ``SELECT id ... LIMIT 1`` rather than ``SELECT EXISTS(...)``: the two
-    cost the same against an index, but this is a shape every in-memory session
-    double in the suite already understands, and the predicate now also sits on
-    the per-map report path, which several of those doubles drive. The EXISTS
-    form surfaced there as ``KeyError: 'entity'`` inside a fake instead of a real
-    result — a query shape is not worth teaching test doubles about.
+    A plain ``SELECT id ... LIMIT 1`` rather than ``SELECT EXISTS(...)``: same
+    cost against the index, and the in-memory session doubles in the test suite
+    understand only this shape.
     """
     if tournament_id is None:
         return False

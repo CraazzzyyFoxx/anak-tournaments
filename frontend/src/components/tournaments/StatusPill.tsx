@@ -1,36 +1,24 @@
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 
+import { Badge } from "@/components/ui/badge";
 import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
 
 /**
  * Presentation buckets for tournament-domain lifecycle state. `live`,
  * `upcoming`, `finished` and `draft` are the four `TOURNAMENT_STATUS_META`
- * variants; `open` and `upset` are encounter-only states (`EncounterState`,
- * `isUpset`) that the encounters table has always drawn as the same pill.
+ * variants; `open` is a joinable state (a pickup mix taking players).
  */
-export type TournamentStatusVariant =
-  | "live"
-  | "upcoming"
-  | "finished"
-  | "draft"
-  | "open"
-  | "upset";
+export type TournamentStatusVariant = "live" | "upcoming" | "finished" | "draft" | "open";
 
-// Tinted surface + readable text, off the `--aqt-status-*` tokens (design-book
-// §1). `open`/`upset` have no status token of their own and borrow the accent
-// they have always used.
-const VARIANT_CLASS: Record<TournamentStatusVariant, string> = {
-  live: "border-[color:color-mix(in_srgb,var(--aqt-status-live)_30%,transparent)] bg-[color-mix(in_srgb,var(--aqt-status-live)_14%,transparent)] text-[color:var(--aqt-status-live)]",
-  upcoming:
-    "border-[color:color-mix(in_srgb,var(--aqt-status-upcoming)_30%,transparent)] bg-[color-mix(in_srgb,var(--aqt-status-upcoming)_12%,transparent)] text-[color:var(--aqt-status-upcoming)]",
-  finished:
-    "border-[color:var(--aqt-border-2)] bg-[color-mix(in_srgb,var(--aqt-status-finished)_18%,transparent)] text-[color:var(--aqt-status-finished)]",
-  draft:
-    "border-[color:color-mix(in_srgb,var(--aqt-status-draft)_30%,transparent)] bg-[color-mix(in_srgb,var(--aqt-status-draft)_12%,transparent)] text-[color:var(--aqt-status-draft)]",
-  open: "border-[color:color-mix(in_srgb,var(--aqt-teal)_26%,transparent)] bg-[color-mix(in_srgb,var(--aqt-teal)_10%,transparent)] text-[color:var(--aqt-teal)]",
-  upset:
-    "border-[color:color-mix(in_srgb,var(--aqt-violet)_30%,transparent)] bg-[color-mix(in_srgb,var(--aqt-violet)_12%,transparent)] text-[color:var(--aqt-violet)]"
+// The hue `Badge palette="aqt"` tints with, off the `--aqt-status-*` tokens
+// (design-book §1). `open` has no status token of its own and borrows the accent.
+const STATUS_HUE: Record<TournamentStatusVariant, string> = {
+  live: "[--badge-hue:var(--aqt-status-live)]",
+  upcoming: "[--badge-hue:var(--aqt-status-upcoming)]",
+  finished: "[--badge-hue:var(--aqt-status-finished)]",
+  draft: "[--badge-hue:var(--aqt-status-draft)]",
+  open: "[--badge-hue:var(--aqt-teal)]"
 };
 
 export interface TournamentStatusPillProps extends ComponentPropsWithoutRef<"span"> {
@@ -64,14 +52,7 @@ export function TournamentStatusPill({
   ...props
 }: Readonly<TournamentStatusPillProps>) {
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-[9px] py-1 font-[family-name:var(--aqt-data)] text-label font-bold uppercase tracking-label",
-        VARIANT_CLASS[status],
-        className
-      )}
-      {...props}
-    >
+    <Badge palette="aqt" voice="label" className={cn(STATUS_HUE[status], className)} {...props}>
       {status === "live" ? (
         <StatusDot
           pulse
@@ -79,6 +60,6 @@ export function TournamentStatusPill({
         />
       ) : null}
       {children}
-    </span>
+    </Badge>
   );
 }

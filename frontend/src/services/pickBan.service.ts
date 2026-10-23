@@ -1,6 +1,8 @@
 import { apiFetch } from "@/lib/api/fetch";
+import type { MatchImport, MatchImportInput } from "@/types/encounter.types";
 import type {
   MapVetoMode,
+  PickBanAction,
   PickBanConfig,
   PickBanConfigUpsertInput,
   PickBanGame,
@@ -15,20 +17,23 @@ import type {
 } from "@/types/tournament.types";
 
 export interface PickBanActionInput {
+  /** The catalog item (a hero or map) — or, on a `side_pick` step, the zero-based index into `state.sides` (0 is valid). */
   item_id: number;
-  action: "ban" | "pick" | "protect";
+  action: PickBanAction;
   /** Required on a step with a `target`: the opponent player the item is banned for. */
   target_player_id?: number | null;
+  /** A mix's member pick: the player (`PickBanMember.id`) the hero is for -- yourself, or as captain a teammate. */
+  member_id?: number | null;
 }
 
 export interface PickBanSubmitInput {
-  /** Replaces the side's whole draft for the current (blind) step. */
+  /** Replaces the participation's whole draft for the current (blind) step. */
   items: PickBanSubmissionItem[];
-  /** true = final; the step reveals once every acting side locked. */
+  /** true = final; the step reveals once every acting participation locked. */
   lock: boolean;
 }
 
-export interface PickBanRulesPreviewInput {
+interface PickBanRulesPreviewInput {
   kind: PickBanKind;
   mode: MapVetoMode;
   ruleset: PickBanRuleset;
@@ -38,12 +43,22 @@ export interface PickBanRulesPreviewInput {
 }
 
 interface ElectOpenerInput {
-  first_side: "home" | "away";
+  /** The participation (`EncounterTeam.id`) that opens the next round. */
+  first_team_id: number;
+}
+
+/** One participation's numbers inside a game claim or an admin correction. */
+interface GameResultLineInput {
+  encounter_team_id: number;
+  score?: number | null;
+  placement?: number | null;
+  column_values?: Record<string, number>;
 }
 
 interface GameReportInput {
-  home_score: number;
-  away_score: number;
+  /** The `game.result_version` the claim is made against; a correction in between makes it stale (409). */
+  basis_version: number;
+  results: GameResultLineInput[];
 }
 
 interface GameReportResult {
@@ -52,10 +67,8 @@ interface GameReportResult {
   game: PickBanGame;
 }
 
-interface ReadinessMap {
-  home: boolean;
-  away: boolean;
-}
+/** `EncounterTeam.id` (as a string) -> whether that captain confirmed readiness. */
+type ReadinessMap = Record<string, boolean>;
 
 class PickBanService {
   /**
@@ -98,8 +111,8 @@ class PickBanService {
   }
 
   /**
-   * Reopen the last revealed blind step for BOTH sides (unilateral, limited by
-   * the step's `dispute.max`). Each side's new draft is prefilled with its
+   * Reopen the last revealed blind step for EVERY acting participation (unilateral, limited by
+   * the step's `dispute.max`). Each participation's new draft is prefilled with its
    * previous items. Returns the new state.
    */
   async disputeStep(kind: PickBanKind, encounterId: number): Promise<PickBanState> {
@@ -127,7 +140,7 @@ class PickBanService {
 
   /**
    * Records the calling captain's consent to undo the session's last action.
-   * The OPPONENT's matching call is what applies it — this is a two-sided
+   * The OPPONENT's matching call is what applies it — this is a mutual
    * agreement, not a take-back. `consent: false` withdraws an open request
    * (the asker changing their mind and the opponent refusing are one outcome).
    */
@@ -176,13 +189,13 @@ class PickBanService {
 
   /**
    * Admin correction of a confirmed or disputed game. `reason` is required —
-   * it is what the result audit records. 409 `downstream_started` when a later
-   * encounter of the bracket has already begun on the old result.
+   * it is what the result audit records. 409 `dependent_round_started` when the
+   * next game's pick-ban already ran on the old result.
    */
   async correctGameResult(
     encounterId: number,
     gameId: number,
-    data: { home_score: number; away_score: number; reason: string }
+    data: { results: GameResultLineInput[]; reason: string }
   ): Promise<{ game: PickBanGame; rebuilt_rounds: number[] }> {
     const response = await apiFetch(
       `/api/v1/admin/encounters/${encounterId}/games/${gameId}/result`,
@@ -191,7 +204,27 @@ class PickBanService {
     return response.json();
   }
 
-  /** Confirms the calling captain's side is ready to begin the encounter's
+  /** One game's match imports, newest first; `admin` reads the organizer route, which adds the warnings. */
+  async listMatchImports(encounterId: number, gameId: number, admin: boolean): Promise<MatchImport[]> {
+    const response = await apiFetch(
+      `/api/v1/${admin ? "admin/" : ""}encounters/${encounterId}/games/${gameId}/match-import`
+    );
+    return response.json();
+  }
+
+  /**
+   * Files a game's match by its id (a captain of the encounter, or `admin` with `match.result`). Re-filing the same
+   * id returns its row (a failed one starts over); 409 `match_already_imported` when another game holds it.
+   */
+  async importMatch(encounterId: number, gameId: number, externalId: string, admin: boolean): Promise<MatchImport> {
+    const response = await apiFetch(
+      `/api/v1/${admin ? "admin/" : ""}encounters/${encounterId}/games/${gameId}/match-import`,
+      { method: "POST", body: { external_id: externalId } satisfies MatchImportInput }
+    );
+    return response.json();
+  }
+
+  /** Confirms the calling captain's team is ready to begin the encounter's
    * pre-game phase (shared gate across both pick-ban kinds). */
   async markReady(encounterId: number): Promise<{ readiness: ReadinessMap }> {
     const response = await apiFetch(`/api/v1/encounters/${encounterId}/ready`, { method: "POST" });
@@ -225,9 +258,13 @@ class PickBanService {
     return response.json();
   }
 
-  /** Leaf/constraint specs, groups and presets the constructor builds forms from. */
-  async getRulesCatalog(): Promise<PickBanRulesCatalog> {
-    const response = await apiFetch(`/api/v1/pick-ban-rules/catalog`, { skipWorkspace: true });
+  /** Leaf/constraint specs plus the groups and presets of `discipline`, which the constructor builds forms from. */
+  async getRulesCatalog(discipline: string, signal?: AbortSignal): Promise<PickBanRulesCatalog> {
+    const response = await apiFetch(`/api/v1/pick-ban-rules/catalog`, {
+      query: { discipline },
+      skipWorkspace: true,
+      signal
+    });
     return response.json();
   }
 

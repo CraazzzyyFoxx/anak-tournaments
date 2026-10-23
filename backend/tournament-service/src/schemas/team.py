@@ -2,9 +2,10 @@ from dataclasses import dataclass
 
 from pydantic import UUID4, BaseModel, Field
 
-from shared.domain.roster_shape import RosterSlotCode
-from src.core import enums, pagination
-from src.schemas import BaseRead, HeroRead
+from shared.core import pagination
+from shared.schemas.discipline_filter import InstalledDisciplineFilter
+from shared.schemas.role import RoleRef
+from src.schemas import BaseRead
 from src.schemas.tournament import TournamentRead
 from src.schemas.user_base import UserRead
 
@@ -16,10 +17,6 @@ __all__ = (
     "TeamGroupRead",
     "TeamFilterQueryParams",
     "TeamFilterParams",
-    "PlayerFilterQueryParams",
-    "PlayerFilterParams",
-    "PlayerWithMatchStats",
-    "TeamWithMatchStats",
 )
 
 
@@ -27,10 +24,8 @@ class BalancerTeamMember(BaseModel):
     uuid: UUID4
     name: str
     sub_role: str | None = None
-    # A roster slot code, not a game role: ``flex`` is what a role-less roster
-    # assigns, and the tournament player it creates carries HeroClass.flex.
-    role: RosterSlotCode
-    rank: int
+    role: RoleRef | None
+    rank: int | None = None
 
 
 class BalancerTeam(BaseModel):
@@ -43,10 +38,10 @@ class BalancerTeam(BaseModel):
 
 class PlayerRead(BaseRead):
     name: str
-    sub_role: str | None
-    rank: int
-    division: int
-    role: str | None
+    #: ``None`` = rank not specified (e.g. a 1v1 duel); then there is no division either.
+    rank: int | None
+    division: int | None
+    role: RoleRef | None = None
     tournament_id: int
     user_id: int
     team_id: int
@@ -84,43 +79,20 @@ class TeamRead(BaseRead):
 class TeamFilterQueryParams(pagination.PaginationSortQueryParams):
     tournament_id: int | None = None
     search: str | None = None
+    #: Teams of one installed game's tournaments; absent is every game (spec §8.1).
+    discipline: InstalledDisciplineFilter = None
 
 
 @dataclass
 class TeamFilterParams(pagination.PaginationSortParams):
     tournament_id: int | None = None
     search: str | None = None
+    discipline: str | None = None
 
 
-class PlayerFilterQueryParams(pagination.PaginationSortQueryParams):
-    tournament_id: int | None = None
-    team_id: int | None = None
-
-
-@dataclass
-class PlayerFilterParams(pagination.PaginationSortParams):
-    tournament_id: int | None = None
-    team_id: int | None = None
-
-
-class PlayerWithMatchStats(PlayerRead):
-    stats: dict[int, dict[enums.LogStatsName, float]]
-    heroes: dict[int, list[HeroRead]]
-
-
-class TeamWithMatchStats(TeamRead):
-    players: list[PlayerWithMatchStats]
-
-
-# PlayerRead.team is a forward reference to TeamRead, which is defined below it.
-# Pydantic leaves such a model's serializer as a MockValSer placeholder and only
-# tries to materialise it lazily on first use — and that lazy path fails with
-# "'MockValSer' object cannot be converted to 'SchemaSerializer'" when the first
-# use is a model_dump() reached through a cached/nested value rather than through
-# validation. Rebuilding at import time makes it deterministic. Subclasses
-# (PlayerWithMatchStats/TeamWithMatchStats) inherit the incomplete core schema,
-# so they need it too.
+# PlayerRead.team forward-references TeamRead, defined below it. Pydantic leaves
+# such a serializer as a MockValSer placeholder whose lazy rebuild fails ("'MockValSer'
+# object cannot be converted to 'SchemaSerializer'") when the first use is a
+# model_dump() of a cached/nested value; rebuilding at import time avoids that.
 PlayerRead.model_rebuild()
 TeamRead.model_rebuild()
-PlayerWithMatchStats.model_rebuild()
-TeamWithMatchStats.model_rebuild()

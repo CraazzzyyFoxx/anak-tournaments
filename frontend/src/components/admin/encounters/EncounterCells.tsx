@@ -1,35 +1,52 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { CheckCircle, CircleAlert, Clock } from "lucide-react";
+import { CircleDot, Clock } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { StatusIcon } from "@/components/admin/StatusIcon";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { StatusPill } from "@/components/kit/StatusPill";
 import { useFormatter } from "@/lib/datetime/client";
-import { useTranslations } from "next-intl";
 import type { Encounter } from "@/types/encounter.types";
 
-/** The stage or stage item an encounter was scheduled under. */
+/** The stage or stage item an encounter was scheduled under; empty when it has neither. */
 export function encounterScopeLabel(encounter: Encounter): string {
-  return encounter.stage_item?.name ?? encounter.stage?.name ?? "—";
+  return encounter.stage_item?.name ?? encounter.stage?.name ?? "";
 }
 
+const STATUS_KEYS = { OPEN: "open", PENDING: "pending", COMPLETED: "completed" } as const;
+
+/**
+ * The `adminMatches.encounters` key naming an encounter status, whatever case
+ * the wire spells it in (the reports endpoint sends `completed`, the encounter
+ * list `COMPLETED`); `null` for a status the panel has no word for.
+ */
+export function encounterStatusKey(status?: string | null): (typeof STATUS_KEYS)[keyof typeof STATUS_KEYS] | null {
+  return STATUS_KEYS[status?.toUpperCase() as keyof typeof STATUS_KEYS] ?? null;
+}
+
+/**
+ * The encounter's status, for the two states still waiting on something.
+ * Completed is what most rows are, so it is the absence of an icon.
+ */
 export function EncounterStatusCell({ status }: Readonly<{ status?: string | null }>) {
   const t = useTranslations("adminMatches.encounters");
-  const upper = status?.toUpperCase() ?? "";
-  if (upper === "COMPLETED") {
-    return <StatusIcon icon={CheckCircle} label={t("completed")} variant="success" />;
+  const key = encounterStatusKey(status);
+  if (key === "pending") return <StatusIcon icon={Clock} label={t("pending")} variant="warning" />;
+  if (key === "open") return <StatusIcon icon={CircleDot} label={t("open")} variant="muted" />;
+  return null;
+}
+
+/**
+ * The recorded result, only when it wants an admin: a dispute or a result
+ * waiting for confirmation. Confirmed and "none" render nothing.
+ */
+export function ResultStatusPill({ status }: Readonly<{ status: string }>) {
+  const t = useTranslations("adminMatches.encounters");
+  if (status === "disputed") return <StatusPill tone="danger">{t("resultStatus.disputed")}</StatusPill>;
+  if (status === "pending_confirmation") {
+    return <StatusPill tone="warning">{t("resultStatus.pending_confirmation")}</StatusPill>;
   }
-  if (upper === "PENDING") {
-    return <StatusIcon icon={Clock} label={t("pending")} variant="warning" />;
-  }
-  return (
-    <StatusIcon
-      icon={CircleAlert}
-      label={upper ? `${upper[0]}${upper.slice(1).toLowerCase()}` : t("none")}
-      variant="muted"
-    />
-  );
+  return null;
 }
 
 /**
@@ -40,7 +57,7 @@ export function EncounterStatusCell({ status }: Readonly<{ status?: string | nul
  */
 export function ScheduledAtCell({ value }: Readonly<{ value: Encounter["scheduled_at"] }>) {
   const format = useFormatter();
-  if (value == null) return <span className="text-muted-foreground">—</span>;
+  if (value == null) return null;
   const at = new Date(value);
   return (
     <time
@@ -55,17 +72,5 @@ export function ScheduledAtCell({ value }: Readonly<{ value: Encounter["schedule
         minute: "2-digit"
       })}
     </time>
-  );
-}
-
-export function InspectorField({
-  label,
-  children
-}: Readonly<{ label: string; children: ReactNode }>) {
-  return (
-    <div className="min-w-0">
-      <p className={EYEBROW_CLASS}>{label}</p>
-      <div className="truncate text-sm">{children}</div>
-    </div>
   );
 }

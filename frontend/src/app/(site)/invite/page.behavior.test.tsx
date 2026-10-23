@@ -19,6 +19,8 @@ import ru from "@/i18n/messages/ru.json";
 
 import InviteLandingPage from "./page";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
@@ -63,6 +65,7 @@ const PREVIEW = {
   tournament_id: 5,
   tournament_name: "Autumn Cup",
   workspace_id: 1,
+  discipline: "overwatch",
   team_id: 7,
   team_name: "Alpha",
   slot_code: "damage",
@@ -86,11 +89,12 @@ async function mount(locale: "en" | "ru" = "en"): Promise<HTMLElement> {
       </NextIntlClientProvider>,
     );
   });
-  // Three flushes, one per link in a chain that is sequential BY DESIGN: the
+  // Four flushes, one per link in a chain that is sequential BY DESIGN: the
   // fragment is only readable after hydration commits, the preview needs the
-  // token, and the registration form needs the tournament id the preview
-  // returns. Nothing here can be parallelised, so nothing here can be skipped.
-  for (let turn = 0; turn < 3; turn += 1) {
+  // token, and both the registration form and the owner game's metadata need
+  // what the preview returns. Nothing here can be parallelised, so nothing
+  // here can be skipped.
+  for (let turn = 0; turn < 4; turn += 1) {
     await act(async () => {
       const { promise, resolve } = Promise.withResolvers<void>();
       setTimeout(resolve, 0);
@@ -216,4 +220,18 @@ describe("invite landing page", () => {
     expect(container.textContent).toContain("уже использовано");
     expect(container.textContent).not.toMatch(/landing\.dead/);
   });
+
+  for (const locale of ["en", "ru"] as const) {
+    it(`offers a one-role game's seat without naming its role in ${locale}`, async () => {
+      previewInvite.mockResolvedValue({ ...PREVIEW, discipline: "deadlock", slot_code: "agent", is_substitute: true });
+
+      const container = await mount(locale);
+      const text = container.textContent ?? "";
+
+      expect(text).not.toMatch(/agent/i);
+      expect(text).not.toMatch(/registrationTeams\./);
+      // Whether the seat is on the bench still matters, and is said without a role.
+      expect(text).toContain(MESSAGES[locale].registrationTeams.landing.seatSubstitute);
+    });
+  }
 });

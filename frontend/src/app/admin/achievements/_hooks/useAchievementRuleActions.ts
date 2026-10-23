@@ -6,12 +6,26 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import adminService from "@/services/admin.service";
 import { achievementQueryKeys } from "@/lib/achievements/query-keys";
+import { ALL_DISCIPLINES } from "@/lib/site/discipline-scope";
 import type {
-  AchievementOverrideCreateInput,
+  AchievementRule,
   AchievementRuleExportEnvelope,
   AchievementRuleImportResult,
   EvaluationRunRead,
 } from "@/types/admin.types";
+
+import { portableFileProblem } from "../achievement-import";
+
+/**
+ * The workspace and game an action was started for. It travels in the mutation's
+ * variables because TanStack hands a pending mutation the *latest* render's
+ * callbacks: a callback that read the current game would invalidate whichever
+ * game is selected when the request finishes, not the one it changed.
+ */
+interface RuleScope {
+  workspaceId: number;
+  discipline: string;
+}
 
 export interface DryRunResult {
   slug: string;
@@ -20,9 +34,14 @@ export interface DryRunResult {
 }
 
 /**
- * Everything the achievements screen *does* to the catalog: seeding, resetting,
- * JSON import/export, evaluation runs, dry runs, enable/disable, deletion and
- * manual overrides.
+ * Everything the achievements screen *does* to the catalog of the selected game:
+ * seeding, resetting, JSON import/export, evaluation runs, dry runs,
+ * enable/disable, deletion and removing manual overrides.
+ *
+ * Every call names `discipline` — two games share the workspace, so "seed" or
+ * "reset" without a game would be a different, much larger operation. A file
+ * import is the exception that proves it: the portable file names each rule's
+ * game itself, so its result stales every game's list.
  *
  * The outcomes each action leaves on screen (the run summary, the import
  * report, the dry-run sample) are held here too — they are mutation results,
@@ -30,71 +49,83 @@ export interface DryRunResult {
  */
 export function useAchievementRuleActions({
   workspaceId,
-  /**
-   * The hidden picker behind "Import JSON". Its value is cleared once a file
-   * has been read, or the same file can never be picked twice in a row. It is
-   * owned by the page: a ref handed back out of a hook makes everything else
-   * the hook returns look ref-shaped to the compiler.
-   */
-  jsonInputRef,
+  discipline,
   onDeleted,
   onEvaluated,
-  onOverrideSaved,
-  onOverrideRemoved,
 }: {
   workspaceId: number | null;
-  jsonInputRef: React.RefObject<HTMLInputElement | null>;
+  /** The game the per-game actions run in; `null` under all games (they wait for one) or with none enabled. */
+  discipline: string | null;
   onDeleted: () => void;
   onEvaluated: () => void;
-  onOverrideSaved: () => void;
-  onOverrideRemoved: () => void;
 }) {
   const t = useTranslations("adminAchievements");
   const queryClient = useQueryClient();
-  const listKey = achievementQueryKeys.adminList(workspaceId);
 
   const [evaluationResult, setEvaluationResult] = useState<EvaluationRunRead | null>(null);
   const [importResult, setImportResult] = useState<AchievementRuleImportResult | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<DryRunResult | null>(null);
 
+  /** The scope of what the user is looking at right now; call it when the action starts, never later. */
+  const currentScope = (): RuleScope => ({ workspaceId: workspaceId!, discipline: discipline! });
+
+  /** The game's list and the all-games list both show the rule. */
+  const invalidateRules = (scope: RuleScope) => {
+    queryClient.invalidateQueries({
+      queryKey: achievementQueryKeys.adminList(scope.workspaceId, scope.discipline),
+    });
+    queryClient.invalidateQueries({ queryKey: achievementQueryKeys.adminList(scope.workspaceId, ALL_DISCIPLINES) });
+    queryClient.invalidateQueries({ queryKey: achievementQueryKeys.publicLists() });
+  };
+  const invalidateOverrides = (scope: RuleScope) =>
+    queryClient.invalidateQueries({
+      queryKey: achievementQueryKeys.overridesAll(scope.workspaceId, scope.discipline),
+    });
+
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => adminService.deleteAchievementRule(workspaceId!, id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: listKey });
+    mutationFn: ({ scope, id }: { scope: RuleScope; id: number }) =>
+      adminService.deleteAchievementRule(scope.workspaceId, id),
+    onSuccess: (_data, { scope }) => {
+      invalidateRules(scope);
       onDeleted();
     },
   });
 
   const seedMutation = useMutation({
-    mutationFn: () => adminService.seedAchievementRules(workspaceId!),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: listKey }),
+    mutationFn: (scope: RuleScope) => adminService.seedAchievementRules(scope.workspaceId, scope.discipline),
+    onSuccess: (_data, scope) => invalidateRules(scope),
   });
 
   const hardResetMutation = useMutation({
-    mutationFn: () => adminService.hardResetAchievementRules(workspaceId!),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: listKey });
-      queryClient.invalidateQueries({ queryKey: achievementQueryKeys.overridesAll(workspaceId) });
+    mutationFn: (scope: RuleScope) => adminService.hardResetAchievementRules(scope.workspaceId, scope.discipline),
+    onSuccess: (data, scope) => {
+      invalidateRules(scope);
+      invalidateOverrides(scope);
       setEvaluationResult(data.run);
     },
   });
 
   const importMutation = useMutation({
-    mutationFn: (data: AchievementRuleExportEnvelope) =>
-      adminService.importAchievementRules(workspaceId!, data),
+    mutationFn: (data: AchievementRuleExportEnvelope) => adminService.importAchievementRules(workspaceId!, data),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: listKey });
+      // The file names its own games, so every game's list may have moved.
+      queryClient.invalidateQueries({ queryKey: achievementQueryKeys.adminListsOf(workspaceId) });
+      queryClient.invalidateQueries({ queryKey: achievementQueryKeys.publicLists() });
+      setImportError(null);
       setImportResult(data);
-      if (jsonInputRef.current) {
-        jsonInputRef.current.value = "";
-      }
+    },
+    onError: (error) => {
+      // The server refused the whole file (unsupported format, a missing or foreign
+      // character, a disabled game): say so, and report no success.
+      setImportResult(null);
+      setImportError(error instanceof Error ? error.message : t("list.importFailed"));
     },
   });
 
   const evaluateMutation = useMutation({
-    mutationFn: (params: { tournament_id?: number; rule_ids?: number[] }) =>
-      adminService.evaluateAchievements(workspaceId!, params),
+    mutationFn: ({ scope, params }: { scope: RuleScope; params: { tournament_id?: number; rule_ids?: number[] } }) =>
+      adminService.evaluateAchievements(scope.workspaceId, scope.discipline, params),
     onSuccess: (data) => {
       setEvaluationResult(data);
       onEvaluated();
@@ -103,30 +134,27 @@ export function useAchievementRuleActions({
 
   const testMutation = useMutation({
     mutationFn: (ruleId: number) => adminService.testAchievementRule(workspaceId!, ruleId),
+    // A new run replaces the last result: the panel shows it pending, not the previous rule's sample.
+    onMutate: () => setTestResult(null),
     onSuccess: (data) =>
       setTestResult({ slug: data.rule_slug, count: data.qualifying_count, sample: data.sample }),
   });
 
   const toggleMutation = useMutation({
-    mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) =>
-      adminService.updateAchievementRule(workspaceId!, id, { enabled }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: listKey }),
-  });
-
-  const overrideMutation = useMutation({
-    mutationFn: (draft: AchievementOverrideCreateInput) =>
-      adminService.createAchievementOverride(workspaceId!, draft),
-    onSuccess: onOverrideSaved,
+    mutationFn: ({ scope, id, enabled }: { scope: RuleScope; id: number; enabled: boolean }) =>
+      adminService.updateAchievementRule(scope.workspaceId, id, { enabled }),
+    onSuccess: (_data, { scope }) => invalidateRules(scope),
   });
 
   const deleteOverrideMutation = useMutation({
-    mutationFn: (id: number) => adminService.deleteAchievementOverride(workspaceId!, id),
-    onSuccess: onOverrideRemoved,
+    mutationFn: ({ scope, id }: { scope: RuleScope; id: number }) =>
+      adminService.deleteAchievementOverride(scope.workspaceId, id),
+    onSuccess: (_data, { scope }) => invalidateOverrides(scope),
   });
 
-  /** Streams the workspace's rules to the browser as the JSON the importer reads back. */
+  /** Streams the selected game's rules to the browser as the v2 JSON the importer reads back. */
   const exportRules = async () => {
-    const { blob, filename } = await adminService.exportAchievementRules(workspaceId!);
+    const { blob, filename } = await adminService.exportAchievementRules(workspaceId!, discipline!);
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = objectUrl;
@@ -138,30 +166,41 @@ export function useAchievementRuleActions({
   };
 
   /**
-   * Parses a picked export file and imports it. A parse failure is reported
-   * rather than thrown: the likely cause is the wrong file, and the admin needs
-   * to be told which one they picked.
+   * Parses a picked export file and imports it. A parse failure — or a file that
+   * is not portable v2 — is reported rather than thrown, and never reaches the
+   * server as a success: the likely cause is the wrong or an old file, and the
+   * admin needs to be told which one they picked.
    */
   const importRulesFromFile = async (file: File) => {
     setImportError(null);
+    setImportResult(null);
     const text = await file.text();
-    let parsed: AchievementRuleExportEnvelope;
+    let parsed: unknown;
     try {
-      parsed = JSON.parse(text) as AchievementRuleExportEnvelope;
+      parsed = JSON.parse(text);
     } catch {
       setImportError(t("list.invalidJson", { name: file.name }));
-      if (jsonInputRef.current) {
-        jsonInputRef.current.value = "";
-      }
       return;
     }
-    importMutation.mutate(parsed);
+    const problem = portableFileProblem(parsed);
+    if (problem) {
+      setImportError(
+        problem.kind === "version"
+          ? t("list.importUnsupportedVersion", { name: file.name, version: String(problem.version ?? "—") })
+          : problem.kind === "hero_id"
+            ? t("list.importLegacyHero", { name: file.name, slug: problem.slug })
+            : t("list.importNotPortable", { name: file.name })
+      );
+      return;
+    }
+    // portableFileProblem proved the envelope; the server validates every rule in it.
+    importMutation.mutate(parsed as AchievementRuleExportEnvelope);
   };
 
   const evaluate = (tournamentId: number | undefined, ruleIds: Set<number>) =>
     evaluateMutation.mutate({
-      tournament_id: tournamentId,
-      rule_ids: ruleIds.size > 0 ? Array.from(ruleIds) : undefined,
+      scope: currentScope(),
+      params: { tournament_id: tournamentId, rule_ids: ruleIds.size > 0 ? Array.from(ruleIds) : undefined },
     });
 
   return {
@@ -169,7 +208,7 @@ export function useAchievementRuleActions({
     dismissEvaluationResult: () => setEvaluationResult(null),
     importResult,
     dismissImportResult: () => setImportResult(null),
-    /** The library dialog imports through its own mutation and reports back here. */
+    /** The import dialog's workspace copy runs through its own mutation and reports back here. */
     setImportResult,
     importError,
     dismissImportError: () => setImportError(null),
@@ -182,8 +221,16 @@ export function useAchievementRuleActions({
     evaluateMutation,
     testMutation,
     toggleMutation,
-    overrideMutation,
     deleteOverrideMutation,
+    /** Each starts for the game selected now and finishes against that game, whatever is selected then. */
+    seed: () => seedMutation.mutate(currentScope()),
+    hardReset: () => hardResetMutation.mutate(currentScope()),
+    /** A rule acts in its own game, whatever the page shows (every game, or another one). */
+    toggle: (rule: AchievementRule, enabled: boolean) =>
+      toggleMutation.mutate({ scope: { workspaceId: workspaceId!, discipline: rule.discipline }, id: rule.id, enabled }),
+    remove: (rule: AchievementRule) =>
+      deleteMutation.mutate({ scope: { workspaceId: workspaceId!, discipline: rule.discipline }, id: rule.id }),
+    removeOverride: (id: number) => deleteOverrideMutation.mutate({ scope: currentScope(), id }),
     exportRules,
     importRulesFromFile,
     evaluate,

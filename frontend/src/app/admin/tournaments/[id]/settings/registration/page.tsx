@@ -1,35 +1,51 @@
 "use client";
 
 import { useId } from "react";
-import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
 
 import { SaveBar } from "@/components/kit/SaveBar";
 import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { StatusPill } from "@/components/kit/StatusPill";
-import { Card, CardContent } from "@/components/ui/card";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { NumberInput } from "@/components/ui/number-input";
 import { Switch } from "@/components/ui/switch";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { tabFallback } from "../../hubQueries";
 import { SettingsSectionPage } from "../SettingsSection";
 import { useRegistrationFormSection } from "../useRegistrationFormSection";
 
+const RegistrationFormBuilder = dynamic(
+  () => import("@/components/balancer/form/RegistrationFormBuilder"),
+  { loading: () => tabFallback }
+);
+
 /**
- * How entries are taken, and what the public sees of them.
+ * How entries are taken, what the public sees of them, and the questionnaire
+ * itself. The builder used to be a Registration sub-tab of its own; it is
+ * configuration, so it lives here (`registration/form` redirects to this page).
  *
- * Split out of the questionnaire builder, which mixed this with the admission
- * rules and the fields themselves under six groups on one screen. The rows are
- * translated while the rail around them is not: they came with their messages,
- * and dropping the Russian copy to match an English-only admin shell would be a
- * regression paid by organizers, not by this refactor.
+ * Two editors, two save bars: both write the same full-replace form, and each
+ * echoes the other's saved fields. Each bar is sticky only inside its own
+ * block, so the two never stack.
  */
 export default function RegistrationSettingsPage() {
+  const t = useTranslations("registrationFormAdmin.page");
   return (
-    <SettingsSectionPage
-      section="registration"
-      description={useTranslations("adminTournament.screenDescriptions")("registration")}
-    >
-      {({ tournamentId, canTeamCreate }) => (
-        <RegistrationForm tournamentId={tournamentId} disabled={!canTeamCreate} />
+    <SettingsSectionPage section="registration">
+      {({ tournament, tournamentId, canTeamCreate }) => (
+        <>
+          <div>
+            <RegistrationForm tournamentId={tournamentId} disabled={!canTeamCreate} />
+          </div>
+          <section className="flex flex-col gap-3">
+            <h2 className={eyebrowClass("muted")}>{t("questionnaire.title")}</h2>
+            <RegistrationFormBuilder
+              tournamentId={tournamentId}
+              identityProvider={tournament.identity_provider}
+            />
+          </section>
+        </>
       )}
     </SettingsSectionPage>
   );
@@ -42,90 +58,90 @@ function RegistrationForm({
   const t = useTranslations("registrationFormAdmin.page");
   const tStatus = useTranslations("registrationFormAdmin.status");
   const ids = useId();
-  const { value, saved, patch, dirty, summary, saving, save, discard } =
+  const { value, saved, patch, dirty, summary, saving, save, discard, error, retry } =
     useRegistrationFormSection(tournamentId);
+
+  if (!value) {
+    return error ? (
+      <PageStateCard
+        state="error"
+        title={t("loadError.title")}
+        description={error.message}
+        onAction={retry}
+      />
+    ) : (
+      tabFallback
+    );
+  }
 
   return (
     <>
-      <Card>
-        <CardContent className="flex flex-col gap-5 pt-6">
-          <SettingGroup title={tStatus("title")} description={tStatus("description")}>
-            {/* Derived, not editable: openness is the REGISTRATION phase-schedule
+      <div className="flex flex-col gap-4">
+        <SettingGroup id="status" title={tStatus("title")}>
+          {/* Derived, not editable: openness is the REGISTRATION phase-schedule
                 window. Shown because this is the screen an organizer opens to ask
-                "are we taking entries", and the answer lives one section away. */}
-            <SettingRow label={tStatus("acceptLabel")} hint={tStatus("scheduleHint")}>
-              <StatusPill tone={saved?.is_open ? "success" : "neutral"}>
-                {saved?.is_open ? tStatus("stateOpen") : tStatus("stateClosed")}
-              </StatusPill>
-            </SettingRow>
-            <SettingRow
-              htmlFor={`${ids}-auto-approve`}
-              label={tStatus("autoApproveLabel")}
-              hint={tStatus("autoApproveHint")}
-            >
-              <Switch
-                id={`${ids}-auto-approve`}
-                checked={value.auto_approve}
-                disabled={disabled}
-                onCheckedChange={(next) => patch({ auto_approve: next })}
-              />
-            </SettingRow>
-          </SettingGroup>
+                "are we taking entries", and the answer lives one section away.
+                Closed is the absence of the pill. */}
+          <SettingRow label={tStatus("acceptLabel")} hint={tStatus("scheduleHint")}>
+            {saved?.is_open ? <StatusPill tone="success">{tStatus("stateOpen")}</StatusPill> : null}
+          </SettingRow>
+          <SettingRow
+            htmlFor={`${ids}-auto-approve`}
+            label={tStatus("autoApproveLabel")}
+            hint={tStatus("autoApproveHint")}
+          >
+            <Switch
+              id={`${ids}-auto-approve`}
+              checked={value.auto_approve}
+              disabled={disabled}
+              onCheckedChange={(next) => patch({ auto_approve: next })}
+            />
+          </SettingRow>
+        </SettingGroup>
 
-          <SettingGroup title={t("display.title")} description={t("display.description")}>
-            <SettingRow
-              htmlFor={`${ids}-max-participants`}
-              label={t("display.maxParticipants")}
-              hint={t("display.maxParticipantsHint")}
-            >
-              <NumberInput
-                id={`${ids}-max-participants`}
-                integer
-                min={0}
-                value={value.max_participants ?? null}
-                disabled={disabled}
-                onValueChange={(next) => patch({ max_participants: next })}
-                className="h-8 w-24"
-              />
-            </SettingRow>
-            <SettingRow
-              htmlFor={`${ids}-hide-registrations`}
-              label={t("display.hideRegistrations")}
-              hint={t("display.hideRegistrationsHint")}
-            >
-              <Switch
-                id={`${ids}-hide-registrations`}
-                checked={value.hide_registrations ?? false}
-                disabled={disabled}
-                onCheckedChange={(next) => patch({ hide_registrations: next })}
-              />
-            </SettingRow>
-            <SettingRow
-              htmlFor={`${ids}-show-ranks`}
-              label={t("display.showRanks")}
-              hint={t("display.hint")}
-            >
-              <Switch
-                id={`${ids}-show-ranks`}
-                checked={value.show_ranks ?? false}
-                disabled={disabled}
-                onCheckedChange={(next) => patch({ show_ranks: next })}
-              />
-            </SettingRow>
-          </SettingGroup>
-
-          <SettingGroup title={t("questionnaire.title")} description={t("questionnaire.description")}>
-            <SettingRow label={t("questionnaire.label")} hint={t("questionnaire.hint")}>
-              <Link
-                href={`/admin/tournaments/${tournamentId}/registration/form`}
-                className="text-sm font-medium text-foreground underline underline-offset-4"
-              >
-                {t("questionnaire.action")}
-              </Link>
-            </SettingRow>
-          </SettingGroup>
-        </CardContent>
-      </Card>
+        <SettingGroup id="display" title={t("display.title")} description={t("display.description")}>
+          <SettingRow
+            htmlFor={`${ids}-max-participants`}
+            label={t("display.maxParticipants")}
+            hint={t("display.maxParticipantsHint")}
+          >
+            <NumberInput
+              id={`${ids}-max-participants`}
+              integer
+              min={0}
+              value={value.max_participants ?? null}
+              disabled={disabled}
+              onValueChange={(next) => patch({ max_participants: next })}
+              size="sm"
+              className="w-24"
+            />
+          </SettingRow>
+          <SettingRow
+            htmlFor={`${ids}-hide-registrations`}
+            label={t("display.hideRegistrations")}
+            hint={t("display.hideRegistrationsHint")}
+          >
+            <Switch
+              id={`${ids}-hide-registrations`}
+              checked={value.hide_registrations ?? false}
+              disabled={disabled}
+              onCheckedChange={(next) => patch({ hide_registrations: next })}
+            />
+          </SettingRow>
+          <SettingRow
+            htmlFor={`${ids}-show-ranks`}
+            label={t("display.showRanks")}
+            hint={t("display.hint")}
+          >
+            <Switch
+              id={`${ids}-show-ranks`}
+              checked={value.show_ranks ?? false}
+              disabled={disabled}
+              onCheckedChange={(next) => patch({ show_ranks: next })}
+            />
+          </SettingRow>
+        </SettingGroup>
+      </div>
 
       <SaveBar
         dirty={dirty}

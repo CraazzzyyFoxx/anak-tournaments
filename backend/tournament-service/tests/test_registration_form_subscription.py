@@ -28,7 +28,7 @@ from src.schemas.registration import WorkspaceSubscriptionRequirementUpsert  # n
 from src.schemas.registration_form import RegistrationFormRead, RegistrationFormUpsert  # noqa: E402
 from src.services.registration.serializers import serialize_registration_form  # noqa: E402
 
-DEFAULT_SCHEMA = default_schema()
+DEFAULT_SCHEMA = default_schema("battlenet")
 
 ANY_BOOSTY_OR_TWITCH = {
     "mode": "any",
@@ -40,7 +40,7 @@ ANY_BOOSTY_OR_TWITCH = {
 
 
 class _FormRow:
-    """Stand-in for models.BalancerRegistrationForm (serializer reads attributes)."""
+    """Stand-in for models.RegistrationForm (serializer reads attributes)."""
 
     def __init__(self, **overrides):
         self.id = 1
@@ -175,6 +175,7 @@ class TestReadSchema:
             id=1,
             tournament_id=1,
             workspace_id=1,
+            discipline="overwatch",
             is_open=False,
             form_schema=DEFAULT_SCHEMA,
             version_id=1,
@@ -191,6 +192,7 @@ class TestSerializer:
     def test_carries_the_toggle_and_the_workspace_rule(self):
         read = serialize_registration_form(
             _FormRow(require_subscription=True),
+            discipline="overwatch",
             is_open=True,
             subscription_requirement=ANY_BOOSTY_OR_TWITCH,
         )
@@ -200,23 +202,23 @@ class TestSerializer:
     def test_a_workspace_without_a_rule_serializes_as_an_empty_object(self):
         """The resolved projection must never be null -- the dialog reads it directly."""
         read = serialize_registration_form(
-            _FormRow(require_subscription=True), is_open=True, subscription_requirement=None
+            _FormRow(require_subscription=True), discipline="overwatch", is_open=True, subscription_requirement=None
         )
         assert read.subscription_requirement_json == {}
 
     def test_untouched_form_serializes_as_disabled(self):
-        read = serialize_registration_form(_FormRow(), is_open=False)
+        read = serialize_registration_form(_FormRow(), discipline="overwatch", is_open=False)
         assert read.require_subscription is False
         assert read.subscription_requirement_json == {}
 
     def test_carries_max_substitutes(self):
-        read = serialize_registration_form(_FormRow(max_substitutes=2), is_open=True)
+        read = serialize_registration_form(_FormRow(max_substitutes=2), discipline="overwatch", is_open=True)
         assert read.max_substitutes == 2
 
     def test_carries_the_version_the_schema_came_from(self):
         """The wizard posts this id back on submit; a read that lost it would make
         every submission look stale."""
-        read = serialize_registration_form(_FormRow(), is_open=True, stale_registrations=4)
+        read = serialize_registration_form(_FormRow(), discipline="overwatch", is_open=True, stale_registrations=4)
         assert (read.version_id, read.version_number) == (31, 1)
         assert read.form_schema.canonical_json() == DEFAULT_SCHEMA.canonical_json()
         assert read.stale_registrations == 4
@@ -228,6 +230,7 @@ class TestRoundTrip:
         body = WorkspaceSubscriptionRequirementUpsert(requirement=ANY_BOOSTY_OR_TWITCH)
         read = serialize_registration_form(
             _FormRow(require_subscription=True),
+            discipline="overwatch",
             is_open=True,
             subscription_requirement=body.requirement,
         )
@@ -259,3 +262,10 @@ class TestRoundTrip:
         for mode in ("any", "all"):
             requirement = parse_requirement({**one, "mode": mode})
             assert evaluate_requirement(requirement, {"boosty": _v("active", 2)}) is Outcome.SATISFIED
+
+
+class TestFormOwnerDiscipline:
+    def test_form_read_carries_the_discipline_it_was_given_not_a_default(self):
+        """Every form consumer scopes its roles, characters and identity provider from this field."""
+        assert serialize_registration_form(_FormRow(), discipline="lol", is_open=True).discipline == "lol"
+        assert serialize_registration_form(_FormRow(), discipline="overwatch", is_open=True).discipline == "overwatch"

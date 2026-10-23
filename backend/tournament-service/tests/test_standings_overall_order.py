@@ -6,7 +6,6 @@ Pure functions only — no database.
 
 from __future__ import annotations
 
-import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,10 +15,9 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
-from src import models  # noqa: E402
-from src.core import enums  # noqa: E402
+from shared import models  # noqa: E402
+from shared.core import enums  # noqa: E402
 from src.services.standings import service  # noqa: E402
 from tests._stage_regulation import stage_regulation  # noqa: E402
 

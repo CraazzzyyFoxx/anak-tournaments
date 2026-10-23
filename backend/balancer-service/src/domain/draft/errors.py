@@ -1,10 +1,8 @@
-"""Shared error-value builder for the draft domain and services.
+"""Error-value builder shared by the draft domain and services.
 
-``ApiHTTPException`` is a plain value (no I/O to build one), so this is a
-domain-safe utility: both ``domain/draft/rules.py`` (validation) and
-``services/draft/*.py`` (orchestration) raise these directly. All four
-service modules previously carried a byte-identical private ``_err()``
-copy; this is the single implementation each imports as ``_err``.
+``ApiHTTPException`` is a plain value (no I/O to build one), so the domain may
+raise it: ``domain/draft/rules.py`` validates with it and ``services/draft/*``
+import it as ``_err``.
 """
 
 from __future__ import annotations

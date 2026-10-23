@@ -4,6 +4,8 @@ import { ExternalLink } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { SocialIcon } from "@/components/social/SocialIcon";
+import Image from "@/components/ui/image";
+import { RowButton } from "@/components/ui/row-button";
 import { formatStreamUptime, streamPlatformLabel } from "@/lib/social/stream-platform";
 import { cn } from "@/lib/utils";
 import type { StreamEntry } from "@/types/stream.types";
@@ -24,7 +26,7 @@ type StreamRowProps = {
 // 12 = 4 + 8: the row's radius is the thumbnail's plus the row padding, so the
 // nested corners are concentric instead of pinched (`better-ui`).
 const ROW_SHELL =
-  "group flex w-full items-center gap-3 rounded-[12px] border p-2 text-left outline-none transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]";
+  "group flex items-center gap-3 rounded-[12px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-2 hover:border-[color:var(--aqt-border-3)] hover:bg-[color:var(--aqt-overlay-2)]";
 
 /**
  * One channel in the rail beside the theater.
@@ -67,12 +69,12 @@ export function StreamRow({ entry, isSelected, onSelect, now }: Readonly<StreamR
           the surface underneath and read as dirt on the thumbnail edge. */}
       <span className="relative aspect-video w-[104px] shrink-0 overflow-hidden rounded-[4px] bg-[color:var(--aqt-overlay-3)] outline outline-1 -outline-offset-1 outline-[oklch(1_0_0_/_0.1)]">
         {entry.thumbnail_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
             src={entry.thumbnail_url}
             alt=""
             aria-hidden
-            loading="lazy"
+            width={104}
+            height={59}
             className="size-full object-cover"
           />
         ) : (
@@ -145,7 +147,7 @@ export function StreamRow({ entry, isSelected, onSelect, now }: Readonly<StreamR
         rel="noopener noreferrer"
         className={cn(
           ROW_SHELL,
-          "border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] no-underline hover:border-[color:var(--aqt-border-3)] hover:bg-[color:var(--aqt-overlay-2)]"
+          "w-full text-left no-underline outline-none transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
         )}
       >
         {body}
@@ -154,23 +156,18 @@ export function StreamRow({ entry, isSelected, onSelect, now }: Readonly<StreamR
   }
 
   return (
-    <button
-      type="button"
+    <RowButton
       onClick={onSelect}
       // `aria-current` and not `aria-pressed`: this is "the one being shown" out
       // of a set, not an independent toggle the viewer can switch back off.
       aria-current={isSelected ? "true" : undefined}
       className={cn(
         ROW_SHELL,
-        isSelected
-          ? "border-[color:color-mix(in_srgb,var(--aqt-teal)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_8%,transparent)]"
-          : "border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] hover:border-[color:var(--aqt-border-3)] hover:bg-[color:var(--aqt-overlay-2)]"
+        "aria-[current=true]:border-[color:color-mix(in_srgb,var(--aqt-teal)_45%,transparent)] aria-[current=true]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_8%,transparent)]"
       )}
     >
       <span className="sr-only">{t("stream.card.select", { name })}</span>
       {body}
-    </button>
+    </RowButton>
   );
 }
-
-export default StreamRow;

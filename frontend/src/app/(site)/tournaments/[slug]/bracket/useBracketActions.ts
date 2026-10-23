@@ -81,14 +81,10 @@ export function useBracketActions({
   const [reportEncounter, setReportEncounter] = useState<Encounter | null>(null);
   const { isAdmin, canEditStructure, isAuthenticated, captainPlayerIds } = viewer;
 
-  const isEncounterCaptain = (encounter: Encounter) => {
-    const homeCaptain = encounter.home_team?.captain_id;
-    const awayCaptain = encounter.away_team?.captain_id;
-    return (
-      (homeCaptain != null && captainPlayerIds.has(homeCaptain)) ||
-      (awayCaptain != null && captainPlayerIds.has(awayCaptain))
+  const isEncounterCaptain = (encounter: Encounter) =>
+    encounter.teams.some(
+      (seat) => seat.team?.captain_id != null && captainPlayerIds.has(seat.team.captain_id)
     );
-  };
 
   const canEdit = isAdmin ? () => true : undefined;
   // A confirmed result is settled: the captain has nothing left to report.
@@ -110,7 +106,7 @@ export function useBracketActions({
             encounterService.getEncounter(encounter.id),
             captainService.getMyRole(encounter.id)
           ]);
-          if (role.side === null) {
+          if (role.encounter_team_id === null) {
             notify.error(t("common.noAccess"), { description: t("common.notCaptain") });
             return;
           }

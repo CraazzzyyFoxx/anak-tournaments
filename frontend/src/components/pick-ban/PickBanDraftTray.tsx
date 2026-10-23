@@ -4,6 +4,7 @@ import { Lock, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
+import { RowButton } from "@/components/ui/row-button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import type {
@@ -13,7 +14,6 @@ import type {
   PickBanSubmissionItem
 } from "@/types/tournament.types";
 
-import type { PickBanSide } from "./pick-ban-model";
 import type { PickBanItemLike } from "./PickBanGrid";
 import { PickBanItemThumb } from "./PickBanItemThumb";
 
@@ -68,7 +68,7 @@ export function PickBanDraftTray({
   locking,
   itemsById,
   targetName,
-  opponentSide,
+  opponentTeamId,
   opponentProgress,
   opponentName,
   onRemove,
@@ -94,7 +94,8 @@ export function PickBanDraftTray({
   itemsById: Record<number, PickBanItemLike | undefined>;
   /** Roster name behind a target id, for a per-player step. */
   targetName: (playerId: number) => string | null;
-  opponentSide: PickBanSide | null;
+  /** The other acting participation, or null when this step has none. */
+  opponentTeamId: number | null;
   opponentProgress: PickBanStepProgress | undefined;
   opponentName: string;
   onRemove: (index: number) => void;
@@ -109,13 +110,13 @@ export function PickBanDraftTray({
   return (
     <div data-pick-ban-draft className="flex min-w-0 flex-col gap-1.5 sm:items-end">
       <div className="flex min-w-0 flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-3">
-        {opponentSide != null ? (
+        {opponentTeamId != null ? (
           <span
             data-opponent-progress={opponentProgress?.filled ?? 0}
             className={cn(
               "whitespace-nowrap text-xs",
               opponentProgress?.locked
-                ? "text-[color:var(--aqt-support)]"
+                ? "text-[color:var(--aqt-positive)]"
                 : "text-[color:var(--aqt-fg-muted)]"
             )}
           >
@@ -144,14 +145,10 @@ export function PickBanDraftTray({
                 {locked ? (
                   thumb
                 ) : (
-                  <button
-                    type="button"
+                  <RowButton
                     aria-label={t("draft.remove", { item: label })}
                     onClick={() => onRemove(index)}
-                    className={cn(
-                      "group relative flex outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
-                      kind === "hero" ? "rounded-full" : "rounded-md"
-                    )}
+                    className={cn("group relative flex w-auto", kind === "hero" ? "rounded-full" : "rounded-md")}
                   >
                     {thumb}
                     <span
@@ -160,7 +157,7 @@ export function PickBanDraftTray({
                     >
                       <X className="h-3 w-3" />
                     </span>
-                  </button>
+                  </RowButton>
                 )}
               </li>
             );
@@ -178,7 +175,7 @@ export function PickBanDraftTray({
         </ul>
 
         {locked ? (
-          <span className="flex items-center gap-1.5 whitespace-nowrap text-sm font-medium text-[color:var(--aqt-support)]">
+          <span className="flex items-center gap-1.5 whitespace-nowrap text-sm font-medium text-[color:var(--aqt-positive)]">
             <Lock className="h-3.5 w-3.5" aria-hidden />
             {t("draft.lockedWaiting", { team: opponentName })}
           </span>

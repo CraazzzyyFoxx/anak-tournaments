@@ -1,16 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ChevronDown, FileUp, ShieldAlert, ShieldCheck, Users } from "lucide-react";
+import { ArrowLeft, ChevronDown, FileUp, ShieldAlert, ShieldCheck, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 
+import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EncounterRostersModal } from "@/components/EncounterRostersModal";
+import { MatchImport } from "@/components/pick-ban/MatchImport";
 import { TournamentLogUploadDialog } from "@/components/logs/TournamentLogUploadDialog";
 import { usePermissions } from "@/hooks/usePermissions";
 import { RETURN_TO_PARAM, safeReturnPath } from "@/lib/auth/return-to";
@@ -22,9 +26,14 @@ import { encounterChatRoom } from "@/lib/realtime/chat-rooms";
 import {
   PICK_BAN_UNAVAILABLE_COPY,
   gameAtPosition,
-  type PickBanSide
+  pickBanSeats
 } from "@/components/pick-ban/pick-ban-model";
+import { isLobby } from "@/lib/encounter/seats";
+import { buildSeriesSlots } from "@/lib/encounter/detail";
+import { modeBeyondMap } from "@/lib/catalog/mode";
 import { PickBanUndoControl } from "@/components/pick-ban/PickBanUndoControl";
+import { PickBanSideAssignment } from "@/components/pick-ban/PickBanSideChoice";
+import { useSideLabel } from "@/components/pick-ban/useSideLabel";
 import { FfaPregameRoom } from "./FfaPregameRoom";
 import { PregameAdminPanel } from "./PregameAdminPanel";
 import { PregameHeader } from "./PregameHeader";
@@ -32,7 +41,8 @@ import { PregameFinalReport } from "./PregameFinalReport";
 import { PregameMapResult } from "./PregameMapResult";
 import { PregameReadiness } from "./PregameReadiness";
 import { EmptyRoomCard, UNAVAILABLE_ICON } from "./EmptyRoomCard";
-import { PickBanPanel, type PickBanAdminSlot } from "./PickBanPanel";
+import { PickBanPanel } from "@/components/pick-ban/PickBanPanel";
+import type { PickBanAdminSlot } from "@/components/pick-ban/usePickBanController";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { usePregameRoomData } from "./usePregameRoomData";
 import {
@@ -77,13 +87,13 @@ export function PregameRoom(props: Readonly<PregameRoomProps>) {
     enabled: Number.isFinite(encounterId) && encounterId > 0
   });
 
-  // Until the format is known, neither room is the right one to show: rendering
+  // Until the seat count is known, neither room is the right one to show: rendering
   // the duel room first would flash a readiness gate at a lobby.
   if (encounterQuery.isPending) {
     return <RoomSkeleton />;
   }
 
-  if (encounterQuery.data?.format === "ffa") {
+  if (encounterQuery.data != null && isLobby(encounterQuery.data)) {
     return <FfaPregameRoom encounter={encounterQuery.data} />;
   }
 
@@ -133,6 +143,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
   const returnTo = safeReturnPath(searchParams?.get(RETURN_TO_PARAM), `/encounters/${encounterId}`);
   const room = usePregameRoomData(encounterId);
   const [adminOpen, setAdminOpen] = useState(false);
+  const sideLabelOf = useSideLabel();
 
   if (room.isPending) {
     return <RoomSkeleton />;
@@ -152,7 +163,48 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
 
   const loop = derivePregameLoop(encounter, mapState, heroState);
 
+  // The owner's workspace: an encounter carries it whoever owns it (spec §8.2).
+  const workspaceId = encounter.workspace_id;
+  const isAdmin =
+    isSuperuser || isWorkspaceAdmin(workspaceId) || hasWorkspacePermission(workspaceId, "match.result");
+  const viewerTeamId = mapState.viewer_team_id ?? room.viewerTeamId;
+  // A tournament game of a discipline that declares a match fetcher can be filed by its match id (a scrim room
+  // publishes no result). Filing needs no pick-ban session: the positions are the encounter's own live games.
+  const matchImport =
+    seriesReport && room.metadata.status === "ready" && room.metadata.metadata.discipline.capabilities.match_fetch;
+  const matchImportGames = matchImport
+    ? (encounter.games ?? []).filter((game) => game.state !== "cancelled")
+    : [];
+  // The organizer import routes are gated on `match.result` (any other management grant is not enough); everyone
+  // else files as a captain of the encounter.
+  const importsAsOrganizer = hasWorkspacePermission(workspaceId, "match.result");
+
   if (loop.unconfigured) {
+    // Without a pick-ban the room only exists to file the series' matches by id; until the game's metadata says
+    // whether it can, neither screen is the right one.
+    if (seriesReport && room.metadata.status === "pending") return <RoomSkeleton />;
+    if (matchImportGames.length > 0 && (importsAsOrganizer || viewerTeamId != null)) {
+      return (
+        <Card>
+          <CardContent className="flex flex-col gap-4 p-6">
+            <div className="flex flex-col gap-1">
+              <Eyebrow>{t("matchImport.title")}</Eyebrow>
+              <h1 className="font-display text-title font-semibold">{encounter.name}</h1>
+            </div>
+            {/* An organizer files through the organizer route, whose rows carry the warnings. */}
+            <MatchImport encounterId={encounterId} games={matchImportGames} admin={importsAsOrganizer} />
+            <div>
+              <Button variant="outline" asChild>
+                <Link href={returnTo}>
+                  <ArrowLeft aria-hidden />
+                  {t("back")}
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
     return (
       <EmptyRoomCard
         icon={UNAVAILABLE_ICON.unconfigured}
@@ -163,41 +215,36 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
     );
   }
 
-  const workspaceId = encounter.tournament?.workspace_id ?? null;
-  const isAdmin =
-    workspaceId != null &&
-    (isSuperuser ||
-      isWorkspaceAdmin(workspaceId) ||
-      hasWorkspacePermission(workspaceId, "match.result"));
-
   const series = buildSeriesMaps(loop, room.mapsById, (id) => t("map.itemNumber", { id }));
   const heroName = (id: number) => t("hero.itemNumber", { id });
-  const sideNameOf = (side: PickBanSide) =>
-    side === "home"
-      ? (encounter.home_team?.name ?? t("side.home"))
-      : (encounter.away_team?.name ?? t("side.away"));
+  const seats = pickBanSeats(encounter.teams);
+  const seatNameAt = (index: number) => seats[index]?.name ?? t("tbd");
   const seriesSummary = mapState.series ?? null;
+  // Sides are the game's, not a kind's: a hero-only room has no map session, whose state then lists none.
+  const roomSides = heroState.sides.length > 0 ? heroState.sides : mapState.sides;
+  const sideLabel = (code: string) => sideLabelOf(encounter.discipline, code);
+  const sideLabels = roomSides.map(sideLabel);
   // The readiness gate already shows both rosters inline; every later screen
   // has its pool or report there, so the rosters sit one click away instead.
   const showRostersButton = !loop.waitingOnReadiness;
-  const canUploadLog = workspaceId != null && hasWorkspacePermission(workspaceId, "log.create");
+  const canUploadLog = encounter.tournament_id != null && hasWorkspacePermission(workspaceId, "log.create");
   const header = (
     <>
       <PregameHeader
         encounter={encounter}
-        session={
-          loop.statesByKind[loop.phase === "hero" || !loop.mapApplies ? "hero" : "map"].session
-        }
+        state={loop.statesByKind[loop.phase === "hero" || !loop.mapApplies ? "hero" : "map"]}
         activePhase={loop.phase}
         phases={loop.phases}
         round={loop.round}
         series={series}
         seriesScore={
           seriesSummary != null
-            ? { home: seriesSummary.home_wins, away: seriesSummary.away_wins }
+            ? {
+                one: seriesSummary.wins[String(seats[0]?.id)] ?? 0,
+                two: seriesSummary.wins[String(seats[1]?.id)] ?? 0
+              }
             : null
         }
-        official={seriesSummary?.official ?? null}
         returnTo={returnTo}
       />
       {showRostersButton || canUploadLog ? (
@@ -205,8 +252,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
           {showRostersButton ? (
             <EncounterRostersModal
               encounterId={encounterId}
-              homeTeamName={sideNameOf("home")}
-              awayTeamName={sideNameOf("away")}
+              teamNames={[seatNameAt(0), seatNameAt(1)]}
               trigger={
                 <Button type="button" variant="outline" size="sm">
                   <Users className="h-4 w-4" aria-hidden />
@@ -236,12 +282,9 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
           room simply looks like one that never had a veto — and the captains
           naming their own map have no idea why. */}
       {loop.cancelledKinds.map((kind) => (
-        <p
-          key={kind}
-          className="rounded-lg border border-dashed border-[color:var(--aqt-amber)]/45 bg-[color:var(--aqt-card-2)]/40 px-3 py-2 text-xs text-[color:var(--aqt-fg-muted)]"
-        >
+        <EmptyNote key={kind} size="sm" tone="warning">
           {t("cancelledNotice", { phase: t(`phase.${kind}`) })}
-        </p>
+        </EmptyNote>
       ))}
     </>
   );
@@ -274,16 +317,15 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
             encounterId={encounterId}
             statesByKind={loop.statesByKind}
             activeKind={activeKind}
-            sideNameOf={sideNameOf}
+            seats={seats}
             itemsByKind={room.itemsByKind}
+            sideLabels={sideLabels}
             bestOf={encounter.best_of ?? 0}
-            seriesWins={
-              seriesSummary != null
-                ? { home: seriesSummary.home_wins, away: seriesSummary.away_wins }
-                : null
-            }
+            seriesWins={seriesSummary?.wins ?? null}
             onMutated={room.invalidateRoom}
             grid={grid}
+            // The panel opens for any management grant; its import section files through the organizer route.
+            matchImportGames={importsAsOrganizer ? matchImportGames : []}
           />
         </CollapsibleContent>
       </Collapsible>
@@ -301,7 +343,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
           <PregameReadiness
             encounter={encounter}
             readiness={mapState.readiness}
-            viewerSide={room.viewerSide}
+            viewerTeamId={room.viewerTeamId}
             pending={room.readyPending}
             onReady={room.markReady}
           />
@@ -314,37 +356,51 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
   if (loop.phase === "report" && loop.reportRound != null) {
     const reportGame = gameAtPosition(loop.games, loop.reportRound);
     const reportMapId = loop.pendingMap?.item_id ?? reportGame?.map_id ?? null;
+    const reportSides = heroState.starting_sides ?? mapState.starting_sides;
     const reportMapItem = reportMapId != null ? room.mapsById[reportMapId] : undefined;
+    const reportMapName =
+      reportMapItem?.name ??
+      (reportMapId != null ? t("map.itemNumber", { id: reportMapId }) : t("mapResult.pickMap"));
+    // Once a log names the game's mode, a map several modes share (Midtown) says which one was played.
+    const reportEncounterGame = encounter.games?.find((game) => game.position === loop.reportRound);
+    const reportMode = modeBeyondMap(reportEncounterGame?.map, reportEncounterGame?.mode);
     return (
       <div className="flex flex-col gap-4">
         <PregameMapResult
           encounterId={encounterId}
-          mapName={
-            reportMapItem?.name ??
-            (reportMapId != null ? t("map.itemNumber", { id: reportMapId }) : t("mapResult.pickMap"))
-          }
+          mapName={reportMode == null ? reportMapName : `${reportMapName} · ${reportMode.name}`}
           mapImagePath={reportMapItem?.image_path ?? null}
           round={loop.reportRound}
-          viewerSide={mapState.viewer_side ?? room.viewerSide}
-          homeName={sideNameOf("home")}
-          awayName={sideNameOf("away")}
-          homeTeam={encounter.home_team ?? null}
-          awayTeam={encounter.away_team ?? null}
+          viewerTeamId={viewerTeamId}
+          teams={loop.teams}
           game={reportGame}
+          metadata={room.metadata}
           heroBoard={heroBoardForRound(
             heroState,
             loop.reportRound,
             room.heroesById,
-            heroName
+            heroName,
+            room.characterClasses
           )}
+          sides={
+            reportSides?.some((entry) => entry.position === loop.reportRound) ? (
+              <PickBanSideAssignment
+                startingSides={reportSides}
+                position={loop.reportRound}
+                seats={seats}
+                sideLabel={sideLabel}
+              />
+            ) : null
+          }
           heroUndo={
             <PickBanUndoControl
               kind="hero"
               encounterId={encounterId}
               undo={heroState.undo}
-              viewerSide={heroState.viewer_side}
+              viewerTeamId={heroState.viewer_team_id}
               itemsById={room.heroesById}
-              sideName={sideNameOf}
+              sideLabels={sideLabels}
+              seats={seats}
               invalidateKeys={[room.mapKey, room.heroKey]}
             />
           }
@@ -355,6 +411,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
               ? room.mapChoices.map((map) => ({ id: map.id, name: map.name }))
               : undefined
           }
+          matchImport={matchImport}
         />
         {/* A dispute parks the room on this screen until an organizer rules on
             it, and ruling means correcting the game's result — which is in
@@ -369,11 +426,10 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
       <div className="flex flex-col gap-4">
         <PregameFinalReport
           encounter={encounter}
-          viewerSide={mapState.viewer_side ?? room.viewerSide}
+          viewerTeamId={viewerTeamId}
           reportable={seriesReport}
-          heroRounds={buildHeroRounds(heroState, series, room.heroesById, heroName)}
-          homeName={sideNameOf("home")}
-          awayName={sideNameOf("away")}
+          heroRounds={buildHeroRounds(heroState, series, room.heroesById, heroName, room.characterClasses)}
+          metadata={room.metadata}
           header={header}
           returnTo={returnTo}
         />
@@ -399,6 +455,12 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
     );
   }
 
+  // A per-player ban looks back at the previous map's parsed match; only the tournament room has one to read.
+  const previousRound = (activeState.current_round ?? activeState.current_step?.round ?? 1) - 1;
+  const previousMatchId = encounter.games?.length
+    ? (buildSeriesSlots(encounter).find((slot) => slot.index === previousRound)?.match?.id ?? null)
+    : ((encounter.matches ?? []).find((match) => match.map_index === previousRound)?.id ?? null);
+
   return (
     // Bottom padding clears the fixed command bar. On mobile its tallest shape is
     // a per-player blind draft (timer, slots, Lock, issue line): ~210px.
@@ -415,6 +477,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
         isAdmin={isAdmin && adminOpen}
         adminPanel={adminPanel}
         header={header}
+        previousMatchId={previousMatchId}
       />
     </div>
   );

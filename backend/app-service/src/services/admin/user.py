@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.pagination import paginated_dict
@@ -26,7 +27,8 @@ from shared.services.social_identity import (
 from shared.services.social_identity import (
     social_identity_service as socials,
 )
-from src import models, schemas
+from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
+from src import schemas
 
 __all__ = ("UserAdminService", "users")
 
@@ -136,7 +138,6 @@ class UserAdminService:
         return paginated_dict(list(users_page), total, params)
 
     async def create_user(self, session: AsyncSession, data: schemas.UserCreate) -> models.User:
-        """Create a new user"""
         result = await session.execute(select(models.User).where(models.User.name == data.name))
         existing_user = result.scalar_one_or_none()
 
@@ -152,14 +153,12 @@ class UserAdminService:
         return await self.get_user_or_404(session, user_id)
 
     async def update_user(self, session: AsyncSession, user_id: int, data: schemas.UserAdminUpdate) -> models.User:
-        """Update user fields"""
         result = await session.execute(select(models.User).where(models.User.id == user_id))
         user = result.scalar_one_or_none()
 
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-        # Check if new name conflicts with existing user
         if data.name and data.name != user.name:
             result = await session.execute(select(models.User).where(models.User.name == data.name))
             existing_user = result.scalar_one_or_none()
@@ -185,14 +184,19 @@ class UserAdminService:
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+        captures = await capture_owner_delete(session, user_id=user_id)
         await self.players.delete(session, user)
+        await stage_owner_delete(
+            session,
+            captures,
+            workspace_id=None,
+            entity_type="user",
+            entity_id=user_id,
+            source="admin",
+        )
         await session.commit()
 
     # ─── Social identities ───────────────────────────────────────────────────
-    # The row-level writes belong to ``SocialIdentityService`` (the unified
-    # ``social_account`` writer); these methods add the admin surface's
-    # 404/409 policy and — the point of them living here — the transaction, so
-    # the RPC layer commits nothing.
 
     async def add_social_account(
         self,
@@ -340,9 +344,9 @@ class UserAdminService:
 
         The public profile / admin dialog read ``players.avatar_url``, but the header
         and the self-service My Account modal read ``AuthUser.avatar_url`` (via ``/me``).
-        Without this, an admin avatar change updated only the player and the two views
-        desynced. This is the inverse of identity-svc's ``_propagate_to_player`` (which
-        already mirrors self-service changes onto the player). No-op for players with no
+        Without this, an admin avatar change would update only the player and the two
+        views would desync. This is the inverse of identity-svc's ``_propagate_to_player``
+        (which mirrors self-service changes onto the player). No-op for players with no
         linked account."""
         if player_user.auth_user_id is None:
             return

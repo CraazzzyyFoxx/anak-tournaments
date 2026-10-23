@@ -6,7 +6,7 @@ delegate to the existing admin service methods (which keep their commits +
 side-effects); the engine adds permission + payload validation + serialization +
 the envelope. Non-uniform admin endpoints (status transitions, bulk ops, stage
 workflows, jobs, challonge, sheets, registration, registration-status) stay
-bespoke (Phase 3).
+bespoke.
 
 ``REGISTRY``, ``dispatcher`` and ``register`` stay module-level: ``serve.py``
 calls ``admin_registry.register(broker)``. The session-taking hooks are bound
@@ -21,10 +21,12 @@ from faststream.rabbit.annotations import RabbitMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.repository import UserRepository
 from shared.rpc.crud import CrudDispatcher, EntityConfig
+from shared.rpc.identity import rehydrate_user
 from shared.rpc.player_sub_role import player_sub_role_entity
 from src import schemas
-from src.core import auth, db
+from src.core import auth, config, db
 from src.core.workspace import get_division_grid
 from src.services.admin.encounter import encounter_service as enc_service
 from src.services.admin.stage import stage_service
@@ -64,12 +66,12 @@ def _int_or_400(value: Any, field: str) -> int:
         raise HTTPException(status_code=400, detail=f"invalid {field}") from exc
 
 
-#: The score side of ``EncounterUpdate``: what ``match.result`` may set. Every
-#: other field (teams, stage, round, best-of, schedule, name) is the bracket's
+#: The result side of ``EncounterUpdate``: what ``match.result`` may set. Every
+#: other field (stage, round, best-of, schedule, name) is the bracket's
 #: structure and stays on ``match.update``; an unknown key counts as structure.
-_ENCOUNTER_RESULT_FIELDS = frozenset(
-    {"home_score", "away_score", "status", "closeness", "started_at", "ended_at", "current_map_index"}
-)
+#: The scoreline is not here: it lives on the participations and only
+#: ``rpc.tournament.encounter_set_result`` writes it.
+_ENCOUNTER_RESULT_FIELDS = frozenset({"status", "closeness", "started_at", "ended_at", "current_map_index"})
 
 
 def _encounter_update_actions(fields: frozenset[str]) -> tuple[str, ...]:
@@ -101,12 +103,14 @@ class AdminRegistryService:
         encounter_flows: EncounterFlowsService = encounter_flows,
         standings_flows: StandingsFlowsService = standings_flows,
         tournament_links: TournamentLinkService = tlink_service,
+        users: UserRepository = UserRepository(),
     ) -> None:
         self.tournament_flows = tournament_flows
         self.team_flows = team_flows
         self.encounter_flows = encounter_flows
         self.standings_flows = standings_flows
         self.tournament_links = tournament_links
+        self.users = users
 
     # --- workspace resolvers for create/list (must be awaitables) ---
 
@@ -142,20 +146,13 @@ class AdminRegistryService:
     # --- serializers (async (session, model) -> json-able dict) ---
 
     async def _ser_tournament(self, session: AsyncSession, m: Any) -> Any:
-        # `roster_shape` is opt-in (D16): the admin Settings tab renders the roster
-        # form from it, so this read must ask for it explicitly. `division_grid_version`
-        # is the same kind of opt-in: the hub's draft setup resolves player divisions
-        # against the tournament's OWN grid, not the workspace default.
-        #
-        # `tournament_read`, not `to_pydantic`: it resolves the `challonge_source`-derived
-        # ids/slugs, which `to_pydantic` serializes as None when a caller omits them (the
-        # columns behind those fields are gone). Omitting them here made the admin Settings
-        # tab read back `challonge_slug: null` right after linking a bracket -- the field
-        # looked blank, the badge read "Not linked" and every sync control stayed disabled
-        # even though the link was persisted.
-        # `rules` is opt-in too (it is the row's largest field): the Settings tab
-        # edits the published regulations, so an update response that omitted it
-        # would read back as `null` and blank the editor right after a save.
+        # `roster_shape`, `division_grid_version` and `rules` are opt-in entities the
+        # admin Settings tab needs back from every write: the roster form, the
+        # tournament's OWN division grid (not the workspace default), and the
+        # regulations editor, which a missing `rules` would blank after a save.
+        # `tournament_read`, not `to_pydantic`: only it resolves the
+        # `challonge_source`-derived ids/slugs, without which a just-linked bracket
+        # reads back as unlinked.
         entities = ["stages", "roster_shape", "division_grid_version", "rules"]
         return _dump(await self.tournament_flows.tournament_read(session, m, entities))
 
@@ -195,14 +192,29 @@ class AdminRegistryService:
     async def _ser_tournament_link(self, session: AsyncSession, m: Any) -> Any:
         return _dump(schemas.TournamentLinkRead.model_validate(m, from_attributes=True))
 
+    # --- service hooks that need the caller, not just the row ---
+
+    async def _delete_encounter(self, session: AsyncSession, encounter_id: int, data: dict[str, Any]) -> None:
+        """Delete an encounter, naming the organizer who did it.
+
+        Deleting a played encounter retires the seats it advanced into later
+        rounds, and retiring a seat is :func:`reopen` -- a human act the journal
+        records. Every other ``service_delete`` hook needs only the id, so
+        the actor is resolved here rather than widening the dispatcher's shape
+        for one entity. The journal column is a PLAYER identity
+        (``identity.user``), not the auth account the envelope carries, so an
+        organizer with no player profile is recorded as a machine actor rather
+        than refused: the deletion is still theirs to make.
+        """
+        actor = await self.users.get_by_auth_user_id(session, rehydrate_user(data.get("identity")).id)
+        await enc_service.delete_encounter(session, encounter_id, actor_user_id=None if actor is None else actor.id)
+
     # --- list functions ---
 
     async def _list_stages(self, session: AsyncSession, data: dict[str, Any]) -> Any:
-        # `get_stages_read` runs the same query (items+inputs eager, ordered by
-        # `order`) and additionally applies the `challonge_source`-derived
-        # ids/slugs. Validating the models directly, as this used to, left every
-        # `stage.challonge_slug` null — the columns behind them are gone — so the
-        # hub's Challonge-source detection and the stage header link both went dead.
+        # `get_stages_read`, not `model_validate`: it applies the
+        # `challonge_source`-derived ids/slugs the hub's Challonge-source detection
+        # and stage header link read.
         tournament_id = _int_or_400(data.get("tournament_id"), "tournament_id")
         stages = await self.tournament_flows.get_stages_read(session, tournament_id)
         return [_dump(stage) for stage in stages]
@@ -335,7 +347,7 @@ REGISTRY: dict[str, EntityConfig] = {
         resolve_ws_for_create=registry_service._ws_via_tournament_body,
         service_create=lambda s, p, d: enc_service.create_encounter(s, p),
         service_update=lambda s, i, p, d: enc_service.update_encounter(s, i, p),
-        service_delete=lambda s, i, d: enc_service.delete_encounter(s, i),
+        service_delete=lambda s, i, d: registry_service._delete_encounter(s, i, d),
         not_found_detail="Encounter not found",
         actions=frozenset({"create", "update", "delete"}),
         update_actions=_encounter_update_actions,
@@ -352,7 +364,7 @@ REGISTRY: dict[str, EntityConfig] = {
         not_found_detail="Standing not found",
         actions=frozenset({"update", "delete"}),
     ),
-    "player_sub_role": player_sub_role_entity(),
+    "player_sub_role": player_sub_role_entity(config.settings.s3_public_url),
     "tournament_link": EntityConfig(
         entity="tournament_link",
         model=None,

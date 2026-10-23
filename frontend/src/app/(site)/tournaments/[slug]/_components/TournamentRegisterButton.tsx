@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Clock, LogIn, UserPlus, XCircle } from "lucide-react";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -17,11 +18,6 @@ import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useAuthModalStore } from "@/stores/auth-modal.store";
 import registrationService from "@/services/registration.service";
 import { tournamentHref } from "@/lib/tournament/url";
-import {
-  TOURNAMENT_PRIMARY_ACTION_CLASS,
-  TOURNAMENT_STATUS_BOX_CLASS,
-  TOURNAMENT_TEXT_ACTION_CLASS,
-} from "./tournamentActionClass";
 import type { Tournament } from "@/types/tournament.types";
 
 import { useTranslations } from "next-intl";
@@ -31,14 +27,9 @@ import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 
 type Props = {
   tournament: Tournament;
-  /** `"text"` — header stamp row. Default is the 36px box for the rail. */
-  tone?: "box" | "text";
 };
 
-export default function TournamentRegisterButton({
-  tournament,
-  tone = "box",
-}: Readonly<Props>) {
+export default function TournamentRegisterButton({ tournament }: Readonly<Props>) {
   const workspaceId = tournament.workspace_id;
   const tournamentId = tournament.id;
   const tournamentName = tournament.name;
@@ -78,12 +69,18 @@ export default function TournamentRegisterButton({
   // tournament's REGISTRATION schedule window does.
   if (!isRegistrationOpen(tournament)) {
     return (
-      <div className={TOURNAMENT_STATUS_BOX_CLASS}>
+      // A STATE, not a control: the subtle button's box and palette, without the hover a click would need.
+      <div className="inline-flex h-9 items-center gap-2 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-4 text-sm font-medium text-[color:var(--aqt-fg-dim)]">
         <Clock className="size-4" aria-hidden />
         {t("registration.button.closed")}
       </div>
     );
   }
+
+  // Who is asking is unknown until the profile resolves, and the server render
+  // and hydration always see "idle" — with the form seeded server-side, a
+  // signed-in viewer would otherwise be offered "Login to register" first.
+  if (authStatus === "idle" || authStatus === "loading") return null;
 
   if (myReg) {
     const statusMap: Record<string, { icon: typeof Clock; label: string; className: string }> = {
@@ -130,14 +127,10 @@ export default function TournamentRegisterButton({
 
   if (!isAuthenticated) {
     return (
-      <button
-        type="button"
-        onClick={handleAuthClick}
-        className={tone === "text" ? TOURNAMENT_TEXT_ACTION_CLASS : TOURNAMENT_PRIMARY_ACTION_CLASS}
-      >
-        <LogIn className="size-4" aria-hidden />
+      <Button type="button" onClick={handleAuthClick}>
+        <LogIn aria-hidden />
         {t("registration.button.loginToRegister")}
-      </button>
+      </Button>
     );
   }
 
@@ -153,14 +146,10 @@ export default function TournamentRegisterButton({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setShowModal(true)}
-        className={tone === "text" ? TOURNAMENT_TEXT_ACTION_CLASS : TOURNAMENT_PRIMARY_ACTION_CLASS}
-      >
-        <UserPlus className="size-4" aria-hidden />
+      <Button type="button" onClick={() => setShowModal(true)}>
+        <UserPlus aria-hidden />
         {t("registration.button.register")}
-      </button>
+      </Button>
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent className="max-h-[94vh] overflow-y-auto sm:max-w-2xl lg:max-w-3xl">
           <DialogTitle className="sr-only">

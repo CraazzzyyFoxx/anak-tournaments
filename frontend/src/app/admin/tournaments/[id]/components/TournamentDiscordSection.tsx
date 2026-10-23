@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { History, Pencil, Trash2 } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
+import { InspectorField } from "@/components/kit/InspectorField";
 import { StatusPill } from "@/components/kit/StatusPill";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,7 +14,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DiscordChannelSelect } from "@/components/discord/DiscordChannelSelect";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EYEBROW_CLASS, type Tone } from "@/components/kit/tone";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
@@ -35,15 +34,6 @@ interface TournamentDiscordSectionProps {
   canUpdateTournament: boolean;
   discordChannel: DiscordChannelRead | null | undefined;
   discordChannelLoading: boolean;
-}
-
-function DetailField({ label, value }: Readonly<{ label: string; value: string }>) {
-  return (
-    <div className="min-w-0">
-      <p className={EYEBROW_CLASS}>{label}</p>
-      <p className="mt-1 truncate font-mono text-xs">{value}</p>
-    </div>
-  );
 }
 
 /**
@@ -117,35 +107,27 @@ export function TournamentDiscordSection({
     setDialogOpen(true);
   };
 
-  const tone: Tone = discordChannel?.is_active ? "success" : discordChannel ? "neutral" : "warning";
-  const label = discordChannel?.is_active
-    ? tx("monitoring")
-    : discordChannel
-      ? tx("paused")
-      : tx("notConfigured");
-
   return (
     <>
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className={EYEBROW_CLASS}>{t("title")}</h3>
-          <StatusPill tone={tone} className="shrink-0">
-            {label}
+      <div className="flex flex-col gap-3">
+        {/* Monitoring is the norm and "not configured" is the empty note
+            below; only a paused channel wants attention. */}
+        {discordChannel && !discordChannel.is_active ? (
+          <StatusPill tone="warning" className="self-start">
+            {tx("paused")}
           </StatusPill>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {t("description")}
-        </p>
+        ) : null}
 
         {discordChannelLoading ? (
           <Skeleton className="h-16 w-full" />
         ) : discordChannel ? (
-          <div className="grid gap-3 rounded-lg border border-border bg-muted/10 p-3 sm:grid-cols-2">
-            <DetailField
-              label={t("channel")}
-              value={discordChannel.channel_name ? `#${discordChannel.channel_name}` : tx("unnamed")}
-            />
-            <DetailField label={t("channelId")} value={discordChannel.channel_id} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <InspectorField label={t("channel")}>
+              {discordChannel.channel_name ? `#${discordChannel.channel_name}` : tx("unnamed")}
+            </InspectorField>
+            <InspectorField label={t("channelId")}>
+              <span className="font-mono text-xs">{discordChannel.channel_id}</span>
+            </InspectorField>
           </div>
         ) : (
           <EmptyNote size="sm">
@@ -156,7 +138,6 @@ export function TournamentDiscordSection({
         {canUpdateTournament ? (
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" size="sm" onClick={openDialog}>
-              <Pencil className="mr-2 size-4" aria-hidden />
               {discordChannel ? tx("editChannel") : tx("addChannel")}
             </Button>
             {discordChannel ? (
@@ -168,7 +149,6 @@ export function TournamentDiscordSection({
                 disabled={backfillMutation.isPending}
                 onClick={() => backfillMutation.mutate()}
               >
-                <History className="mr-2 size-4" aria-hidden />
                 {backfillMutation.isPending ? tx("importing") : tx("importHistory")}
               </Button>
             ) : null}
@@ -179,13 +159,12 @@ export function TournamentDiscordSection({
                 size="sm"
                 onClick={() => setDeleteOpen(true)}
               >
-                <Trash2 className="mr-2 size-4" aria-hidden />
                 {t("remove")}
               </Button>
             ) : null}
           </div>
         ) : null}
-      </section>
+      </div>
 
       <EntityFormDialog
         open={dialogOpen}
@@ -204,7 +183,6 @@ export function TournamentDiscordSection({
           saveMutation.mutate(form);
         }}
         isSubmitting={saveMutation.isPending}
-        submittingLabel={tx("saving")}
         errorMessage={saveMutation.isError ? saveMutation.error.message : undefined}
         isDirty={hasUnsavedChanges(form, openedWith)}
       >

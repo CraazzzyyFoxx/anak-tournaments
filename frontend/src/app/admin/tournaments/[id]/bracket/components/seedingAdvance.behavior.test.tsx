@@ -19,7 +19,7 @@ import type { Stage, StageItem } from "@/types/tournament.types";
 import en from "@/i18n/messages/en.json";
 
 import { buildStageUpdatePayload, stageFormFromStage, type StageForm } from "../stageForm";
-import { SeedingSection } from "./StageSettingsSections";
+import { SeedingSection } from "./stage-settings/SeedingSection";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -73,12 +73,13 @@ function groupStage(items: StageItem[], overrides: Partial<Stage> = {}): Stage {
     is_completed: false,
     ranking_preset: null,
     tiebreak_order: null,
-    scoring: { win: null, draw: null, loss: null },
+    scoring: { win: null, draw: null, loss: null, preset: null, columns: null, placement_points: null, formula: null },
     swiss_bye_points: null,
+    swiss_qualify_wins: null,
+    swiss_eliminate_losses: null,
     de_grand_final_type: "no_reset",
     seed_ranking: "slot",
-    best_of: { default: 3, by_round: {}, final: null },
-    ffa_scoring: { placement_points: [], score_points: 1, score_label: null },
+    best_of: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
     challonge_id: null,
     challonge_slug: null,
     items,
@@ -286,7 +287,7 @@ describe("per-group upper bracket share", () => {
 
     await mount(groups, { stages: [groups, playoff] });
 
-    expect(container.textContent).toContain("→ 4 upper, 8 lower");
+    expect(container.textContent).toContain(": 4 upper, 8 lower");
   });
 
   it("counts the seeds with the numbers being typed, before they are saved", async () => {
@@ -305,7 +306,7 @@ describe("per-group upper bracket share", () => {
     await typeAndBlur(stageUpperInput(), "1");
 
     // The saved stage still says 2 up; the line has to answer the field.
-    expect(container.textContent).toContain("→ 2 upper, 10 lower");
+    expect(container.textContent).toContain(": 2 upper, 10 lower");
   });
 
   it("stays quiet about a playoff fed by another division's groups", async () => {

@@ -1,37 +1,18 @@
-import { Hero } from "@/types/hero.types";
+import type { Schema } from "@/types/api";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 
-/** One kill from `matches.kill_feed` (hero = the hero at the moment of the kill). */
-export interface KillFeedEntry {
-  time: number;
-  round: number;
-  fight: number;
-  ability: string | null;
-  damage: number;
-  is_critical_hit: boolean;
-  is_environmental: boolean;
-  killer_user_id: number;
-  killer_team_id: number;
-  killer_hero: Hero;
-  victim_user_id: number;
-  victim_team_id: number;
-  victim_hero: Hero;
-}
+/**
+ * One native event observation. `actor_member_id`/`target_member_id` are workspace-member ids and
+ * `actor_team_id`/`target_team_id` are `encounter_team_id`s: resolve names and sides through the match's
+ * `statistics.members` and `participants`. `type` is the discipline's declared event type; what `data` holds is
+ * that discipline's own contract.
+ */
+export type MatchEvent = Schema<"tournament.NativeMatchEvent">;
 
-/** A non-kill timeline event (ultimate cast / resurrect) from `matches.assists`. */
-export interface MatchTimelineEvent {
-  time: number;
-  round: number;
-  /** "ultimate_start" | "mercy_rez" */
-  name: string;
-  user_id: number;
-  team_id: number;
-  hero: Hero | null;
-  related_user_id: number | null;
-  related_team_id: number | null;
-}
-
-export interface MatchKillFeed {
+/** `GET /api/v1/matches/{id}/kill-feed`: the whole timeline, `segment`/`t`/`id` ordered, with the entities it names. */
+export interface MatchEvents {
   match_id: number;
-  kills: KillFeedEntry[];
-  events: MatchTimelineEvent[];
+  discipline: string;
+  events: MatchEvent[];
+  entities: CatalogEntityRead[];
 }

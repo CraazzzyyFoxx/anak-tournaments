@@ -10,7 +10,6 @@ Covers the Tier A/B optimization of ``_build_tournament_history``:
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -22,7 +21,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 registration = importlib.import_module("src.schemas.registration_build")
 
@@ -41,10 +39,10 @@ def _row(
     rank: int | None,
     role: str | None = "tank",
     name: str | None = None,
+    history_count: int | None = None,
 ) -> tuple:
-    """A history query row: (tournament_id, user_id, role, rank, tournament_name)."""
-    role_obj = SimpleNamespace(value=role) if role is not None else None
-    return (tournament_id, user_id, role_obj, rank, name or f"Tournament {tournament_id}")
+    """A history query row, including the real discipline and optional SQL count."""
+    return (tournament_id, user_id, role, rank, name or f"Tournament {tournament_id}", history_count, None, "overwatch")
 
 
 def _fake_version_payload(version_id: int) -> dict:
@@ -85,7 +83,7 @@ def _patches(*, version_map: dict[int, int | None], division: int = 4):
         return {tid: version_map.get(tid) for tid in tournament_ids}
 
     grid = SimpleNamespace(resolve_division_number=lambda _rank: division)
-    snapshot = SimpleNamespace(to_runtime_grid=lambda: grid)
+    snapshot = SimpleNamespace(to_runtime_grid=lambda: grid, tiers=(object(),))
 
     async def fake_snapshots(_session, version_ids):
         return dict.fromkeys(version_ids, snapshot)
@@ -135,6 +133,8 @@ class BuildTournamentHistoryTests(IsolatedAsyncioTestCase):
         for entry in history_map[1]:
             self.assertEqual(5, entry.division_grid_version_id)
             self.assertEqual(4, entry.division)
+            # The past tournament's own game travels with its role (another game's row renders its own ontology).
+            self.assertEqual("overwatch", entry.discipline)
         # division_grids is keyed by stringified version id (JSON wire format).
         self.assertEqual({"5"}, set(division_grids))
 
@@ -219,7 +219,7 @@ class BuildTournamentHistoryTests(IsolatedAsyncioTestCase):
     async def test_uses_sql_history_count_when_present(self) -> None:
         reg = _registration(1, user_id=100)
         # SQL already capped to HISTORY_LIMIT rows but reported the true total.
-        rows = [_row(tid, 100, rank=None) + (12,) for tid in range(12, 2, -1)]
+        rows = [_row(tid, 100, rank=None, history_count=12) for tid in range(12, 2, -1)]
 
         ver_patch, snap_patch, read_patch = _patches(version_map={})
         with ver_patch, snap_patch, read_patch:

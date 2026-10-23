@@ -3,6 +3,8 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { ArrowRight, CircleAlert, Info } from "lucide-react";
 
+import { Eyebrow } from "@/components/ui/eyebrow";
+import Image from "@/components/ui/image";
 import { cn } from "@/lib/utils";
 import { RetryButton } from "./RetryButton";
 
@@ -14,10 +16,6 @@ import { RetryButton } from "./RetryButton";
  * Presentational and hook-light (`useTranslations` only), so every export here
  * renders from a Server Component as well as from a client one.
  */
-
-/** Uppercase data label (mock `.eyebrow`). */
-export const EYEBROW_CLASS =
-  "font-[family-name:var(--aqt-data)] text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 
 /** Lead paragraph under a hero title (mock `.lede`). */
 export const LEDE_CLASS =
@@ -106,7 +104,7 @@ export function SectionHead({
   return (
     <div className="mb-4 flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
       <div>
-        {rubric ? <span className={cn(EYEBROW_CLASS, "mb-1.5 block")}>{rubric}</span> : null}
+        {rubric ? <Eyebrow className="mb-1.5 block">{rubric}</Eyebrow> : null}
         <h2 id={titleId} className={SECTION_TITLE_CLASS}>
           {title}
         </h2>
@@ -125,9 +123,9 @@ export function Column({ children, className }: Readonly<{ children: ReactNode; 
 export function ColumnHead({ title, sub }: Readonly<{ title: ReactNode; sub?: ReactNode }>) {
   return (
     <div className="flex min-h-11 items-center justify-between gap-3 border-y border-t-[color:var(--aqt-border-3)] border-b-[color:var(--aqt-border)]">
-      <h3 className="font-[family-name:var(--aqt-data)] text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
+      <Eyebrow as="h3" tone="muted">
         {title}
-      </h3>
+      </Eyebrow>
       {sub ? <span className="whitespace-nowrap text-caption text-[color:var(--aqt-fg-dim)]">{sub}</span> : null}
     </div>
   );
@@ -140,7 +138,7 @@ export function Fact({ value, label }: Readonly<{ value: ReactNode; label: React
       <b className="block font-[family-name:var(--aqt-data)] text-ui font-bold leading-[1.2] tabular-nums text-[color:var(--aqt-fg)]">
         {value}
       </b>
-      <span className={cn(EYEBROW_CLASS, "font-semibold")}>{label}</span>
+      <Eyebrow>{label}</Eyebrow>
     </span>
   );
 }
@@ -185,9 +183,9 @@ export function Feat({
       style={{ "--feat-c": FEAT_TONE[tone] } as CSSProperties}
     >
       <div className="min-w-0 self-stretch">
-        <div className="mb-3.5 flex items-center gap-[9px] font-[family-name:var(--aqt-data)] text-label font-semibold uppercase tracking-label text-[color:var(--feat-c)] [&_svg]:size-3.5">
+        <Eyebrow as="div" className="mb-3.5 flex items-center gap-[9px] text-[color:var(--feat-c)] [&_svg]:size-3.5">
           {kicker}
-        </div>
+        </Eyebrow>
         {head}
       </div>
       {children}
@@ -221,12 +219,28 @@ export function LiveDot({ className }: Readonly<{ className?: string }>) {
   );
 }
 
-/** Neutral label pill (mock `.pill--plain`), e.g. "Лига". */
-export function PlainPill({ children }: Readonly<{ children: ReactNode }>) {
+/** The open layout's state row (mock `.state`): an icon beside a bold line and its reason. */
+function StateRow({
+  icon,
+  title,
+  dashed = false,
+  role,
+  children
+}: Readonly<{ icon: ReactNode; title: ReactNode; dashed?: boolean; role?: "status"; children?: ReactNode }>) {
   return (
-    <span className="inline-flex items-center whitespace-nowrap rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-[9px] py-[3px] font-[family-name:var(--aqt-data)] text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
-      {children}
-    </span>
+    <div
+      role={role}
+      className={cn(
+        "flex items-start gap-3 py-[18px] text-body text-[color:var(--aqt-fg-muted)]",
+        dashed && "rounded-xl border border-dashed border-[color:var(--aqt-border-2)] px-[18px]"
+      )}
+    >
+      {icon}
+      <div>
+        <b className="mb-0.5 block font-semibold text-[color:var(--aqt-fg)]">{title}</b>
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -235,40 +249,36 @@ export function PlainPill({ children }: Readonly<{ children: ReactNode }>) {
  * default is the inline variant inside a column. Says it is an error and not
  * an empty list, and offers a retry.
  */
-export function LoadError({ what, dashed = false }: Readonly<{ what?: string; dashed?: boolean }>) {
+export function OpenLoadError({ what, dashed = false }: Readonly<{ what?: string; dashed?: boolean }>) {
   const t = useTranslations("site.state");
   return (
-    <div
+    <StateRow
       role="status"
-      className={cn(
-        "flex items-start gap-3 py-[18px] text-body text-[color:var(--aqt-fg-muted)]",
-        dashed ? "rounded-xl border border-dashed border-[color:var(--aqt-border-2)] px-[18px]" : "px-0"
-      )}
+      dashed={dashed}
+      icon={<CircleAlert className="mt-0.5 size-4 shrink-0 text-[color:var(--aqt-rose)]" aria-hidden />}
+      title={what ? t("loadFailedWhat", { what }) : t("loadFailed")}
     >
-      <CircleAlert className="mt-0.5 size-4 shrink-0 text-[color:var(--aqt-rose)]" aria-hidden />
-      <div>
-        <b className="mb-0.5 block font-semibold text-[color:var(--aqt-fg)]">
-          {what ? t("loadFailedWhat", { what }) : t("loadFailed")}
-        </b>
-        {dashed ? t("notEmpty") : null}
-        {dashed ? <br /> : null}
-        <RetryButton />
-      </div>
-    </div>
+      {dashed ? (
+        <>
+          {t("notEmpty")}
+          <br />
+        </>
+      ) : null}
+      <RetryButton />
+    </StateRow>
   );
 }
 
 /** "Nothing yet" inside a column, with the reason (mock `.state` + info icon). */
-export function EmptyNote({ children }: Readonly<{ children?: ReactNode }>) {
+export function OpenEmptyRow({ children }: Readonly<{ children?: ReactNode }>) {
   const t = useTranslations("site.state");
   return (
-    <div className="flex items-start gap-3 py-[18px] text-body text-[color:var(--aqt-fg-muted)]">
-      <Info className="mt-0.5 size-4 shrink-0 text-[color:var(--aqt-fg-faint)]" aria-hidden />
-      <div>
-        <b className="mb-0.5 block font-semibold text-[color:var(--aqt-fg)]">{t("empty")}</b>
-        {children}
-      </div>
-    </div>
+    <StateRow
+      icon={<Info className="mt-0.5 size-4 shrink-0 text-[color:var(--aqt-fg-faint)]" aria-hidden />}
+      title={t("empty")}
+    >
+      {children}
+    </StateRow>
   );
 }
 
@@ -314,14 +324,12 @@ export function Showcase({
         )}
         style={ratio ? ({ "--shot-ratio": ratio } as CSSProperties) : undefined}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element -- static screenshot, sized and lazy */}
-        <img
+        <Image
           src={`/showcase/${img}`}
           width={1800}
           height={1250}
+          sizes="100vw"
           alt={alt}
-          loading="lazy"
-          decoding="async"
           className="size-full object-cover object-left-top"
         />
       </div>

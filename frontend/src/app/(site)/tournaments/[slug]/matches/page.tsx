@@ -8,8 +8,8 @@ type TournamentMatchesPageProps = {
 
 /**
  * Prefetches the whole match list with its maps — the section IS that list, in
- * either view. Streams are not prefetched: the "who is live" badges are the
- * one part of this page that is worth nothing a second after it is rendered.
+ * either view. The streams behind the "who is live" badges are the shell's,
+ * seeded by the layout's overview boundary.
  */
 export default async function TournamentMatchesPage({
   params

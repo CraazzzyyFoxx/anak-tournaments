@@ -41,15 +41,27 @@ vi.mock("@/services/encounter.service", () => ({
   default: { getEncounter: vi.fn() }
 }));
 
+/** A duel's two seats; `null` leaves that seat empty. */
+function seatsOf(
+  one: number | null,
+  two: number | null,
+  scoreOne = 0,
+  scoreTwo = 0
+): Encounter["teams"] {
+  const seat = (slot: number, teamId: number | null, score: number, name: string) =>
+    teamId === null || teamId === 0
+      ? []
+      : [{ id: slot, slot, team_id: teamId, name, seed: null, score, placement: null, active: true }];
+  return [...seat(1, one, scoreOne, one === 7 ? "Nova" : `Team ${one}`), ...seat(2, two, scoreTwo, two === 8 ? "Void" : `Team ${two}`)];
+}
+
 function encounter(overrides: Partial<Encounter> = {}): Encounter {
   return {
     id: 1,
     created_at: new Date(0),
     updated_at: null,
     name: "Nova vs Void",
-    home_team_id: 7,
-    away_team_id: 8,
-    score: { home: 2, away: 1 },
+    slot_count: 2,
     round: 1,
     best_of: 3,
     tournament_id: 1,
@@ -63,11 +75,16 @@ function encounter(overrides: Partial<Encounter> = {}): Encounter {
     scheduled_at: null,
     started_at: null,
     ended_at: null,
+    played_at: null,
+    is_live: false,
+    is_final: false,
     current_map_index: null,
     confirmed_at: null,
+    result_source: null,
+    result_version: 0,
     matches: [],
-    home_team: null as never,
-    away_team: null as never,
+    games: [],
+    teams: seatsOf(7, 8, 2, 1),
     tournament: null as never,
     stage: null,
     stage_item: null,
@@ -120,7 +137,8 @@ afterEach(() => {
 
 describe("BracketView live-stream indicator", () => {
   /** The dot is about a match still to be decided; the default fixture is settled. */
-  const inPlay = () => encounter({ status: "open", score: { home: 1, away: 0 }, started_at: "2026-01-01T10:00:00Z" });
+  const inPlay = () =>
+    encounter({ status: "open", teams: seatsOf(7, 8, 1, 0), started_at: "2026-01-01T10:00:00Z", is_live: true });
 
   // The admin bracket passes no stream map. A required prop would have broken it,
   // so this is the regression guard for that call site.
@@ -205,7 +223,7 @@ describe("BracketView live-stream indicator", () => {
   it("leaves an unseeded slot unmarked", () => {
     render(
       <BracketView
-        encounters={[encounter({ name: "TBD vs Void", status: "open", score: { home: 0, away: 0 } })]}
+        encounters={[encounter({ name: "TBD vs Void", status: "open", teams: seatsOf(null, 8) })]}
         type="single_elimination"
         liveTeamStreams={new Map([[7, stream({ channel: "aria", viewer_count: 412 })]])}
       />
@@ -234,7 +252,7 @@ describe("BracketView live-stream indicator", () => {
       <BracketView
         encounters={[
           inPlay(),
-          encounter({ id: 2, round: 2, status: "open", score: { home: 0, away: 0 }, away_team_id: 0, name: "Nova vs TBD" })
+          encounter({ id: 2, round: 2, status: "open", teams: seatsOf(7, null), name: "Nova vs TBD" })
         ]}
         type="single_elimination"
         liveTeamStreams={new Map([[7, stream({ channel: "aria", viewer_count: 412 })]])}
@@ -382,8 +400,8 @@ describe("BracketView connectors", () => {
             id: 5,
             round: 2,
             sources: [
-              { encounter_id: 1, role: "winner", slot: "home" },
-              { encounter_id: 2, role: "winner", slot: "away" }
+              { encounter_id: 1, source_position: 1, slot: 1 },
+              { encounter_id: 2, source_position: 1, slot: 2 }
             ]
           }),
           encounter({ id: 6, round: 2 }),
@@ -412,7 +430,7 @@ describe("BracketView connectors", () => {
           encounter({
             id: 3,
             round: 2,
-            sources: [{ encounter_id: 1, role: "winner", slot: "home" }]
+            sources: [{ encounter_id: 1, source_position: 1, slot: 1 }]
           })
         ]}
       />
@@ -442,17 +460,17 @@ describe("BracketView rearrange mode", () => {
         type="single_elimination"
         encounters={[
           encounter({ id: 1, round: 1, status: "completed" }),
-          encounter({ id: 2, round: 1, status: "open", result_status: "none", home_team_id: 9, away_team_id: 10 }),
+          encounter({ id: 2, round: 1, status: "open", result_status: "none", teams: seatsOf(9, 10) }),
           encounter({
             id: 3,
             round: 1,
             status: "open",
             result_status: "none",
             started_at: "2026-01-01T10:00:00Z",
-            home_team_id: 11,
-            away_team_id: 12
+            is_live: true,
+            teams: seatsOf(11, 12)
           }),
-          encounter({ id: 4, round: 2, status: "open", result_status: "none", home_team_id: 0, away_team_id: 0 })
+          encounter({ id: 4, round: 2, status: "open", result_status: "none", teams: seatsOf(null, null) })
         ]}
         onSwapSlots={() => undefined}
       />

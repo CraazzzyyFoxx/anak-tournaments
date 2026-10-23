@@ -1,20 +1,16 @@
 "use client";
 
 import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, TriangleAlert } from "lucide-react";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { TriangleAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import {
   STAGE_WINDOW_KIND,
   stageWindowValue
 } from "../rank-autofill-stages";
-import { TONE_TEXT } from "@/components/kit/tone";
+import { SortableGrip, useSortableRow } from "@/components/kit/SortableRows";
+import { TONE_TEXT } from "@/components/ui/tone";
 import { NumberInput } from "@/components/ui/number-input";
 import {
   Select,
@@ -61,9 +57,7 @@ function SortableStageRow({
   onOwValueChange
 }: Readonly<SortableStageRowProps>) {
   const t = useTranslations();
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: stage.source
-  });
+  const { ref, style, handleProps, isDragging } = useSortableRow(stage.source);
   const windowKind = STAGE_WINDOW_KIND[stage.source];
   const windowValue = stageWindowValue(stage);
   const label = t(`rankAutofill.source.${stage.source}.label`);
@@ -74,32 +68,18 @@ function SortableStageRow({
       ? t(`rankAutofill.owValue.${stage.ow_value ?? "composite"}.description`)
       : t(`rankAutofill.source.${stage.source}.description`);
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition
-  };
-
   return (
     <div
-      ref={setNodeRef}
+      ref={ref}
       style={style}
       className={cn(
         "flex flex-col gap-2 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-3 py-2.5",
-        isDragging && "z-10 opacity-80 shadow-lg shadow-black/40",
+        isDragging && "opacity-80 shadow-lg shadow-black/40",
         !stage.enabled && "opacity-55"
       )}
     >
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          className="cursor-grab touch-none text-[color:var(--aqt-fg-dim)] hover:text-[color:var(--aqt-fg-muted)] disabled:cursor-not-allowed"
-          aria-label={t("rankAutofill.dragAria")}
-          disabled={disabled}
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
+        <SortableGrip handleProps={handleProps} label={t("rankAutofill.dragAria")} disabled={disabled} />
 
         <span className="w-4 shrink-0 text-center text-xs font-semibold tabular-nums text-[color:var(--aqt-fg-dim)]">
           {index + 1}
@@ -116,7 +96,7 @@ function SortableStageRow({
             disabled={disabled}
             onValueChange={(next) => onOwValueChange(next as RankAutofillOwValue)}
           >
-            <SelectTrigger aria-label={t("rankAutofill.owValueAria")} className="h-8 w-32 text-xs">
+            <SelectTrigger size="sm" aria-label={t("rankAutofill.owValueAria")} className="w-32">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -131,6 +111,7 @@ function SortableStageRow({
 
         <label className="flex shrink-0 items-center gap-1.5">
           <NumberInput
+            size="sm"
             integer
             min={1}
             value={windowValue}
@@ -138,7 +119,7 @@ function SortableStageRow({
             // The latest rank is the latest rank: no window narrows it.
             disabled={disabled || owValue === "current"}
             onValueChange={(next) => onLookbackChange(stage.source, next)}
-            className="h-8 w-16 text-right text-xs"
+            className="w-16 text-right"
             aria-label={t("rankAutofill.windowAria", { label })}
           />
           <span className="w-9 text-xs text-[color:var(--aqt-fg-dim)]">

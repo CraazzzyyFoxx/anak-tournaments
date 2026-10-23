@@ -1,7 +1,4 @@
-"""The realtime rail: one publication primitive, one invalidation vocabulary.
-
-Design: docs/plans/2026-09-09-unified-event-delivery.md
-"""
+"""The realtime rail: one publication primitive, one invalidation vocabulary."""
 
 from shared.services.realtime.emit import (
     INVALIDATION_EVENT_TYPE,
@@ -14,6 +11,7 @@ from shared.services.realtime.resources import (
     MANIFEST_PATH,
     Resource,
     load_manifest,
+    resource_generation,
     scope_kind_of,
 )
 from shared.services.realtime.scope import Scope, ScopeKind
@@ -29,5 +27,6 @@ __all__ = (
     "emit",
     "enqueue_invalidation_outbox",
     "load_manifest",
+    "resource_generation",
     "scope_kind_of",
 )

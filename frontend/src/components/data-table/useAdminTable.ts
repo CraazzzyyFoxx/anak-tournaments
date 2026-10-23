@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ColumnFiltersState,
   ColumnOrderState,
@@ -72,17 +72,23 @@ export function useAdminTable<TData>({
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
   // Header filters are query params in server mode and TanStack column filters
-  // in client mode, keyed by the column that declared them.
-  const columnFilters: ColumnFiltersState = isClientMode
-    ? columns.flatMap((column) => {
-        const spec = readAdminColumnFilter(column.meta);
-        if (!spec) return [];
-        const values = filters[spec.param];
-        if (!values?.length) return [];
-        const id = columnDefId(column);
-        return id ? [{ id, value: values }] : [];
-      })
-    : [];
+  // in client mode, keyed by the column that declared them. Memoised: a fresh
+  // array every render re-runs the filter, which mints new row objects and
+  // repaints every memoised body row.
+  const columnFilters = useMemo<ColumnFiltersState>(
+    () =>
+      isClientMode
+        ? columns.flatMap((column) => {
+            const spec = readAdminColumnFilter(column.meta);
+            if (!spec) return [];
+            const values = filters[spec.param];
+            if (!values?.length) return [];
+            const id = columnDefId(column);
+            return id ? [{ id, value: values }] : [];
+          })
+        : [],
+    [isClientMode, columns, filters]
+  );
 
   // Infinite scrolling renders one page that grows: `page` still counts the
   // batches loaded, so `?page=` restores the same depth after a reload.
@@ -109,6 +115,7 @@ export function useAdminTable<TData>({
     isMultiSortEvent: (event) => (event as React.MouseEvent).shiftKey,
     enableColumnResizing: true,
     // One write per drag rather than one per pointer move: sizing is persisted.
+    // `DataTable` still redraws the drag live from `columnSizingInfo`.
     columnResizeMode: "onEnd",
     onColumnSizingChange: setColumnSizing,
     onSortingChange: setSorting,

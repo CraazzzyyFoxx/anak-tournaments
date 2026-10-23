@@ -3,8 +3,11 @@ from enum import StrEnum
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
+    CheckConstraint,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -16,13 +19,13 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
-from shared.models.catalog.hero import Hero
+from shared.models.catalog.entity import CatalogEntity
 from shared.models.tournament.tournament import Tournament
 
 if typing.TYPE_CHECKING:
-    from shared.models.matches.match import Match
+    from shared.models.encounter.encounter import Encounter
+    from shared.models.stats.match import StatsMatch
     from shared.models.tenancy.workspace import Workspace, WorkspaceMember
-    from shared.models.tournament.encounter import Encounter
 
 __all__ = (
     "AchievementCategory",
@@ -107,6 +110,13 @@ class AchievementRule(db.TimeStampIntegerMixin):
     __tablename__ = "rule"
     __table_args__ = (
         UniqueConstraint("workspace_id", "slug", name="uq_achievement_rule_workspace_slug"),
+        CheckConstraint("entity_kind = 'character'", name="ck_rule_entity_kind"),
+        ForeignKeyConstraint(
+            ["entity_id", "entity_kind", "discipline"],
+            ["catalog.entity.id", "catalog.entity.kind", "catalog.entity.discipline"],
+            ondelete="SET NULL (entity_id)",
+            name="fk_rule_entity",
+        ),
         {"schema": "achievements"},
     )
 
@@ -116,7 +126,12 @@ class AchievementRule(db.TimeStampIntegerMixin):
     description_ru: Mapped[str] = mapped_column(String())
     description_en: Mapped[str] = mapped_column(String())
     image_url: Mapped[str | None] = mapped_column(String(), nullable=True)
-    hero_id: Mapped[int | None] = mapped_column(ForeignKey(Hero.id, ondelete="SET NULL"), nullable=True)
+    #: Which game the rule is about; the entity it shows belongs to that game. No default: every writer names it.
+    discipline: Mapped[str] = mapped_column(
+        String(32), ForeignKey("catalog.discipline.code", name="fk_rule_discipline")
+    )
+    entity_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    entity_kind: Mapped[str] = mapped_column(String(16), default="character", server_default="character")
 
     category: Mapped[AchievementCategory] = mapped_column(String())
     scope: Mapped[AchievementScope] = mapped_column(String())
@@ -129,7 +144,9 @@ class AchievementRule(db.TimeStampIntegerMixin):
     rule_version: Mapped[int] = mapped_column(Integer(), server_default="1")
     min_tournament_id: Mapped[int | None] = mapped_column(Integer(), nullable=True)
 
-    hero: Mapped[Hero | None] = relationship()
+    entity: Mapped[CatalogEntity | None] = relationship(
+        primaryjoin="foreign(AchievementRule.entity_id) == CatalogEntity.id", viewonly=True
+    )
     workspace: Mapped[Workspace] = relationship()
     evaluation_results: Mapped[list[AchievementEvaluationResult]] = relationship(
         back_populates="rule", passive_deletes=True
@@ -174,9 +191,11 @@ class AchievementEvaluationResult(db.TimeStampIntegerMixin):
     # declares one grain, and ``user_match`` rows carry the map while
     # ``user_encounter`` rows carry the series.
     encounter_id: Mapped[int | None] = mapped_column(
-        ForeignKey("tournament.encounter.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("encounter.encounter.id", ondelete="CASCADE"), nullable=True
     )
-    match_id: Mapped[int | None] = mapped_column(ForeignKey("matches.match.id", ondelete="CASCADE"), nullable=True)
+    match_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stats.match.id", ondelete="CASCADE", deferrable=True, initially="DEFERRED"), nullable=True
+    )
     qualified_at: Mapped[db.datetime] = mapped_column(db.DateTime(timezone=True), server_default=func.now())
     evidence_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     rule_version: Mapped[int] = mapped_column(Integer())
@@ -192,7 +211,7 @@ class AchievementEvaluationResult(db.TimeStampIntegerMixin):
     rule: Mapped[AchievementRule] = relationship(back_populates="evaluation_results")
     workspace_member: Mapped[WorkspaceMember] = relationship()
     tournament: Mapped[Tournament | None] = relationship()
-    match: Mapped[Match | None] = relationship()
+    match: Mapped[StatsMatch | None] = relationship()
     encounter: Mapped[Encounter | None] = relationship()
 
 
@@ -213,7 +232,9 @@ class AchievementOverride(db.TimeStampIntegerMixin):
     achievement_rule_id: Mapped[int] = mapped_column(ForeignKey("achievements.rule.id", ondelete="CASCADE"), index=True)
     workspace_member_id: Mapped[int] = mapped_column(ForeignKey("workspace_member.id", ondelete="CASCADE"), index=True)
     tournament_id: Mapped[int | None] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"), nullable=True)
-    match_id: Mapped[int | None] = mapped_column(ForeignKey("matches.match.id", ondelete="CASCADE"), nullable=True)
+    match_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stats.match.id", ondelete="CASCADE", deferrable=True, initially="DEFERRED"), nullable=True
+    )
     action: Mapped[AchievementOverrideAction] = mapped_column(String())
     reason: Mapped[str] = mapped_column(String())
     granted_by: Mapped[int] = mapped_column(ForeignKey("auth.user.id", ondelete="SET NULL"))

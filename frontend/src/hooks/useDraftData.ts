@@ -12,9 +12,12 @@ import { realtimeClient } from "@/services/realtime.service";
 import { useRealtimeStore } from "@/stores/realtime.store";
 import { applyResourcePatch, registerRealtimeResource } from "@/services/realtime-patch";
 import { type Coalescer, createTrailingCoalescer } from "@/lib/realtime/coalesce";
+import { draftChatRoom, roomChatQueryKey } from "@/lib/realtime/chat-rooms";
+import { toRoleRef } from "@/lib/roster/role-ref";
 import type {
   DraftBoard,
   DraftEventData,
+  DraftLifecycleAction,
   DraftPresenceState,
   DraftRole,
   DraftRoleEditRequest,
@@ -104,13 +107,13 @@ registerRealtimeResource<DraftBoard, DraftEventData>(DRAFT_BOARD_RESOURCE, (boar
   applyDraftEvents(board, [event]),
 );
 
-export function useDraftBoardQuery(tournamentId: number) {
+export function useDraftBoardQuery(sessionId: number | null) {
   const connected = useRealtimeStore((s) => s.connectionState === "connected");
   const pollMs = connected ? BOARD_POLL_CONNECTED_MS : BOARD_POLL_DISCONNECTED_MS;
   return useQuery({
-    queryKey: tournamentQueryKeys.draftBoard(tournamentId),
-    queryFn: () => draftService.getTournamentBoard(tournamentId),
-    enabled: Number.isFinite(tournamentId) && tournamentId > 0,
+    queryKey: tournamentQueryKeys.draftSessionBoard(sessionId ?? 0),
+    queryFn: () => draftService.getSessionBoard(sessionId!),
+    enabled: sessionId != null && sessionId > 0,
     refetchInterval: (query) => (query.state.data?.session.status === "live" ? pollMs : false),
   });
 }
@@ -194,16 +197,16 @@ export function useDraftJournalQuery(sessionId: number | null, enabled: boolean)
   });
 }
 
-const draftPlayerCard = (userId: number) =>
+const draftPlayerCard = (userId: number, discipline: string) =>
   queryOptions({
-    queryKey: tournamentQueryKeys.draftPlayerCard(userId),
-    queryFn: () => userService.getDraftCard(userId),
+    queryKey: tournamentQueryKeys.draftPlayerCard(userId, discipline),
+    queryFn: () => userService.getDraftCard(userId, discipline),
     staleTime: 5 * 60_000
   });
 
-/** Career stats for the player card; keyed by the domain user id, cached across sessions. */
-export function useDraftPlayerCardQuery(userId: number | null) {
-  return useQuery({ ...draftPlayerCard(userId ?? 0), enabled: userId != null });
+/** Career stats (in the draft session's game) for the player card; keyed by the domain user id, cached across sessions. */
+export function useDraftPlayerCardQuery(userId: number | null, discipline: string) {
+  return useQuery({ ...draftPlayerCard(userId ?? 0, discipline), enabled: userId != null });
 }
 
 /**
@@ -212,7 +215,7 @@ export function useDraftPlayerCardQuery(userId: number | null) {
  * delay keeps a pointer sweeping across the list from fetching every row it
  * crosses. `null` cancels the pending warm-up.
  */
-export function useDraftPlayerCardPrefetch() {
+export function useDraftPlayerCardPrefetch(discipline: string) {
   const client = useQueryClient();
   const timer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(timer.current), []);
@@ -220,22 +223,26 @@ export function useDraftPlayerCardPrefetch() {
     (userId: number | null) => {
       window.clearTimeout(timer.current);
       if (userId == null) return;
-      timer.current = window.setTimeout(() => void client.prefetchQuery(draftPlayerCard(userId)), 120);
+      timer.current = window.setTimeout(() => void client.prefetchQuery(draftPlayerCard(userId, discipline)), 120);
     },
-    [client]
+    [client, discipline]
   );
 }
 
+/**
+ * The board's own session topic (spec §9.6); `boardKey` is the cache the events patch -- the session's
+ * (`draftSessionBoard`) in the room, the tournament's current-draft lookup (`draftBoard`) on the admin pages.
+ */
 export function useDraftRealtime(
-  tournamentId: number,
+  boardKey: QueryKey,
   board: DraftBoard | null
 ): { presence: DraftPresenceState; connectionState: RealtimeConnectionState } {
   const queryClient = useQueryClient();
-  const topic = tournamentId ? `tournament:${tournamentId}:draft` : null;
-  const queryKey = useMemo(
-    () => tournamentQueryKeys.draftBoard(tournamentId),
-    [tournamentId]
-  );
+  const topic = board ? `draft:${board.session.id}:board` : null;
+  // Keyed by value: a caller builds its key every render, and a fresh array of
+  // the same key must never re-subscribe the topic (the subscription depends on it).
+  const boardKeyHash = hashKey(boardKey);
+  const queryKey = useMemo(() => JSON.parse(boardKeyHash) as QueryKey, [boardKeyHash]);
   const pendingEventsRef = useRef<RealtimeEventEnvelope<DraftEventData>[]>([]);
   const resubscribedBaselineTopicRef = useRef<string | null>(null);
   const [presenceState, setPresenceState] = useState<{
@@ -319,6 +326,11 @@ export function useDraftRealtime(
       if (draftEventNeedsSnapshot(event)) {
         void queryClient.invalidateQueries({ queryKey });
       }
+      // A re-seed or a replaced captain changes who takes part in the room's chat: the viewer's envelope (their
+      // role, the write controls) is read again. The gateway drops a former captain's live subscription itself.
+      if (event.event_type === "draft.session_updated") {
+        void queryClient.invalidateQueries({ queryKey: roomChatQueryKey(draftChatRoom(cachedBoard.session.id)) });
+      }
 
       // Derived reads the patch cannot fold in, re-read only where the event
       // moves them (`draftDerivedScope`). Handled here instead of through the
@@ -330,10 +342,19 @@ export function useDraftRealtime(
       }
       // Pick options are keyed by pick id, and a role edit or a clock change
       // bumps the pick's version without advancing it. Read only by the captain
-      // on the clock, whose confirm waits on it, so it skips the batch.
+      // on the clock, whose confirm waits on it, so it skips the batch. A pick
+      // the event resolved is only marked stale, never re-read: the server
+      // serves options for the current pick alone (409), and the room still
+      // holds that pick's query until it re-renders off the patched board.
       const affectedPickId = event.data.pick_id ?? cachedBoard.current_pick?.id;
       if (affectedPickId != null) {
-        void queryClient.invalidateQueries({ queryKey: tournamentQueryKeys.draftPickOptions(affectedPickId) });
+        const onClock = queryClient
+          .getQueryData<DraftBoard | null>(queryKey)
+          ?.picks.some((pick) => pick.id === affectedPickId && pick.status === "on_clock");
+        void queryClient.invalidateQueries({
+          queryKey: tournamentQueryKeys.draftPickOptions(affectedPickId),
+          refetchType: onClock ? "active" : "none"
+        });
       }
     },
     [queryClient, queryKey, topic, scheduleDerived]
@@ -382,21 +403,23 @@ export function useDraftRealtime(
   return { presence, connectionState };
 }
 
-export type DraftLifecycleAction = "start" | "pause" | "resume" | "cancel" | "export" | "rollback";
-
-export function useDraftMutations(tournamentId: number) {
+export function useDraftMutations(boardKey: QueryKey) {
   const queryClient = useQueryClient();
-  const invalidate = () =>
-    queryClient.invalidateQueries({
-      queryKey: tournamentQueryKeys.draftBoard(tournamentId),
-    });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: boardKey });
 
   const makePick = useMutation({
-    mutationFn: (v: { pickId: number; playerId: number; version: number; role?: DraftRole | null }) =>
+    // `dimension` is the session shape's own: a role ref names the owner game's rated dimension, never a fixed one.
+    mutationFn: (v: {
+      pickId: number;
+      playerId: number;
+      version: number;
+      role?: DraftRole | null;
+      dimension: string | null;
+    }) =>
       draftService.select(v.pickId, {
         player_id: v.playerId,
         expected_version: v.version,
-        target_role: v.role ?? null,
+        target_role: v.dimension ? toRoleRef(v.role, null, v.dimension) : null,
       }),
     onSettled: invalidate,
   });
@@ -413,20 +436,20 @@ export function useDraftMutations(tournamentId: number) {
       playerId: number;
       version: number;
       role: DraftRole;
+      dimension: string | null;
       note: string;
     }) =>
       draftService.override(v.pickId, {
         player_id: v.playerId,
         expected_version: v.version,
-        target_role: v.role,
+        target_role: v.dimension ? toRoleRef(v.role, null, v.dimension) : null,
         note: v.note
       }),
     onSettled: invalidate,
   });
 
   const lifecycle = useMutation({
-    mutationFn: (v: { sessionId: number; action: DraftLifecycleAction }) =>
-      draftService.lifecycle(tournamentId, v.sessionId, v.action),
+    mutationFn: (v: { sessionId: number; action: DraftLifecycleAction }) => draftService.lifecycle(v.sessionId, v.action),
     onSettled: invalidate,
   });
 
@@ -443,9 +466,7 @@ export function useDraftMutations(tournamentId: number) {
       queryClient.invalidateQueries({
         queryKey: tournamentQueryKeys.draftFeasibility(variables.sessionId)
       });
-      queryClient.invalidateQueries({
-        queryKey: tournamentQueryKeys.draftBoard(tournamentId)
-      });
+      queryClient.invalidateQueries({ queryKey: boardKey });
     }
   });
 

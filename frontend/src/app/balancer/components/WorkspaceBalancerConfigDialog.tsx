@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Settings2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { DiscordChannelSelect } from "@/components/discord/DiscordChannelSelect";
 import {
@@ -34,6 +35,8 @@ export function WorkspaceBalancerConfigDialog({
   open,
   onOpenChange
 }: Readonly<WorkspaceBalancerConfigDialogProps>) {
+  const t = useTranslations("balancerTool.playerEdit.workspaceConfig");
+  const tCommon = useTranslations("common");
   const queryClient = useQueryClient();
   // The pool knobs save with `team.update`; the channel every mix announces in
   // belongs to the workspace's Discord, so moving it stays `workspace.update`.
@@ -73,10 +76,10 @@ export function WorkspaceBalancerConfigDialog({
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: balancerQueryKeys.workspaceConfig(workspaceId) });
-      notify.success("Workspace settings saved.");
+      notify.success(t("saved"));
       onOpenChange(false);
     },
-    onError: (cause) => notify.apiError(cause, { title: "Could not save the workspace settings" })
+    onError: (cause) => notify.apiError(cause, { title: t("saveFailed") })
   });
 
   return (
@@ -85,20 +88,17 @@ export function WorkspaceBalancerConfigDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Settings2 className="h-4 w-4" />
-            Workspace balancer settings
+            {t("title")}
           </DialogTitle>
-          <DialogDescription>
-            How players with a large gap between their system rank and OW rank appear in the pool,
-            and where every mix in this workspace posts its matchup.
-          </DialogDescription>
+          <DialogDescription>{t("description")}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5 pt-2">
           <div className="space-y-1.5">
             <Label htmlFor="delta-threshold">
-              Rank delta threshold
+              {t("threshold")}
               <span className="ml-1.5 text-xs text-muted-foreground">
-                (rank points, empty = disabled)
+                {t("thresholdHint")}
               </span>
             </Label>
             <NumberInput
@@ -106,7 +106,7 @@ export function WorkspaceBalancerConfigDialog({
               integer
               min={1}
               max={10000}
-              placeholder="e.g. 500"
+              placeholder={t("thresholdPlaceholder")}
               value={threshold}
               onValueChange={setThreshold}
             />
@@ -114,20 +114,17 @@ export function WorkspaceBalancerConfigDialog({
 
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-medium">Hide from pool</p>
-              <p className="text-xs text-muted-foreground">
-                When on, players above the threshold are removed from the pool view. When off, they
-                get a warning badge only.
-              </p>
+              <p className="text-sm font-medium">{t("hideFromPool")}</p>
+              <p className="text-xs text-muted-foreground">{t("hideFromPoolHint")}</p>
             </div>
             <Switch checked={hideFromPool} onCheckedChange={setHideFromPool} />
           </div>
 
           <div className="space-y-1.5 border-t border-[color:var(--aqt-border)] pt-4">
             <Label htmlFor="mix-discord-channel">
-              Mix Discord channel
+              {t("mixChannel")}
               <span className="ml-1.5 text-xs text-muted-foreground">
-                (where every mix posts its matchup)
+                {t("mixChannelHint")}
               </span>
             </Label>
             <div className="flex items-center gap-2">
@@ -138,29 +135,27 @@ export function WorkspaceBalancerConfigDialog({
                   value={mixChannel}
                   onChange={setMixChannel}
                   disabled={!canSetChannel}
-                  ariaLabel="Mix Discord channel"
-                  placeholder="No channel"
+                  ariaLabel={t("mixChannel")}
+                  placeholder={t("noChannel")}
                 />
               </div>
               {canSetChannel && mixChannel !== "" ? (
                 <Button variant="ghost" size="sm" onClick={() => setMixChannel("")}>
-                  Clear
+                  {t("clear")}
                 </Button>
               ) : null}
             </div>
             <p className="text-xs text-muted-foreground">
-              {canSetChannel
-                ? "Hosts post here by default. A single mix can be pointed elsewhere from its own settings, but only by a workspace admin."
-                : "Set by workspace admins. Every mix here posts its matchup to this channel."}
+              {canSetChannel ? t("adminHint") : t("viewerHint")}
             </p>
           </div>
 
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-              Cancel
+              {tCommon("cancel")}
             </Button>
             <Button size="sm" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-              {mutation.isPending ? "Saving…" : "Save"}
+              {mutation.isPending ? tCommon("saving") : tCommon("save")}
             </Button>
           </div>
         </div>

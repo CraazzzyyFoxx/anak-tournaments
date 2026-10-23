@@ -1,92 +1,117 @@
-"""Catalog read models shared by app-service, parser-service, and tournament-service.
+"""Catalog read models shared by app-service, stats-service, and tournament-service.
 
-``HeroRead``/``MapRead``/``GamemodeRead`` and the hero playtime/stats/leaderboard
-parameter shapes used to be copy-pasted into each of those three services'
-``schemas`` packages -- 121 identical lines, including a 44-field
-``HeroLeaderboardEntry``. They carry no per-service behavior, so there is exactly
-one definition here and each service's local module re-exports what it needs.
-Same consolidation as ``shared/schemas/base.py``; see its docstring.
-
-Deliberate omission: ``aliases``. Only app-service serves it (the admin catalog
-editor), and ``MapRead`` is embedded in ``EncounterRead.map`` in both
-parser-service and tournament-service, so declaring ``aliases`` here would widen
-two unrelated public payloads. app-service subclasses these three models to add
-it.
-
-No ``model_config`` here on purpose: callers that read ORM objects pass
-``from_attributes=True`` to ``model_validate`` themselves.
+``CatalogEntityRead`` is the one native wire for a ``catalog.entity`` row of any discipline and kind (public reads,
+admin CRUD, embedded relationships). The character playtime/leaderboard parameter shapes live here once so every
+service that serves them shares one definition (same consolidation as ``shared/schemas/base.py``).
 """
 
 import typing
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel
 
 from shared.core import enums, pagination
 from shared.schemas.base import BaseRead
+from shared.schemas.role import RoleRef
 
 __all__ = (
-    "GamemodeRead",
-    "HeroLeaderboardEntry",
-    "HeroLeaderboardParams",
-    "HeroLeaderboardQueryParams",
-    "HeroPlaytime",
-    "HeroPlaytimePaginationParams",
-    "HeroPlaytimeQueryPaginationParams",
-    "HeroRead",
-    "MapRead",
+    "CatalogEntityRead",
+    "CatalogEntityRef",
+    "CharacterLeaderboardEntry",
+    "CharacterLeaderboardParams",
+    "CharacterLeaderboardQueryParams",
+    "CharacterPlaytime",
+    "CharacterPlaytimePaginationParams",
+    "CharacterPlaytimeQueryPaginationParams",
 )
 
 
-class GamemodeRead(BaseRead):
+class CatalogEntityRead(BaseRead):
+    """One ``catalog.entity`` row of any discipline and kind; the public, admin and embedded catalog wire."""
+
+    created_at: datetime
+    updated_at: datetime | None = None
+    discipline: str
+    kind: typing.Literal["character", "map", "mode"]
     slug: str
     name: str
-    image_path: str
-    description: str | None
+    image_path: str | None
+    parent_id: int | None
+    attrs: dict[str, Any]
+    aliases: list[str]
+    active: bool
+    #: Same shape, one level deep: ``parent.parent`` is always ``None``.
+    parent: CatalogEntityRead | None = None
+
+    @classmethod
+    def from_entity(cls, entity: Any, *, with_parent: bool = True) -> typing.Self:
+        """``with_parent`` reads ``entity.parent`` when the row has a ``parent_id``; the caller must have loaded it
+        (an async lazy load raises). A row without a parent never touches the relationship."""
+        parent = entity.parent if with_parent and entity.parent_id is not None else None
+        return cls(
+            id=entity.id,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
+            discipline=entity.discipline,
+            kind=entity.kind,
+            slug=entity.slug,
+            name=entity.name,
+            image_path=entity.image_path,
+            parent_id=entity.parent_id,
+            attrs=dict(entity.attrs or {}),
+            aliases=list(entity.aliases or []),
+            active=entity.active,
+            parent=None if parent is None else cls.from_entity(parent, with_parent=False),
+        )
 
 
-class HeroRead(BaseRead):
+class CatalogEntityRef(BaseModel):
+    """A ``catalog.entity`` named and drawn, nothing more: what a compact strip of characters renders."""
+
+    id: int
     slug: str
     name: str
-    image_path: str
-    type: str
-    color: str
+    image_path: str | None
+
+    @classmethod
+    def from_entity(cls, entity: Any) -> typing.Self:
+        return cls(id=entity.id, slug=entity.slug, name=entity.name, image_path=entity.image_path)
 
 
-class MapRead(BaseRead):
-    gamemode_id: int
-    name: str
-    image_path: str
-    in_competitive: bool = True
+class CharacterPlaytime(BaseModel):
+    """One character's share of the observed playtime (a fraction of the returned set), not a duration."""
 
-    gamemode: GamemodeRead | None
-
-
-class HeroPlaytime(BaseModel):
-    hero: HeroRead
+    entity: CatalogEntityRead
     playtime: float
 
 
-class HeroPlaytimeQueryPaginationParams(pagination.PaginationSortQueryParams):
+class CharacterPlaytimeQueryPaginationParams(pagination.PaginationSortQueryParams):
     user_id: int | typing.Literal["all"] = "all"
     sort: typing.Literal["id", "name", "slug", "playtime"] = "playtime"
     tournament_id: int | None = None
 
 
 @dataclass
-class HeroPlaytimePaginationParams(pagination.PaginationSortParams):
+class CharacterPlaytimePaginationParams(pagination.PaginationSortParams):
     user_id: int | typing.Literal["all"] = "all"
     # role: enums.HeroRole | typing.Literal["all"] = "all"
     tournament_id: int | None = None
 
 
-class HeroLeaderboardEntry(BaseModel):
+class CharacterLeaderboardEntry(BaseModel):
     rank: int
     user_id: int
     username: str
     player_name: str
-    role: enums.HeroClass | None
-    div: int
+    role: RoleRef | None = None
+    #: The workspace grid's tier number in a scoped read; in the all-workspaces read the canonical number on the
+    #: game's native ladder (``None`` for a game without one).
+    div: int | None
+    #: Which stored grid ``div`` is a number on (scoped reads; those grids ship once per page in ``division_grids``).
+    #: ``None`` in the all-workspaces read: the native ladder is in-code.
+    division_grid_version_id: int | None = None
     team: str | None = None
     team_id: int | None = None
     games_played: int
@@ -114,18 +139,18 @@ class HeroLeaderboardEntry(BaseModel):
     kda: float
 
 
-class HeroLeaderboardQueryParams(pagination.PaginationQueryParams):
+class CharacterLeaderboardQueryParams(pagination.PaginationQueryParams):
     tournament_id: int | None = None
     stat: enums.LogStatsName = enums.LogStatsName.Eliminations
 
 
 @dataclass
-class HeroLeaderboardParams(pagination.PaginationParams):
+class CharacterLeaderboardParams(pagination.PaginationParams):
     tournament_id: int | None = None
     stat: enums.LogStatsName = enums.LogStatsName.Performance
 
     @classmethod
-    def from_query_params(cls, query_params: HeroLeaderboardQueryParams) -> HeroLeaderboardParams:  # type: ignore[override]
+    def from_query_params(cls, query_params: CharacterLeaderboardQueryParams) -> CharacterLeaderboardParams:  # type: ignore[override]
         return cls(
             page=query_params.page,
             per_page=query_params.per_page,

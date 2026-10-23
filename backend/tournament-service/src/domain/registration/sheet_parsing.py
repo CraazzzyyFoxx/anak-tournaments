@@ -3,8 +3,7 @@
 Pure (no DB, no network) transformation of raw sheet rows into structured
 registration payloads: token/value parsers, mapping suggestion from headers,
 the per-row detailed parser and the role-payload builder. The feed CRUD and
-the sync orchestration live in ``sheet_sync``; everything here is re-exported
-by the ``admin`` facade.
+the sync orchestration live in ``services.registration.sheet_sync``.
 """
 
 from __future__ import annotations
@@ -13,9 +12,9 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
-from shared.core.social import GAME_PROVIDERS
+from shared.core.social import GAME_PROVIDERS, SocialProvider, display_social_handle, normalize_social_handle
 from shared.division_grid import DivisionGrid
-from shared.domain.forms import IDENTITY_PROVIDERS, FormSchema, identity_key
+from shared.domain.forms import IDENTITY_PROVIDERS, FormSchema, identity_key, identity_provider
 from shared.domain.player_sub_roles import catalog_slugs, normalize_sub_role
 from src.domain.registration.mapping_catalog import (
     ANSWER_TARGET_KEYS,
@@ -29,8 +28,6 @@ from src.domain.registration.mapping_catalog import (
 from src.domain.registration.utils import (
     BATTLE_TAG_SCAN_RE,
     DEFAULT_BOOLEAN_TRUE_VALUES,
-    ROLE_ORDER,
-    VALID_ROLES,
     RoleSubroleEntry,
     build_header_keys,
     normalize_battle_tag,
@@ -63,7 +60,7 @@ def extract_battle_tags(value: str | None) -> list[str]:
     return _extract_battle_tags(value, BATTLE_TAG_SCAN_RE)
 
 
-def map_role_token(value: str | None, value_mapping: dict[str, Any]) -> str | None:
+def map_role_token(value: str | None, value_mapping: dict[str, Any], *, role_codes: tuple[str, ...]) -> str | None:
     if value is None:
         return None
     normalized = normalize_header(value)
@@ -72,7 +69,7 @@ def map_role_token(value: str | None, value_mapping: dict[str, Any]) -> str | No
     }
     if normalized in custom_map:
         mapped = custom_map[normalized]
-        return mapped if mapped in {"tank", "damage", "support"} else None
+        return mapped if mapped in role_codes else None
     return None
 
 
@@ -114,11 +111,13 @@ def _subrole_for_role(
 def _valid_role_subrole_entry(
     entry: Any,
     subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
+    *,
+    role_codes: tuple[str, ...],
 ) -> RoleSubroleEntry | None:
     if not isinstance(entry, dict):
         return None
     role = entry.get("role")
-    if role != "flex" and role not in VALID_ROLES:
+    if role != "flex" and role not in role_codes:
         return None
     raw_sub = entry.get("subrole")
     subrole = normalize_sub_role(raw_sub if isinstance(raw_sub, str) else None)
@@ -134,6 +133,8 @@ def map_role_subrole_tokens(
     value: str | None,
     value_mapping: dict[str, Any],
     subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
+    *,
+    role_codes: tuple[str, ...],
 ) -> list[RoleSubroleEntry]:
     """Return all role+subrole entries for a single cell value.
 
@@ -147,8 +148,12 @@ def map_role_subrole_tokens(
     custom_map = {normalize_header(k): v for k, v in (value_mapping.get("role_subroles") or {}).items()}
     raw = custom_map.get(normalized)
     if isinstance(raw, list):
-        return [e for e in (_valid_role_subrole_entry(item, subrole_catalog) for item in raw) if e is not None]
-    entry = _valid_role_subrole_entry(raw, subrole_catalog)
+        return [
+            e
+            for e in (_valid_role_subrole_entry(item, subrole_catalog, role_codes=role_codes) for item in raw)
+            if e is not None
+        ]
+    entry = _valid_role_subrole_entry(raw, subrole_catalog, role_codes=role_codes)
     return [entry] if entry else []
 
 
@@ -156,8 +161,10 @@ def map_role_subrole_token(
     value: str | None,
     value_mapping: dict[str, Any],
     subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
+    *,
+    role_codes: tuple[str, ...],
 ) -> RoleSubroleEntry | None:
-    entries = map_role_subrole_tokens(value, value_mapping, subrole_catalog)
+    entries = map_role_subrole_tokens(value, value_mapping, subrole_catalog, role_codes=role_codes)
     return entries[0] if entries else None
 
 
@@ -175,19 +182,21 @@ def _parse_sr_value(raw: str | None, value_mapping: dict[str, Any]) -> int | Non
     return parse_integer(raw)
 
 
-def parse_role_token_list(values: list[str], value_mapping: dict[str, Any]) -> list[str]:
+def parse_role_token_list(
+    values: list[str], value_mapping: dict[str, Any], *, role_codes: tuple[str, ...]
+) -> list[str]:
     roles: list[str] = []
     for value in values:
         stripped = value.strip()
         if not stripped:
             continue
         # Try the whole cell value first — handles custom mappings that include commas.
-        role_code = map_role_token(stripped, value_mapping)
+        role_code = map_role_token(stripped, value_mapping, role_codes=role_codes)
         if role_code:
             roles.append(role_code)
             continue
         for token in re.split(r"[,/\n]+", value):
-            role_code = map_role_token(token, value_mapping)
+            role_code = map_role_token(token, value_mapping, role_codes=role_codes)
             if role_code:
                 roles.append(role_code)
     return unique_strings(roles)
@@ -197,6 +206,8 @@ def parse_role_subrole_token_list(
     values: list[str],
     value_mapping: dict[str, Any],
     subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
+    *,
+    role_codes: tuple[str, ...],
 ) -> list[RoleSubroleEntry]:
     """Parse a list of role+subrole tokens, one per value (column).
 
@@ -207,7 +218,9 @@ def parse_role_subrole_token_list(
     entries: list[RoleSubroleEntry] = []
     seen_roles: set[str] = set()
     for value in values:
-        for entry in map_role_subrole_tokens(value.strip() or None, value_mapping, subrole_catalog):
+        for entry in map_role_subrole_tokens(
+            value.strip() or None, value_mapping, subrole_catalog, role_codes=role_codes
+        ):
             role = entry.get("role") or ""
             if role and role not in seen_roles:
                 seen_roles.add(role)
@@ -233,6 +246,8 @@ def suggest_mapping_from_headers(
     headers: list[str],
     *,
     schema: FormSchema | None = None,
+    role_codes: tuple[str, ...],
+    provider: str,
 ) -> dict[str, Any]:
     """Suggest a starting mapping by matching headers against target aliases.
 
@@ -243,7 +258,7 @@ def suggest_mapping_from_headers(
     """
     header_keys = build_header_keys(headers)
     normalized_headers = [normalize_header(header) for header in headers]
-    specs = build_target_specs(schema)
+    specs = build_target_specs(schema, role_codes=role_codes)
     targets: dict[str, Any] = {
         spec.key: default_mapping_target(spec.default_parser, spec.default_mode) for spec in specs
     }
@@ -264,15 +279,23 @@ def suggest_mapping_from_headers(
         columns = found if spec.multi_column else [found[0]]
         targets[spec.key] = {"mode": "columns", "columns": columns, "parser": spec.default_parser}
 
-    # The game-handle column also seeds the dedup key and the display name, matching
-    # the legacy behavior where a single column drives all three identity fields.
-    game_key = identity_key(GAME_PROVIDERS[0]) if GAME_PROVIDERS else None
-    game_config = targets.get(game_key) if game_key else None
+    # The game-handle column also seeds the display name. For BattleNet it seeds the dedup
+    # key too. Any other provider's key is inferred from its normalized
+    # primary handle at parse time, so no ``source_record_key`` may be SUGGESTED for it at
+    # all (not from the alias loop either): ``battle_tag`` parsing would strip the internal
+    # spaces a Riot name may carry, and a shared BattleTag column would collapse distinct
+    # Riot registrations onto one key. Explicitly saved mappings are not touched.
+    game_config = targets.get(identity_key(provider))
     if game_config and game_config.get("mode") == "columns" and game_config.get("columns"):
         column = game_config["columns"][0]
-        targets["source_record_key"] = {"mode": "columns", "columns": [column], "parser": "battle_tag"}
+        if provider == SocialProvider.BATTLENET:
+            targets["source_record_key"] = {"mode": "columns", "columns": [column], "parser": "battle_tag"}
         if targets.get("display_name", {}).get("mode") != "columns":
             targets["display_name"] = {"mode": "columns", "columns": [column], "parser": "string"}
+    if provider != SocialProvider.BATTLENET:
+        key_spec = next((spec for spec in specs if spec.key == "source_record_key"), None)
+        if key_spec is not None:
+            targets["source_record_key"] = default_mapping_target(key_spec.default_parser, key_spec.default_mode)
 
     return {"targets": targets}
 
@@ -313,15 +336,28 @@ def parse_target_value(
     values: list[str],
     value_mapping: dict[str, Any],
     grid: DivisionGrid,
+    role_codes: tuple[str, ...],
     is_list: bool = False,
     subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
+    provider: str | None = None,
 ) -> Any:
     if parser == "string":
         return values[0].strip() if values else None
     if parser == "battle_tag":
         return normalize_battle_tag(values[0]) if values else None
     if parser == "battle_tag_list":
-        return extract_battle_tags("\n".join(values))
+        if provider is None:
+            raise ValueError("Game handle parsing requires an identity provider")
+        if provider == SocialProvider.BATTLENET:
+            return extract_battle_tags("\n".join(values))
+        # One handle per selected cell/line: spaces and punctuation can be part
+        # of a game name. Leave invalid input to the form's provider validation.
+        return [
+            display_social_handle(provider, handle)
+            for value in values
+            for handle in value.splitlines()
+            if handle.strip()
+        ]
     if parser == "boolean":
         return parse_boolean(values[0] if values else None, value_mapping)
     if parser == "integer":
@@ -330,10 +366,10 @@ def parse_target_value(
         return parse_datetime(values[0] if values else None)
     if parser == "role_token":
         if is_list:
-            return parse_role_token_list(values, value_mapping)
-        return map_role_token(values[0] if values else None, value_mapping)
-    if parser == "role_token_list":  # backward compat — treated as role_token + is_list=True
-        return parse_role_token_list(values, value_mapping)
+            return parse_role_token_list(values, value_mapping, role_codes=role_codes)
+        return map_role_token(values[0] if values else None, value_mapping, role_codes=role_codes)
+    if parser == "role_token_list":  # same as role_token + is_list=True
+        return parse_role_token_list(values, value_mapping, role_codes=role_codes)
     if parser == "subrole_token":
         return map_subrole_token(values[0] if values else None, value_mapping, subrole_catalog)
     if parser == "division_to_rank":
@@ -352,8 +388,10 @@ def parse_target_value(
         return "\n".join(value.strip() for value in values if value.strip()) or None
     if parser == "role_subrole_token":
         if is_list:
-            return parse_role_subrole_token_list(values, value_mapping, subrole_catalog)
-        return map_role_subrole_token(values[0] if values else None, value_mapping, subrole_catalog)
+            return parse_role_subrole_token_list(values, value_mapping, subrole_catalog, role_codes=role_codes)
+        return map_role_subrole_token(
+            values[0] if values else None, value_mapping, subrole_catalog, role_codes=role_codes
+        )
     if parser == "sr_value":
         return _parse_sr_value(values[0] if values else None, value_mapping)
     return values[0] if values else None
@@ -366,6 +404,8 @@ def parse_sheet_row_detailed(
     mapping_config: dict[str, Any] | None,
     value_mapping: dict[str, Any] | None,
     grid: DivisionGrid,
+    role_codes: tuple[str, ...],
+    provider: str,
     schema: FormSchema | None = None,
     subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
 ) -> ParsedRowResult:
@@ -387,7 +427,9 @@ def parse_sheet_row_detailed(
     coercion) so a single bad cell never aborts the whole row. Returns
     ``fields=None`` when the row produces no identity key (caller skips it).
     """
-    effective_mapping = mapping_config or suggest_mapping_from_headers(headers, schema=schema)
+    effective_mapping = mapping_config or suggest_mapping_from_headers(
+        headers, schema=schema, role_codes=role_codes, provider=provider
+    )
     targets = effective_mapping.get("targets") or {}
     row_json = row_to_json(headers, row)
     effective_value_mapping = {**build_default_value_mapping(), **(value_mapping or {})}
@@ -396,7 +438,7 @@ def parse_sheet_row_detailed(
 
     flat_values: dict[str, Any] = {}
     mapped: set[str] = set()
-    for target_key, spec in target_spec_map(schema).items():
+    for target_key, spec in target_spec_map(schema, role_codes=role_codes).items():
         if spec.group == "custom_fields":
             continue
         target_config = targets.get(target_key)
@@ -419,6 +461,8 @@ def parse_sheet_row_detailed(
                 grid=grid,
                 is_list=is_list,
                 subrole_catalog=subrole_catalog,
+                role_codes=role_codes,
+                provider=identity_provider(target_key),
             )
         except Exception as exc:  # noqa: BLE001 - surface per-field instead of failing the row
             flat_values[target_key] = None
@@ -427,26 +471,31 @@ def parse_sheet_row_detailed(
     answers: dict[str, Any] = {key: flat_values.get(key) for key in ANSWER_TARGET_KEYS if key in mapped}
     # Every identity answer is a LIST of handles, primary first -- a sheet column
     # parsed as a single string still has to arrive as one.
-    for provider in IDENTITY_PROVIDERS:
-        key = identity_key(provider)
+    for identity in IDENTITY_PROVIDERS:
+        key = identity_key(identity)
         if key not in answers:
             continue
         raw = answers[key]
         handles = [handle for handle in (raw if isinstance(raw, list) else [raw]) if handle]
-        if not handles and provider in GAME_PROVIDERS:
+        if not handles and identity in GAME_PROVIDERS:
             # The one answer a sheet may never blank: it is this row's own identity
             # and the key every re-sync matches on.
             answers.pop(key)
             continue
         answers[key] = handles
 
-    primary_handle = next(
-        (handles[0] for provider in GAME_PROVIDERS if (handles := answers.get(identity_key(provider)))),
-        None,
-    )
-    source_record_key = flat_values.get("source_record_key") or primary_handle
+    # The OWNING tournament's provider only: another game's handle on the row is an
+    # extra profile handle, never the row's identity or its source key.
+    primary_handle = next(iter(answers.get(identity_key(provider)) or []), None)
+    source_record_key = flat_values.get("source_record_key")
     if isinstance(source_record_key, str):
         source_record_key = normalize_battle_tag_key(source_record_key) or source_record_key.strip()
+    if not source_record_key and primary_handle:
+        source_record_key = (
+            normalize_battle_tag_key(primary_handle)
+            if provider == SocialProvider.BATTLENET
+            else normalize_social_handle(provider, primary_handle)
+        )
     if not source_record_key:
         return ParsedRowResult(fields=None, errors=errors, warnings=warnings)
 
@@ -462,26 +511,14 @@ def parse_sheet_row_detailed(
         "is_flex": bool(flat_values.get("is_flex", False)),
         "admin_notes": flat_values.get("admin_notes"),
         "roles": {
-            "tank": {
-                "rank_value": flat_values.get("roles.tank.rank_value") or flat_values.get("roles.tank.division_input"),
-                "subrole": None,
-                "is_active": flat_values.get("roles.tank.is_active"),
-                "priority": flat_values.get("roles.tank.priority"),
-            },
-            "damage": {
-                "rank_value": flat_values.get("roles.damage.rank_value")
-                or flat_values.get("roles.damage.division_input"),
-                "subrole": _subrole_for_role(flat_values.get("roles.damage.subrole"), "damage", subrole_catalog),
-                "is_active": flat_values.get("roles.damage.is_active"),
-                "priority": flat_values.get("roles.damage.priority"),
-            },
-            "support": {
-                "rank_value": flat_values.get("roles.support.rank_value")
-                or flat_values.get("roles.support.division_input"),
-                "subrole": _subrole_for_role(flat_values.get("roles.support.subrole"), "support", subrole_catalog),
-                "is_active": flat_values.get("roles.support.is_active"),
-                "priority": flat_values.get("roles.support.priority"),
-            },
+            code: {
+                "rank_value": flat_values.get(f"roles.{code}.rank_value")
+                or flat_values.get(f"roles.{code}.division_input"),
+                "subrole": _subrole_for_role(flat_values.get(f"roles.{code}.subrole"), code, subrole_catalog),
+                "is_active": flat_values.get(f"roles.{code}.is_active"),
+                "priority": flat_values.get(f"roles.{code}.priority"),
+            }
+            for code in role_codes
         },
     }
 
@@ -502,15 +539,17 @@ def parse_sheet_row_detailed(
     return ParsedRowResult(fields=parsed, errors=errors, warnings=warnings)
 
 
-def build_registration_role_payloads(parsed_fields: dict[str, Any]) -> list[dict[str, Any]]:
+def build_registration_role_payloads(
+    parsed_fields: dict[str, Any], *, role_codes: tuple[str, ...]
+) -> list[dict[str, Any]]:
     source_primary = parsed_fields.get("source_roles", {}).get("primary")
     source_additional = parsed_fields.get("source_roles", {}).get("additional") or []
 
     def _role_code(v: Any) -> str | None:
         if isinstance(v, dict):
             code = v.get("role")
-            return code if code in VALID_ROLES else None
-        return v if v in VALID_ROLES else None
+            return code if code in role_codes else None
+        return v if v in role_codes else None
 
     def _subrole(v: Any) -> str | None:
         return v.get("subrole") if isinstance(v, dict) else None
@@ -541,7 +580,7 @@ def build_registration_role_payloads(parsed_fields: dict[str, Any]) -> list[dict
 
     payloads: list[dict[str, Any]] = []
     additional_role_codes = {_role_code(r) for r in source_additional} - {None}
-    for fallback_priority, role_code in enumerate(ROLE_ORDER):
+    for fallback_priority, role_code in enumerate(role_codes):
         role_data = parsed_fields.get("roles", {}).get(role_code) or {}
         rank_value = role_data.get("rank_value")
         explicit_subrole = role_data.get("subrole")

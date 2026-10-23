@@ -22,7 +22,6 @@ the schema and only exploded later inside the points adder.
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -35,7 +34,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 stage_service = importlib.import_module("src.services.admin.stage")
 stage_common = importlib.import_module("src.services.admin.stage_common")
@@ -82,6 +80,8 @@ class SwissRoundRobinShortcutTests(IsolatedAsyncioTestCase):
             tournament_id=99,
             stage_type=enums.StageType.SWISS,
             max_rounds=max_rounds,
+            swiss_qualify_wins=None,
+            swiss_eliminate_losses=None,
         )
 
     async def _skeleton(self, *, teams: int, max_rounds: int):
@@ -307,7 +307,8 @@ class StageRegulationSchemaTests(TestCase):
     def test_an_explicit_null_for_a_non_nullable_field_is_refused(self) -> None:
         # These carry a default only so that an omitted field is left alone --
         # sending null must not write a NULL into a NOT NULL column.
-        for field in ("de_grand_final_type", "seed_ranking", "best_of", "scoring", "ffa_scoring"):
+        # ``ffa_scoring`` is gone: its three fields live in ``scoring`` now (D51).
+        for field in ("de_grand_final_type", "seed_ranking", "best_of", "scoring"):
             with self.subTest(field=field), self.assertRaises(pydantic.ValidationError):
                 schemas.StageUpdate(**{field: None})
 
@@ -320,30 +321,49 @@ class UpdateStageTests(IsolatedAsyncioTestCase):
     """Item 16: structural edits and how the regulation reaches the columns."""
 
     def _stage(self, **overrides) -> SimpleNamespace:
-        return SimpleNamespace(
+        stage = SimpleNamespace(
             **stage_regulation(**overrides),
             id=1,
             tournament_id=99,
             stage_type=enums.StageType.SWISS,
+            # ``_assert_scoring_editable`` asks every group of the stage whether
+            # a playoff seeded off it has started.
+            items=[],
         )
+        # ``Stage.scoring`` is a property on the real model; the double spells
+        # it out, levels 1-2 read off the rule row the stage points at (D51).
+        rule = stage.scoring_rule
+        stage.scoring = {
+            "win": stage.win_points,
+            "draw": stage.draw_points,
+            "loss": stage.loss_points,
+            "preset": rule.preset,
+            "columns": [dict(column) for column in rule.columns],
+            "placement_points": list(rule.placement_points),
+            "formula": rule.game_formula,
+        }
+        return stage
 
     async def _update(self, stage, data) -> None:
-        session = SimpleNamespace(commit=AsyncMock())
+        session = SimpleNamespace(
+            commit=AsyncMock(),
+            scalar=AsyncMock(return_value=0),
+            execute=AsyncMock(return_value=SimpleNamespace(scalars=lambda: [])),
+        )
         with (
             patch.object(service, "get_stage", AsyncMock(side_effect=[stage, stage])),
-            patch.object(service.encounter_repo, "count", AsyncMock(return_value=0)),
             patch.object(service, "_publish_structure_changed", AsyncMock()),
+            patch.object(stage_service, "enqueue_tournament_recalculation", AsyncMock()),
         ):
             await service.update_stage(session, 1, data)
 
     async def test_format_change_with_existing_matches_is_refused(self) -> None:
         stage = self._stage()
-        session = SimpleNamespace(commit=AsyncMock())
+        session = SimpleNamespace(commit=AsyncMock(), scalar=AsyncMock(return_value=7))
         data = schemas.StageUpdate(stage_type=enums.StageType.SINGLE_ELIMINATION)
 
         with (
             patch.object(service, "get_stage", AsyncMock(return_value=stage)),
-            patch.object(service.encounter_repo, "count", AsyncMock(return_value=7)),
             self.assertRaises(Exception) as ctx,
         ):
             await service.update_stage(session, 1, data)
@@ -358,6 +378,20 @@ class UpdateStageTests(IsolatedAsyncioTestCase):
         await self._update(stage, schemas.StageUpdate(stage_type=enums.StageType.SINGLE_ELIMINATION))
 
         self.assertEqual(enums.StageType.SINGLE_ELIMINATION, stage.stage_type)
+        # The rule follows the new type: a duel stage is scored by wins, and its
+        # Bo3 settles at 2-0 instead of waiting for the third game.
+        self.assertEqual("wins", stage.scoring_rule.preset)
+        self.assertEqual("win", stage.scoring_rule.game_formula)
+        self.assertEqual("games >= best_of or max_wins * 2 > best_of", stage.scoring_rule.end_formula)
+
+    async def test_a_type_change_to_a_lobby_stage_switches_to_points(self) -> None:
+        stage = self._stage()
+
+        await self._update(stage, schemas.StageUpdate(stage_type=enums.StageType.FFA_LEAGUE))
+
+        self.assertEqual("points", stage.scoring_rule.preset)
+        self.assertEqual("games >= best_of", stage.scoring_rule.end_formula)
+        self.assertEqual(["score"], [column["key"] for column in stage.scoring_rule.columns])
 
     async def test_scoring_lands_on_the_columns_the_engine_reads(self) -> None:
         stage = self._stage()

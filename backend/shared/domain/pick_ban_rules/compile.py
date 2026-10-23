@@ -1,24 +1,32 @@
 """Phase selection, round resolution and the v1 -> v2 conversion.
 
-The v1 sequence generators live here now (they moved out of
-``tournament-service/.../veto_session.py`` unchanged): a ruleset phase with a
-``generator`` expands to the very same token list the flat v1 config produced,
-so a migrated bracket/slot config keeps its exact step order.
-
-Design: ``docs/plans/2026-09-28-pick-ban-constructor.md`` §1, §3, §11.
+A ruleset phase with a ``generator`` expands to the same token list the flat v1
+config produces, so a converted bracket/slot config keeps its exact step order.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from shared.core.enums import FirstBanRotation
 
 from .registry import RoundCtx, evaluate
-from .schema import Constraint, DisputeRule, Phase, ResolvedStep, Ruleset, Step
+from .schema import LEGACY_ACTOR_SLOTS, Constraint, DisputeRule, Phase, ResolvedActor, ResolvedStep, Ruleset, Step
 
 #: How many lead bans a bracket sequence spends before its picks.
 LEAD_BANS = 2
+
+
+class UnassignedSide(ValueError):
+    """``side:<code>`` read before the ``side_pick`` that hands it out.
+
+    A ``ValueError`` so a caller that cannot defer (the constructor's demand
+    arithmetic, a stored ruleset read out of order) fails as on any other
+    unresolvable token; :func:`resolve_round` catches it and leaves the step
+    unbound.
+    """
+
 
 _V1_ACTIONS = {"ban": "ban", "pick": "pick", "protect": "protect"}
 
@@ -58,7 +66,7 @@ def build_slot_sequence(candidate_counts: list[int], *, rotation: str) -> list[s
 
 
 def steps_from_v1_tokens(tokens: list[str], *, kind: str) -> list[Step]:
-    """Every v1 token becomes a count-1, open, single-actor step (§11).
+    """Every v1 token becomes a count-1, open, single-actor step.
 
     A hero sequence drops ``decider``: "whatever survived is the pick" is a
     map-veto idea, and a hero round leaves the whole unbanned pool playable.
@@ -86,7 +94,7 @@ def _v1_step(step_id: str, *, action: str, actors: str) -> Step:
         min=None,
         blind=False,
         target=None,
-        #: v1 bans lasted exactly the map they were made on.
+        #: A v1 ban lasts exactly the map it was made on.
         lifetime=1 if action == "ban" else None,
         timer_seconds=None,
         on_timeout=None,
@@ -106,7 +114,7 @@ def ruleset_from_v1(
     unique_attribute: str | None,
     turn_timer_seconds: int | None,
 ) -> Ruleset:
-    """Convert a v1 ``PickBanConfig`` into the equivalent ruleset (§11).
+    """Convert a v1 ``PickBanConfig`` into the equivalent ruleset.
 
     Behaviour-preserving by construction: the same steps in the same order, the
     ledger's no-repeat scope expressed as a ``banned_by`` filter, and the
@@ -164,27 +172,58 @@ def select_phase(ruleset: Ruleset, ctx: RoundCtx) -> Phase | None:
     return None
 
 
-def resolve_sides(actors: str, *, opener: str, prev_outcome: str | None) -> list[str]:
-    """Actor resolution (§1). ``winner_prev``/``loser_prev`` fall back to
-    first/second when there is no previous round or it was drawn/unknown."""
-    other = "away" if opener == "home" else "home"
+def resolve_actors(
+    actors: str,
+    *,
+    participants: Sequence[int],
+    opener: int,
+    prev_winner: int | None = None,
+    sides: Mapping[str, int] | None = None,
+) -> list[ResolvedActor]:
+    """Actor resolution: a token becomes the PARTICIPATIONS that
+    take the step, or ``[None]`` when the engine takes it.
+
+    ``participants`` are the encounter's live seats in slot order, so
+    ``slot:<n>`` is simply the n-th of them; ``second`` is the seat after the
+    opener and ``both`` is everyone, opener first. ``winner_prev``/``loser_prev``
+    fall back to first/second when there is no previous round or it was drawn.
+    ``side:<code>`` needs the ``side_pick`` that assigned it to have been
+    resolved already -- validation refuses a ruleset where it was not.
+    """
+    seats = list(participants)
+    if not seats:
+        raise ValueError("a pick-ban step cannot be resolved without participations")
+    rotated = seats[seats.index(opener) :] + seats[: seats.index(opener)] if opener in seats else seats
+    other = rotated[1] if len(rotated) > 1 else rotated[0]
     match actors:
         case "first":
-            return [opener]
+            return [rotated[0]]
         case "second":
             return [other]
         case "both":
-            return [opener, other]
-        case "home" | "away":
-            return [actors]
+            return list(rotated)
         case "system":
-            return ["system"]
+            return [None]
         case "winner_prev":
-            return [prev_outcome] if prev_outcome in ("home", "away") else [opener]
+            return [prev_winner] if prev_winner in seats else [rotated[0]]
         case "loser_prev":
-            if prev_outcome in ("home", "away"):
-                return ["away" if prev_outcome == "home" else "home"]
+            if prev_winner in seats:
+                losers = [seat for seat in rotated if seat != prev_winner]
+                return [losers[0]]
             return [other]
+    slot = LEGACY_ACTOR_SLOTS.get(actors)
+    if slot is None and actors.startswith("slot:"):
+        slot = int(actors.removeprefix("slot:"))
+    if slot is not None:
+        if not 1 <= slot <= len(seats):
+            raise ValueError(f"actors {actors!r} names a slot this encounter does not seat")
+        return [seats[slot - 1]]
+    if actors.startswith("side:"):
+        code = actors.removeprefix("side:")
+        actor = (sides or {}).get(code)
+        if actor is None:
+            raise UnassignedSide(f"actors {actors!r} is read before any step assigned side {code!r}")
+        return [actor]
     raise ValueError(f"unknown actors {actors!r}")
 
 
@@ -194,17 +233,22 @@ def resolve_round(
     kind: str,
     round: int | None,
     start_index: int,
-    opener: str,
-    prev_outcome: str | None = None,
+    participants: Sequence[int],
+    opener: int,
+    prev_winner: int | None = None,
+    sides: Mapping[str, int] | None = None,
     best_of: int = 1,
     pool_size: int = 0,
     candidate_count: int = 0,
+    members: Mapping[int, Sequence[int]] | None = None,
 ) -> list[ResolvedStep]:
     """The resolved steps one round of this ruleset adds to the session.
 
     ``round is None`` is flat mode (one sequence settles the whole series); the
     phase is still selected as if it were map 1, and the resolved steps carry
     ``round: null`` exactly as v1 entries do.
+
+    ``members`` is a mix room's seats per participation in pick order; member steps bind to them (:func:`bind_members`).
     """
     ctx = RoundCtx(round=round if round is not None else 1, best_of=max(best_of, 1), kind=kind)
     phase = select_phase(ruleset, ctx)
@@ -226,7 +270,19 @@ def resolve_round(
     for step in steps:
         if step.action == "decider" and kind != "map":
             continue
-        count = 1 if step.action == "decider" else step.count
+        count = 1 if step.action in ("decider", "side_pick") else step.count
+        # A ``side:<code>`` actor names whoever an EARLIER ``side_pick`` of this
+        # same round will hand that side to, and the round is resolved before
+        # any of its steps is played. Such a step is written unbound and gets
+        # its actors from ``runtime.bind_side_actors`` the moment the side
+        # exists; the cursor stops on it until then.
+        try:
+            actors = resolve_actors(
+                step.actors, participants=participants, opener=opener, prev_winner=prev_winner, sides=sides
+            )
+            token = None
+        except UnassignedSide:
+            actors, token = [], step.actors
         resolved.append(
             ResolvedStep(
                 index=start_index + len(resolved),
@@ -234,7 +290,8 @@ def resolve_round(
                 phase_id=phase.id,
                 step_id=step.id,
                 action=step.action,
-                sides=resolve_sides(step.actors, opener=opener, prev_outcome=prev_outcome),  # type: ignore[arg-type]
+                actors=actors,
+                actors_token=token,
                 count=count,
                 min=count if step.min is None else min(step.min, count),
                 blind=step.blind,
@@ -245,6 +302,36 @@ def resolve_round(
                 dispute=step.dispute,
                 eligible=step.eligible,
                 constraints=list(step.constraints),
+                member=step.member,
             )
         )
-    return resolved
+    return bind_members(resolved, members or {})
+
+
+def bind_members(steps: Sequence[ResolvedStep], members: Mapping[int, Sequence[int]]) -> list[ResolvedStep]:
+    """Give every member step whose actors are bound its members (spec §11.6 R4-1, R4-2).
+
+    ``members`` is each participation's seats in pick order. ``each``: every member of every acting team. ``next``:
+    the acting team's k-th member, k counting that team's earlier ``next`` steps of the round; a team out of members
+    owes the step nothing, and the cursor passes it. Idempotent: a step already holding its members, or still
+    waiting on its side, is left as it is.
+    """
+    taken: dict[tuple[int | None, int], int] = {}
+    bound: list[ResolvedStep] = []
+    for step in steps:
+        if step.member is None:
+            bound.append(step)
+            continue
+        seats: list[tuple[int, int]] = []
+        for actor in step.acting_actors:
+            roster = list(members.get(actor, ()))
+            if step.member == "each":
+                seats.extend((actor, member) for member in roster)
+                continue
+            position = taken.get((step.round, actor), 0)
+            taken[(step.round, actor)] = position + 1
+            if position < len(roster):
+                seats.append((actor, roster[position]))
+        keep = step.member_seats or step.is_unbound
+        bound.append(step if keep else step.model_copy(update={"member_seats": seats}))
+    return bound

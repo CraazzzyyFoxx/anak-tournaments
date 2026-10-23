@@ -2,8 +2,8 @@
 
 import asyncio
 
+from shared import models
 from shared.core.social import SocialProvider
-from src import models
 from src.services.user import flows
 
 
@@ -31,7 +31,7 @@ def test_to_pydantic_returns_unified_social_accounts():
         _acc(2, SocialProvider.DISCORD, "coolguy"),
         _acc(3, SocialProvider.TWITCH, "streamer"),
     ]
-    res = asyncio.run(flows.flows_service.to_pydantic(None, _user_with(accounts), ["battle_tag", "discord", "twitch"]))
+    res = asyncio.run(flows.flows_service.to_pydantic(None, _user_with(accounts), ["social_accounts"]))
     assert len(res.social_accounts) == 3
     assert {s.provider for s in res.social_accounts} == {"battlenet", "discord", "twitch"}
     primary = next(s for s in res.social_accounts if s.username == "Player#1234")

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   useDraftPlayerCardPrefetch,
@@ -12,6 +13,7 @@ import {
 } from "@/hooks/useDraftData";
 import { DRAFT_WIDE_QUERY } from "@/hooks/useDraftLayerPad";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { canConfirmPick, type DraftGating } from "@/lib/draft/logic";
 import {
   actingTeamId,
@@ -19,6 +21,7 @@ import {
   fitByPlayer,
   isOverrideAct,
   needRoles,
+  poolRoleColumns,
   onClockTeamId,
   seatOf,
   type PickTarget,
@@ -37,10 +40,12 @@ import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import type { DraftBoard, DraftPickOptionsResponse, DraftPresenceState, DraftRole } from "@/types/draft.types";
 import type { RealtimeConnectionState } from "@/types/realtime.types";
-import type { Tournament } from "@/types/tournament.types";
 import type { DivisionGrid } from "@/types/workspace.types";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { slotCodeOrder, type LadderedOntology } from "@/lib/roster/ontology";
 
 import { AdminStrip } from "./AdminStrip";
+import type { DraftOwner } from "./DraftBoard";
 import styles from "./DraftRoom.module.css";
 import { PickIsland } from "./PickIsland";
 import { PickPill } from "./PickPill";
@@ -51,7 +56,7 @@ import { RoomHeader } from "./RoomHeader";
 import { TeamsPanel } from "./TeamsPanel";
 
 interface DraftWorkspaceProps {
-  tournament: Tournament;
+  owner: DraftOwner;
   board: DraftBoard;
   gating: DraftGating;
   presence: DraftPresenceState;
@@ -63,18 +68,10 @@ interface DraftWorkspaceProps {
   onViewParamsChange: (patch: Partial<DraftViewParams>) => void;
   mutations: DraftMutations;
   divisionGrid: DivisionGrid;
+  /** The session owner's role dictionary and native ladder (`null` while it loads): names, glyphs, colours and order of every role. */
+  ontology: LadderedOntology | null;
   onlineCaptainIds: ReadonlySet<number>;
 }
-
-// One tree at a time: the pool is the heaviest list in the app, and mounting it
-// twice (desktop + tabs) doubled every re-render.
-const subscribeWide = (onChange: () => void) => {
-  const query = window.matchMedia(DRAFT_WIDE_QUERY);
-  query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
-};
-const isWideNow = () => window.matchMedia(DRAFT_WIDE_QUERY).matches;
-const NOT_WIDE_ON_SERVER = () => false;
 
 /** Enter already activates these; the confirm shortcut must not fire on top. */
 const INTERACTIVE =
@@ -91,7 +88,7 @@ const NO_FOLLOWED: number[] = [];
  * decides which affordances exist. An admin who is also a captain gets both.
  */
 export function DraftWorkspace({
-  tournament,
+  owner,
   board,
   gating,
   presence,
@@ -103,12 +100,15 @@ export function DraftWorkspace({
   onViewParamsChange,
   mutations,
   divisionGrid,
+  ontology,
   onlineCaptainIds
 }: Readonly<DraftWorkspaceProps>) {
   const t = useTranslations("draftRedesign");
   const sessionId = board.session.id;
   const seat = seatOf(gating);
-  const wide = useSyncExternalStore(subscribeWide, isWideNow, NOT_WIDE_ON_SERVER);
+  // One tree at a time: the pool is the heaviest list in the app, and mounting it
+  // twice (desktop + tabs) doubled every re-render.
+  const wide = useMediaQuery(DRAFT_WIDE_QUERY);
 
   const [pendingSelection, setSelection] = useState<RoomSelection | null>(null);
   const [profileId, setProfileId] = useState<number | null>(null);
@@ -166,7 +166,7 @@ export function DraftWorkspace({
     () => (fitScores ? fitByPlayer(fitScores, viewParams.role) : null),
     [fitScores, viewParams.role]
   );
-  const prefetchCard = useDraftPlayerCardPrefetch();
+  const prefetchCard = useDraftPlayerCardPrefetch(board.session.discipline);
 
   // "My list" is a captain's; a shared link carrying `pool=shortlist` shows
   // everyone else the available players instead of an empty, tab-less list.
@@ -183,9 +183,22 @@ export function DraftWorkspace({
     () => (finished ? board.players.filter((player) => !player.is_captain) : board.players),
     [finished, board.players]
   );
+  const slotLabel = useSlotLabel(ontology);
+  // The roles a seat can be asked for: every role the shape slots, plus the ones flex slots seat.
+  const roleColumns = useMemo(
+    () => poolRoleColumns(board.session.roster_shape, board.players, slotCodeOrder(ontology)),
+    [board.session.roster_shape, board.players, ontology]
+  );
   const pool = useMemo(
-    () => draftPoolView(poolPlayers, poolParams, queueIds, actingTeam ? needRoles(actingTeam) : null),
-    [poolPlayers, poolParams, queueIds, actingTeam]
+    () =>
+      draftPoolView(
+        poolPlayers,
+        poolParams,
+        queueIds,
+        actingTeam ? needRoles(actingTeam, roleColumns) : null,
+        slotLabel
+      ),
+    [poolPlayers, poolParams, queueIds, actingTeam, roleColumns, slotLabel]
   );
 
   // A captain may line a pick up BEFORE their turn; the board can take that
@@ -215,7 +228,7 @@ export function DraftWorkspace({
     // Not when I am the one who just drafted them: that is a success, and it
     // already said so.
     if (takenPlayer && takenPlayer.drafted_by_team_id !== gating.myTeamId) {
-      notify.info(t("selectionTaken", { player: takenPlayer.battle_tag ?? `#${takenPlayer.id}` }));
+      notify.info(t("selectionTaken", { player: takenPlayer.identity?.handle ?? `#${takenPlayer.id}` }));
     }
   }, [takenPlayer, gating.myTeamId, t]);
 
@@ -388,6 +401,7 @@ export function DraftWorkspace({
       options={options}
       safetyRequired={safetyRequired}
       divisionGrid={divisionGrid}
+      ontology={ontology}
       headingId={headingId}
       bottomInset={bottomInset}
     />
@@ -413,6 +427,7 @@ export function DraftWorkspace({
       onOpenProfile={openProfile}
       onSlotFilter={gating.isCaptain ? (role) => onViewParamsChange({ role, view: "pool" }) : undefined}
       divisionGrid={divisionGrid}
+      ontology={ontology}
       headingId={headingId}
     />
   );
@@ -424,20 +439,23 @@ export function DraftWorkspace({
         className="relative z-30 border-b border-[color:var(--aqt-border)] bg-[color:color-mix(in_srgb,var(--aqt-bg)_88%,transparent)] backdrop-blur-xl"
       >
         <RoomHeader
-          tournament={tournament}
+          owner={owner}
           board={board}
           gating={gating}
           presence={presence}
           connectionState={connectionState}
         />
         <RoomClockStrip
+          ontology={ontology}
           board={board}
           gating={gating}
           followed={followed}
           onlineCaptainIds={onlineCaptainIds}
           onViewParamsChange={onViewParamsChange}
         />
-        {gating.isAdmin && <AdminStrip board={board} mutations={mutations} onlineCaptainIds={onlineCaptainIds} />}
+        {gating.isAdmin && (
+          <AdminStrip board={board} mutations={mutations} onlineCaptainIds={onlineCaptainIds} ontology={ontology} />
+        )}
         <RoomBanner board={board} gating={gating} autopickPreview={autopickPreview} />
         {optionsLoading && gating.isMyPick && (
           <output className="mx-auto block max-w-[1720px] px-4 pb-2 text-sm text-[color:var(--aqt-fg-muted)] sm:px-6">
@@ -447,13 +465,15 @@ export function DraftWorkspace({
         {optionsUnavailable && (
           <output className="mx-auto flex max-w-[1720px] flex-wrap items-center gap-2 px-4 pb-2 text-sm text-[color:var(--aqt-fg-muted)] sm:px-6">
             {t("safeOptionsUnavailable")}
-            <button
+            <Button
               type="button"
+              variant="link"
+              size="inline"
               onClick={onRetryOptions}
-              className="min-h-11 rounded-sm text-[color:var(--aqt-teal)] underline outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+              className="min-h-11 text-[color:var(--aqt-teal)] underline"
             >
               {t("retry")}
-            </button>
+            </Button>
           </output>
         )}
       </header>
@@ -523,6 +543,7 @@ export function DraftWorkspace({
             autopickPreview={autopickPreview}
             queue={queue}
             divisionGrid={divisionGrid}
+            ontology={ontology}
             onPicked={clearAll}
           />
           {subject == null && actingTeam != null && currentPick != null && (

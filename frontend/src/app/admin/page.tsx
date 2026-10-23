@@ -1,321 +1,191 @@
 "use client";
 
-import { useMemo } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Plus } from "lucide-react";
-import { useFormatter } from "@/lib/datetime/client";
-
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { usePermissions } from "@/hooks/usePermissions";
-import { useCurrentWorkspaceId } from "@/hooks/useCurrentWorkspace";
-import { apiFetch } from "@/lib/api/fetch";
-import { cn } from "@/lib/utils";
-import adminService from "@/services/admin.service";
-import { getTournamentWorkspaceQueryKeys } from "@/lib/tournament/workspace-query-keys";
-import tournamentService from "@/services/tournament.service";
-import type { PaginatedResponse } from "@/types/pagination.types";
-import type { Tournament } from "@/types/tournament.types";
+import { ArrowRight, Plus } from "lucide-react";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { ActivityFeed } from "@/components/admin/dashboard/ActivityFeed";
+import { Backlog } from "@/components/admin/dashboard/Backlog";
+import { BlockError } from "@/components/admin/dashboard/Block";
+import { DashboardRealtime } from "@/components/admin/dashboard/DashboardRealtime";
+import { PhaseCards, PhaseCardsSkeleton } from "@/components/admin/dashboard/PhaseCards";
+import { PlatformHealth } from "@/components/admin/dashboard/PlatformHealth";
+import { Timeline } from "@/components/admin/dashboard/Timeline";
+import { Trends } from "@/components/admin/dashboard/Trends";
+import { WorkQueue } from "@/components/admin/dashboard/WorkQueue";
+import { EmptyNote } from "@/components/kit/EmptyNote";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
-import { KpiStrip, kpiColumnsClass } from "@/components/admin/dashboard/KpiStrip";
-import { ActiveTournamentCard } from "@/components/admin/dashboard/ActiveTournamentCard";
-import { ActiveTournamentReadiness } from "@/components/admin/dashboard/ActiveTournamentReadiness";
-import { IssuesQueue, type IssueItem } from "@/components/admin/dashboard/IssuesQueue";
-import { RecentTournaments } from "@/components/admin/dashboard/RecentTournaments";
+import { useCurrentWorkspaceId } from "@/hooks/useCurrentWorkspace";
+import { usePermissions, type AppPermission } from "@/hooks/usePermissions";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
+import { cn } from "@/lib/utils";
+import adminService from "@/services/admin.service";
 
-interface DashboardActiveTournamentStats {
-  encounters_total: number;
-  encounters_missing_logs: number;
-  log_coverage_percent: number;
-}
+/** `GET /api/v1/admin/dashboard` answers anyone holding one of these in the workspace. */
+const DASHBOARD_PERMISSIONS: AppPermission[] = [
+  "tournament.read",
+  "team.read",
+  "match.read",
+  "user.read",
+  "achievement.read"
+];
 
-/** Mirrors backend/app-service/src/schemas/statistics.py:DashboardIssues. */
-interface DashboardIssues {
-  encounters_missing_logs: number;
-  teams_without_players: number;
-  tournaments_without_stages: number;
-  users_without_identities: number;
-  encounters_awaiting_result: number;
-  encounters_pending_confirmation: number;
-  stage_slots_empty: number;
-}
-
-/** Mirrors backend/app-service/src/schemas/statistics.py:DashboardStats. */
-interface DashboardStats {
-  tournaments_total: number;
-  tournaments_active: number;
-  teams_total: number;
-  players_total: number;
-  encounters_total: number;
-  tournaments_registration_open: number;
-  encounters_completed: number;
-  active_tournament_stats: DashboardActiveTournamentStats | null;
-  issues: DashboardIssues;
-}
-
-function emptyPaginated<T>(): PaginatedResponse<T> {
-  return { results: [], total: 0, page: 1, per_page: 0 };
-}
-
+/**
+ * The organizer's home: one card per tournament in a live phase, what the next
+ * seven days hold, what to do now, what the staff did, and how the last
+ * tournaments went. Every block loads, fails and hides on its own; a block the
+ * reader's role cannot see is absent, never zero.
+ */
 export default function AdminDashboard() {
   const t = useTranslations("adminShell.dashboard");
-  const tExtra = useTranslations("adminShell.dashboardExtra");
-  const { canAccessPermission } = usePermissions();
+  const { canAccessPermission, isSuperuser } = usePermissions();
   const workspaceId = useCurrentWorkspaceId();
   const { user } = useAuthProfile();
-  const format = useFormatter();
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? t("greetingMorning") : hour < 18 ? t("greetingAfternoon") : t("greetingEvening");
-  const today = format.dateTime(new Date(), { weekday: "long", month: "long", day: "numeric" });
+  const greetingPeriod = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
 
+  const canReadDashboard = DASHBOARD_PERMISSIONS.some((permission) => canAccessPermission(permission, workspaceId));
   const canReadTournaments = canAccessPermission("tournament.read", workspaceId);
+  const canReadAudit = canAccessPermission("audit.read", workspaceId);
   const canCreateTournaments = canAccessPermission("tournament.create", workspaceId);
-  const canReadTeams = canAccessPermission("team.read", workspaceId);
-  const canReadMatches = canAccessPermission("match.read", workspaceId);
-  // Same gate as the nav item and route guard for /admin/users: a
-  // workspace-scoped `user.read` opens it now (the list is filtered to the
-  // workspace's roster, see admin-navigation.ts and `users_admin._scope`).
-  const canReadUsers = canAccessPermission("user.read", workspaceId);
 
-  // Aggregated counts from backend (single lightweight query). `workspace_id` is
-  // injected by apiFetch, so it MUST be part of the key or a workspace switch
-  // serves the previous workspace's numbers.
-  const statsQuery = useQuery({
-    queryKey: adminQueryKeys.dashboardStats(workspaceId),
-    queryFn: () =>
-      apiFetch("/api/v1/statistics/dashboard").then((r) => r.json() as Promise<DashboardStats>)
+  const dashboardQuery = useQuery({
+    queryKey: adminQueryKeys.dashboard(workspaceId),
+    queryFn: () => adminService.getDashboard(),
+    enabled: workspaceId != null && canReadDashboard
   });
 
-  // Tournaments still needed for Active Tournament Card & Recent Tournaments display
-  const tournamentsQuery = useQuery({
-    queryKey: adminQueryKeys.dashboardTournaments(workspaceId),
-    queryFn: () =>
-      canReadTournaments
-        ? tournamentService.getAll(null)
-        : Promise.resolve(emptyPaginated<Tournament>())
-  });
+  const createButton = (
+    <Button asChild size="sm">
+      <Link href="/admin/tournaments?create=1">
+        <Plus className="size-3.5" aria-hidden />
+        {t("createTournament")}
+      </Link>
+    </Button>
+  );
+  // The breadcrumb already names the page, so the h1 stays in the outline only
+  // and the visible line is the greeting.
+  const header = (
+    <AdminPageHeader
+      title={t("dashboardTitle")}
+      titleHidden
+      description={t("greeting", { period: greetingPeriod, username: user?.username ?? t("defaultAdmin") })}
+      actions={workspaceId != null && canCreateTournaments ? createButton : null}
+    />
+  );
 
-  const stats = statsQuery.data;
-  const tournaments = tournamentsQuery.data?.results ?? [];
-
-  const activeTournament = useMemo(() => {
-    if (!canReadTournaments) return null;
-    const visible = tournaments.filter((t) => !t.is_hidden);
-    return visible.find((t) => !t.is_finished) ?? visible[0] ?? null;
-  }, [tournaments, canReadTournaments]);
-
-  // The readiness aggregate masks field groups the reader cannot see, so either
-  // permission is enough to render something useful. The key is the hub's own
-  // readiness key: identical data under one cache entry, so navigating to the
-  // hub renders from cache and the hub's realtime invalidation reaches this too.
-  const canReadReadiness = canReadTournaments || canReadTeams;
-  const readinessQuery = useQuery({
-    queryKey: getTournamentWorkspaceQueryKeys(activeTournament?.id ?? 0).readiness,
-    queryFn: () => adminService.getTournamentReadiness(activeTournament!.id),
-    enabled: canReadReadiness && activeTournament != null
-  });
-
-  // One tile per KPI the reader may actually see — the loading skeleton reserves
-  // the same count, so a two-permission role no longer gets a four-tile shimmer.
-  const kpiCount = (canReadTournaments ? 2 : 0) + (canReadMatches ? 2 : 0);
-
-  const issueItems = useMemo(() => {
-    const issues = stats?.issues;
-    const items: IssueItem[] = [
-      canReadMatches && (issues?.encounters_pending_confirmation ?? 0) > 0
-        ? {
-            label: t("resultsAwaitingConfirmation"),
-            count: issues!.encounters_pending_confirmation,
-            href: "/admin/matches?view=encounters",
-            tone: "critical" as const
-          }
-        : null,
-      canReadMatches && (issues?.encounters_awaiting_result ?? 0) > 0
-        ? {
-            label: t("overdueMatchResults"),
-            count: issues!.encounters_awaiting_result,
-            href: "/admin/matches?view=encounters",
-            tone: "critical" as const
-          }
-        : null,
-      // Warning, not critical: an unrecorded or unconfirmed result blocks the
-      // bracket, a missing log only blocks statistics.
-      canReadMatches && (issues?.encounters_missing_logs ?? 0) > 0
-        ? {
-            label: t("missingEncounterLogs"),
-            count: issues!.encounters_missing_logs,
-            href: "/admin/matches?view=encounters",
-            tone: "warning" as const
-          }
-        : null,
-      canReadTournaments && (issues?.stage_slots_empty ?? 0) > 0
-        ? {
-            label: t("emptyBracketSlots"),
-            count: issues!.stage_slots_empty,
-            href: "/admin/tournaments",
-            tone: "warning" as const
-          }
-        : null,
-      canReadTeams && (issues?.teams_without_players ?? 0) > 0
-        ? {
-            label: t("teamsWithoutRosters"),
-            count: issues!.teams_without_players,
-            href: "/admin/teams",
-            tone: "warning" as const
-          }
-        : null,
-      canReadTournaments && (issues?.tournaments_without_stages ?? 0) > 0
-        ? {
-            label: t("tournamentsMissingStages"),
-            count: issues!.tournaments_without_stages,
-            href: "/admin/tournaments",
-            tone: "warning" as const
-          }
-        : null,
-      canReadUsers && (issues?.users_without_identities ?? 0) > 0
-        ? {
-            label: t("unlinkedPlayerIdentities"),
-            count: issues!.users_without_identities,
-            href: "/admin/people",
-            tone: "info" as const
-          }
-        : null
-    ].filter((item): item is IssueItem => item !== null);
-    return items;
-  }, [stats, canReadMatches, canReadTeams, canReadTournaments, canReadUsers, t]);
-
-  if (statsQuery.isLoading || tournamentsQuery.isLoading) {
+  // "All workspaces": nothing here is workspace-wide except platform health.
+  if (workspaceId == null) {
     return (
       <div className="flex flex-col gap-4">
-        <Skeleton className="h-12 rounded-xl" />
-        {kpiCount > 0 && (
-          <div className={cn("grid gap-3 md:grid-cols-2", kpiColumnsClass(kpiCount))}>
-            {Array.from({ length: kpiCount }).map((_, i) => (
-              <Skeleton key={i} className="h-24 rounded-xl" />
-            ))}
-          </div>
-        )}
-        <div className="grid gap-4 xl:grid-cols-[7fr_3fr]">
-          <div className="flex flex-col gap-4">
-            <Skeleton className="h-28 rounded-xl" />
-            <Skeleton className="h-72 rounded-xl" />
-          </div>
-          <div className="flex flex-col gap-4">
-            <Skeleton className="h-40 rounded-xl" />
-            <Skeleton className="h-64 rounded-xl" />
-          </div>
-        </div>
+        {header}
+        <EmptyNote className="text-center">{t("pickWorkspace")}</EmptyNote>
+        {isSuperuser ? <PlatformHealth workspaceId={null} /> : null}
       </div>
     );
   }
 
-  const statsFailed = statsQuery.isError;
-  const tournamentsFailed = tournamentsQuery.isError;
+  const data = dashboardQuery.data;
+  // A failed background refetch keeps the last good data on screen.
+  const failed = dashboardQuery.isError && data === undefined;
+  const retry = () => void dashboardQuery.refetch();
+  const cards = data?.tournaments;
+  // Timeline and queue rows carry their tournament's game and hidden flag through its card.
+  const cardOf = new Map(data?.tournaments.map((card) => [card.id, card] as const));
+  // `null` is no `tournament.read`: the block is absent, not loading.
+  const timelineHidden = data?.timeline === null;
+  const betweenTournaments = data?.tournaments.length === 0;
+  // In the live phase the queue is what an organizer opens the page for.
+  const liveFirst = cards?.some((card) => card.phase === "live") ?? false;
+  // No queue between tournaments; without a queue and an activity feed the
+  // left column takes the full width.
+  const showQueue = canReadDashboard && !betweenTournaments;
+  const hasRail = showQueue || canReadAudit;
 
   return (
     <div className="flex flex-col gap-4">
-      {/* [1] HEADER — the same primitive every other admin screen opens with */}
-      <AdminPageHeader
-        title={t("dashboardTitle")}
-        description={tExtra("greetingDescription", { greeting, username: user?.username ?? t("defaultAdmin"), today })}
-        actions={
-          canCreateTournaments ? (
-            <Button asChild size="sm">
-              <Link href="/admin/tournaments/new">
-                <Plus className="size-3.5" aria-hidden />
-                {t("createTournament")}
-              </Link>
-            </Button>
-          ) : null
-        }
-      />
+      {header}
+      {!canReadDashboard && !canReadAudit && !isSuperuser ? <EmptyNote>{t("noAccess")}</EmptyNote> : null}
+      {canReadDashboard ? (
+        <DashboardRealtime workspaceId={workspaceId} tournamentIds={data?.tournaments.map((card) => card.id) ?? []} />
+      ) : null}
 
-      {/* [2] LOAD FAILURE — a failed fetch must not read as a real zero */}
-      {(statsFailed || tournamentsFailed) && (
-        <Alert variant="destructive">
-          <AlertTriangle className="size-4" aria-hidden />
-          <AlertTitle>{t("loadFailed")}</AlertTitle>
-          <AlertDescription className="flex flex-wrap items-center gap-3">
-            <span>
-              {statsFailed && tournamentsFailed
-                ? tExtra("failureBoth")
-                : statsFailed
-                  ? tExtra("failureStats")
-                  : tExtra("failureTournaments")}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (statsFailed) void statsQuery.refetch();
-                if (tournamentsFailed) void tournamentsQuery.refetch();
-              }}
-            >
-              {t("retry")}
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* [3] DECISION METRICS */}
-      {!statsFailed && (
-        <KpiStrip
-          tournaments={
-            canReadTournaments
-              ? { active: stats?.tournaments_active ?? 0, total: stats?.tournaments_total ?? 0 }
-              : null
-          }
-          registrationOpen={canReadTournaments ? (stats?.tournaments_registration_open ?? 0) : null}
-          matches={
-            canReadMatches
-              ? {
-                  completed: stats?.encounters_completed ?? 0,
-                  total: stats?.encounters_total ?? 0
-                }
-              : null
-          }
-          logs={
-            canReadMatches
-              ? {
-                  covered:
-                    (stats?.encounters_total ?? 0) - (stats?.issues.encounters_missing_logs ?? 0),
-                  total: stats?.encounters_total ?? 0
-                }
-              : null
-          }
-        />
-      )}
-
-      {/* [4] WORK COLUMN + ATTENTION RAIL */}
-      <section className={cn("grid gap-4", !tournamentsFailed && "xl:grid-cols-[7fr_3fr]")}>
-        {!tournamentsFailed && (
-          <div className="flex flex-col gap-4">
-            <ActiveTournamentCard canRead={canReadTournaments} tournament={activeTournament} />
-            <ActiveTournamentReadiness
-              canRead={canReadReadiness}
-              tournament={activeTournament}
-              readiness={readinessQuery.data}
-              isLoading={readinessQuery.isLoading}
-              failed={readinessQuery.isError}
-            />
-          </div>
-        )}
-
-        {(!statsFailed || !tournamentsFailed) && (
-          <div className="flex flex-col gap-4">
-            {!statsFailed && <IssuesQueue items={issueItems} />}
-            {!tournamentsFailed && (
-              <RecentTournaments canRead={canReadTournaments} tournaments={tournaments} />
+      {/* At `xl`: cards across, then a main column and a right rail. Below `xl`
+          both column wrappers are `contents`, so every block is a sibling in one
+          column and `order` sorts them: cards, queue, timeline, trends, activity,
+          backlog, health; on phones the queue leads in the live phase.
+          `minmax(0, …)`: a bare `fr` track grows to its widest child's min-content
+          (the timeline strip), pushing the rail off-screen. */}
+      <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)] xl:items-start">
+        {canReadDashboard ? (
+          <div className="xl:col-span-2">
+            {failed ? (
+              <BlockError title={t("cardsTitle")} onRetry={retry} />
+            ) : !cards ? (
+              <PhaseCardsSkeleton />
+            ) : betweenTournaments ? (
+              // "Create tournament" lives in the header: one CTA per intent.
+              <NoCards />
+            ) : (
+              <PhaseCards cards={cards} />
             )}
           </div>
-        )}
-      </section>
+        ) : null}
+
+        {hasRail ? (
+          <div className="contents xl:col-start-2 xl:row-start-2 xl:flex xl:flex-col xl:gap-4">
+            {showQueue ? (
+              <WorkQueue
+                issues={data?.issues}
+                cardOf={cardOf}
+                failed={failed}
+                onRetry={retry}
+                className={cn(liveFirst && "max-md:order-first")}
+              />
+            ) : null}
+            {canReadAudit ? <ActivityFeed workspaceId={workspaceId} className="max-xl:order-1" /> : null}
+          </div>
+        ) : null}
+
+        <div
+          className={cn(
+            "contents xl:col-start-1 xl:row-start-2 xl:flex xl:flex-col xl:gap-4",
+            !hasRail && "xl:col-span-2"
+          )}
+        >
+          {canReadTournaments && !timelineHidden && !betweenTournaments ? (
+            <Timeline events={data?.timeline ?? undefined} cardOf={cardOf} failed={failed} onRetry={retry} />
+          ) : null}
+          {canReadTournaments ? <Trends workspaceId={workspaceId} /> : null}
+          {canReadDashboard ? (
+            <Backlog backlog={data?.backlog} failed={failed} onRetry={retry} className="max-xl:order-2" />
+          ) : null}
+          {isSuperuser ? <PlatformHealth workspaceId={workspaceId} className="max-xl:order-2" /> : null}
+        </div>
+      </div>
     </div>
+  );
+}
+
+/** The cards row between tournaments: one line and the way to the full list. */
+function NoCards() {
+  const t = useTranslations("adminShell.dashboard");
+  return (
+    <Card className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-6 py-4">
+      <div className="min-w-0">
+        <h2 className="font-semibold leading-tight">{t("betweenTitle")}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{t("betweenBody")}</p>
+      </div>
+      <Button asChild variant="outline" size="sm">
+        <Link href="/admin/tournaments">
+          {t("allTournaments")}
+          <ArrowRight className="size-3.5" aria-hidden />
+        </Link>
+      </Button>
+    </Card>
   );
 }

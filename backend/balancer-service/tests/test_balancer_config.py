@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,21 +16,24 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
+from src.domain.balancer.config.defaults import (  # noqa: E402
+    AlgorithmConfig,
+    apply_config_overrides,
+    default_role_settings,
+)
+from src.domain.balancer.config.public_contract import normalize_config_payload  # noqa: E402
 from src.schemas.team import InternalBalancerTeamsPayload  # noqa: E402
 from src.services.admin.balancer import balancer_admin_service  # noqa: E402
-from src.services.balancer.config.defaults import AlgorithmConfig, apply_config_overrides  # noqa: E402
 from src.services.balancer.config.provider import (  # noqa: E402
     EDITABLE_CONFIG_FIELD_KEYS,
     get_balancer_config_payload,
     normalize_tournament_config_payload,
 )
-from src.services.balancer.config.public_contract import normalize_config_payload  # noqa: E402
 
 
 def test_config_payload_exposes_complete_editable_field_metadata() -> None:
-    payload = get_balancer_config_payload()
+    payload = get_balancer_config_payload("overwatch")
 
     fields = payload["fields"]
     field_keys = {field["key"] for field in fields}
@@ -139,10 +141,16 @@ def test_normalize_tournament_config_payload_keeps_role_settings_partial_without
     assert normalized == {"role_settings": {"tank": {"impact": 2.0}, "support": {"line_std_weight": 0.5}}}
 
 
-def test_normalize_tournament_config_payload_rejects_an_unknown_role_code() -> None:
-    """A slot code the roster vocabulary does not know would weigh nothing, silently."""
+def test_normalize_tournament_config_payload_rejects_unknown_roles_and_open_slots() -> None:
+    for code in ("healer", "flex"):
+        with pytest.raises(ValidationError):
+            normalize_tournament_config_payload({"role_settings": {code: {"impact": 2.0}}})
+
+
+@pytest.mark.parametrize("value", [7, [{"tank": {}}], "tank", True])
+def test_role_settings_rejects_non_object_containers_as_validation_errors(value) -> None:
     with pytest.raises(ValidationError):
-        normalize_tournament_config_payload({"role_settings": {"jungle": {"impact": 2.0}}})
+        normalize_tournament_config_payload({"role_settings": value})
 
 
 def test_role_settings_overrides_merge_field_by_field() -> None:
@@ -152,11 +160,11 @@ def test_role_settings_overrides_merge_field_by_field() -> None:
     time an operator nudged tank impact.
     """
     overrides = normalize_config_payload({"role_settings": {"tank": {"impact": 2.0}}})
-    config = apply_config_overrides(AlgorithmConfig(), overrides)
+    config = apply_config_overrides(AlgorithmConfig(role_settings=default_role_settings("overwatch")), overrides)
 
     assert config.role_settings["tank"].impact == 2.0
     assert (config.role_settings["tank"].line_gap_weight, config.role_settings["tank"].line_std_weight) == (0.8, 1.5)
-    assert config.role_settings["support"] == AlgorithmConfig().role_settings["support"]
+    assert config.role_settings["support"] == default_role_settings("overwatch")["support"]
 
 
 def test_internal_balance_payload_rejects_legacy_result_shape() -> None:
@@ -181,7 +189,7 @@ def test_normalize_balance_response_payload_upgrades_legacy_camel_case_row() -> 
     snake_case rename instead of 500-ing on ``BalanceResponse`` validation.
     """
 
-    from src.services.balancer.config.public_contract import (
+    from src.domain.balancer.config.public_contract import (
         normalize_balance_response_payload,
     )
 
@@ -299,9 +307,9 @@ def test_internal_balance_payload_accepts_public_player_shape_with_is_flex() -> 
 
     player = payload.teams[0].roster["Damage"][0]
     assert player.is_flex is True
-    assert player.rating == 2500
-    assert player.discomfort == 0
-    assert player.preferences == ["Damage", "Support"]
+    assert player.assigned_rating == 2500
+    assert player.role_discomfort == 0
+    assert player.role_preferences == ["Damage", "Support"]
 
 
 def test_internal_balance_payload_accepts_all_discomforts_snapshot() -> None:
@@ -352,7 +360,7 @@ def test_normalize_then_validate_round_trips_all_discomforts() -> None:
     schema) must not 422 when the editor sends ``all_discomforts``.
     """
 
-    from src.services.balancer.config.public_contract import (
+    from src.domain.balancer.config.public_contract import (
         normalize_balance_response_payload,
     )
 
@@ -401,7 +409,7 @@ def test_normalize_then_validate_round_trips_all_discomforts() -> None:
 def test_rank_comfort_tilt_field_exposed() -> None:
     from src.services.balancer.config.provider import get_balancer_config_payload
 
-    payload = get_balancer_config_payload()
+    payload = get_balancer_config_payload("overwatch")
     fields_by_key = {field["key"]: field for field in payload["fields"]}
 
     assert "rank_comfort_tilt" in payload["defaults"]

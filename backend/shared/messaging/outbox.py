@@ -5,12 +5,28 @@ from typing import Any
 
 from loguru import logger
 from pydantic import BaseModel
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.messaging.config import EXCHANGES_BY_NAME
 from shared.models.platform.outbox import EventOutbox
+from shared.observability.worker import observe_scheduled_job
+from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
 
 PENDING_STATUSES = ("pending", "failed")
+
+
+async def drain_outbox(session_factory: Any, broker: Any, *, limit: int = 100) -> None:
+    """One scheduler tick of the outbox relay, run by every service that writes outbox rows.
+
+    Schedule it every second (``scheduler.add_job(drain_outbox, "interval", seconds=1, args=(factory, broker))``
+    or ``IntervalScheduler.start(drain_outbox, seconds=1, args=(...))``). Concurrent drains across services and
+    replicas are safe: the batch is taken ``FOR UPDATE SKIP LOCKED``, so no row is published by two of them.
+    """
+    async with observe_scheduled_job("event_outbox_drain"), session_factory() as session:
+        published = await publish_pending_outbox_events(session, broker, limit=limit, commit=True)
+        if published:
+            logger.info("Published {} outbox events", published)
 
 
 def _name(value: Any) -> str | None:
@@ -48,9 +64,43 @@ async def enqueue_outbox_event(
         status="pending",
         attempts=0,
     )
+    before = None
+    if "changed_tables" in payload:
+        row.id = await session.scalar(text("SELECT nextval(pg_get_serial_sequence('event_outbox', 'id'))"))
+        scopes = owner_scopes("outbox", (row.id,))
+        before = await capture_stats_evidence(session, scopes=scopes)
     session.add(row)
     await session.flush()
+    if before is not None:
+        after = await capture_stats_evidence(session, scopes=scopes)
+        await stage_stats_evidence(
+            session,
+            operation="stats.reference_update",
+            before=before,
+            after=after,
+            workspace_id=payload.get("workspace_id"),
+            entity_type="event_outbox",
+            entity_id=row.id,
+        )
     return row
+
+
+#: Exchange names this process has declared already; declaring is idempotent but costs a broker round trip.
+_declared_exchanges: set[str] = set()
+
+
+async def _declare_exchanges(broker: Any, names: set[str]) -> None:
+    """Declare every known exchange the batch publishes to, once per process.
+
+    An unknown name is left alone: its publish fails with the broker's own ``NOT_FOUND`` and the row backs off,
+    which is the right signal for a routing key pointed at an exchange ``config.py`` does not define.
+    """
+    for name in names - _declared_exchanges:
+        exchange = EXCHANGES_BY_NAME.get(name)
+        if exchange is None:
+            continue
+        await broker.declare_exchange(exchange)
+        _declared_exchanges.add(name)
 
 
 async def publish_pending_outbox_events(
@@ -77,18 +127,22 @@ async def publish_pending_outbox_events(
     )
 
     # One locked batch, one commit at the end of it. The batch must stay locked
-    # for as long as this drain is publishing it: every tournament-service
-    # replica runs this each second, and a row released early is free for the
-    # other replica to take and publish a second time (duplicate Discord DMs).
-    # That is what rules out a commit per row — which also cost a transaction,
-    # a ``SET LOCAL statement_timeout`` and a separate locking SELECT per event
-    # (Sentry OWT-TOURNAMENTS-2BT). Delivery stays at-least-once: a crash
-    # between a publish and the commit replays the whole batch, and consumers
-    # already dedupe on ``x-event-id``.
+    # for as long as this drain is publishing it: every replica of every
+    # producing service runs this each second, and a row released early is free
+    # for another drain to take and publish a second time (duplicate Discord
+    # DMs). That is what rules out a commit per row, which would also cost a
+    # transaction, a ``SET LOCAL statement_timeout`` and a separate locking
+    # SELECT per event. Delivery stays
+    # at-least-once: a crash between a publish and the commit replays the whole
+    # batch. No consumer dedupes on ``x-event-id``; every consumer is
+    # idempotent through its own state instead (a job row's status, a
+    # ``discord_message`` row, a cache key that is simply dropped again, a
+    # version fence) — a new consumer must be too.
     rows = list(await session.scalars(due))
     if not rows:
         return 0
 
+    await _declare_exchanges(broker, {row.exchange for row in rows if row.exchange})
     published = 0
     for row in rows:
         try:

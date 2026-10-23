@@ -5,7 +5,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { AchievementRarity } from "@/types/achievement.types";
-import type { UserTournamentSummary } from "@/types/user.types";
 import {
   Select,
   SelectContent,
@@ -20,19 +19,23 @@ import { RarityStrip } from "@/components/achievements/RarityStrip";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { SearchField } from "@/components/ui/search-field";
 import { PageStateCard } from "@/components/ui/page-state-card";
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
-import { TournamentCombobox } from "@/app/(site)/users/components/shared/TournamentCombobox";
+import { RowButton } from "@/components/ui/row-button";
+import { CardSurface } from "@/components/profile/atoms";
+import { TournamentCombobox } from "@/components/tournaments/TournamentCombobox";
+import { GameIcon } from "@/components/workspace/GameIcon";
 
 const TOURNAMENT_QUERY_KEY = "achievementTournamentId";
 
 interface Props {
   achievements: AchievementRarity[];
-  tournaments?: UserTournamentSummary[];
+  tournaments?: readonly { id: number; name: string }[];
   /** Tournament id; `"none"` = earned outside any tournament; `undefined` = all. */
   selectedTournament?: number | "none";
+  /** "All games": every tile marks its rule's game. */
+  showGames?: boolean;
 }
 
-const AchievementsView = ({ achievements, tournaments = [], selectedTournament }: Props) => {
+const AchievementsView = ({ achievements, tournaments = [], selectedTournament, showGames = false }: Props) => {
   const tr = useTranslations();
   const locale = useLocale();
   const tierNames = useMemo(
@@ -197,7 +200,9 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournament }
         <Select value={sort} onValueChange={(v) => setSort(v as "rarity" | "name" | "count")}>
           <SelectTrigger
             title={tr("users.achievements.sort.title")}
-            className="aqt-tnum h-8 w-auto min-w-[150px] gap-2 shadow-none border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-caption text-[color:var(--aqt-fg-muted)] hover:border-[color:var(--aqt-border-2)] hover:bg-[hsl(0_0%_100%/0.04)] focus:ring-1 focus:ring-[color:var(--aqt-teal)] focus:ring-offset-0"
+            size="sm"
+            variant="surface"
+            className="aqt-tnum w-auto min-w-[150px] gap-2"
           >
             <SelectValue />
           </SelectTrigger>
@@ -241,11 +246,10 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournament }
               {list.map((ach) => {
                 const locked = ach.count === 0;
                 return (
-                  <button
+                  <RowButton
                     key={ach.id}
-                    type="button"
                     onClick={() => setSelected(ach)}
-                    className="-m-2 flex items-start gap-3 rounded-lg p-2 text-left transition-colors hover:bg-[hsl(0_0%_100%/0.03)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--aqt-teal)]"
+                    className="-m-2 flex w-auto items-start gap-3 rounded-lg p-2"
                   >
                     <AchievementArt
                       achievement={ach}
@@ -256,11 +260,12 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournament }
                     <div className="flex min-w-0 flex-col gap-1">
                       <div
                         className={cn(
-                          "truncate text-body font-semibold leading-tight",
+                          "flex min-w-0 items-center gap-1.5 text-body font-semibold leading-tight",
                           locked ? "text-[color:var(--aqt-fg-muted)]" : "text-[color:var(--aqt-fg)]"
                         )}
                       >
-                        {ach.name}
+                        {showGames ? <GameIcon slug={ach.discipline} /> : null}
+                        <span className="truncate">{ach.name}</span>
                       </div>
                       <div
                         className={cn(
@@ -282,7 +287,7 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournament }
                         {ach.count > 0 ? <span className="aqt-tnum">×{ach.count}</span> : null}
                       </div>
                     </div>
-                  </button>
+                  </RowButton>
                 );
               })}
             </div>

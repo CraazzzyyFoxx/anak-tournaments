@@ -1,34 +1,38 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { useEffect, useRef, useState } from "react";
 import { Ban, Check, History, Shield, type LucideIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
+import { RowButton } from "@/components/ui/row-button";
 import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
-import HeroImage from "@/components/hero/HeroImage";
-import { normalizeRole, type AqtRoleKey } from "@/lib/roster/player-role";
+import { catalogInitials } from "@/lib/catalog/initials";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import type { PickBanEntry, PickBanEntryStatus, PickBanKind } from "@/types/tournament.types";
 
 import {
+  characterClassOf,
+  classRank,
   expiredBanIds,
   poolRoundGroups,
   roundState,
+  seatName,
   statusLabelKey,
   tileStatus,
-  type PickBanRoundState
+  type PickBanRoundState,
+  type PickBanSeat
 } from "./pick-ban-model";
 
-/** Generic catalog entry the grid needs to render one item's tile — either a
- * `MapRead` or a `Hero`, reduced to the fields both shapes carry. */
+/** The catalog entity (character or map) a tile renders, reduced to the fields every entity carries. */
 export interface PickBanItemLike {
   name: string;
   image_path?: string | null;
-  role?: string;
-  type?: string;
+  /** Catalog `attrs`: a character's class (`attrs.class`) groups it; it is never a player's role. */
+  attrs?: Record<string, unknown>;
 }
 
 interface PickBanGridProps {
@@ -58,21 +62,30 @@ interface PickBanGridProps {
   eligibleIds: Set<number> | null;
   /** The viewer's own blind draft: those tiles are marked, and a click removes them. */
   draftItemIds: ReadonlySet<number>;
+  /**
+   * The discipline's declared `character_classes`: the order the class filter lists them in. Classes the
+   * catalog rows carry but the module does not declare follow; nothing is assumed while it is unknown.
+   */
+  characterClasses?: readonly string[];
   onSelect: (itemId: number) => void;
+  /** The room's participations, to name who picked or protected a tile. */
+  seats: PickBanSeat[];
   /** Room-level header (back link, status, team matchup) merged into this card's top. */
   header: React.ReactNode;
+  /**
+   * A `view-transition-name` per hero tile, for a room that animates a hero leaving the pool (the mix room names an
+   * available tile so a ban or a pick can fly from it); unset, no tile is named.
+   */
+  itemTransitionName?: (entry: PickBanEntry) => string | undefined;
 }
 
 /** A map tile's status as coloured text: the same hue and glyph the step timeline uses per action. */
 const STATUS_STYLE: Record<PickBanEntryStatus, { icon: LucideIcon | null; className: string }> = {
   available: { icon: null, className: "text-[color:var(--aqt-fg-muted)]" },
   banned: { icon: Ban, className: "text-[color:var(--aqt-rose)]" },
-  picked: { icon: Check, className: "text-[color:var(--aqt-support)]" },
+  picked: { icon: Check, className: "text-[color:var(--aqt-positive)]" },
   protected: { icon: Shield, className: "text-[color:var(--aqt-amber)]" }
 };
-
-/** Hero Pool role filter display order; each code is its own `common.roles.*` key. */
-const ROLE_ORDER: AqtRoleKey[] = ["tank", "damage", "support"];
 
 /** Ties a locked round's tiles to the paragraph that explains why they are inert. */
 const lockedHintId = (round: number) => `pick-ban-round-${round}-locked`;
@@ -88,11 +101,14 @@ export function PickBanGrid({
   eligibleIds,
   draftItemIds,
   onSelect,
-  header
+  seats,
+  header,
+  characterClasses = [],
+  itemTransitionName,
 }: Readonly<PickBanGridProps>) {
   const t = useTranslations("pickBan.room");
   const tCommon = useTranslations("common");
-  const [roleFilter, setRoleFilter] = useState<AqtRoleKey | "all">("all");
+  const [classFilter, setClassFilter] = useState<string | null>(null);
   const roundGroups = poolRoundGroups(pool);
   // The round whose bans bind the lobby: the one in play, or the last once
   // nothing is. Hero only — a map ban stops mattering once its slot is decided.
@@ -102,8 +118,7 @@ export function PickBanGrid({
     roundGroups && inForceRound != null ? expiredBanIds(roundGroups, inForceRound) : new Set<number>();
   const itemName = (itemId: number) =>
     itemsById[itemId]?.name ?? t(`${kind}.itemNumber`, { id: itemId });
-  const roleOf = (itemId: number): AqtRoleKey | null =>
-    normalizeRole(itemsById[itemId]?.type ?? itemsById[itemId]?.role);
+  const classOf = (itemId: number) => characterClassOf(itemsById[itemId]);
 
   const currentRoundRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -115,22 +130,26 @@ export function PickBanGrid({
     currentRoundRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [currentRound]);
 
-  // Role filter only applies to the Hero Pool -- maps have no role, and its
+  // Class filter only applies to the Hero Pool -- maps have no class, and its
   // grid keeps rendering the full flat list/round groups unfiltered.
-  const roleCounts =
+  const classCounts =
     kind === "hero"
-      ? pool.reduce<Record<AqtRoleKey, number>>(
-          (counts, entry) => {
-            const role = roleOf(entry.item_id);
-            if (role) counts[role] += 1;
-            return counts;
-          },
-          { tank: 0, damage: 0, support: 0 }
-        )
+      ? pool.reduce<Map<string, number>>((counts, entry) => {
+          const group = classOf(entry.item_id);
+          if (group) counts.set(group, (counts.get(group) ?? 0) + 1);
+          return counts;
+        }, new Map())
       : null;
+  const classChips = classCounts
+    ? [...classCounts].sort(
+        ([left], [right]) =>
+          classRank(left, characterClasses) - classRank(right, characterClasses) ||
+          left.localeCompare(right)
+      )
+    : [];
   const visibleEntries = (entries: PickBanEntry[]) =>
-    kind === "hero" && roleFilter !== "all"
-      ? entries.filter((entry) => roleOf(entry.item_id) === roleFilter)
+    kind === "hero" && classFilter !== null
+      ? entries.filter((entry) => classOf(entry.item_id) === classFilter)
       : entries;
   const poolLayoutClass =
     kind === "hero"
@@ -144,17 +163,11 @@ export function PickBanGrid({
     const StatusIcon = STATUS_STYLE[entry.status].icon;
     const selected = selectedItemId === entry.item_id || status.drafted;
     const dimmed = entry.status === "banned";
-    const initials = itemName(entry.item_id)
-      .split(/\s+/)
-      .map((word) => word[0])
-      .slice(0, 2)
-      .join("")
-      .toUpperCase();
+    const initials = catalogInitials(itemName(entry.item_id));
 
     return (
-      <button
+      <RowButton
         key={entry.id}
-        type="button"
         disabled={!status.selectable}
         aria-pressed={selected}
         title={
@@ -169,15 +182,15 @@ export function PickBanGrid({
         aria-describedby={lockedRound != null ? lockedHintId(lockedRound) : undefined}
         onClick={() => onSelect(entry.item_id)}
         className={cn(
-          "group relative flex flex-col overflow-hidden rounded-xl border text-left outline-none transition-shadow",
+          "group relative flex flex-col overflow-hidden rounded-xl border transition-shadow",
           selected
             ? "border-[color:var(--aqt-teal)] ring-2 ring-[color:var(--aqt-teal)]/45"
             : "border-[color:var(--aqt-border)]",
-          status.selectable
-            ? "cursor-pointer hover:border-[color:var(--aqt-teal)]/60 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
-            : "cursor-default",
+          status.selectable ? "hover:border-[color:var(--aqt-teal)]/60" : null,
           lockedRound != null ? "border-dashed opacity-55" : null,
-          status.ineligible ? "opacity-55 grayscale" : null
+          status.ineligible ? "opacity-55 grayscale" : null,
+          // An unselectable tile reads as itself; only the states above dim it.
+          lockedRound == null && !status.ineligible ? "disabled:opacity-100" : null
         )}
       >
         <div className="relative h-20 w-full bg-[color:var(--aqt-card-2)] sm:h-24">
@@ -231,17 +244,21 @@ export function PickBanGrid({
                 <History className="h-3 w-3" aria-hidden />
                 {t("carried.badge", { n: entry.carried_from_round })}
               </span>
-            ) : entry.picked_by ? (
-              <span className="text-[color:var(--aqt-fg-muted)]">{t(`by.${entry.picked_by}`)}</span>
-            ) : null}
-            {entry.protected_by ? (
+            ) : entry.picked_by_kind === "team" ? (
               <span className="text-[color:var(--aqt-fg-muted)]">
-                {t(`protectedBy.${entry.protected_by}`)}
+                {t("by.team", { team: seatName(seats, entry.picked_by_team_id) })}
+              </span>
+            ) : entry.picked_by_kind === "decider" || entry.picked_by_kind === "admin" ? (
+              <span className="text-[color:var(--aqt-fg-muted)]">{t(`by.${entry.picked_by_kind}`)}</span>
+            ) : null}
+            {entry.protected_by_kind === "team" ? (
+              <span className="text-[color:var(--aqt-fg-muted)]">
+                {t("protectedBy.team", { team: seatName(seats, entry.protected_by_team_id) })}
               </span>
             ) : null}
           </span>
         </div>
-      </button>
+      </RowButton>
     );
   };
 
@@ -279,32 +296,31 @@ export function PickBanGrid({
           : null;
 
     return (
-      <button
+      <RowButton
         key={entry.id}
-        type="button"
         disabled={!status.selectable}
         aria-pressed={selected}
         aria-label={`${name} — ${t(statusLabelKey(entry))}${note != null ? ` — ${note}` : ""}`}
         title={note ?? name}
         aria-describedby={lockedRound != null ? lockedHintId(lockedRound) : undefined}
         onClick={() => onSelect(entry.item_id)}
+        style={itemTransitionName ? { viewTransitionName: itemTransitionName(entry) } : undefined}
         className={cn(
-          "group relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border p-0.5 outline-none transition-shadow",
+          "group relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border p-0.5 transition-shadow",
           selected
             ? "border-[color:var(--aqt-teal)] ring-2 ring-[color:var(--aqt-teal)]/45"
             : shielded
               ? "border-[color:var(--aqt-amber)]/70"
               : "border-[color:var(--aqt-border)]",
-          status.selectable
-            ? "cursor-pointer hover:border-[color:var(--aqt-teal)]/60 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
-            : "cursor-default",
+          status.selectable ? "hover:border-[color:var(--aqt-teal)]/60" : null,
           lockedRound != null ? "border-dashed opacity-55" : null,
           status.ineligible ? "opacity-55 grayscale" : null,
-          expired ? "opacity-45" : null
+          expired ? "opacity-45" : null,
+          lockedRound == null && !status.ineligible && !expired ? "disabled:opacity-100" : null
         )}
       >
-        <HeroImage
-          hero={{ name, image_path: item?.image_path ?? "", role: item?.role ?? "" }}
+        <CatalogEntityImage
+          entity={{ name, image_path: item?.image_path ?? null }}
           size={38}
           className={cn(
             "transition-opacity",
@@ -347,7 +363,7 @@ export function PickBanGrid({
             {entry.action_index + 1}
           </span>
         ) : null}
-      </button>
+      </RowButton>
     );
   };
   const renderTile = kind === "hero" ? heroTile : tile;
@@ -366,25 +382,30 @@ export function PickBanGrid({
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
-        {roleCounts ? (
+        {classChips.length > 0 ? (
           <FilterChipGroup label={tCommon("filters")}>
             <FilterChip
-              active={roleFilter === "all"}
+              active={classFilter === null}
               count={pool.length}
-              onClick={() => setRoleFilter("all")}
+              onClick={() => setClassFilter(null)}
             >
               {tCommon("all")}
             </FilterChip>
-            {ROLE_ORDER.filter((role) => roleCounts[role] > 0).map((role) => (
-              <FilterChip
-                key={role}
-                active={roleFilter === role}
-                count={roleCounts[role]}
-                onClick={() => setRoleFilter(role)}
-              >
-                {tCommon(`roles.${role}`)}
-              </FilterChip>
-            ))}
+            {classChips.map(([code, count]) => {
+              // A class code is catalog data; only a code that happens to have a localized word gets one.
+              const key = `roles.${code}` as "roles.tank";
+              return (
+                <FilterChip
+                  key={code}
+                  className="capitalize"
+                  active={classFilter === code}
+                  count={count}
+                  onClick={() => setClassFilter(code)}
+                >
+                  {tCommon.has(key) ? tCommon(key) : code}
+                </FilterChip>
+              );
+            })}
           </FilterChipGroup>
         ) : null}
 

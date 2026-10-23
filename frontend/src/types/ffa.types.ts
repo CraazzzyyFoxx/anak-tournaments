@@ -13,7 +13,7 @@ import type { EncounterGameState, EncounterResultStatus } from "@/types/tourname
  */
 
 /** Whether a bigger value of a column is the better one. */
-export type FfaColumnBetter = "higher" | "lower";
+type FfaColumnBetter = "higher" | "lower";
 
 /**
  * One value the organizer records per team per game: kills, deaths, damage, a

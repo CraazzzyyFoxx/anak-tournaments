@@ -6,7 +6,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 
 import { StatusPill } from "@/components/kit/StatusPill";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { accessQueryKeys } from "@/lib/access/query-keys";
 import { getSingleLinkedPlayer } from "@/lib/auth/profile-links";
@@ -16,8 +16,8 @@ import type { AuthAdminUser } from "@/types/rbac.types";
  * The parts every account block shares, so the Access inspector and the
  * People › Account tab are one surface laid out twice, not two surfaces.
  *
- * Blocks are frameless: the inspector stacks them on hairlines, the person hub
- * groups them into cards, so the frame belongs to the container.
+ * Blocks are frameless: the inspector stacks them on hairlines in one column,
+ * the person hub in two, so the frame (if any) belongs to the container.
  */
 
 /** Right of a block title: a count or a verdict, in body case. */
@@ -32,7 +32,7 @@ export function AccountSection({
   return (
     <section className="space-y-2.5">
       <div className="flex min-h-7 items-center justify-between gap-2">
-        <h3 className={EYEBROW_CLASS}>
+        <h3 className={eyebrowClass("muted")}>
           {title}
           {summary != null ? <span className={`ml-2 ${SUMMARY_CLASS}`}>{summary}</span> : null}
         </h3>
@@ -72,7 +72,7 @@ export function AccountDisclosure({
               aria-hidden
               className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90 motion-reduce:transition-none"
             />
-            <span className={EYEBROW_CLASS}>{title}</span>
+            <span className={eyebrowClass("muted")}>{title}</span>
             {summary != null ? <span className={SUMMARY_CLASS}>{summary}</span> : null}
           </CollapsibleTrigger>
         </h3>
@@ -83,14 +83,13 @@ export function AccountDisclosure({
   );
 }
 
+/** Only the states that want attention: active and verified are the norm and render nothing. */
 export function AccountStatusPills({ account }: Readonly<{ account: AuthAdminUser }>) {
   const t = useTranslations("adminAccess.common");
+  if (account.is_active && !account.is_superuser) return null;
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <StatusPill tone={account.is_active ? "success" : "neutral"} dot>
-        {account.is_active ? t("active") : t("inactive")}
-      </StatusPill>
-      {account.is_verified ? <StatusPill tone="info">{t("verified")}</StatusPill> : null}
+      {account.is_active ? null : <StatusPill tone="neutral">{t("inactive")}</StatusPill>}
       {account.is_superuser ? <StatusPill tone="danger">{t("superuser")}</StatusPill> : null}
     </div>
   );

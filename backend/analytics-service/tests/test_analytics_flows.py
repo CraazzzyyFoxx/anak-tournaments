@@ -6,6 +6,8 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
+from shared.schemas.role import RoleRef
+
 analytics_flows = importlib.import_module("src.services.analytics.reads")
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
@@ -60,9 +62,8 @@ def _player(
         created_at=NOW,
         updated_at=None,
         name=f"Player {player_id}",
-        sub_role="hitscan",
         rank=rank,
-        role="Damage",
+        role_ref=RoleRef(dimension="player_role", role="damage_hitscan", parent="damage"),
         tournament_id=7,
         # Player.user_id was dropped in the contract step (iwrefac07); the
         # identity anchor is workspace_member.player_id instead.
@@ -108,6 +109,24 @@ def _shift(
 
 
 class AnalyticsFlowsTests(IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        patcher = patch.object(analytics_flows, "tournament_discipline", AsyncMock(return_value="overwatch"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def test_stored_predictions_are_not_served_to_a_discipline_without_analytics(self) -> None:
+        reader = AsyncMock(return_value=SimpleNamespace(id=11))
+        with (
+            patch.object(analytics_flows, "tournament_discipline", AsyncMock(return_value="lol")),
+            patch.object(analytics_flows.analytics_read_service, "get_algorithm", reader),
+            patch.object(analytics_flows.analytics_read_service, "get_analytics", AsyncMock()) as rows,
+            self.assertRaises(analytics_flows.errors.ApiHTTPException) as raised,
+        ):
+            await analytics_flows.flows_service.get_analytics(SimpleNamespace(), tournament_id=7, algorithm_id=11)
+
+        self.assertEqual(404, raised.exception.status_code)
+        rows.assert_not_awaited()
+
     async def test_get_analytics_serializes_enriched_fields(self) -> None:
         session = SimpleNamespace()
         algorithm = SimpleNamespace(id=11)

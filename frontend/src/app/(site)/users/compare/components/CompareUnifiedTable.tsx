@@ -2,9 +2,12 @@
 
 import { RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
-import HeroImage from "@/components/hero/HeroImage";
+import { CardSurface } from "@/components/profile/atoms";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
+import { Button } from "@/components/ui/button";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import { CompareRow } from "@/app/(site)/users/compare/types";
 import { formatDuration, formatMetricValue } from "@/app/(site)/users/compare/utils";
 import TrendDelta from "@/app/(site)/users/compare/components/TrendDelta";
@@ -204,8 +207,8 @@ const ColumnIdentity = ({
       className={`flex min-w-0 items-center gap-2.5 ${align === "right" ? "flex-row-reverse text-right" : "text-left"}`}
     >
       {hero?.imagePath ? (
-        <HeroImage
-          hero={{ name: heroName, image_path: hero.imagePath, role: "" }}
+        <CatalogEntityImage
+          entity={{ name: heroName, image_path: hero.imagePath }}
           size={36}
           rounded="lg"
           title={heroName}
@@ -233,8 +236,10 @@ const ColumnIdentity = ({
 /*  Main component                                                     */
 /* ------------------------------------------------------------------ */
 
-const headBase =
-  "aqt-tnum border-b border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] py-3 align-bottom text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
+const headBase = cn(
+  eyebrowClass(),
+  "aqt-tnum border-b border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] py-3 align-bottom"
+);
 
 const CompareUnifiedTable = ({
   subjectName,
@@ -317,14 +322,10 @@ const CompareUnifiedTable = ({
                     <div className="flex flex-col items-center gap-3">
                       <span>{errorMessage}</span>
                       {onRetry ? (
-                        <button
-                          type="button"
-                          onClick={onRetry}
-                          className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md border border-[color:var(--aqt-border)] px-3 text-xs font-semibold text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-fg)]"
-                        >
-                          <RefreshCw className="h-3.5 w-3.5" />
+                        <Button variant="outline" size="sm" onClick={onRetry}>
+                          <RefreshCw aria-hidden />
                           {t("users.compare.retry")}
-                        </button>
+                        </Button>
                       ) : null}
                     </div>
                   </td>

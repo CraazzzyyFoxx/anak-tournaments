@@ -23,6 +23,11 @@ import type { RosterMember } from "@/services/workspace-player.service";
 
 import { WorkspacePlayersSidebar } from "./WorkspacePlayersSidebar";
 
+vi.mock("@/hooks/useDisciplineMetadata", async () => {
+  const { OW_METADATA } = await import("@/test/discipline-metadata");
+  return { useDisciplineMetadata: () => ({ data: OW_METADATA }) };
+});
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
@@ -54,7 +59,6 @@ vi.mock("@/services/workspace-player.service", () => ({
   },
 }));
 
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("@/lib/notify", () => ({ notify: { success: vi.fn(), apiError: vi.fn() } }));
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));
@@ -79,7 +83,7 @@ function member(memberId: number, battleTag: string, overrides: Partial<RosterMe
   return {
     member_id: memberId,
     player_id: memberId * 10,
-    battle_tag: battleTag,
+    identity: { provider: "battlenet", handle: battleTag },
     display_name: null,
     ranks: {},
     author_ranks: {},
@@ -126,6 +130,7 @@ async function mount(
       <QueryClientProvider client={client}>
         <WorkspacePlayersSidebar
           workspaceId={WORKSPACE_ID}
+          discipline="overwatch"
           canEdit={props.canEdit ?? true}
           collapsed={props.collapsed ?? false}
         />
@@ -275,13 +280,15 @@ describe("WorkspacePlayersSidebar", () => {
     await click(submit);
 
     expect(upsert).not.toHaveBeenCalled();
-    expect(document.body.textContent).toContain("Enter a BattleTag");
+    expect(document.body.textContent).toContain("Enter a Battle.net handle");
     expect(battleTag.getAttribute("aria-invalid")).toBe("true");
 
     await type(battleTag, "Cyrus#3333");
     await click(button(document.body, "Add player"));
 
-    expect(upsert).toHaveBeenCalledWith(WORKSPACE_ID, "Cyrus#3333");
+    expect(upsert).toHaveBeenCalledWith(WORKSPACE_ID, {
+      discipline: "overwatch", identity: { provider: "battlenet", handle: "Cyrus#3333" }
+    });
   });
 
   it("edits ranks in the sheet rather than in the row", async () => {
@@ -327,8 +334,8 @@ describe("WorkspacePlayersSidebar", () => {
     expect(scope.textContent).not.toMatch(/Exclude|Include in balancer|Ready|Flex/);
     expect(scope.querySelector("[data-slot='badge']")).toBeNull();
     // What the pool row does give it, and it keeps: role glyphs, the top rank
-    // and a BattleTag copy control.
-    expect(scope.querySelector("button[title='Copy BattleTag']")).not.toBeNull();
+    // and a handle copy control.
+    expect(scope.querySelector("button[title='Copy Handle']")).not.toBeNull();
   });
 
   it("writes to the workspace layer, the only one this panel ever reads or writes", async () => {
@@ -343,6 +350,7 @@ describe("WorkspacePlayersSidebar", () => {
     await flushRankWrite();
 
     expect(setRanks).toHaveBeenLastCalledWith(WORKSPACE_ID, 1, {
+      discipline: "overwatch",
       scope: "workspace",
       ranks: { tank: 1200 },
       clear: [],
@@ -369,6 +377,7 @@ describe("WorkspacePlayersSidebar", () => {
     await click(buttons[0]);
 
     expect(setRanks).toHaveBeenLastCalledWith(WORKSPACE_ID, 1, {
+      discipline: "overwatch",
       scope: "workspace",
       ranks: {},
       clear: ["tank"],
@@ -395,4 +404,3 @@ describe("WorkspacePlayersSidebar", () => {
     expect(scope.querySelector("button[title='Edit Borys#2222']")).not.toBeNull();
   });
 });
-

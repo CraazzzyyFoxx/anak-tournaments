@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 
 import {
   DndContext,
@@ -10,15 +11,16 @@ import {
 } from "@dnd-kit/core";
 import { AlertTriangle, Trash2, Wand2 } from "lucide-react";
 
-import { ICON_BUTTON_CLASS, PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { CAPTION_CLASS, CARD_TITLE_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { useDragSensors } from "@/hooks/useDragSensors";
-import { ROLE_LABELS, ROLES } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { cn } from "@/lib/utils";
 import type {
   CustomGamePlayer,
@@ -33,7 +35,8 @@ import {
   computeRotationHintPatches,
   sortLineup,
   summarizeLineup,
-  summarizeRoleSupply
+  summarizeRoleSupply,
+  type MixOwner
 } from "./pickup-lineup";
 
 type PickupLobbyPanelProps = {
@@ -42,6 +45,8 @@ type PickupLobbyPanelProps = {
   rows: CustomGamePlayer[];
   /** How many lobbies this mix runs: role demand scales with it, and rows gain a lobby badge. */
   lobbyCount?: number;
+  /** The mix owner's game: the roles the supply strip counts, their names and the grid the ranks are on. */
+  owner: MixOwner;
   /**
    * Rotation-fairness verdict per roster member, from `usePickupMix`'s
    * `rotationQuery`. Optional, and defaulted to empty, so an older caller (or
@@ -60,31 +65,7 @@ type PickupLobbyPanelProps = {
 };
 
 /** One drag-and-drop column per participation state, in the order a host reads commitment. */
-const COLUMNS: readonly {
-  bucket: MixParticipation;
-  title: string;
-  hint: string;
-  emptyHint: string;
-}[] = [
-  {
-    bucket: "must_play",
-    title: "Must play",
-    hint: "Guaranteed a seat",
-    emptyHint: "Drag a player here to guarantee their seat",
-  },
-  {
-    bucket: "pool",
-    title: "In the pool",
-    hint: "In the balance",
-    emptyHint: "Drag a player here to put them in the balance",
-  },
-  {
-    bucket: "benched",
-    title: "Benched",
-    hint: "Sitting out, settings kept",
-    emptyHint: "Drag a player here to bench them",
-  },
-];
+const COLUMNS: readonly MixParticipation[] = ["must_play", "pool", "benched"];
 
 /**
  * The lineup: who is in this mix, who the next balance will use, and whether the
@@ -108,6 +89,7 @@ export function PickupLobbyPanel({
   hasMix,
   rows,
   lobbyCount = 1,
+  owner,
   rotation = [],
   savingPlayerId,
   clearing,
@@ -118,14 +100,19 @@ export function PickupLobbyPanel({
   onApplyRotationHints,
   applyingHints,
 }: Readonly<PickupLobbyPanelProps>) {
+  const t = useTranslations("mixes.lineup");
   const lineup = sortLineup(rows);
-  const summary = summarizeLineup(rows);
-  const supply = summarizeRoleSupply(rows, lobbyCount);
+  const summary = summarizeLineup(rows, owner.roles);
+  const supply = summarizeRoleSupply(rows, owner, lobbyCount);
+  const slotLabel = useSlotLabel(owner.ontology);
   const rotationByMember = new Map(rotation.map((r) => [r.workspace_member_id, r]));
   const pendingHintCount = computeRotationHintPatches(rows, rotation).length;
-  const columns = COLUMNS.map((def) => ({
-    ...def,
-    rows: lineup.filter((row) => row.participation === def.bucket),
+  const columns = COLUMNS.map((bucket) => ({
+    bucket,
+    title: t(`columns.${bucket}.title`),
+    hint: t(`columns.${bucket}.hint`),
+    emptyHint: t(`columns.${bucket}.empty`),
+    rows: lineup.filter((row) => row.participation === bucket),
   }));
 
   const [draggingRow, setDraggingRow] = useState<CustomGamePlayer | null>(null);
@@ -155,37 +142,31 @@ export function PickupLobbyPanel({
   };
 
   return (
-    <div className={cn(PANEL_CLASS, "flex min-w-0 flex-col")}>
+    <Card variant="flat" className="flex min-w-0 flex-col">
       <div className="flex items-center gap-2.5 border-b border-[color:var(--aqt-border)] px-4 py-3.5">
-        <h2 className={CARD_TITLE_CLASS}>Lineup</h2>
+        <h2 className={CARD_TITLE_CLASS}>{t("title")}</h2>
         <span className={CAPTION_CLASS}>
-          {`${summary.active} in the balance`}
-          {summary.benched > 0 ? ` \u00B7 ${summary.benched} benched` : ""}
+          {t("inBalance", { count: summary.active })}
+          {summary.benched > 0 ? ` \u00B7 ${t("benchedCount", { count: summary.benched })}` : ""}
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-1">
           {canWrite && rotation.length > 0 ? (
             <IconTooltip
               control
-              label={
-                pendingHintCount > 0
-                  ? `Apply ${pendingHintCount} rotation hint${pendingHintCount === 1 ? "" : "s"}`
-                  : "Lineup already matches the rotation hints"
-              }
+              label={pendingHintCount > 0 ? t("applyHintsCount", { count: pendingHintCount }) : t("hintsMatch")}
             >
               <Button
                 type="button"
                 variant="ghost"
-                size="icon"
+                size="icon-sm"
                 className={cn(
-                  ICON_BUTTON_CLASS,
-                  "size-7 shrink-0",
                   pendingHintCount > 0 && "text-[color:var(--aqt-amber)] hover:text-[color:var(--aqt-amber)]",
                 )}
                 disabled={applyingHints || pendingHintCount === 0}
                 onClick={onApplyRotationHints}
               >
-                <Wand2 className="size-3.5" aria-hidden="true" />
-                <span className="sr-only">Apply rotation hints</span>
+                <Wand2 aria-hidden="true" />
+                <span className="sr-only">{t("applyHints")}</span>
               </Button>
             </IconTooltip>
           ) : null}
@@ -193,26 +174,25 @@ export function PickupLobbyPanel({
             <>
               {/* Icon-only: the confirm dialog already spells the action out in
                   full. */}
-              <IconTooltip control label="Empty the lobby">
+              <IconTooltip control label={t("emptyLobby")}>
                 <Button
                   type="button"
-                  variant="ghost"
-                  size="icon"
-                  className={cn(ICON_BUTTON_CLASS, "size-7 shrink-0 hover:text-rose-200")}
+                  variant="ghost-destructive"
+                  size="icon-sm"
                   disabled={clearing}
                   onClick={() => setClearOpen(true)}
                 >
-                  <Trash2 className="size-3.5" aria-hidden="true" />
-                  <span className="sr-only">Empty the lobby</span>
+                  <Trash2 aria-hidden="true" />
+                  <span className="sr-only">{t("emptyLobby")}</span>
                 </Button>
               </IconTooltip>
               <ConfirmDialog
                 open={clearOpen}
                 onOpenChange={setClearOpen}
                 intent={{
-                  title: "Empty the lobby?",
-                  description: `This removes all ${rows.length} players from this mix, along with their role order. Ranks are not affected \u2014 they live in your own book and the workspace roster.`,
-                  confirmLabel: "Remove everyone",
+                  title: t("emptyLobbyTitle"),
+                  description: t("emptyLobbyDescription", { count: rows.length }),
+                  confirmLabel: t("emptyLobbyConfirm"),
                   tone: "danger"
                 }}
                 pending={clearing}
@@ -226,115 +206,88 @@ export function PickupLobbyPanel({
         </div>
       </div>
 
-      {rows.length > 0 ? (
-        <div className="flex border-b border-[color:var(--aqt-border)]">
-          {supply.map((entry) => {
-            const icon = ROLES.find((role) => role.code === entry.role)?.icon ?? "Support";
-            return (
-              <div
-                key={entry.role}
-                className="flex-1 border-r border-[color:var(--aqt-border)] px-3.5 py-2.5 last:border-r-0"
-              >
-                <div className="flex items-center gap-1.5">
-                  <PlayerRoleIcon role={icon} size={16} decorative />
-                  <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-                    {ROLE_LABELS[entry.role]}
-                  </span>
-                  <span
-                    className={cn(
-                      "ml-auto text-caption font-semibold tabular-nums",
-                      entry.short > 0
-                        ? "text-[color:var(--aqt-amber)]"
-                        : "text-[color:var(--aqt-emerald)]",
-                    )}
-                  >
-                    {entry.short > 0
-                      ? `${entry.supply} of ${entry.need} \u00B7 short ${entry.short}`
-                      : `${entry.supply} of ${entry.need}`}
-                  </span>
-                </div>
-                <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-[color:var(--aqt-overlay-3)]">
-                  <div
-                    className={cn(
-                      "h-full rounded-full",
-                      entry.short > 0
-                        ? "bg-[color:var(--aqt-amber)]"
-                        : "bg-[color:var(--aqt-emerald)]",
-                    )}
-                    style={{
-                      width: `${Math.min(100, Math.round((entry.supply / entry.need) * 100))}%`,
-                    }}
-                  />
-                </div>
+      {rows.length > 0 && supply.length > 0 ? (
+        <div className="flex flex-wrap border-b border-[color:var(--aqt-border)]">
+          {supply.map((entry) => (
+            <div
+              key={entry.role}
+              className="min-w-[7.5rem] flex-1 border-r border-[color:var(--aqt-border)] px-3.5 py-2.5 last:border-r-0"
+            >
+              <div className="flex items-center gap-1.5">
+                <PlayerRoleIcon role={entry.role} ontology={owner.ontology} size={16} decorative />
+                <Eyebrow tone="dim">{slotLabel(entry.role)}</Eyebrow>
+                <span
+                  className={cn(
+                    "ml-auto text-caption font-semibold tabular-nums",
+                    entry.short > 0
+                      ? "text-[color:var(--aqt-amber)]"
+                      : "text-[color:var(--aqt-fg-muted)]",
+                  )}
+                >
+                  {entry.short > 0
+                    ? t("supplyShort", { supply: entry.supply, short: entry.short })
+                    : t("supply", { supply: entry.supply, need: entry.need })}
+                </span>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       ) : null}
 
       {summary.blocking > 0 ? (
-        <p className="flex items-start gap-2 border-b border-[color:var(--aqt-border)] bg-[color:color-mix(in_srgb,var(--aqt-amber)_6%,transparent)] px-4 py-2.5 text-caption text-[color:var(--aqt-amber)]">
+        <p className="flex items-start gap-2 border-b border-[color:var(--aqt-border)] px-4 py-2.5 text-caption text-[color:var(--aqt-amber)]">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-          <span>
-            {summary.blocking === 1
-              ? "1 player has no ranked role and will fail the balance."
-              : `${summary.blocking} players have no ranked role and will fail the balance.`}
-          </span>
+          <span>{t("blocking", { count: summary.blocking })}</span>
         </p>
       ) : null}
 
-      <div className="p-2.5">
-        {!hasMix ? (
-          <PageStateCard
-            state="empty"
-            title="No mix selected"
-            description="Open a mix from the list to start filling its lineup."
-            className="px-4 py-8"
-          />
-        ) : lineup.length === 0 ? (
-          <PageStateCard
-            state="empty"
-            title="Lineup is empty"
-            description={
-              canWrite
-                ? "Add players from the workspace pool to put them in this mix."
-                : "No players have been added to this mix."
-            }
-            className="px-4 py-8"
-          />
-        ) : (
-          <DndContext
-            sensors={sensors}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-            onDragCancel={() => setDraggingRow(null)}
-          >
-            <div className="flex flex-col gap-2.5" aria-label="Mix lineup">
-              {columns.map((column) => (
-                <LineupColumn
-                  key={column.bucket}
-                  bucket={column.bucket}
-                  title={column.title}
-                  hint={column.hint}
-                  emptyHint={column.emptyHint}
-                  rows={column.rows}
-                  lobbyCount={lobbyCount}
-                  rotationByMember={rotationByMember}
-                  canWrite={canWrite}
-                  savingPlayerId={savingPlayerId}
-                  onPatchPlayer={onPatchPlayer}
-                  onOpenPlayer={onOpenPlayer}
-                  onRemovePlayer={onRemovePlayer}
-                />
-              ))}
-            </div>
-            {/* Follows the pointer instead of the row teleporting under it --
-                without this dnd-kit still moves it correctly, it just looks
-                broken mid-drag (the dragged row snaps back until drop). */}
-            <DragOverlay>{draggingRow ? <LineupDragPreview row={draggingRow} /> : null}</DragOverlay>
-          </DndContext>
-        )}
-      </div>
-    </div>
+      {!hasMix ? (
+        <PageStateCard
+          state="empty"
+          title={t("noMixTitle")}
+          description={t("noMixDescription")}
+          className="border-0 bg-transparent px-4 py-10"
+        />
+      ) : lineup.length === 0 ? (
+        <PageStateCard
+          state="empty"
+          title={t("emptyLineupTitle")}
+          description={canWrite ? t("emptyLineupHost") : t("emptyLineupViewer")}
+          className="border-0 bg-transparent px-4 py-10"
+        />
+      ) : (
+        <DndContext
+          sensors={sensors}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={() => setDraggingRow(null)}
+        >
+          <div className="flex flex-col" aria-label={t("listLabel")}>
+            {columns.map((column) => (
+              <LineupColumn
+                key={column.bucket}
+                bucket={column.bucket}
+                title={column.title}
+                hint={column.hint}
+                emptyHint={column.emptyHint}
+                rows={column.rows}
+                lobbyCount={lobbyCount}
+                rotationByMember={rotationByMember}
+                owner={owner}
+                canWrite={canWrite}
+                savingPlayerId={savingPlayerId}
+                onPatchPlayer={onPatchPlayer}
+                onOpenPlayer={onOpenPlayer}
+                onRemovePlayer={onRemovePlayer}
+              />
+            ))}
+          </div>
+          {/* Follows the pointer instead of the row teleporting under it --
+              without this dnd-kit still moves it correctly, it just looks
+              broken mid-drag (the dragged row snaps back until drop). */}
+          <DragOverlay>{draggingRow ? <LineupDragPreview row={draggingRow} owner={owner} /> : null}</DragOverlay>
+        </DndContext>
+      )}
+    </Card>
   );
 }

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,11 +13,12 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "analytics-service"))
 
-os.environ["DEBUG"] = "false"
 
-performance_v2 = importlib.import_module("src.services.ml.models.performance_v2")
-shift_features = importlib.import_module("src.services.ml.features.shift_features")
-shift_v2 = importlib.import_module("src.services.ml.models.shift_v2")
+from tests.ow_analytics import module as ow_module  # noqa: E402
+
+performance_v2 = ow_module("models.performance_v2")
+shift_features = ow_module("features.shift_features")
+shift_v2 = ow_module("models.shift_v2")
 
 from shared.division_grid import DEFAULT_GRID  # noqa: E402
 from tests.factories import identity_assign as _identity_assign
@@ -62,10 +61,10 @@ class ShiftRankHistoryTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(execute=AsyncMock(return_value=result))
 
         with (
-            patch.object(shift_features, "load_source_grids", AsyncMock(return_value={})),
+            patch.object(shift_features, "load_division_grids", AsyncMock(return_value={})),
             patch.object(shift_features, "assign_canonical_division", _identity_assign),
         ):
-            history = await shift_features._player_rank_history(
+            history = await shift_features.load_player_rank_history(
                 session,
                 [10],
                 history_through_tournament_id=20,
@@ -78,6 +77,36 @@ class ShiftRankHistoryTests(IsolatedAsyncioTestCase):
         query = session.execute.await_args.args[0]
         params = query.compile().params
         self.assertIn(20, params.values())
+
+    async def test_unranked_tournament_has_no_division_and_does_not_break_the_chronology(self) -> None:
+        rows = [
+            {
+                "player_id": pid,
+                "user_id": 10,
+                "role": "tank",
+                "tournament_id": tid,
+                "rank": rank,
+                "is_newcomer": False,
+                "version_id": None,
+            }
+            for pid, tid, rank in ((1, 10, 2500), (2, 20, None), (3, 30, 2510))
+        ]
+        result = SimpleNamespace(mappings=lambda: SimpleNamespace(all=lambda: rows))
+        session = SimpleNamespace(execute=AsyncMock(return_value=result))
+
+        with patch.object(shift_features, "load_division_grids", AsyncMock(return_value={})):
+            history = await shift_features.load_player_rank_history(session, [10, 20, 30])
+
+        div = DEFAULT_GRID.resolve_division(2500).number
+        self.assertEqual(div, DEFAULT_GRID.resolve_division(2510).number)
+        first, unranked, last = (history.loc[history["tournament_id"] == tid].iloc[0] for tid in (10, 20, 30))
+        self.assertEqual(div, first["next_tournament_div"])
+        self.assertEqual(div, last["prior_div"])
+        self.assertEqual(2, last["tournaments_at_current_div"])
+        for column in ("div", "prior_div", "next_tournament_div", "tournaments_at_current_div"):
+            self.assertTrue(pd.isna(unranked[column]), column)
+        # Participation is not rank-based: the unranked tournament still counts.
+        self.assertEqual([1, 2, 3], history["tournaments_played"].tolist())
 
 
 class ShiftBlendTests(TestCase):

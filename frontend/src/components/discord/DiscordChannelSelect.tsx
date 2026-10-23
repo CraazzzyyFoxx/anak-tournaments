@@ -20,6 +20,8 @@ export interface DiscordChannelSelectProps {
   ariaLabel?: string;
   /** Id of the visible label, when there is one. */
   id?: string;
+  /** Offer a first option with this label that clears the channel. */
+  noneLabel?: string;
   className?: string;
 }
 
@@ -32,7 +34,8 @@ export function DiscordChannelSelect({
   placeholder,
   ariaLabel,
   id,
-  className
+  className,
+  noneLabel
 }: Readonly<DiscordChannelSelectProps>) {
   const t = useTranslations("discord.channel");
   const { data, isLoading, refetch } = useDiscordChannels(workspaceId);
@@ -84,6 +87,7 @@ export function DiscordChannelSelect({
       onSearchChange={setSearch}
       groups={groups}
       selected={selected}
+      noneLabel={noneLabel}
       onPick={pick}
       renderOption={(channel) => (
         <span className="flex min-w-0 flex-1 items-center gap-1.5">

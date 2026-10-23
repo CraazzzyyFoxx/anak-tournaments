@@ -1,16 +1,19 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { UserMapRead } from "@/types/user.types";
-import HeroImage from "@/components/hero/HeroImage";
-import HeroUserStatsPopover from "@/components/hero/HeroUserStatsPopover";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
+import CharacterCard, { CharacterMapStats } from "@/components/profile/CharacterCard";
+import ProfileWidget from "@/components/profile/ProfileWidget";
 import { AvatarStack } from "@/components/ui/avatar";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { winrateColor } from "@/lib/colors";
+import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 
-const MapRow = ({ row }: { row: UserMapRead }) => {
+const MapRow = ({ row, discipline, axis }: { row: UserMapRead; discipline: string; axis: WorkspaceAxis }) => {
   const wr = row.win_rate * 100;
   const wrColor = winrateColor(wr);
-  const heroStats = row.hero_stats ?? [];
+  const characterStats = row.character_stats ?? [];
   return (
     <div key={row.map.id} className="aqt-map-row" style={{ gridTemplateColumns: "64px 1fr 1fr minmax(0,1.2fr) 60px 50px" }}>
       <div className="aqt-map-thumb">
@@ -22,9 +25,9 @@ const MapRow = ({ row }: { row: UserMapRead }) => {
       </div>
       <div className="flex flex-col leading-tight">
         <div className="text-body font-semibold text-[color:var(--aqt-fg)]">{row.map.name}</div>
-        <div className="aqt-tnum text-label uppercase tracking-[0.06em] text-[color:var(--aqt-fg-dim)]">
-          {row.map.gamemode?.name ?? "—"}
-        </div>
+        <Eyebrow as="div" tone="dim" className="aqt-tnum">
+          {row.map.parent?.name ?? "—"}
+        </Eyebrow>
       </div>
       <div className="aqt-wr-bar">
         <div className="aqt-track">
@@ -34,14 +37,26 @@ const MapRow = ({ row }: { row: UserMapRead }) => {
           {wr.toFixed(0)}%
         </span>
       </div>
-      {heroStats.length > 0 ? (
+      {characterStats.length > 0 ? (
         <AvatarStack max={8} size={26}>
-          {heroStats.map((hs) => (
-            <HeroImage
-              key={`${row.map.id}:${hs.hero.id}`}
-              hero={hs.hero}
+          {characterStats.map((hs) => (
+            <CatalogEntityImage
+              key={`${row.map.id}:${hs.character.id}`}
+              entity={hs.character}
               size="sm"
-              popover={<HeroUserStatsPopover hero={hs.hero} mapStats={hs} />}
+              popover={
+                <ProfileWidget
+                  axis={axis}
+                  discipline={discipline}
+                  slot="characterPopover"
+                  props={{ entity: hs.character, mapStats: hs, mapCharacters: characterStats, mapWinRate: row.win_rate }}
+                  fallback={
+                    <CharacterCard entity={hs.character}>
+                      <CharacterMapStats stats={hs} characters={characterStats} mapWinRate={row.win_rate} />
+                    </CharacterCard>
+                  }
+                />
+              }
             />
           ))}
         </AvatarStack>

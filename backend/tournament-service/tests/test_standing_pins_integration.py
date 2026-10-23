@@ -31,7 +31,6 @@ from shared.core.errors import BaseAPIException  # noqa: E402
 from shared.models.platform.outbox import EventOutbox  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import (  # noqa: E402
-    Encounter,
     Stage,
     StageItem,
     StageItemInput,
@@ -40,25 +39,30 @@ from shared.models.tournament import (  # noqa: E402
     Tournament,
     TournamentComputationJob,
 )
+from shared.services.encounter import result  # noqa: E402
+from shared.services.encounter.participants import active_teams  # noqa: E402
 from src import schemas  # noqa: E402
 from src.services.admin.standing import standing_service  # noqa: E402
 from src.services.standings.service import standings_service  # noqa: E402
+from tests._encounter_layer import add_encounter, add_scoring_rule  # noqa: E402
 
 
-def _encounter(seeded: SimpleNamespace, round_number: int, home: int, away: int, score: tuple[int, int]) -> Encounter:
-    return Encounter(
-        name=f"R{round_number} {home}-{away}",
-        home_team_id=home,
-        away_team_id=away,
-        home_score=score[0],
-        away_score=score[1],
-        round=round_number,
-        tournament_id=seeded.tournament_id,
+async def _game(
+    session: Any, seeded: SimpleNamespace, round_number: int, first: int, second: int, score: tuple[int, int]
+) -> int:
+    """One closed encounter of the group: slot 1 against slot 2, ``score`` confirmed."""
+    encounter = await add_encounter(
+        session,
+        seeded.tournament,
+        seeded.rule_id,
+        teams=[first, second],
+        scores=score,
         stage_id=seeded.stage_id,
         stage_item_id=seeded.item_id,
-        status=enums.EncounterStatus.COMPLETED,
-        result_status=enums.EncounterResultStatus.CONFIRMED,
+        round_number=round_number,
+        name=f"R{round_number} {first}-{second}",
     )
+    return encounter.id
 
 
 async def _seed(session: Any) -> SimpleNamespace:
@@ -81,7 +85,14 @@ async def _seed(session: Any) -> SimpleNamespace:
     ]
     session.add_all(teams)
     await session.flush()
-    stage = Stage(tournament_id=tournament.id, name="Groups", stage_type=enums.StageType.ROUND_ROBIN, order=1)
+    rule = await add_scoring_rule(session, workspace.id)
+    stage = Stage(
+        tournament_id=tournament.id,
+        scoring_rule_id=rule.id,
+        name="Groups",
+        stage_type=enums.StageType.ROUND_ROBIN,
+        order=1,
+    )
     session.add(stage)
     await session.flush()
     item = StageItem(stage_id=stage.id, name="Group A", type=enums.StageItemType.GROUP, order=0)
@@ -94,7 +105,9 @@ async def _seed(session: Any) -> SimpleNamespace:
     a, b, c, d = (team.id for team in teams)
     seeded = SimpleNamespace(
         workspace_id=workspace.id,
+        tournament=tournament,
         tournament_id=tournament.id,
+        rule_id=rule.id,
         stage_id=stage.id,
         item_id=item.id,
         a=a,
@@ -102,14 +115,10 @@ async def _seed(session: Any) -> SimpleNamespace:
         c=c,
         d=d,
     )
-    session.add_all(
-        [
-            _encounter(seeded, 1, a, b, (2, 0)),
-            _encounter(seeded, 1, c, d, (2, 0)),
-            _encounter(seeded, 2, a, c, (2, 0)),
-            _encounter(seeded, 2, b, d, (2, 0)),
-        ]
-    )
+    await _game(session, seeded, 1, a, b, (2, 0))
+    await _game(session, seeded, 1, c, d, (2, 0))
+    seeded.round_two_a = await _game(session, seeded, 2, a, c, (2, 0))
+    await _game(session, seeded, 2, b, d, (2, 0))
     await session.commit()
     await standings_service.recalculate_for_tournament(session, tournament.id)
     return seeded
@@ -163,12 +172,20 @@ def test_a_pinned_team_keeps_its_place_after_results_change(db_session) -> None:
 
             # D now loses nothing it had and A drops its second win: the engine
             # would reorder everyone below D, never D itself.
-            await db_session.execute(
-                sa.update(Encounter)
-                .where(
-                    Encounter.stage_item_id == seeded.item_id, Encounter.round == 2, Encounter.home_team_id == seeded.a
-                )
-                .values(home_score=0, away_score=2)
+            # A's round-2 win over C is reversed through the result writer.
+            encounter = await result.lock_encounter(db_session, seeded.round_two_a)
+            await result.reopen(db_session, encounter, actor_user_id=None, reason="test")
+            seats = await active_teams(db_session, encounter.id)
+            await result.apply_result(
+                db_session,
+                encounter,
+                source=enums.EncounterResultSource.ADMIN,
+                totals={seats[0].id: 0.0, seats[1].id: 2.0},
+                placements={seats[0].id: 2, seats[1].id: 1},
+                action=enums.EncounterResultAuditAction.CONFIRM,
+                audit_source="admin",
+                actor_user_id=None,
+                reason="test",
             )
             await db_session.commit()
             await standings_service.recalculate_for_tournament(db_session, seeded.tournament_id)
@@ -219,6 +236,7 @@ def test_a_started_playoff_freezes_the_places_it_was_seeded_from(db_session) -> 
             # A playoff seeded from 1st place of the group, already being played.
             playoff = Stage(
                 tournament_id=seeded.tournament_id,
+                scoring_rule_id=seeded.rule_id,
                 name="Playoffs",
                 stage_type=enums.StageType.SINGLE_ELIMINATION,
                 order=2,
@@ -238,20 +256,19 @@ def test_a_started_playoff_freezes_the_places_it_was_seeded_from(db_session) -> 
                     source_position=1,
                 )
             )
-            db_session.add(
-                Encounter(
-                    name="Final",
-                    home_team_id=seeded.a,
-                    away_team_id=seeded.b,
-                    home_score=1,
-                    away_score=0,
-                    round=1,
-                    tournament_id=seeded.tournament_id,
-                    stage_id=playoff.id,
-                    stage_item_id=bracket.id,
-                    status=enums.EncounterStatus.OPEN,
-                )
+            # A started final: a game is already in, so its first seat carries a
+            # running tally (open, with no standing yet).
+            final = await add_encounter(
+                db_session,
+                await db_session.get_one(Tournament, seeded.tournament_id),
+                seeded.rule_id,
+                teams=[seeded.a, seeded.b],
+                stage_id=playoff.id,
+                stage_item_id=bracket.id,
+                name="Final",
+                status=enums.EncounterStatus.OPEN,
             )
+            (await active_teams(db_session, final.id))[0].score = 1.0
             await db_session.commit()
 
             with pytest.raises(BaseAPIException) as refused:

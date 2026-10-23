@@ -1,24 +1,17 @@
 "use client";
 
 import { useId, useMemo, useState, type ReactNode } from "react";
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { useTranslations } from "next-intl";
-import { Check, ChevronsUpDown, Plus, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { badgeVariants } from "@/components/ui/badge";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList
-} from "@/components/ui/command";
+import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
+import { CommandGroup, CommandItem } from "@/components/ui/command";
+import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
 import type { PickBanKind } from "@/types/tournament.types";
 import { matchesItemName } from "@/lib/tournament/pick-ban-config";
 import { EmptyNote } from "@/components/kit/EmptyNote";
@@ -30,6 +23,8 @@ export interface CatalogueItem {
   /** Game mode for a map, role for a hero. Disambiguates similar names. */
   group: string | null;
   imageSrc: string | null;
+  /** A mode beside the maps: it narrows which logs a match accepts, and only a shared pool may name it. */
+  isMode?: boolean;
 }
 
 /** Filter value showing every catalogue row regardless of its group. */
@@ -108,133 +103,89 @@ function useCatalogueFilter(options: CatalogueItem[]) {
 
 /**
  * The group filter row above the search field: game mode for a map, role for a
- * hero. Hidden with nothing to narrow — a single-group catalogue (or one still
- * loading) has no use for a row of one redundant "All" pill.
+ * hero. Hidden with nothing to narrow: a single-group catalogue (or one still
+ * loading) has no use for a row of one redundant "All" chip.
  */
 function GroupFilterRow({
   groups,
-  total,
   value,
   onChange
 }: Readonly<{
   groups: CatalogueGroup[];
-  total: number;
   value: string;
   onChange: (value: string) => void;
 }>) {
   const t = useTranslations("pickBan.admin");
-  const tAdmin = useTranslations("adminTournament.preGame");
   if (groups.length <= 1) return null;
 
   return (
-    <div
-      role="group"
-      aria-label={t("groupFilterLabel")}
-      className="flex flex-wrap gap-1 border-b border-border p-1.5"
-    >
-      <Button
-        type="button"
-        size="sm"
-        variant={value === ALL_GROUPS ? "default" : "outline"}
-        aria-pressed={value === ALL_GROUPS}
-        onClick={() => onChange(ALL_GROUPS)}
-        className="h-6 px-2 text-[0.6875rem]"
-      >
-        {tAdmin("groupFilterAllCount", { label: t("groupFilterAll"), count: total })}
-      </Button>
+    <FilterChipGroup label={t("groupFilterLabel")} className="border-b border-border p-1.5">
+      <FilterChip active={value === ALL_GROUPS} onClick={() => onChange(ALL_GROUPS)}>
+        {t("groupFilterAll")}
+      </FilterChip>
       {groups.map((group) => (
-        <Button
+        <FilterChip
           key={group.key}
-          type="button"
-          size="sm"
-          variant={value === group.key ? "default" : "outline"}
-          aria-pressed={value === group.key}
+          active={value === group.key}
+          count={group.count}
           onClick={() => onChange(group.key)}
-          className="h-6 px-2 text-[0.6875rem]"
         >
-          {group.label ?? t("groupFilterUngrouped")} ({group.count})
-        </Button>
+          {group.label ?? t("groupFilterUngrouped")}
+        </FilterChip>
       ))}
-    </div>
+    </FilterChipGroup>
   );
 }
 
-/** Item art behind a scrim, so a label stays legible whatever the image. */
+/** Item art behind a flat scrim, so a label stays legible whatever the image. */
 function ItemArt({ option }: Readonly<{ option: CatalogueItem }>) {
   return (
     <>
       {option.imageSrc ? (
         <span
           aria-hidden
-          className="absolute inset-0 bg-cover bg-center opacity-35 transition-opacity group-hover:opacity-55"
+          className="absolute inset-0 bg-cover bg-center opacity-35"
           style={{ backgroundImage: `url("${option.imageSrc}")` }}
         />
       ) : (
         <span aria-hidden className="absolute inset-0 bg-muted/40" />
       )}
-      {/* Explicit scrim: art luminance varies wildly, so the label cannot rely
-          on the image staying dark enough behind it. */}
-      <span
-        aria-hidden
-        className="absolute inset-0 bg-gradient-to-t from-background via-background/85 to-background/30"
-      />
+      <span aria-hidden className="absolute inset-0 bg-background/60" />
     </>
   );
 }
 
-/** One catalogue tile: art, group badge, name, and its selection position. */
+/**
+ * One catalogue tile: art and name. The group is the filter row above, and the
+ * pick order is the numbered chip list under the picker, so neither is
+ * repeated on the tile.
+ */
 function CatalogueTile({
   option,
-  selectionIndex,
+  selected,
   disabled,
   onToggle
 }: Readonly<{
   option: CatalogueItem;
-  /** Position in the persisted order, or -1 when unselected. */
-  selectionIndex: number;
+  selected: boolean;
   disabled: boolean;
   onToggle: () => void;
 }>) {
-  const selected = selectionIndex >= 0;
   return (
-    <button
+    <Button
       type="button"
+      variant="outline"
       aria-pressed={selected}
       aria-label={option.name}
       disabled={disabled}
       onClick={onToggle}
-      className={cn(
-        "group relative flex h-20 flex-col justify-between overflow-hidden rounded-lg border p-2 text-left transition-colors",
-        selected
-          ? "border-primary bg-primary/10 ring-2 ring-primary/40"
-          : "border-border bg-card hover:border-primary/50",
-        disabled && "cursor-not-allowed"
-      )}
+      className="relative h-20 flex-col items-stretch justify-end overflow-hidden rounded-lg p-2 text-left hover:border-primary/50 aria-pressed:border-primary"
     >
       <ItemArt option={option} />
-      {/* `span`, not `<Badge>`: this sits inside a `<button>`, which may only
-          contain phrasing content, and `Badge` renders a `div`. */}
-      <span className="relative z-10 flex items-start justify-between gap-1">
-        {option.group ? (
-          <span className={cn(badgeVariants({ variant: "outline" }), "bg-background/85")}>
-            {option.group}
-          </span>
-        ) : (
-          <span />
-        )}
-        {selected ? (
-          <span
-            aria-hidden
-            className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold tabular-nums text-primary-foreground shadow-xs"
-          >
-            {selectionIndex + 1}
-          </span>
-        ) : null}
-      </span>
       <span className="relative z-10 truncate text-xs font-semibold text-foreground">
         {option.name}
       </span>
-    </button>
+    </Button>
   );
 }
 
@@ -252,7 +203,7 @@ export interface CatalogueChipsProps {
   leading?: ReactNode;
 }
 
-/** Selected items in stored order, each with the control that removes it. */
+/** Selected items in stored order; each chip removes its item. */
 export function CatalogueChips({
   itemIds,
   catalogue,
@@ -268,33 +219,36 @@ export function CatalogueChips({
       {itemIds.map((itemId, index) => {
         const item = catalogue.get(itemId);
         const name = item?.name ?? `#${itemId}`;
+        const content = (
+          <>
+            {item?.imageSrc ? (
+              <Image
+                src={item.imageSrc}
+                alt=""
+                width={16}
+                height={16}
+                className="size-4 shrink-0 rounded-sm object-cover"
+              />
+            ) : null}
+            <span className="text-muted-foreground tabular-nums">{index + 1}</span>
+            <span className="max-w-40 truncate">{name}</span>
+          </>
+        );
         return (
           <li key={itemId}>
-            <span className="flex items-center gap-1.5 rounded-md border border-border bg-card py-1 pe-1 ps-1.5 text-xs">
-              {item?.imageSrc ? (
-                <Image
-                  src={item.imageSrc}
-                  alt=""
-                  width={16}
-                  height={16}
-                  className="size-4 shrink-0 rounded-sm object-cover outline outline-black/10 dark:outline-white/10"
-                />
-              ) : (
-                <span aria-hidden className="size-4 shrink-0 rounded-sm bg-muted" />
-              )}
-              <span className="text-muted-foreground tabular-nums">{index + 1}</span>
-              <span className="max-w-40 truncate font-medium">{name}</span>
-              {disabled ? null : (
-                <button
-                  type="button"
-                  aria-label={t("poolRemove", { item: name })}
-                  onClick={() => onRemove(itemId)}
-                  className="relative flex size-5 items-center justify-center rounded text-muted-foreground transition-colors after:absolute after:-inset-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                >
-                  <X aria-hidden className="size-3.5" />
-                </button>
-              )}
-            </span>
+            {disabled ? (
+              <span className="flex items-center gap-1.5 text-xs">{content}</span>
+            ) : (
+              <FilterChip
+                active
+                aria-label={t("poolRemove", { item: name })}
+                title={t("poolRemove", { item: name })}
+                onClick={() => onRemove(itemId)}
+              >
+                {content}
+                <X aria-hidden className="size-3.5" />
+              </FilterChip>
+            )}
           </li>
         );
       })}
@@ -356,87 +310,57 @@ export function CataloguePicker(props: Readonly<CataloguePickerProps>) {
       filter.setOpen(false);
     };
 
+    const selectedName = selected ? selected.name : t("slotReserveNone");
+
     return (
-      <Popover open={filter.open} onOpenChange={filter.onOpenChange}>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            role="combobox"
-            aria-expanded={filter.open}
-            aria-label={props.triggerLabel}
-            disabled={disabled}
-            className="w-56 justify-between gap-2 font-normal"
-          >
-            <span className="truncate">
-              <span className="text-muted-foreground">{props.triggerPrefix} </span>
-              {selected ? selected.name : t("slotReserveNone")}
-            </span>
-            <ChevronsUpDown aria-hidden className="size-4 shrink-0 opacity-50" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-72 p-0">
-          <Command shouldFilter={false}>
-            <GroupFilterRow
-              groups={filter.groups}
-              total={options.length}
-              value={filter.groupFilter}
-              onChange={filter.setGroupFilter}
-            />
-            <CommandInput
-              value={filter.query}
-              onValueChange={filter.setQuery}
-              placeholder={searchPlaceholder}
-            />
-            <CommandList>
-              <CommandEmpty>{t("catalogueEmpty")}</CommandEmpty>
-              <CommandGroup>
-                <CommandItem value={t("slotReserveNone")} onSelect={() => choose(null)}>
-                  <span>{t("slotReserveNone")}</span>
-                  <Check
-                    aria-hidden
-                    className={cn(
-                      "ms-auto size-4",
-                      props.value == null ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                </CommandItem>
-                {filter.visibleOptions.map((option) => (
-                  <CommandItem
-                    key={option.id}
-                    value={option.name}
-                    onSelect={() => choose(option.id)}
-                  >
-                    {option.imageSrc ? (
-                      <Image
-                        src={option.imageSrc}
-                        alt=""
-                        width={24}
-                        height={24}
-                        className="size-6 shrink-0 rounded-sm object-cover outline outline-black/10 dark:outline-white/10"
-                      />
-                    ) : (
-                      <span aria-hidden className="size-6 shrink-0 rounded-sm bg-muted" />
-                    )}
-                    <span className="truncate">{option.name}</span>
-                    {option.group ? (
-                      <span className="truncate text-xs text-muted-foreground">{option.group}</span>
-                    ) : null}
-                    <Check
-                      aria-hidden
-                      className={cn(
-                        "ms-auto size-4 shrink-0",
-                        props.value === option.id ? "opacity-100" : "opacity-0"
-                      )}
-                    />
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
+      <Combobox
+        open={filter.open}
+        onOpenChange={filter.onOpenChange}
+        label={
+          <>
+            <span className="text-muted-foreground">{props.triggerPrefix} </span>
+            {selectedName}
+          </>
+        }
+        labelTitle={`${props.triggerPrefix} ${selectedName}`}
+        triggerAriaLabel={props.triggerLabel}
+        size="sm"
+        triggerClassName="w-56 gap-2"
+        disabled={disabled}
+        header={
+          <GroupFilterRow groups={filter.groups} value={filter.groupFilter} onChange={filter.setGroupFilter} />
+        }
+        searchValue={filter.query}
+        onSearchValueChange={filter.setQuery}
+        searchPlaceholder={searchPlaceholder}
+        emptyMessage={t("catalogueEmpty")}
+        shouldFilter={false}
+      >
+        <CommandGroup>
+          <CommandItem value={t("slotReserveNone")} onSelect={() => choose(null)}>
+            <span className="min-w-0 flex-1">{t("slotReserveNone")}</span>
+            <ComboboxCheck selected={props.value == null} />
+          </CommandItem>
+          {filter.visibleOptions.map((option) => (
+            <CommandItem key={option.id} value={option.name} onSelect={() => choose(option.id)}>
+              {option.imageSrc ? (
+                <Image
+                  src={option.imageSrc}
+                  alt=""
+                  width={24}
+                  height={24}
+                  className="size-6 shrink-0 rounded-sm object-cover outline outline-black/10 dark:outline-white/10"
+                />
+              ) : (
+                <span aria-hidden className="size-6 shrink-0 rounded-sm bg-muted" />
+              )}
+              <span className="truncate">{option.name}</span>
+              <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{option.group}</span>
+              <ComboboxCheck selected={props.value === option.id} />
+            </CommandItem>
+          ))}
+        </CommandGroup>
+      </Combobox>
     );
   }
 
@@ -452,13 +376,7 @@ export function CataloguePicker(props: Readonly<CataloguePickerProps>) {
   return (
     <Popover open={filter.open} onOpenChange={filter.onOpenChange}>
       <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={disabled}
-          className="h-8 gap-1.5 border-dashed"
-        >
+        <Button type="button" variant="dashed" size="sm" disabled={disabled}>
           <Plus aria-hidden className="size-4" />
           {addLabel}
         </Button>
@@ -476,7 +394,6 @@ export function CataloguePicker(props: Readonly<CataloguePickerProps>) {
         <div role="group" aria-label={addLabel} className="flex flex-col gap-3">
           <GroupFilterRow
             groups={filter.groups}
-            total={options.length}
             value={filter.groupFilter}
             onChange={filter.setGroupFilter}
           />
@@ -490,7 +407,7 @@ export function CataloguePicker(props: Readonly<CataloguePickerProps>) {
               value={filter.query}
               onChange={(event) => filter.setQuery(event.target.value)}
               placeholder={searchPlaceholder}
-              className="h-8 text-base sm:text-xs"
+              size="sm"
             />
           </div>
 
@@ -504,7 +421,7 @@ export function CataloguePicker(props: Readonly<CataloguePickerProps>) {
                 <CatalogueTile
                   key={option.id}
                   option={option}
-                  selectionIndex={selectionOrder.get(option.id) ?? -1}
+                  selected={selectionOrder.has(option.id)}
                   disabled={disabled}
                   onToggle={() => {
                     onToggle(option.id);

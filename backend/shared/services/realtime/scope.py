@@ -1,10 +1,7 @@
 """Realtime scope: the ACL-bearing subject an event belongs to.
 
-A scope is the only place the topic format lives. Before this module it was
-spelled out in ``realtime_topics.py``, again as ``LIKE 'tournament:%:bracket'``
-in the retention job, and a third time as ``strings.CutPrefix(topic,
-"tournament:")`` in the gateway — three copies that had to be changed together
-and were only kept in step by comments saying so.
+A scope is the only place the topic format lives: publishers, the retention
+job's topic patterns and the gateway's prefix split must all agree with it.
 
 Scopes exist because visibility differs, which is why there is no single global
 invalidation topic: ``gateway/internal/acl/acl.go`` gates a tournament's topics
@@ -58,13 +55,9 @@ class Scope:
 
     @classmethod
     def draft(cls, draft_session_id: int) -> Scope:
-        """A live draft SESSION's own topics (currently just its chat).
-
-        Keyed by the session and not by the tournament because a session IS the
-        draft: re-seeding one deletes it and creates another, and the two are
-        different events with different participants. Data only, like
-        ``encounter`` -- a draft write stales ``tournament.*`` resources, which
-        are already published under the tournament scope.
+        """A draft SESSION's own topics: its board (``board``) and its chat (``chat``), for a tournament's draft and
+        a mix lobby's alike (spec §9.6). Keyed by the session because a session IS the draft. Data only, like
+        ``encounter``.
         """
         return cls(ScopeKind.DRAFT, int(draft_session_id))
 

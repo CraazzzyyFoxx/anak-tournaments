@@ -11,8 +11,8 @@ import ExtraHandlesInput from "../ExtraHandlesInput";
 import SubscriptionRow from "../SubscriptionRow";
 import VerifiedAccountSelect from "../VerifiedAccountSelect";
 
-/**
- * Copy and iconography per provider.
+/*
+ * Copy per provider.
  *
  * A builtin field carries no label of its own — the server owns the question,
  * each client words it — so EVERY provider `IDENTITY_PROVIDERS` offers must have
@@ -20,15 +20,9 @@ import VerifiedAccountSelect from "../VerifiedAccountSelect";
  * The i18n keys are derived from the provider name rather than listed twice:
  * `registration.accounts.<provider>` and `…<provider>Placeholder` exist for all
  * six, and a seventh provider added to the catalog gets its label from the same
- * rule the moment its two strings are translated. Only the brand icons are a
- * table, because only four of them are in `public/`.
+ * rule the moment its two strings are translated. Brand icons come from
+ * `SocialIcon` (the provider catalog), with a generic glyph for the rest.
  */
-const PROVIDER_ICONS: Record<string, string> = {
-  battlenet: "/battlenet.svg",
-  discord: "/discord-white.svg",
-  twitch: "/twitch.png",
-  boosty: "/boosty.svg",
-};
 
 /** Providers whose subscription standing is shown under the handle. */
 const SUBSCRIPTION_LABELS: Record<string, string> = { twitch: "Twitch", boosty: "Boosty" };
@@ -106,7 +100,7 @@ export default function IdentityField({
         value={primary}
         onChange={(handle) => commit(handle, extras)}
         suggestions={suggestions.filter((handle) => !extras.includes(handle))}
-        icon={provider ? PROVIDER_ICONS[provider] : undefined}
+        provider={provider ?? undefined}
         required={field.required}
         field={field}
         error={error}
@@ -123,7 +117,7 @@ export default function IdentityField({
           // One slot is the primary handle's.
           max={maxCount - 1}
           suggestions={suggestions.filter((handle) => handle !== primary)}
-          icon={provider ? PROVIDER_ICONS[provider] : undefined}
+          provider={provider ?? undefined}
           field={field}
         />
       </div>

@@ -31,13 +31,15 @@ from unittest import IsolatedAsyncioTestCase, mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from shared.core.enums import HeroClass, TournamentStatus  # noqa: E402
+from shared import models  # noqa: E402
+from shared.core.enums import TournamentStatus  # noqa: E402
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.core.social import SocialProvider  # noqa: E402
 from shared.domain.forms import FormField, FormSchema, FormSection  # noqa: E402
 from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
+from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from shared.services.roster import roster_engine  # noqa: E402
-from src import models  # noqa: E402
+from shared.testing.roles import rated_catalog, registration_role  # noqa: E402
 from src.services.registration import lifecycle as reg_lifecycle  # noqa: E402
 from src.services.registration import service as reg_service  # noqa: E402
 
@@ -74,7 +76,7 @@ SCHEMA = _schema()
 def _open_tournament() -> models.Tournament:
     """A tournament whose REGISTRATION window is open right now."""
     now = datetime.now(UTC)
-    tournament = models.Tournament(id=7, status=TournamentStatus.REGISTRATION)
+    tournament = models.Tournament(id=7, workspace_id=1, discipline="overwatch", status=TournamentStatus.REGISTRATION)
     tournament.phase_schedule = [
         models.TournamentPhaseSchedule(
             tournament_id=7,
@@ -116,6 +118,16 @@ class _RecordingSession:
     async def scalar(self, *_args: Any, **_kwargs: Any) -> Any:
         return self._scalar_value
 
+    async def scalars(self, *_args: Any, **_kwargs: Any) -> Any:
+        result = mock.Mock()
+        result.all.return_value = list(rated_catalog().values())
+        return result
+
+    async def execute(self, *_args: Any, **_kwargs: Any) -> Any:
+        result = mock.Mock()
+        result.unique.return_value.scalars.return_value.first.return_value = _open_tournament()
+        return result
+
     def begin_nested(self) -> Any:
         return _Savepoint()
 
@@ -144,19 +156,23 @@ def _wp_patches():
     )
 
 
-def _roster_of(registration: models.BalancerRegistration) -> PlayerRoster:
+def _roster_of(registration: models.Registration) -> PlayerRoster:
     """What the engine would answer for a row with no tenancy behind it: the
     registration's own layer only, over the roles it declares active."""
     return PlayerRoster(
         registration_id=registration.id,
-        battle_tag=registration.primary_handle(SocialProvider.BATTLENET),
+        identity=(
+            PlayerIdentityRead(provider=SocialProvider.BATTLENET, handle=handle)
+            if (handle := registration.primary_handle(SocialProvider.BATTLENET))
+            else None
+        ),
         display_name=registration.display_name,
         player_id=None,
         auth_user_id=None,
         workspace_member_id=None,
         roles=tuple(
             RosterRole(
-                role=HeroClass.from_slot_code(role.role),
+                role=role.role,
                 rank=role.rank_value,
                 source="registration" if role.rank_value is not None else "none",
                 is_primary=bool(role.is_primary),
@@ -174,7 +190,7 @@ async def _noop(*_args: Any, **_kwargs: Any) -> None:
 
 
 class TestPublicCreatePersistsEveryAnswer(IsolatedAsyncioTestCase):
-    async def _create(self, answers: dict[str, Any]) -> models.BalancerRegistration:
+    async def _create(self, answers: dict[str, Any]) -> models.Registration:
         session = _RecordingSession()
         patches = _wp_patches()
         with (
@@ -241,12 +257,12 @@ class TestPublicCreatePersistsEveryAnswer(IsolatedAsyncioTestCase):
 
 
 class TestSelfUpdateAppliesAnswers(IsolatedAsyncioTestCase):
-    def _registration(self, **kwargs: Any) -> models.BalancerRegistration:
-        return models.BalancerRegistration(id=1, tournament_id=7, status="pending", **kwargs)
+    def _registration(self, **kwargs: Any) -> models.Registration:
+        return models.Registration(id=1, tournament_id=7, status="pending", **kwargs)
 
     async def _update(
         self,
-        registration: models.BalancerRegistration,
+        registration: models.Registration,
         values: dict[str, Any],
         *,
         ensure_player_identity: Any = _noop,
@@ -276,6 +292,8 @@ class TestSelfUpdateAppliesAnswers(IsolatedAsyncioTestCase):
             self._registration(), {"identity_battlenet": ["Player#1234"]}, ensure_player_identity=ensured
         )
         ensured.assert_awaited_once()
+        # The owner provider is the tournament's (an open Overwatch tournament here), threaded explicitly.
+        assert ensured.await_args.kwargs["provider"] == "battlenet"
 
     async def test_custom_answers_merge_with_the_stored_ones(self) -> None:
         """A PATCH names only the questions it changes; replacing wholesale would
@@ -319,7 +337,7 @@ class TestSelfUpdateAppliesAnswers(IsolatedAsyncioTestCase):
 
     async def test_a_settled_registration_cannot_be_edited(self) -> None:
         """``approved`` is editable now; ``withdrawn`` is over."""
-        registration = models.BalancerRegistration(id=1, tournament_id=7, status="withdrawn")
+        registration = models.Registration(id=1, tournament_id=7, status="withdrawn")
 
         with self.assertRaises(HTTPException) as caught:
             await self._update(registration, {"identity_battlenet": ["Player#1234"]})
@@ -348,9 +366,7 @@ _DEFAULT_FORM = object()
 
 
 class TestManualCreateHonorsTheEditor(IsolatedAsyncioTestCase):
-    async def _create(
-        self, *, form: Any = _DEFAULT_FORM, **overrides: Any
-    ) -> tuple[models.BalancerRegistration, list[str]]:
+    async def _create(self, *, form: Any = _DEFAULT_FORM, **overrides: Any) -> tuple[models.Registration, list[str]]:
         session = _RecordingSession()
         events: list[str] = []
 
@@ -369,6 +385,11 @@ class TestManualCreateHonorsTheEditor(IsolatedAsyncioTestCase):
         with (
             mock.patch.object(
                 reg_lifecycle.lifecycle_service.registrations, "ensure_unique_primary_game_handles", _noop
+            ),
+            mock.patch.object(
+                reg_lifecycle.lifecycle_service.common,
+                "ensure_tournament_exists",
+                mock.AsyncMock(return_value=models.Tournament(id=7, workspace_id=1, discipline="overwatch")),
             ),
             mock.patch.object(
                 reg_lifecycle.lifecycle_service.common,
@@ -439,7 +460,7 @@ class TestManualCreateHonorsTheEditor(IsolatedAsyncioTestCase):
         """Before the form schema existed these were unconditional keyword
         arguments, so a form-less tournament still took an organizer's input.
         Validating against nothing would silently drop all of it; the fallback is
-        ``default_schema()``, the same one the sheet-sync feed uses."""
+        the discipline's default schema, the same one the sheet-sync feed uses."""
         registration, _ = await self._create(
             form=None,
             answers={"identity_battlenet": ["Walkin # 4242"], "public_notes": "signed up at the venue"},
@@ -453,7 +474,7 @@ class TestManualCreateHonorsTheEditor(IsolatedAsyncioTestCase):
 
 
 class TestAdminProfileUpdateAnswers(IsolatedAsyncioTestCase):
-    async def _update(self, registration: models.BalancerRegistration, **overrides: Any) -> None:
+    async def _update(self, registration: models.Registration, **overrides: Any) -> None:
         payload: dict[str, Any] = {
             "display_name": None,
             "admin_notes": None,
@@ -485,9 +506,9 @@ class TestAdminProfileUpdateAnswers(IsolatedAsyncioTestCase):
                 _RecordingSession(), registration.id, **payload
             )
 
-    def _registration(self, **kwargs: Any) -> models.BalancerRegistration:
-        registration = models.BalancerRegistration(id=1, tournament_id=7, status="approved", **kwargs)
-        registration.tournament = mock.Mock(workspace_id=1)
+    def _registration(self, **kwargs: Any) -> models.Registration:
+        registration = models.Registration(id=1, tournament_id=7, status="approved", **kwargs)
+        registration.tournament = mock.Mock(workspace_id=1, discipline="overwatch")
         return registration
 
     async def test_the_editor_clears_an_answer_by_sending_it_blank(self) -> None:
@@ -509,7 +530,7 @@ class TestAdminProfileUpdateAnswers(IsolatedAsyncioTestCase):
     async def test_a_blank_identity_answer_deletes_its_row(self) -> None:
         registration = self._registration()
         registration.identities.append(
-            models.BalancerRegistrationIdentity(provider="discord", position=0, handle="old", handle_normalized="old")
+            models.RegistrationIdentity(provider="discord", position=0, handle="old", handle_normalized="old")
         )
 
         await self._update(registration, answers={"identity_discord": []})
@@ -524,7 +545,7 @@ class TestAdminProfileUpdateAutoManagedBalancerStatus(IsolatedAsyncioTestCase):
     not 400, the way an explicit ``set_balancer_status`` pin correctly does.
     """
 
-    async def _update(self, registration: models.BalancerRegistration, **overrides: Any) -> None:
+    async def _update(self, registration: models.Registration, **overrides: Any) -> None:
         payload: dict[str, Any] = {
             "display_name": None,
             "admin_notes": None,
@@ -555,14 +576,14 @@ class TestAdminProfileUpdateAutoManagedBalancerStatus(IsolatedAsyncioTestCase):
                 _RecordingSession(), registration.id, **payload
             )
 
-    def _registration(self, **kwargs: Any) -> models.BalancerRegistration:
-        registration = models.BalancerRegistration(id=1, tournament_id=7, status="approved", **kwargs)
-        registration.tournament = mock.Mock(workspace_id=1)
+    def _registration(self, **kwargs: Any) -> models.Registration:
+        registration = models.Registration(id=1, tournament_id=7, status="approved", **kwargs)
+        registration.tournament = mock.Mock(workspace_id=1, discipline="overwatch")
         return registration
 
     async def test_resaving_a_ready_registration_recomputes_instead_of_rejecting(self) -> None:
         registration = self._registration(balancer_status="ready")
-        registration.roles = [models.BalancerRegistrationRole(role="tank", is_active=True, rank_value=2500)]
+        registration.roles = [registration_role(role="tank", is_active=True, rank_value=2500)]
 
         # Must not raise -- the old behaviour 400ed on this exact resend.
         await self._update(registration, balancer_status_value="ready")
@@ -571,7 +592,7 @@ class TestAdminProfileUpdateAutoManagedBalancerStatus(IsolatedAsyncioTestCase):
 
     async def test_resaving_an_incomplete_registration_stays_incomplete(self) -> None:
         registration = self._registration(balancer_status="incomplete")
-        registration.roles = [models.BalancerRegistrationRole(role="tank", is_active=True, rank_value=None)]
+        registration.roles = [registration_role(role="tank", is_active=True, rank_value=None)]
 
         await self._update(registration, balancer_status_value="incomplete")
 

@@ -13,7 +13,8 @@ from __future__ import annotations
 
 from shared.core.pagination import Paginated
 from shared.rpc.openapi import Op, QueryParam
-from shared.services.bracket.template import BracketTemplate
+from shared.schemas.match import MatchEventsRead
+from shared.schemas.team_format import TeamFormatRead, TeamFormatWrite
 from shared.services.chat import (
     HISTORY_DEFAULT,
     HISTORY_MAX,
@@ -26,6 +27,7 @@ from shared.services.chat import (
     ChatSettingsInput,
 )
 from src import schemas
+from src.domain.bracket import BracketTemplate
 from src.rpc import pick_ban_admin
 from src.schemas import captain as captain_schemas
 from src.schemas import encounter_report_form as report_form_schemas
@@ -39,6 +41,9 @@ from src.services.encounter import room_journal
 # Reusable ad-hoc query params (handlers read these via _q/_q1, no query model).
 _ENTITIES = QueryParam("entities", array=True)
 _WS = QueryParam("workspace_id", "integer")
+_WS_REQUIRED = QueryParam("workspace_id", "integer", required=True)
+# A list read's optional game (spec §8.1): absent or "all" is every game.
+_OPTIONAL_DISCIPLINE = QueryParam("discipline", description='Installed discipline code; absent or "all": every game')
 
 OPERATIONS: dict[str, Op] = {
     # ── public reads (single object) ───────────────────────────────────────
@@ -46,14 +51,23 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.get_team": Op(response=schemas.TeamRead, query_params=(_ENTITIES,)),
     "rpc.tournament.get_encounter": Op(response=schemas.EncounterRead, query_params=(_ENTITIES,)),
     "rpc.tournament.get_match": Op(response=schemas.MatchReadWithStats, query_params=(_ENTITIES, _WS)),
-    "rpc.tournament.get_match_kill_feed": Op(response=schemas.MatchKillFeedRead, query_params=(_WS,)),
+    "rpc.tournament.get_match_kill_feed": Op(response=MatchEventsRead, query_params=(_WS,)),
     "rpc.tournament.encounters_overview": Op(
         response=schemas.EncounterOverviewRead, query=schemas.EncounterSearchQueryParams
+    ),
+    "rpc.tournament.encounters_insights": Op(
+        response=schemas.EncounterInsightsRead, query=schemas.EncounterSearchQueryParams
     ),
     "rpc.tournament.statistics_overall": Op(response=schemas.OverallStatistics, query_params=(_WS,)),
     # ── public reads (arrays) ──────────────────────────────────────────────
     "rpc.tournament.lookup_tournaments": Op(
-        response=schemas.LookupItem, response_array=True, query_params=(_WS, QueryParam("is_league", "boolean"))
+        response=schemas.LookupItem,
+        response_array=True,
+        query_params=(
+            _WS,
+            QueryParam("is_league", "boolean"),
+            QueryParam("discipline", description="Installed discipline code; absent lists every game."),
+        ),
     ),
     "rpc.tournament.get_stages": Op(response=schemas.StageRead, response_array=True),
     "rpc.tournament.get_standings": Op(response=schemas.StandingRead, response_array=True, query_params=(_ENTITIES,)),
@@ -64,7 +78,9 @@ OPERATIONS: dict[str, Op] = {
         response=schemas.TournamentStatistics, response_array=True, query_params=(_WS,)
     ),
     "rpc.tournament.statistics_division": Op(
-        response=schemas.DivisionStatistics, response_array=True, query_params=(_WS,)
+        response=schemas.DivisionStatistics,
+        response_array=True,
+        query_params=(_WS, QueryParam("discipline", required=True, description="Explicit discipline code.")),
     ),
     "rpc.tournament.saved_views": Op(response=schemas.EncounterSavedViewRead, response_array=True, query_params=(_WS,)),
     # ── public reads (paginated) ───────────────────────────────────────────
@@ -121,7 +137,12 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.admin.list#player_sub_role": Op(
         response=schemas.PlayerSubRoleRead,
         response_array=True,
-        query_params=(_WS, QueryParam("role"), QueryParam("include_inactive", "boolean")),
+        query_params=(
+            _WS,
+            QueryParam("discipline", description="Installed discipline code; absent: every game's sub-roles."),
+            QueryParam("role"),
+            QueryParam("include_inactive", "boolean"),
+        ),
     ),
     "rpc.tournament.admin.list#tournament_link": Op(
         response=schemas.TournamentLinkRead,
@@ -137,6 +158,8 @@ OPERATIONS: dict[str, Op] = {
     # ── bespoke: tournament cover/logo (binary upload + delete) ────────────
     "rpc.tournament.tournaments.image_upload": Op(response=schemas.TournamentRead),
     "rpc.tournament.tournaments.image_delete": Op(response=schemas.TournamentRead),
+    "rpc.tournament.team_format.get": Op(response=TeamFormatRead),
+    "rpc.tournament.team_format.put": Op(request=TeamFormatWrite, response=TeamFormatRead),
     # ── bespoke: registered-team image (binary upload + delete) ────────────
     "rpc.tournament.regteam_image_upload": Op(response=reg_team_schemas.RegistrationTeamRead),
     "rpc.tournament.regteam_image_delete": Op(response=reg_team_schemas.RegistrationTeamRead),
@@ -201,7 +224,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.challonge_fetch_tournament": Op(response=schemas.ChallongeTournament),
     "rpc.tournament.challonge_fetch_participants": Op(response=schemas.ChallongeParticipant, response_array=True),
     "rpc.tournament.challonge_fetch_matches": Op(response=schemas.ChallongeMatch, response_array=True),
-    # ── bootstrap importers (formerly parser-service rpc.parser.*) ─────────
+    # ── bootstrap importers ────────────────────────────────────────────────
     "rpc.tournament.challonge_create_tournament": Op(
         response=schemas.TournamentRead,
         query_params=(
@@ -209,6 +232,7 @@ OPERATIONS: dict[str, Op] = {
             QueryParam("start_date", required=True),
             QueryParam("end_date", required=True),
             QueryParam("challonge_slug", required=True),
+            QueryParam("discipline", required=True),
             QueryParam("is_league", "boolean"),
             QueryParam("division_grid_version_id", "integer"),
         ),
@@ -253,7 +277,11 @@ OPERATIONS: dict[str, Op] = {
         request=reg_form_schemas.RegistrationFormUpsert, response=reg_form_schemas.RegistrationFormRead
     ),
     "rpc.tournament.regform_template_list": Op(
-        response=reg_form_schemas.RegistrationFormTemplateRead, response_array=True
+        response=reg_form_schemas.RegistrationFormTemplateRead,
+        response_array=True,
+        query_params=(
+            QueryParam("discipline", description="One installed discipline; omitted = every game's templates."),
+        ),
     ),
     "rpc.tournament.regform_template_create": Op(
         request=reg_form_schemas.RegistrationFormTemplateUpsert,
@@ -300,7 +328,10 @@ OPERATIONS: dict[str, Op] = {
         response=schemas.BalancerRegistrationRankAutofillResponse,
     ),
     "rpc.tournament.reg_check_in": Op(request=schemas.CheckInRequest, response=schemas.BalancerRegistrationRead),
-    "rpc.tournament.reg_user_rank_history": Op(response=schemas.BalancerRegistrationRankHistoryResponse),
+    "rpc.tournament.reg_user_rank_history": Op(
+        response=schemas.BalancerRegistrationRankHistoryResponse,
+        query_params=(QueryParam("discipline", required=True, description="Explicit discipline code."),),
+    ),
     # ── registration status catalog ────────────────────────────────────────
     "rpc.tournament.regstatus_catalog": Op(response=schemas.BalancerRegistrationStatusRead, response_array=True),
     "rpc.tournament.regstatus_list": Op(response=schemas.BalancerRegistrationStatusRead, response_array=True),
@@ -412,7 +443,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.saved_view_create": Op(
         request=schemas.EncounterSavedViewCreate, response=schemas.EncounterSavedViewRead
     ),
-    # ── scrim rooms (docs/plans/2026-08-12-scrim-rooms.md) ─────────────────
+    # ── scrim rooms ────────────────────────────────────────────────────────
     # Unlike the pre-game pick-ban subjects a room is played through, these five
     # return whole typed models, so they carry request/response maps rather than
     # falling back to a generic object.
@@ -429,11 +460,12 @@ OPERATIONS: dict[str, Op] = {
     # captain_reports is deliberately absent: it answers the ad-hoc envelope
     # {reports, form} rather than a bare CaptainReportRead array, and this module
     # maps whole request/response models only (see the module docstring).
+    # captain_submit_report answers that same ad-hoc envelope, so only its body
+    # is mapped.
+    "rpc.tournament.captain_submit_report": Op(request=captain_schemas.TeamReportIn),
     # ── encounter result (the single admin write + its audit trail) ────────
-    "rpc.tournament.encounter_set_result": Op(
-        request=schemas.EncounterSetResultInput, response=schemas.EncounterResultRead
-    ),
-    "rpc.tournament.encounter_reopen_result": Op(response=schemas.EncounterResultRead),
+    "rpc.tournament.encounter_set_result": Op(request=schemas.SetResultIn, response=schemas.EncounterResultRead),
+    "rpc.tournament.encounter_reopen_result": Op(request=schemas.ReopenResultIn, response=schemas.EncounterResultRead),
     "rpc.tournament.encounter_result_audit": Op(response=schemas.EncounterResultAuditRead, response_array=True),
     # ── ffa lobby results: every write answers the settled lobby table ────
     "rpc.tournament.ffa_game_results_set": Op(
@@ -444,9 +476,7 @@ OPERATIONS: dict[str, Op] = {
     # Same shape as rpc.tournament.ffa_stage, minus the public_view trim.
     "rpc.tournament.ffa_stage_admin": Op(response=ffa_schemas.FfaLobbyRead, response_array=True),
     # ── per-map match edit (admin) ─────────────────────────────────────────
-    # Answers an ad-hoc dict of the match's own columns rather than MatchRead, so
-    # only the request body is mapped here.
-    "rpc.tournament.encounter_update_match": Op(request=schemas.MatchUpdate),
+    "rpc.tournament.encounter_update_match": Op(request=schemas.MatchUpdate, response=schemas.MatchRead),
     # ── captain pick/ban + map reporting (request bodies only) ─────────────
     # Each of these answers the room's ad-hoc state dict -- the pick-ban state,
     # one serialized entry, the undo block, the reconciliation verdict -- not a
@@ -455,9 +485,18 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.captain_pick_ban_submit": Op(request=captain_schemas.PickBanSubmitInput),
     "rpc.tournament.captain_pick_ban_elect_opener": Op(request=captain_schemas.ElectOpenerInput),
     "rpc.tournament.captain_pick_ban_undo": Op(request=captain_schemas.PickBanUndoInput),
-    "rpc.tournament.captain_report_game": Op(request=captain_schemas.GameReportInput),
+    "rpc.tournament.captain_report_game": Op(request=captain_schemas.GameClaimIn),
     "rpc.tournament.captain_select_game_map": Op(request=captain_schemas.GameMapSelectInput),
     "rpc.tournament.admin_game_result": Op(request=pick_ban_admin.AdminGameResultInput),
+    # ── a game's match imported by external id (src/rpc/match_import.py) ──
+    "rpc.tournament.captain_match_import": Op(
+        request=captain_schemas.MatchImportInput, response=captain_schemas.MatchImportRead
+    ),
+    "rpc.tournament.captain_match_imports": Op(response=captain_schemas.MatchImportRead, response_array=True),
+    "rpc.tournament.admin_match_import": Op(
+        request=captain_schemas.MatchImportInput, response=captain_schemas.MatchImportRead
+    ),
+    "rpc.tournament.admin_match_imports": Op(response=captain_schemas.MatchImportRead, response_array=True),
     # ── organizer pick-ban: config CRUD, the constructor, live overrides ───
     # Same rationale: the config upsert answers a serialized config dict and the
     # live-session ops answer the room state, so only the bodies are mapped.
@@ -466,6 +505,10 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.admin_pick_ban_config_upsert": Op(request=pick_ban_admin.PickBanConfigUpsert),
     "rpc.tournament.admin_pick_ban_rules_validate": Op(request=pick_ban_admin.PickBanRulesValidateInput),
     "rpc.tournament.admin_pick_ban_rules_preview": Op(request=pick_ban_admin.PickBanRulesPreviewInput),
+    # The constructor's catalog answers an ad-hoc dict; only its required game scope is mapped.
+    "rpc.tournament.pick_ban_rules_catalog": Op(
+        query_params=(QueryParam("discipline", required=True, description="Explicit discipline code."),)
+    ),
     "rpc.tournament.admin_pick_ban_act": Op(request=pick_ban_admin.PickBanAdminAct),
     "rpc.tournament.admin_pick_ban_submit": Op(request=pick_ban_admin.PickBanAdminSubmit),
     # The room's emergency controls: the three pick-ban ones answer the room
@@ -523,4 +566,10 @@ OPERATIONS: dict[str, Op] = {
         query=schemas.AdminMatchesQueryParams,
     ),
     "rpc.tournament.admin_match_get": Op(response=schemas.AdminMatchDetail),
+    # ── organizer dashboard ──────────────────────────────────────────────────
+    "rpc.tournament.admin_dashboard": Op(response=schemas.AdminDashboard, query_params=(_WS_REQUIRED,)),
+    "rpc.tournament.admin_dashboard_trends": Op(
+        response=schemas.DashboardTrends, query_params=(_WS_REQUIRED, _OPTIONAL_DISCIPLINE)
+    ),
+    "rpc.tournament.tournament_readiness": Op(response=schemas.TournamentReadiness),
 }

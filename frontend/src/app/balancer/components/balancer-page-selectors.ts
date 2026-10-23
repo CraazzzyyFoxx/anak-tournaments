@@ -12,6 +12,7 @@ import {
   getPlayerValidationIssues,
   isRegistrationAvailableForBalancer,
   type BalanceVariant,
+  type SlotLabeler,
 } from "@/components/balancer/workspace-helpers";
 import { type PlayerValidationState } from "@/components/balancer/balancer-page-helpers";
 
@@ -32,6 +33,9 @@ export type BalancerPageCollections = {
 export function buildBalancerPageCollections(
   allRegistrations: AdminRegistration[],
   divisionGrid: DivisionGrid,
+  slotLabel: SlotLabeler,
+  /** The owner game's identity provider: whose handle answers name each player (`null`: the game has none). */
+  identityProvider: string | null,
 ): BalancerPageCollections {
   // Only approved registrations belong to the balancer, the same rule the
   // backend pool uses (`pool_only`): pending, rejected and withdrawn rows are
@@ -41,7 +45,7 @@ export function buildBalancerPageCollections(
     registrations.map((registration) => [registration.id, registration]),
   );
   const players = registrations.map((registration) =>
-    createSyntheticPlayerFromRegistration(registration, divisionGrid),
+    createSyntheticPlayerFromRegistration(registration, divisionGrid, identityProvider),
   );
   const playersById = new Map(players.map((player) => [player.id, player]));
   const applications = registrations.map((registration) =>
@@ -50,14 +54,25 @@ export function buildBalancerPageCollections(
       playersById.get(registration.id)?.is_in_pool
         ? playersById.get(registration.id) ?? null
         : null,
+      identityProvider,
     ),
   );
   const applicationsById = new Map(
     applications.map((application) => [application.id, application]),
   );
   const poolPlayers = players.filter((player) => player.is_in_pool);
-  const allPlayerValidationStates = buildPlayerValidationStates(players, applicationsById);
-  const playerValidationStates = buildPlayerValidationStates(poolPlayers, applicationsById);
+  const allPlayerValidationStates = buildPlayerValidationStates(
+    players,
+    applicationsById,
+    divisionGrid,
+    slotLabel,
+  );
+  const playerValidationStates = buildPlayerValidationStates(
+    poolPlayers,
+    applicationsById,
+    divisionGrid,
+    slotLabel,
+  );
   const readyPlayers = playerValidationStates
     .filter((state) => state.issues.length === 0)
     .map((state) => state.player);
@@ -82,12 +97,17 @@ export function buildBalancerPageCollections(
 function buildPlayerValidationStates(
   players: BalancerPlayerRecord[],
   applicationsById: Map<number, BalancerApplication>,
+  divisionGrid: DivisionGrid,
+  slotLabel: SlotLabeler,
 ): PlayerValidationState[] {
   return players.map((player) => ({
     player,
     issues: getPlayerValidationIssues(
       player,
       applicationsById.get(player.application_id) ?? null,
+      null,
+      divisionGrid,
+      slotLabel,
     ),
   }));
 }

@@ -82,9 +82,9 @@ services:
           cpus: '0.05'
           memory: 128M
 
-  # Headless RPC worker for app-service: serves ALL of /api/v1/core (rpc.app.*
-  # reads/writes/binary) behind the gateway + owns the tournament_changed
-  # cache-invalidation consumer. Replaces the former HTTP `backend` service.
+  # Headless RPC worker for app-service (rpc.app.*: catalog, player identity,
+  # workspaces, notifications, audit, binary assets) behind
+  # the gateway. Replaces the former HTTP `backend` service.
   app-svc:
     image: registry.craazzzyyfoxx.me/owt-app:dev
     build:
@@ -96,7 +96,6 @@ services:
       - ./backend/env/common.env
       - ./backend/env/app.env
     environment:
-      - DEBUG=true
       - LOG_LEVEL=DEBUG
       - TRACING_ENABLED=true
       - OTLP_ENDPOINT=http://otel-collector:4317
@@ -127,11 +126,13 @@ services:
           cpus: '0.10'
           memory: 128M
 
-  # parser-service HTTP decommissioned: parser is now a headless FastStream worker
-  # (parser-svc below), serving its unique domains (match-log, OverFast rank,
-  # achievement engine + rules admin, metadata sync, settings, discord-channel,
-  # bootstrap importers) as typed RPC behind the gateway. The bot uploads logs
-  # over RabbitMQ; the SSE log monitor moved to the gateway WS hub.
+  # stats-service (formerly parser-service) is two headless FastStream processes from one image:
+  # stats-svc serves the typed RPC domains (match-log, canonical ingest, OverFast rank admin,
+  # achievement engine + rules admin, metadata sync, settings, and the public statistics, /users/*
+  # and achievement reads) behind the gateway; stats-worker runs every consumer and schedule
+  # (stats.ingest.<discipline>, achievements, rank collection, reaper, retention, subscription
+  # collection, the cache.invalidated consumer). The bot uploads logs over RabbitMQ; the SSE log
+  # monitor moved to the gateway WS hub.
 
   # realtime-service decommissioned: WebSockets are now served by the Go gateway
   # (gateway/internal/ws), which consumes the same `realtime:*` Redis channels and
@@ -145,18 +146,17 @@ services:
   # balancer_native engines. The dead SSE job-stream endpoint was removed (progress flows over the
   # tournament:{id}:balancer WS topic).
 
-  parser-svc:
-    image: registry.craazzzyyfoxx.me/owt-parser:dev
+  stats-svc:
+    image: registry.craazzzyyfoxx.me/owt-stats:dev
     build:
       context: ./backend
       args:
-        APP_PATH: parser
-    command: faststream run serve:app --reload --reload-dir /app/parser-service --reload-dir /app/shared
+        APP_PATH: stats
+    command: faststream run serve_rpc:app --reload --reload-dir /app/stats-service --reload-dir /app/shared
     env_file:
       - ./backend/env/common.env
-      - ./backend/env/parser.env
+      - ./backend/env/stats.env
     environment:
-      - DEBUG=true
       - LOG_LEVEL=DEBUG
       - TRACING_ENABLED=true
       - OTLP_ENDPOINT=http://otel-collector:4317
@@ -173,11 +173,66 @@ services:
       proxy:
         condition: service_healthy
     volumes:
-      - ./backend/parser-service:/app/parser-service
+      - ./backend/stats-service:/app/stats-service
       - ./backend/shared:/app/shared
-      - ./logs/parser-svc:/logs
+      - ./logs/stats-svc:/logs
     networks:
       - app-network
+    # /health answers 200 only once the broker connection is up and every consumer of the process runs.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9100/health', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
+
+  stats-worker:
+    image: registry.craazzzyyfoxx.me/owt-stats:dev
+    build:
+      context: ./backend
+      args:
+        APP_PATH: stats
+    command: faststream run serve_worker:app --reload --reload-dir /app/stats-service --reload-dir /app/shared
+    env_file:
+      - ./backend/env/common.env
+      - ./backend/env/stats.env
+    environment:
+      - LOG_LEVEL=DEBUG
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_TRACES_SAMPLER=always_on
+      - OTEL_TRACES_SAMPLER_ARG=1.0
+      - WORKER_METRICS_PORT=9100
+      - WATCHFILES_FORCE_POLLING=true
+      - WATCHFILES_POLL_DELAY_MS=5000
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      proxy:
+        condition: service_healthy
+    volumes:
+      - ./backend/stats-service:/app/stats-service
+      - ./backend/shared:/app/shared
+      - ./logs/stats-worker:/logs
+    networks:
+      - app-network
+    # /health answers 200 only once the broker connection is up and every consumer of the process runs.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9100/health', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     deploy:
       resources:
         limits:
@@ -198,7 +253,6 @@ services:
       - ./backend/env/common.env
       - ./backend/env/tournament.env
     environment:
-      - DEBUG=true
       - LOG_LEVEL=DEBUG
       - TRACING_ENABLED=true
       - OTLP_ENDPOINT=http://otel-collector:4317
@@ -236,7 +290,6 @@ services:
       - ./backend/env/common.env
       - ./backend/env/balancer.env
     environment:
-      - DEBUG=true
       - LOG_LEVEL=DEBUG
       - TRACING_ENABLED=true
       - OTLP_ENDPOINT=http://otel-collector:4317
@@ -281,7 +334,6 @@ services:
       - ./backend/env/common.env
       - ./backend/env/analytics.env
     environment:
-      - DEBUG=true
       - LOG_LEVEL=DEBUG
       - TRACING_ENABLED=true
       - OTLP_ENDPOINT=http://otel-collector:4317
@@ -326,7 +378,6 @@ services:
       - ./backend/env/common.env
       - ./backend/env/analytics.env
     environment:
-      - DEBUG=true
       - LOG_LEVEL=DEBUG
       - TRACING_ENABLED=true
       - OTLP_ENDPOINT=http://otel-collector:4317
@@ -369,7 +420,6 @@ services:
       - ./backend/env/common.env
       - ./backend/env/stream.env
     environment:
-      - DEBUG=true
       - LOG_LEVEL=DEBUG
       - TRACING_ENABLED=true
       - OTLP_ENDPOINT=http://otel-collector:4317
@@ -410,7 +460,6 @@ services:
       - ./backend/env/common.env
       - ./backend/env/discord.env
     environment:
-      - DEBUG=true
       - LOG_LEVEL=DEBUG
       - TRACING_ENABLED=true
       - OTLP_ENDPOINT=http://otel-collector:4317

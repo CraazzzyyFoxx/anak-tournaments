@@ -54,6 +54,19 @@ async function sha256Hex(value: string): Promise<string> {
     .join("");
 }
 
+/**
+ * A provider's whole `/auth/<provider>/login` GET: the provider redirect, or the sign-in error on the PUBLIC origin.
+ * `request.url` is the internal bind address behind the proxy (`0.0.0.0:3000`), never a page the browser can open.
+ */
+export async function oauthLoginRoute(request: Request, provider: OAuthProviderName): Promise<NextResponse> {
+  try {
+    return await startOAuthLogin(request, provider);
+  } catch (err) {
+    console.error(`Failed to start ${provider} sign-in:`, err);
+    return NextResponse.redirect(new URL("/?auth_error=oauth_init_failed", publicOrigin(request)));
+  }
+}
+
 export async function startOAuthLogin(request: Request, provider: OAuthProviderName): Promise<NextResponse> {
   // Public origin/host from the edge's forwarded headers — NOT request.url,
   // whose host behind the proxy is the internal bind addr (0.0.0.0:3000). See

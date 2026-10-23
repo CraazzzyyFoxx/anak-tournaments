@@ -1,16 +1,16 @@
-import { Hero } from "@/types/hero.types";
+import type { CatalogEntityChip } from "@/types/catalog.types";
 import { User, UserProfile } from "@/types/user.types";
+import { rosterRoleRank, type RoleOntology } from "@/lib/roster/ontology";
+import { subRoleOf, type RoleRef } from "@/lib/roster/role-ref";
 
 /**
  * Fields `sortTeamPlayers` actually reads. Display-only roster fields
- * (`heroes`, `avg_mvp`, …) are intentionally excluded so callers whose row
- * type reuses the `heroes` name for a different shape (e.g. `PlayerWithStats`
- * with `heroes: Record<number, Hero[]>`) still satisfy the sort constraint.
+ * (`characters`, `avg_mvp`, …) are intentionally excluded from the sort constraint.
  */
 export interface SortableRosterPlayer {
   id: number;
-  role: string | null;
-  rank: number;
+  role: RoleRef | null;
+  rank: number | null;
   is_substitution: boolean;
   related_player_id: number | null;
   relative_player?: number | null;
@@ -19,21 +19,19 @@ export interface SortableRosterPlayer {
 /** Minimal shape required for `sortTeamPlayers` / TournamentTeamTable rendering. */
 export interface TeamRosterPlayer extends SortableRosterPlayer {
   name: string;
-  sub_role: string | null;
-  division: number;
+  division: number | null;
   is_newcomer: boolean;
   is_newcomer_role: boolean;
   /** Owning user id — set on user-scoped rosters so a table can flag "you". */
   user_id?: number;
   /** Average MVP placement across the player's matches (1 = MVP/best). */
   avg_mvp?: number | null;
-  /** Player's top signature heroes (same shape as per-match `heroes`). */
-  heroes?: Hero[];
+  /** Player's top signature characters (catalog refs, or chips of a declared pick): the strip draws name and image. */
+  characters?: Pick<CatalogEntityChip, "name" | "image_path">[];
 }
 
 type PlayerRoleInfo = {
-  role: string | null;
-  sub_role?: string | null;
+  role: RoleRef | null;
 };
 
 export const formatSubRoleLabel = (subRole: string | null | undefined) => {
@@ -49,24 +47,25 @@ export const formatSubRoleLabel = (subRole: string | null | undefined) => {
 };
 
 export const getPlayerType = (player: PlayerRoleInfo) => {
-  const subRoleLabel = formatSubRoleLabel(player.sub_role);
+  const subRoleLabel = formatSubRoleLabel(subRoleOf(player.role));
   if (subRoleLabel) {
     return subRoleLabel;
   }
   return "ㅤ";
 };
 
-export const sortTeamPlayers = <P extends SortableRosterPlayer>(players: P[]): P[] => {
-  const getRolePriority = (role: string | null) => {
-    if (role === "Tank") return 1;
-    if (role === "Damage") return 2;
-    if (role === "Support") return 3;
-    // Flex is a real role and ranks right after Support; unknown/null is corrupt
-    // or missing data and sorts last, so the two are no longer interchangeable.
-    if (role === "Flex") return 4;
-    return 5;
-  };
+/** Highest rank first; an unranked player sorts last. */
+const byRankDesc = (a: SortableRosterPlayer, b: SortableRosterPlayer): number => {
+  if (a.rank == null || b.rank == null) return a.rank == null ? (b.rank == null ? 0 : 1) : -1;
+  return b.rank - a.rank;
+};
 
+/**
+ * The roster in reading order: each starter, then everyone who replaced them; starters ordered by the OWNER game's
+ * declared role order (`ontology`), then by rank. Without a dictionary every role ranks equally, so the order is by
+ * rank alone -- never a fixed role vocabulary.
+ */
+export const sortTeamPlayers = <P extends SortableRosterPlayer>(players: P[], ontology: RoleOntology | null): P[] => {
   const playerById = new Map(players.map((p) => [p.id, p]));
 
   // Build substitution graph: parent -> children (who replaced them)
@@ -86,7 +85,7 @@ export const sortTeamPlayers = <P extends SortableRosterPlayer>(players: P[]): P
 
   // Sort children at each node by rank descending
   for (const list of children.values()) {
-    list.sort((a, b) => b.rank - a.rank);
+    list.sort(byRankDesc);
   }
 
   // DFS: flatten each substitution chain (player, then their replacements)
@@ -101,33 +100,37 @@ export const sortTeamPlayers = <P extends SortableRosterPlayer>(players: P[]): P
     return result;
   };
 
-  // Sort roots by role priority, then by rank within same role
+  // Sort roots by the owner game's declared role order, then by rank within the same role
+  const roleRank = rosterRoleRank(ontology);
   roots.sort((a, b) => {
-    const rp = getRolePriority(a.role) - getRolePriority(b.role);
+    const rp = roleRank(a.role) - roleRank(b.role);
     if (rp !== 0) return rp;
-    return b.rank - a.rank;
+    return byRankDesc(a, b);
   });
 
   // Flatten: each root followed by its substitution chain
   return roots.flatMap(flatten);
 };
 
-export const getPlayerImage = (profile: UserProfile, user: User) => {
-  // A user-uploaded avatar takes precedence over the derived hero art.
-  if (user.avatar_url) {
-    return user.avatar_url;
-  }
-  if (profile.most_played_hero === null) {
-    return `/avatar/${user.id % 10}.png`;
-  }
-  return `/avatar/${profile.most_played_hero.slug}.jpg`;
-};
+export const getPlayerImage = (profile: UserProfile, user: User) =>
+  // A user-uploaded avatar takes precedence over the most played character's portrait.
+  user.avatar_url ?? profile.most_played_character?.image_path ?? `/avatar/${user.id % 10}.png`;
 
 export const getPlayerSlug = (battleTag: string | null | undefined) => {
   if (!battleTag) {
     return "";
   }
   return battleTag.replace("#", "-");
+};
+
+/**
+ * `Name#1234` → `{ name: "Name", suffix: "#1234" }`, splitting at the LAST `#` so a name that itself contains one
+ * keeps it. A handle without a discriminator (or one that is only `#…`) comes back whole with a `null` suffix.
+ */
+export const splitHandle = (handle: string): { name: string; suffix: string | null } => {
+  const index = handle.lastIndexOf("#");
+  if (index <= 0) return { name: handle, suffix: null };
+  return { name: handle.slice(0, index), suffix: handle.slice(index) };
 };
 
 /** Reverse of getPlayerSlug: converts a URL slug back to the stored player name.
@@ -164,4 +167,3 @@ export const getHeroIconUrl = (slug: string, imagePath?: string | null): string 
   }
   return `/avatar/0.png`;
 };
-

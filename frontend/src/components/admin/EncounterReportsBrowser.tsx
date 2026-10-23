@@ -3,11 +3,9 @@
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ClipboardCheck, Clock3, Gavel, ScrollText } from "lucide-react";
 
 import { DataTable } from "@/components/data-table";
 import { ResolveResultDialog } from "@/components/admin/ResolveResultDialog";
-import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { Inspector } from "@/components/kit/Inspector";
 import { useFilters } from "@/components/kit/useFilters";
@@ -16,18 +14,20 @@ import {
   parseTournamentQueryParam
 } from "@/components/admin/tournament-filter";
 import { Button } from "@/components/ui/button";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import type { EncounterReportsRow } from "@/types/admin.types";
 import { invalidateTournamentWorkspace } from "@/lib/tournament/workspace-query-keys";
-import { EmptyNote } from "@/components/kit/EmptyNote";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 
+import { ResultStatusPill } from "./encounters/EncounterCells";
 import { encounterReportFilterDefs } from "./encounter-reports/filters";
 import { ReportInspectorPanel } from "./encounter-reports/ReportInspectorPanel";
 import { useEncounterReportColumns } from "./encounter-reports/useEncounterReportColumns";
+import { seatsBySlot } from "@/lib/encounter/seats";
 import { useEncounterReportScope } from "./encounter-reports/useEncounterReportScope";
 
 const PAGE_SIZE = 25;
@@ -50,20 +50,17 @@ const PAGE_SIZE = 25;
 export function EncounterReportsBrowser({
   tournamentId,
   workspaceId,
-  canUpdateEncounter,
-  tournamentName
+  canUpdateEncounter
 }: Readonly<{
   /** `null` = every tournament in the workspace. */
   tournamentId: number | null;
   workspaceId: number | null;
   canUpdateEncounter: boolean;
-  /** Names the pinned chip inside a hub; the chip reads `#id` without it. */
-  tournamentName?: string | null;
 }>) {
   const t = useTranslations("adminMatches.reports");
   const queryClient = useQueryClient();
   // `id` is the inspector, not a filter: opening a row must not drop its page.
-  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
   const openId = searchParams?.get("id") ?? null;
   const [pageRows, setPageRows] = useState<EncounterReportsRow[]>([]);
   const [resolving, setResolving] = useState<EncounterReportsRow | null>(null);
@@ -83,9 +80,10 @@ export function EncounterReportsBrowser({
         tournamentId,
         tournaments: scope.tournaments,
         stages: scope.stages,
+        stats,
         t: t as unknown as (key: string) => string
       }),
-    [tournamentId, scope.tournaments, scope.stages, t]
+    [tournamentId, scope.tournaments, scope.stages, stats, t]
   );
 
   const filters = useFilters(defs);
@@ -105,45 +103,11 @@ export function EncounterReportsBrowser({
   const columns = useEncounterReportColumns({ showTournament, customFields });
 
   if (workspaceId == null) {
-    return (
-      <EmptyNote>
-        {t("scopePrompt")}
-      </EmptyNote>
-    );
+    return <PageStateCard state="empty" description={t("scopePrompt")} />;
   }
 
   return (
     <div className="space-y-3">
-      <StatTileGrid>
-        <StatTile
-          label={t("confirmed")}
-          value={stats?.by_result_status.confirmed ?? 0}
-          icon={ClipboardCheck}
-          tone="success"
-        />
-        <StatTile
-          label={t("disputed")}
-          value={stats?.by_result_status.disputed ?? 0}
-          detail={t("recordedResult")}
-          icon={AlertTriangle}
-          tone="danger"
-        />
-        <StatTile
-          label={t("reportsDisagree")}
-          value={stats?.mismatch_count ?? 0}
-          detail={t("scoresDiffer")}
-          icon={ScrollText}
-          tone="warning"
-        />
-        <StatTile
-          label={t("awaitingSecond")}
-          value={stats?.awaiting_second_count ?? 0}
-          detail={t("oneReported")}
-          icon={Clock3}
-          tone="info"
-        />
-      </StatTileGrid>
-
       <div
         className={cn("grid items-start gap-4", openRow && "lg:grid-cols-[minmax(0,1fr)_380px]")}
       >
@@ -160,16 +124,6 @@ export function EncounterReportsBrowser({
               <FilterBar
                 defs={defs}
                 filters={filters}
-                pinned={
-                  tournamentId != null
-                    ? [
-                        {
-                          key: TOURNAMENT_QUERY_PARAM,
-                          label: `Tournament: ${tournamentName ?? `#${tournamentId}`}`
-                        }
-                      ]
-                    : undefined
-                }
               />
             }
             emptyMessage={t("empty")}
@@ -179,12 +133,14 @@ export function EncounterReportsBrowser({
                 <p className="truncate text-sm font-medium">{row.original.name}</p>
                 <p className="truncate text-xs text-muted-foreground">
                   {t("teamsReported", {
-                    home: row.original.home_team?.name ?? "?",
-                    away: row.original.away_team?.name ?? "?",
-                    count: row.original.reported_count
+                    teams: seatsBySlot(row.original.participations)
+                      .map((seat) => seat.name)
+                      .join(` ${t("vs")} `),
+                    count: row.original.reported_count,
+                    total: row.original.participations.length
                   })}
                 </p>
-                <p className="text-xs text-muted-foreground">{row.original.result_status}</p>
+                <ResultStatusPill status={row.original.result_status} />
               </div>
             )}
             queryKey={(page, search, pageSize) => [
@@ -203,8 +159,8 @@ export function EncounterReportsBrowser({
                 }
               }
             ]}
-            queryFn={async (page, search, pageSize) => {
-              const result = await adminService.listEncounterReports({
+            queryFn={(page, search, pageSize) =>
+              adminService.listEncounterReports({
                 workspace_id: workspaceId,
                 tournament_id: scopeTournamentId ?? undefined,
                 stage_id: stageFilter ? Number(stageFilter) : undefined,
@@ -216,12 +172,9 @@ export function EncounterReportsBrowser({
                 mismatch_only: mismatchOnly || undefined,
                 page,
                 per_page: pageSize
-              });
-              // The inspector pages through the rows on screen, and the table
-              // owns the fetch, so this is where that page is observed.
-              setPageRows(result.results);
-              return result;
-            }}
+              })
+            }
+            onPageRowsChange={setPageRows}
           />
         </div>
 
@@ -234,7 +187,7 @@ export function EncounterReportsBrowser({
               ? t(showTournament ? "detailSubtitleWithTournament" : "detailSubtitle", {
                   tournament: openRow.tournament_name ?? t("unknownTournament"),
                   stage: openRow.stage_name ?? t("unassigned"),
-                  round: openRow.round,
+                  round: openRow.round ?? "?",
                   bestOf: openRow.best_of
                 })
               : undefined
@@ -250,8 +203,7 @@ export function EncounterReportsBrowser({
           openHref={openRow ? `/encounters/${openRow.id}` : undefined}
           actions={
             openRow && canUpdateEncounter ? (
-              <Button type="button" size="sm" variant="secondary" onClick={() => setResolving(openRow)}>
-                <Gavel aria-hidden className="size-3.5" />
+              <Button type="button" size="sm" variant="outline" onClick={() => setResolving(openRow)}>
                 {openRow.result_status === "confirmed" ? t("review") : t("resolve")}
               </Button>
             ) : null

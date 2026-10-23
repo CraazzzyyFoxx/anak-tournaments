@@ -8,11 +8,10 @@ GPU compute is the expensive resource they must not reach. This drives the real
 - ``kind=compute`` in an unverified workspace → 403 ``workspace_not_verified``
   *and* no ``AnalyticsJob`` row created (the gate runs before the insert);
 - ``verified`` / ``trusted`` → unchanged pass-through;
-- ``train_ml`` is untouched by this gate (still superuser-only);
-- the deprecated ``train``/``infer`` publishers gate too (defense in depth).
+- ``train_ml`` is untouched by this gate (still superuser-only).
 
 The workspace read and the job insert are the only DB touches on this path, so
-stubbing the repository + ``create_analytics_job`` keeps this a pure unit test
+stubbing the repositories and ``create_analytics_job`` keeps this a pure unit test
 (same no-DB approach as ``test_analytics_route_permissions_app.py``).
 """
 
@@ -35,7 +34,8 @@ if str(_SERVICE_ROOT) not in sys.path:
 
 
 from shared.models.tenancy.workspace import Workspace
-from src.core import config, db
+from src.core import db
+from src.core import jobs as core_jobs
 from src.rpc import jobs_control
 
 # workspace_id → verification_status
@@ -43,11 +43,10 @@ _WORKSPACES = {1: "unverified", 2: "verified", 3: "trusted"}
 
 
 class _FakeBroker:
-    """Capture FastStream subscribers by subject, and swallow publishes."""
+    """Capture FastStream subscribers by subject."""
 
     def __init__(self) -> None:
         self.handlers: dict[str, object] = {}
-        self.published: list = []
 
     def subscriber(self, subject: str):
         def _decorator(fn):
@@ -55,10 +54,6 @@ class _FakeBroker:
             return fn
 
         return _decorator
-
-    async def publish(self, *args, **kwargs):
-        self.published.append(args[0] if args else kwargs.get("message"))
-        return None
 
 
 class _NoopSession:
@@ -69,6 +64,9 @@ class _NoopSession:
 
     async def __aexit__(self, *exc):
         return False
+
+    async def commit(self):
+        return None
 
 
 class _FakeWorkspaces:
@@ -93,12 +91,24 @@ def _identity(*, workspace_ids=(), superuser=False, global_update=False) -> dict
     }
 
 
+class _FakeTournaments:
+    """Stand-in for ``shared.repository.TournamentRepository``: tournament 5 belongs to ``owner``."""
+
+    def __init__(self) -> None:
+        self.owner: tuple[int | None, str] = (None, "overwatch")
+
+    async def get_owner(self, session, tournament_id):
+        return self.owner if int(tournament_id) == 5 else None
+
+
 class AnalyticsGpuGateTests(TestCase):
     def setUp(self) -> None:
         self._original_sf = db.async_session_maker
         db.async_session_maker = lambda: _NoopSession()
         self.broker = _FakeBroker()
         self.created: list[dict] = []
+        self.tournaments = _FakeTournaments()
+        self.charge = AsyncMock()
 
         async def _fake_create(session, **kwargs):
             self.created.append(kwargs)
@@ -120,13 +130,13 @@ class AnalyticsGpuGateTests(TestCase):
             )
 
         self._patches = [
-            patch.object(jobs_control, "_workspaces", _FakeWorkspaces()),
+            patch.object(core_jobs, "_workspaces", _FakeWorkspaces()),
+            patch.object(core_jobs, "_tournaments", self.tournaments),
             patch.object(jobs_control, "create_analytics_job", _fake_create),
-            patch.object(config.settings, "rabbitmq_url", "amqp://test"),
             # The gate is a process-global configured at service startup, which
             # these tests never run; the slug/workspace pairing it is handed is
             # covered where quota itself is tested.
-            patch.object(jobs_control, "quota", SimpleNamespace(charge=AsyncMock())),
+            patch.object(jobs_control, "quota", SimpleNamespace(charge=self.charge)),
         ]
         for p in self._patches:
             p.start()
@@ -141,6 +151,7 @@ class AnalyticsGpuGateTests(TestCase):
         return asyncio.run(self.broker.handlers[subject](data, msg=None))
 
     def _create_job(self, workspace_id: int, **body) -> dict:
+        self.tournaments.owner = (workspace_id, self.tournaments.owner[1])
         return self._call(
             "rpc.analytics.create_job",
             {
@@ -198,24 +209,91 @@ class AnalyticsGpuGateTests(TestCase):
         self.assertTrue(envelope["ok"], envelope)
         self.assertEqual([c["kind"] for c in self.created], ["train_ml"])
 
-    def test_deprecated_train_and_infer_gate_on_body_workspace_id(self) -> None:
-        for subject, payload in (
-            ("rpc.analytics.train", {"cutoff_tournament_id": 5, "workspace_id": 1}),
-            ("rpc.analytics.infer", {"tournament_id": 5, "workspace_id": 1}),
-        ):
-            with self.subTest(subject=subject):
-                envelope = self._call(subject, {"identity": _identity(global_update=True), "payload": payload})
+    def _assert_refused_before_admission(self, envelope: dict, message_part: str) -> None:
+        self.assertFalse(envelope["ok"], envelope)
+        self.assertEqual(envelope["error"]["code"], "unprocessable")
+        self.assertIn(message_part, envelope["error"]["message"])
+        self.assertEqual(self.created, [])
+        self.charge.assert_not_awaited()
 
-                self.assertFalse(envelope["ok"])
-                self.assertEqual(envelope["error"]["code"], "forbidden")
-                self.assertEqual(envelope["error"]["message"], "workspace_not_verified")
-                self.assertEqual(self.broker.published, [])
-
-    def test_deprecated_train_publishes_for_a_trusted_workspace(self) -> None:
-        envelope = self._call(
-            "rpc.analytics.train",
-            {"identity": _identity(global_update=True), "payload": {"cutoff_tournament_id": 5, "workspace_id": 3}},
+    def test_explicit_requests_for_a_discipline_without_analytics_are_422_before_admission_and_charging(self) -> None:
+        self.tournaments.owner = (2, "lol")
+        requests = (
+            (
+                "rpc.analytics.create_job",
+                {
+                    "identity": _identity(superuser=True, global_update=True),
+                    "payload": {"tournament_id": 5, "kind": "train_ml"},
+                },
+            ),
+            (
+                "rpc.analytics.create_job",
+                {
+                    "identity": _identity(workspace_ids=(2,)),
+                    "query": {"workspace_id": "2"},
+                    "payload": {"tournament_id": 5, "algorithms": ["OpenSkill + ML"]},
+                },
+            ),
+            (
+                "rpc.analytics.points",
+                {"identity": _identity(workspace_ids=(2,)), "query": {"workspace_id": "2", "tournament_id": "5"}},
+            ),
         )
+        for subject, data in requests:
+            with self.subTest(subject=subject, payload=data.get("payload")):
+                self._assert_refused_before_admission(self._call(subject, data), "declares no analytics models")
+
+    def test_automatic_compute_for_a_discipline_without_analytics_is_admitted_and_left_to_the_worker(self) -> None:
+        self.tournaments.owner = (2, "lol")
+        envelope = self._create_job(2)
 
         self.assertTrue(envelope["ok"], envelope)
-        self.assertEqual(len(self.broker.published), 1)
+        self.assertEqual([c["algorithms"] for c in self.created], [None])
+
+    def test_a_tournament_outside_the_requested_workspace_scope_is_422(self) -> None:
+        self.tournaments.owner = (2, "overwatch")
+        for training_workspace_ids in ([9], [3]):
+            with self.subTest(training_workspace_ids=training_workspace_ids):
+                self._assert_refused_before_admission(
+                    self._call(
+                        "rpc.analytics.create_job",
+                        {
+                            "identity": _identity(superuser=True, global_update=True),
+                            "payload": {
+                                "tournament_id": 5,
+                                "kind": "train_ml",
+                                "training_workspace_ids": training_workspace_ids,
+                            },
+                        },
+                    ),
+                    "requested workspace scope",
+                )
+
+    def test_automatic_compute_for_another_workspaces_tournament_is_422_before_admission(self) -> None:
+        """A verified workspace cannot name another workspace's tournament (it would replace that workspace's rows)."""
+        for owner in ((3, "overwatch"), (3, "lol")):
+            self.tournaments.owner = owner
+            for subject, data in (
+                (
+                    "rpc.analytics.create_job",
+                    {
+                        "identity": _identity(workspace_ids=(2,)),
+                        "query": {"workspace_id": "2"},
+                        "payload": {"tournament_id": 5},
+                    },
+                ),
+                (
+                    "rpc.analytics.recalculate",
+                    {
+                        "identity": _identity(workspace_ids=(2,)),
+                        "query": {"workspace_id": "2"},
+                        "payload": {"tournament_id": 5},
+                    },
+                ),
+                (
+                    "rpc.analytics.points",
+                    {"identity": _identity(workspace_ids=(2,)), "query": {"workspace_id": "2", "tournament_id": "5"}},
+                ),
+            ):
+                with self.subTest(subject=subject, owner=owner):
+                    self._assert_refused_before_admission(self._call(subject, data), "requested workspace scope")

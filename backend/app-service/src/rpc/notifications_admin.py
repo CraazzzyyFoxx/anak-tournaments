@@ -15,8 +15,8 @@ it inspects and edits ONE account's own notification state, so the gate is the
 global ``auth_user.read`` / ``auth_user.update`` that already governs the
 accounts admin, and the account is named by the path id. That path id is the
 one place in the notification handlers where a caller-supplied user id is
-honoured (Global Constraint 3): the operator is acting *on* somebody else by
-definition, and the grant above is what makes it legal.
+honoured: the operator is acting *on* somebody else by definition, and the
+grant above is what makes it legal.
 
 Announcements are deliberately unreachable through these subjects: they have
 their own CRUD, their own locale rules and their own permission. See

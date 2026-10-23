@@ -1,10 +1,7 @@
-"""Admin balancer endpoints over typed RPC.
+"""Admin balancer endpoints over typed RPC (``rpc.balancer.admin.*``).
 
-Ports ``src/routes/admin/balancer.py`` (router-level ``require_admin_panel_access()``
-+ per-endpoint workspace permission) to ``rpc.balancer.admin.*`` subscribers. Each
-handler rehydrates the gateway identity, enforces the admin-panel gate and the
-workspace RBAC, delegates to ``src/services/admin/balancer.py`` (which owns its
-commit), then emits the same realtime data events as the HTTP routes.
+Each handler rehydrates the gateway identity, enforces the admin-panel gate and
+the workspace RBAC, then delegates to ``src/services/admin/balancer.py``.
 """
 
 from __future__ import annotations
@@ -14,19 +11,27 @@ from typing import Any
 
 from faststream.rabbit import RabbitMessage
 
-from shared import quota
-from shared.services.balancer_realtime import BALANCER_TEAMS_CHANGED
-from shared.services.realtime import Scope, emit, enqueue_invalidation_outbox
-from src import models, schemas
+from shared import models, quota
+from shared.core import http_status as status
+from shared.core.errors import BaseAPIException as HTTPException
+from shared.repository import WorkspaceRepository
+from shared.rpc.identity import ensure_workspace_permission
+from shared.services.discord_client import DiscordClient
+from src import schemas
 from src.core import db
 from src.core.auth import _get_balance_workspace_id, _get_tournament_workspace_id
 from src.rpc import _common as c
 from src.services.admin._mappers import serialize_balance, serialize_tournament_config
 from src.services.admin.balancer import balancer_admin_service
-from src.services.balancer.realtime import EXPORT_RESOURCES, emit_balancer_data
 from src.services.mix_ranker import mix_ranker_service, settings_from_json
 
 _SF = db.async_session_maker
+
+
+async def _ensure_workspace_exists(session: Any, workspace_id: int) -> None:
+    """404 before a workspace config write, which would otherwise surface a missing workspace as an FK 500."""
+    if not await WorkspaceRepository().exists(session, id=workspace_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
 
 
 def _stored_mix_channel(cfg: models.WorkspaceBalancerConfig | None) -> str | None:
@@ -90,7 +95,7 @@ def register(broker: Any, logger: Any) -> None:
             c.require_admin_panel(user)
             tournament_id = c.require_id(data)
             ws_id = await _get_tournament_workspace_id(session, tournament_id)
-            c.require_workspace_permission(data, user, ws_id, "team", "read")
+            ensure_workspace_permission(user, ws_id, "team", "read")
             cfg = await balancer_admin_service.get_tournament_config(session, tournament_id)
             return serialize_tournament_config(cfg) if cfg is not None else None
 
@@ -103,18 +108,16 @@ def register(broker: Any, logger: Any) -> None:
             c.require_admin_panel(user)
             tournament_id = c.require_id(data)
             ws_id = await _get_tournament_workspace_id(session, tournament_id)
-            c.require_workspace_permission(data, user, ws_id, "team", "create")
+            ensure_workspace_permission(user, ws_id, "team", "create")
             body = schemas.BalancerTournamentConfigUpsert.model_validate(c.payload(data))
             cfg = await balancer_admin_service.upsert_tournament_config(
                 session, tournament_id, ws_id, body.config_json, user
             )
-            # The emit lives in the service: it owns the commit, and `emit`
-            # only reaches the wire through the commit that carries the write.
             return serialize_tournament_config(cfg)
 
         return await c.envelope(logger, "admin.tournament_config_upsert", op, session_factory=_SF)
 
-    # --- tournament summary (balancer tool context, D29) --------------------
+    # --- tournament summary (balancer tool context) -------------------------
     @broker.subscriber("rpc.balancer.admin.tournament_summary_get")
     async def _tournament_summary_get(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
@@ -122,7 +125,7 @@ def register(broker: Any, logger: Any) -> None:
             c.require_admin_panel(user)
             tournament_id = c.require_id(data)
             ws_id = await _get_tournament_workspace_id(session, tournament_id)
-            c.require_workspace_permission(data, user, ws_id, "team", "read")
+            ensure_workspace_permission(user, ws_id, "team", "read")
             # Tournament row, not config: id/name/status are non-nullable by
             # construction, and hidden tournaments stay visible (team.read gate).
             t = await balancer_admin_service.get_tournament_row(session, tournament_id)
@@ -138,7 +141,7 @@ def register(broker: Any, logger: Any) -> None:
             c.require_admin_panel(user)
             tournament_id = c.require_id(data)
             ws_id = await _get_tournament_workspace_id(session, tournament_id)
-            c.require_workspace_permission(data, user, ws_id, "team", "read")
+            ensure_workspace_permission(user, ws_id, "team", "read")
             balance = await balancer_admin_service.get_balance(session, tournament_id)
             return serialize_balance(balance) if balance is not None else None
 
@@ -151,10 +154,9 @@ def register(broker: Any, logger: Any) -> None:
             c.require_admin_panel(user)
             tournament_id = c.require_id(data)
             ws_id = await _get_tournament_workspace_id(session, tournament_id)
-            c.require_workspace_permission(data, user, ws_id, "team", "create")
+            ensure_workspace_permission(user, ws_id, "team", "create")
             body = schemas.BalanceSaveRequest.model_validate(c.payload(data))
             balance = await balancer_admin_service.save_balance(session, tournament_id, body, user)
-            # Emitted inside `save_balance`, which owns the commit.
             return serialize_balance(balance, already_normalized=True)
 
         return await c.envelope(logger, "admin.balance_save", op, session_factory=_SF)
@@ -166,24 +168,12 @@ def register(broker: Any, logger: Any) -> None:
             c.require_admin_panel(user)
             balance_id = c.require_id(data)
             ws_id = await _get_balance_workspace_id(session, balance_id)
-            c.require_workspace_permission(data, user, ws_id, "team", "create")
-            # Materialization rewrites tournament.team/player/standing wholesale.
-            # It used to be the one expensive balancer path with no quota at all,
-            # because the limiter lived in the job service this never calls.
+            ensure_workspace_permission(user, ws_id, "team", "create")
+            # Materialization rewrites tournament.team/player/standing wholesale,
+            # so it is metered like the other expensive balancer paths.
             await quota.charge(user, "balancer.balance_export", workspace_id=ws_id)
-            balance, removed_teams, imported_teams = await balancer_admin_service.export_balance(session, balance_id)
-            await emit_balancer_data(session, balance.tournament_id, BALANCER_TEAMS_CHANGED, actor_user_id=user.id)
-            # The balancer topic reaches only the admin tool. Materialization
-            # rewrote tournament.team / player / standing, so the PUBLIC reads
-            # are stale — named here, and mirrored to app-service (which caches
-            # the same three) through the outbox.
-            await emit(
-                session,
-                scope=Scope.tournament(balance.tournament_id),
-                invalidates=EXPORT_RESOURCES,
-            )
-            await enqueue_invalidation_outbox(
-                session, scope=Scope.tournament(balance.tournament_id), resources=EXPORT_RESOURCES
+            balance, removed_teams, imported_teams, advisories = await balancer_admin_service.export_balance(
+                session, balance_id, actor_user_id=user.id
             )
             await session.commit()
             return schemas.BalanceExportResponse(
@@ -191,6 +181,7 @@ def register(broker: Any, logger: Any) -> None:
                 removed_teams=removed_teams,
                 imported_teams=imported_teams,
                 balance_id=balance.id,
+                advisories=advisories,
             )
 
         return await c.envelope(logger, "admin.balance_export", op, session_factory=_SF)
@@ -202,18 +193,10 @@ def register(broker: Any, logger: Any) -> None:
             c.require_admin_panel(user)
             balance_id = c.require_id(data)
             ws_id = await _get_balance_workspace_id(session, balance_id)
-            c.require_workspace_permission(data, user, ws_id, "team", "create")
+            ensure_workspace_permission(user, ws_id, "team", "create")
             await quota.charge(user, "balancer.balance_ranks_export", workspace_id=ws_id)
-            balance, updated = await balancer_admin_service.export_balance_ranks(session, balance_id)
-            await emit_balancer_data(session, balance.tournament_id, BALANCER_TEAMS_CHANGED, actor_user_id=user.id)
-            # Rank export rewrites tournament.player rows the public reads join.
-            await emit(
-                session,
-                scope=Scope.tournament(balance.tournament_id),
-                invalidates=EXPORT_RESOURCES,
-            )
-            await enqueue_invalidation_outbox(
-                session, scope=Scope.tournament(balance.tournament_id), resources=EXPORT_RESOURCES
+            balance, updated = await balancer_admin_service.export_balance_ranks(
+                session, balance_id, actor_user_id=user.id
             )
             await session.commit()
             return schemas.RanksExportResponse(success=True, updated_players=updated)
@@ -227,7 +210,8 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             c.require_admin_panel(user)
             workspace_id = c.require_id(data)
-            c.require_workspace_permission(data, user, workspace_id, "workspace", "read")
+            ensure_workspace_permission(user, workspace_id, "workspace", "read")
+            await _ensure_workspace_exists(session, workspace_id)
             cfg = await balancer_admin_service.get_workspace_balancer_config(session, workspace_id)
             return _config_to_read(cfg, workspace_id)
 
@@ -237,23 +221,22 @@ def register(broker: Any, logger: Any) -> None:
     async def _workspace_config_upsert(data: dict, msg: RabbitMessage) -> dict:
         """Pool knobs need ``team.update``; moving the mix channel or the voice setup needs ``workspace.update``.
 
-        Both live in one config blob, so gating the whole write on
-        ``workspace.update`` made every save admin-only: an organizer who may
-        build teams could not touch the rank-delta threshold because the payload
-        also carried the channel -- the one they were not changing. The channel
-        and the mix voice setup keep the admin gate, and only when they actually move.
+        Both live in one config blob, so the admin gate applies only when the channel or the voice setup actually
+        moves: an organizer who may build teams can save the rank-delta threshold beside an unchanged channel.
+        A newly set Discord id must be a channel of the workspace's guild, asked of discord-service.
         """
 
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             c.require_admin_panel(user)
             workspace_id = c.require_id(data)
-            c.require_workspace_permission(data, user, workspace_id, "team", "update")
+            ensure_workspace_permission(user, workspace_id, "team", "update")
+            await _ensure_workspace_exists(session, workspace_id)
             body = schemas.WorkspaceBalancerConfigUpsert.model_validate(c.payload(data))
             stored = await balancer_admin_service.get_workspace_balancer_config(session, workspace_id)
             voice = (body.mix_voice_category_id, body.mix_general_voice_channel_ids)
             if body.mix_discord_channel_id != _stored_mix_channel(stored) or voice != _stored_voice(stored):
-                c.require_workspace_permission(data, user, workspace_id, "workspace", "update")
+                ensure_workspace_permission(user, workspace_id, "workspace", "update")
             cfg = await balancer_admin_service.upsert_workspace_balancer_config(
                 session,
                 workspace_id=workspace_id,
@@ -263,6 +246,7 @@ def register(broker: Any, logger: Any) -> None:
                 mix_voice_category_id=body.mix_voice_category_id,
                 mix_general_voice_channel_ids=body.mix_general_voice_channel_ids,
                 updated_by=user.id,
+                list_channels=DiscordClient(broker=broker).guild_channels,
             )
             return _config_to_read(cfg, workspace_id)
 
@@ -277,7 +261,8 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             c.require_admin_panel(user)
             workspace_id = c.require_id(data)
-            c.require_workspace_permission(data, user, workspace_id, "workspace", "read")
+            ensure_workspace_permission(user, workspace_id, "workspace", "read")
+            await _ensure_workspace_exists(session, workspace_id)
             return await _ranker_read(session, workspace_id)
 
         return await c.envelope(logger, "admin.workspace_ranker_get", op, session_factory=_SF)
@@ -290,7 +275,8 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             c.require_admin_panel(user)
             workspace_id = c.require_id(data)
-            c.require_workspace_permission(data, user, workspace_id, "team", "update")
+            ensure_workspace_permission(user, workspace_id, "team", "update")
+            await _ensure_workspace_exists(session, workspace_id)
             body = schemas.WorkspaceRankerUpsert.model_validate(c.payload(data))
             await mix_ranker_service.save_settings(
                 session,
@@ -309,7 +295,8 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             c.require_admin_panel(user)
             workspace_id = c.require_id(data)
-            c.require_workspace_permission(data, user, workspace_id, "team", "update")
+            ensure_workspace_permission(user, workspace_id, "team", "update")
+            await _ensure_workspace_exists(session, workspace_id)
             matches, hidden_ratings = await mix_ranker_service.rebuild(session, workspace_id)
             await session.commit()
             return schemas.WorkspaceRankerRebuildRead(matches=matches, hidden_ratings=hidden_ratings)

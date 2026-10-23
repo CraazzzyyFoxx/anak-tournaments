@@ -5,25 +5,13 @@ from typing import Final, Literal
 
 
 class HeroClass(StrEnum):
-    """A roster role OR a hero's class -- two concepts on one Postgres type.
+    """An Overwatch character's class.
 
-    ``tank``/``damage``/``support`` mean both things at once, which is why the
-    same ``heroclass`` type backs ``overwatch.hero.type``,
-    ``matches.stat_baselines.role`` and ``tournament.player.role``. ``flex``
-    only ever means the third: a player who holds no fixed role, which is what
-    a role-less (all-``flex``) roster shape drafts and balances for. No hero has
-    a class of "flex", so the two hero-side columns are narrowed back to
-    :data:`HERO_TYPE_CLASSES` / :data:`HeroTypeClass` in the schema layer and by
-    CHECK constraints in the database (migration ``heroflex0001``).
-
-    Member NAMES are the stored Postgres labels (SQLAlchemy ``Enum`` default),
-    so the DB sees ``flex`` while the Python value is ``"Flex"``.
-
-    THE single role enum for the whole backend (frontend mirror:
-    ``PlayerRoleOption`` in ``lib/roster/player-role.ts``). One spelling per role, in
-    code, on the wire and in the database: :attr:`slot_code` is the lowercase
-    member name. This docstring is the public OpenAPI description of the enum,
-    so the retired spelling is documented on :attr:`slot_code` instead.
+    Player roles and native baseline keys use catalog role ids, not this enum.
+    Character classes live in ``catalog.entity.attrs``. Member names are stored
+    labels; values are display names.
+    ``flex`` is retained only for legacy inputs; no character or player assignment
+    has that class.
     """
 
     tank = "Tank"
@@ -36,17 +24,11 @@ class HeroClass(StrEnum):
         """Draft/balancer/registration wire spelling: ``tank``/``damage``/``support``/``flex``.
 
         Identical to the member name -- kept as a named boundary because it is
-        the wire/storage contract (``BalancerRegistrationRole.role``,
-        ``Tournament.roster_slots_json`` keys, the Rust ``tournament_balancer``
-        payload), not merely a Python detail. It used to diverge for ``damage``
-        -> ``dps``; migration ``roledps01`` retired that spelling.
+        the wire/storage contract (``RegistrationRole.role``,
+        roster-slot projection keys, the Rust ``tournament_balancer``
+        payload), not merely a Python detail.
         """
         return self.name
-
-    @classmethod
-    def from_slot_code(cls, code: str) -> HeroClass:
-        """Inverse of :attr:`slot_code`. Raises ``ValueError`` for an unknown code."""
-        return cls(code.capitalize())
 
     @classmethod
     def parse(cls, value: object) -> HeroClass | None:
@@ -65,23 +47,11 @@ class HeroClass(StrEnum):
 
 
 #: The classes a *hero* can have -- ``HeroClass`` minus ``flex``. Use these
-#: wherever the subject is ``overwatch.hero.type`` or a baseline keyed off it,
+#: wherever the subject is a catalog character's class or a baseline keyed off it,
 #: so an admin cannot type a hero as "flex" through an existing endpoint and
 #: silently poison ``dominant_roles``, the stat baselines and impact scoring.
 HERO_TYPE_CLASSES: Final[tuple[HeroClass, ...]] = (HeroClass.tank, HeroClass.damage, HeroClass.support)
 HeroTypeClass = Literal[HeroClass.tank, HeroClass.damage, HeroClass.support]
-
-
-class CatalogEntityType(StrEnum):
-    """Catalog entity an alias (or an unresolved-name miss) belongs to.
-
-    Match logs carry map/gamemode/hero names in the reporting client's locale,
-    so every catalog entity keeps a list of alternative names it answers to.
-    """
-
-    hero = "hero"
-    map = "map"
-    gamemode = "gamemode"
 
 
 class RankPlatform(StrEnum):
@@ -96,7 +66,7 @@ class RankDivision(StrEnum):
 
     Stored as a plain string in the DB so future Blizzard additions don't
     require a migration; this enum documents the known values and powers the
-    default rank mapping.
+    ladder's division+tier -> rank_value table.
     """
 
     bronze = "bronze"
@@ -176,36 +146,6 @@ class SubscriptionEnforcementStage(StrEnum):
     #: Blocks at check-in only. Sign-up stays open to everybody, which is the
     #: default: a roster is built at check-in, so that is where the answer matters.
     check_in = "check_in"
-
-
-class LogEventType(StrEnum):
-    MatchStart = "match_start"
-    MatchEnd = "match_end"
-    PlayerJoined = "player_joined"
-    RoundStart = "round_start"
-    RoundEnd = "round_end"
-    SetupComplete = "setup_complete"
-    PointProgress = "point_progress"
-    ObjectiveUpdated = "objective_updated"
-    ObjectiveCaptured = "objective_captured"
-    PayloadProgress = "payload_progress"
-    PlayerStat = "player_stat"
-    Meta = "meta"
-    HeroSpawn = "hero_spawn"
-    Kill = "kill"
-    OffensiveAssist = "offensive_assist"
-    DefensiveAssist = "defensive_assist"
-    UltimateCharged = "ultimate_charged"
-    UltimateStart = "ultimate_start"
-    UltimateEnd = "ultimate_end"
-    MercyRez = "mercy_rez"
-    HeroSwap = "hero_swap"
-    EchoDuplicateStart = "echo_duplicate_start"
-    EchoDuplicateEnd = "echo_duplicate_end"
-    GraviticFlux = "gravitic_flux"
-    Earthshatter = "earthshatter"
-    ServerLoad = "server_load"
-    ChainHook = "chain_hook"
 
 
 class LogStatsName(StrEnum):
@@ -345,11 +285,6 @@ class MixRatingMode(StrEnum):
     RANKER = "ranker"
 
 
-class CasualTeamSide(StrEnum):
-    HOME = "home"
-    AWAY = "away"
-
-
 class DraftStatus(StrEnum):
     SETUP = "setup"
     READY = "ready"
@@ -414,20 +349,31 @@ class StageType(StrEnum):
     DOUBLE_ELIMINATION = "double_elimination"
     SWISS = "swiss"
     #: Scored by lobby placement and raw score, not head-to-head: its rules are
-    #: the stage's ``ffa_*`` columns (shared.domain.ffa_scoring).
+    #: the stage's ``ffa_*`` columns (``shared.domain.encounter_scoring``).
     FFA_LEAGUE = "ffa_league"
 
 
-class EncounterFormat(StrEnum):
-    """How many sides an encounter has. Fixed at creation.
+class EncounterResultSource(StrEnum):
+    """Where an encounter's official result came from.
 
-    ``duel`` is two sides and a series -- every feature built on home/away
-    accepts only it. ``ffa`` is a lobby of N participants
-    (``tournament.encounter_participant``) scored per game per participant.
+    ``games`` is the aggregate of the confirmed games and is the only one a
+    rule recalculation may overwrite; the other four are decisions and are
+    changed only by a reopen. ``host`` -- a mix host or co-host recorded the
+    round directly; a decision like the other three.
     """
 
-    DUEL = "duel"
-    FFA = "ffa"
+    GAMES = "games"
+    SERIES_CLAIM = "series_claim"
+    ADMIN = "admin"
+    IMPORT = "import"
+    HOST = "host"
+
+
+class AuditSnapshotScope(StrEnum):
+    """What a ``encounter.result_audit`` row's before/after snapshot describes."""
+
+    ENCOUNTER = "encounter"
+    GAME = "game"
 
 
 class StageItemType(StrEnum):
@@ -454,15 +400,17 @@ class EncounterResultAuditAction(StrEnum):
     """What moved an encounter's result. One row per transition.
 
     ``confirm``/``reopen`` are admin actions; ``auto_confirm``/``auto_dispute``
-    are derived from the two captain reports; ``import`` is Challonge pulling a
-    remote result in; ``cascade_reset`` is the bracket un-playing an encounter
-    whose team slots changed upstream.
+    are derived from the captains' series reports, and ``auto_pending`` is the
+    first of them arriving while the others are still owed; ``import`` is
+    Challonge pulling a remote result in; ``cascade_reset`` is the bracket
+    un-playing an encounter whose team slots changed upstream.
     """
 
     CONFIRM = "confirm"
     REOPEN = "reopen"
     AUTO_CONFIRM = "auto_confirm"
     AUTO_DISPUTE = "auto_dispute"
+    AUTO_PENDING = "auto_pending"
     IMPORT = "import"
     CASCADE_RESET = "cascade_reset"
     # Per-map decisions (Vertical 1). Score columns on the audit row carry the
@@ -479,11 +427,17 @@ class MapPoolEntryStatus(StrEnum):
     PROTECTED = "protected"
 
 
-class MapPickSide(StrEnum):
-    HOME = "home"
-    AWAY = "away"
+class PickBanActorKind(StrEnum):
+    """Who performed a pick-ban board action.
+
+    ``team`` is the only kind that names a participation; the others are the
+    engine resolving a step, an organizer overriding one, or a tiebreak.
+    """
+
+    TEAM = "team"
     DECIDER = "decider"
     ADMIN = "admin"
+    SYSTEM = "system"
 
 
 class MapVetoSessionStatus(StrEnum):
@@ -493,7 +447,7 @@ class MapVetoSessionStatus(StrEnum):
 
 
 class EncounterGameState(StrEnum):
-    """Lifecycle of one position of a series (``tournament.encounter_game``)."""
+    """Lifecycle of one position of a series (``encounter.game``)."""
 
     PLANNED = "planned"  # position exists, map not chosen yet (freeplay)
     AWAITING_RESULT = "awaiting_result"  # map known; waiting for both captains' claims
@@ -506,12 +460,14 @@ class EncounterGameResultSource(StrEnum):
     CAPTAIN_AGREEMENT = "captain_agreement"
     ADMIN = "admin"
     ADMIN_LOG = "admin_log"
+    HOST = "host"
 
 
 class VetoSeedSource(StrEnum):
     BRACKET_SLOT = "bracket_slot"
     STANDINGS = "standings"
-    FALLBACK_HOME = "fallback_home"
+    #: Neither participation could be seeded; the first slot opens by default.
+    FALLBACK_FIRST_SLOT = "fallback_first_slot"
     ADMIN = "admin"
 
 
@@ -539,38 +495,10 @@ class PickBanKind(StrEnum):
     HERO = "hero"
 
 
-class MatchSource(StrEnum):
-    """Provenance of a :class:`~shared.models.matches.match.Match` row.
-
-    ``LOG_PARSER``: written by ``MatchLogFlow`` from an uploaded OW log — the
-    only value written today.
-    ``CAPTAIN_REPORT``: legacy per-map captain confirmation with no log.
-    encgame01 moved those results to ``encounter_game`` and deleted the rows;
-    nothing writes this value any more.
-    """
-
-    LOG_PARSER = "log_parser"
-    CAPTAIN_REPORT = "captain_report"
-
-
 class EncounterStatus(StrEnum):
     COMPLETED = "completed"
     PENDING = "pending"
     OPEN = "open"
-
-
-class EncounterLinkRole(StrEnum):
-    """Role of the source encounter relative to the target encounter."""
-
-    WINNER = "winner"
-    LOSER = "loser"
-
-
-class EncounterLinkSlot(StrEnum):
-    """Which slot in the target encounter this link fills."""
-
-    HOME = "home"
-    AWAY = "away"
 
 
 class MatchEvent(StrEnum):
@@ -585,22 +513,12 @@ class MatchEvent(StrEnum):
     EchoDuplicateEnd = "echo_duplicate_end"
 
 
-class AbilityEvent(StrEnum):
-    PrimaryFire = "Primary Fire"
-    SecondaryFire = "Secondary Fire"
-    Ability1 = "Ability 1"
-    Ability2 = "Ability 2"
-    Ultimate = "Ultimate"
-    Melee = "Melee"
-    Crouch = "Crouch"
-
-
 class RouteTag(StrEnum):
     """Canonical FastAPI route-classification tags.
 
     app-service, tournament-service, and balancer-service defined this exact
     14-member enum three times (copy-pasted, byte-identical). Services with a
-    genuinely different tag set (parser-service, analytics-service) keep their
+    genuinely different tag set (stats-service, analytics-service) keep their
     own local ``RouteTag`` — only the identical one lives here.
     """
 
@@ -627,7 +545,6 @@ __all__ = [
     "HeroClass",
     "HERO_TYPE_CLASSES",
     "HeroTypeClass",
-    "CatalogEntityType",
     "RankPlatform",
     "RankDivision",
     "RankCollectionStatus",
@@ -635,7 +552,6 @@ __all__ = [
     "SubscriptionCheckState",
     "SubscriptionCollectionSource",
     "SubscriptionEnforcementStage",
-    "LogEventType",
     "LogStatsName",
     "StatDirection",
     "LOG_STATS_DEFAULT_DIRECTION",
@@ -650,7 +566,8 @@ __all__ = [
     "DraftPlayerStatus",
     "DraftPickStatus",
     "StageType",
-    "EncounterFormat",
+    "EncounterResultSource",
+    "AuditSnapshotScope",
     "StageItemType",
     "StageItemInputType",
     "EncounterResultStatus",
@@ -658,7 +575,7 @@ __all__ = [
     "EncounterGameState",
     "EncounterGameResultSource",
     "MapPoolEntryStatus",
-    "MapPickSide",
+    "PickBanActorKind",
     "MapVetoSessionStatus",
     "VetoSeedSource",
     "FirstPickRule",
@@ -666,10 +583,6 @@ __all__ = [
     "FirstBanRotation",
     "PickBanKind",
     "EncounterStatus",
-    "EncounterLinkRole",
-    "EncounterLinkSlot",
     "MatchEvent",
-    "AbilityEvent",
-    "MatchSource",
     "RouteTag",
 ]

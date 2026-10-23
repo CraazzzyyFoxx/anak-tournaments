@@ -1,60 +1,45 @@
-"""FFA lobbies: the one service that writes a lobby and its participants.
+"""FFA lobbies: an encounter with more than two seats.
 
-A lobby is an ``Encounter`` with ``format = 'ffa'`` and no sides: the teams sit
-in ``tournament.encounter_participant`` instead of home/away
-(docs/plans/2026-09-24-ffa-encounters.md §3, decisions 1 and 3).
+A lobby is an ``Encounter`` whose ``slot_count`` is N and whose
+``scoring_rule`` is a ``points`` preset: the teams sit in ``encounter.team``
+like a duel's two do, and each game keeps one ``encounter.game_team`` row per
+seat with its placement and the organizer's columns.
 
-A lobby's truth is its games: ``best_of`` is how many the lobby plans to play,
-and every confirmed one keeps a row per participant in
-``tournament.encounter_game_result``. So completion is derived, never set by
-hand -- recording, correcting, cancelling a game and changing the planned count
-all end in the same :meth:`FfaEncounterService.refresh_completion` (plan §5.4),
-which is also what makes a reopen impossible to forget.
+A lobby's truth is its games: ``best_of`` is how many it plans to play, and
+completion is DERIVED -- the rule's end formula (``games >= best_of``) is asked
+by the single result writer after every game, so recording, correcting,
+cancelling a game and changing the planned count all settle completion the same
+way, and a reopen is impossible to forget.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import http_status as status
-from shared.core.enums import (
-    EncounterFormat,
-    EncounterGameResultSource,
-    EncounterGameState,
-    EncounterResultAuditAction,
-    EncounterResultStatus,
-    EncounterStatus,
-)
+from shared.core.enums import EncounterGameResultSource, EncounterGameState, EncounterResultStatus
 from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.domain.encounter_format import ensure_format
-from shared.domain.ffa_scoring import (
+from shared.domain.encounter_scoring import (
     FFA_MAX_LOBBY_SIZE,
-    FfaGameLine,
-    FfaResultError,
-    FfaRules,
-    ffa_rules,
+    GameLine,
+    ScoringRules,
     game_points,
-    normalize_game_lines,
-    rank_game,
+    resolve_placements,
     team_totals,
 )
-from shared.models.tournament.encounter_game_result import EncounterGameResult
-from shared.models.tournament.encounter_participant import EncounterParticipant
-from shared.repository import (
-    EncounterGameRepository,
-    EncounterGameResultRepository,
-    EncounterParticipantRepository,
-    EncounterRepository,
-    EncounterResultAuditRepository,
-    StageRepository,
-)
-from src import models
+from shared.models.encounter.encounter import Encounter
+from shared.models.encounter.game import EncounterGame, EncounterGameTeam
+from shared.models.encounter.team import EncounterTeam
+from shared.models.tournament.bracket_encounter import BracketEncounter
+from shared.repository import BracketEncounterRepository, EncounterRepository, StageRepository
+from shared.services.encounter.participants import MemberSnapshot, place_team
+from shared.services.encounter.result import lock_encounter
 from src.schemas.ffa import (
     FfaColumnRead,
     FfaGameCellRead,
@@ -62,17 +47,20 @@ from src.schemas.ffa import (
     FfaLobbyRowRead,
     FfaRulesRead,
 )
-from src.services.tournament.events import (
-    enqueue_encounter_completed,
-    enqueue_tournament_recalculation,
+from src.services.encounter.games import (
+    EncounterGameService,
+    GameResultIn,
+    encounter_game_service,
 )
+from src.services.encounter.settle import enqueue_challonge_push
+from src.services.tournament.events import enqueue_tournament_recalculation
 
 __all__ = ("FfaEncounterService", "FfaStageResults", "ffa_encounter_service", "public_view")
 
 
 @dataclass(frozen=True, slots=True)
 class FfaStageResults:
-    """Every confirmed FFA result of one stage, grouped by group (stage item).
+    """Every confirmed lobby result of one stage, grouped by group (stage item).
 
     The standings build a table per group, not per lobby, so both reads are
     keyed by ``stage_item_id``: the roster (a team with no games still has a
@@ -80,39 +68,30 @@ class FfaStageResults:
     """
 
     participants: dict[int, list[int]] = field(default_factory=dict)
-    games_by_item: dict[int, list[tuple[FfaGameLine, ...]]] = field(default_factory=dict)
+    games_by_item: dict[int, list[tuple[GameLine, ...]]] = field(default_factory=dict)
 
     def participant_ids(self, stage_item_id: int) -> list[int]:
         return list(self.participants.get(stage_item_id, ()))
 
-    def games(self, stage_item_id: int) -> list[tuple[FfaGameLine, ...]]:
+    def games(self, stage_item_id: int) -> list[tuple[GameLine, ...]]:
         return list(self.games_by_item.get(stage_item_id, ()))
 
 
 class FfaEncounterService:
-    """FFA lobbies end to end: seating, per-game results, completion, reads.
-
-    The ONLY writer of ``encounter_participant`` and ``encounter_game_result``:
-    that is what keeps "participants exist only on ffa encounters" true without
-    a cross-table CHECK (plan §3, decision 4).
-    """
+    """Lobbies end to end: seating, per-game results, completion, reads."""
 
     def __init__(
         self,
         *,
         encounter_repo: EncounterRepository = EncounterRepository(),
-        participant_repo: EncounterParticipantRepository = EncounterParticipantRepository(),
-        game_repo: EncounterGameRepository = EncounterGameRepository(),
-        result_repo: EncounterGameResultRepository = EncounterGameResultRepository(),
-        audit_repo: EncounterResultAuditRepository = EncounterResultAuditRepository(),
+        bracket_encounter_repo: BracketEncounterRepository = BracketEncounterRepository(),
         stage_repo: StageRepository = StageRepository(),
+        games: EncounterGameService = encounter_game_service,
     ) -> None:
         self.encounter_repo = encounter_repo
-        self.participant_repo = participant_repo
-        self.game_repo = game_repo
-        self.result_repo = result_repo
-        self.audit_repo = audit_repo
+        self.bracket_encounter_repo = bracket_encounter_repo
         self.stage_repo = stage_repo
+        self.games = games
 
     async def create_lobby(
         self,
@@ -122,7 +101,9 @@ class FfaEncounterService:
         team_ids: Sequence[int],
         *,
         games: int,
-    ) -> models.Encounter:
+        rosters: dict[int, Sequence[MemberSnapshot]] | None = None,
+        names: dict[int, str] | None = None,
+    ) -> Encounter:
         """Seat ``team_ids`` (already in seed order) in a new lobby for ``item``."""
         if not 2 <= len(team_ids) <= FFA_MAX_LOBBY_SIZE:
             raise HTTPException(
@@ -134,97 +115,83 @@ class FfaEncounterService:
                     )
                 ],
             )
-        lobby = models.Encounter(
-            name=item.name,
-            format=EncounterFormat.FFA,
-            home_team_id=None,
-            away_team_id=None,
-            home_score=0,
-            away_score=0,
-            round=1,
-            best_of=games,
-            tournament_id=stage.tournament_id,
-            stage_id=stage.id,
-            stage_item_id=item.id,
-            status=EncounterStatus.OPEN,
+        tournament = await session.get_one(models.Tournament, stage.tournament_id)
+        lobby = await self.encounter_repo.create(
+            session,
+            Encounter(
+                workspace_id=tournament.workspace_id,
+                discipline=tournament.discipline,
+                tournament_id=stage.tournament_id,
+                scoring_rule_id=stage.scoring_rule_id,
+                name=item.name,
+                slot_count=len(team_ids),
+                best_of=games,
+            ),
         )
-        lobby.participants = [
-            EncounterParticipant(team_id=team_id, slot=slot) for slot, team_id in enumerate(team_ids, 1)
-        ]
-        # ``create`` adds and flushes; the participants ride the relationship
-        # cascade, which is what keeps a lobby and its seats one write.
-        await self.encounter_repo.create(session, lobby)
+        await self.bracket_encounter_repo.create(
+            session,
+            BracketEncounter(
+                encounter_id=lobby.id,
+                tournament_id=stage.tournament_id,
+                stage_id=stage.id,
+                stage_item_id=item.id,
+                round=1,
+            ),
+        )
+        for slot, team_id in enumerate(team_ids, 1):
+            await place_team(
+                session,
+                lobby,
+                slot=slot,
+                team_id=team_id,
+                name=(names or {}).get(team_id, f"Team {team_id}"),
+                # ``team_ids`` arrives in seed order, so the slot IS the seed.
+                seed=slot,
+                members=(rosters or {}).get(team_id, ()),
+            )
+        await session.flush()
         return lobby
 
     # -- commands ----------------------------------------------------------
-    async def set_game_results(
+    async def record_lobby_game(
         self,
         session: AsyncSession,
         encounter_id: int,
         position: int,
-        lines: Sequence[FfaGameLine],
+        results: Sequence[GameResultIn],
         *,
         actor_user_id: int | None,
         reason: str | None,
-    ) -> models.Encounter:
+    ) -> Encounter:
         """Record (or correct) one game of a lobby and settle its completion.
 
-        Commits, like ``CaptainService.set_encounter_result``: the result rows,
-        the game's state, the lobby's completion and the journal row are one
-        decision, and half of it is worse than none of it.
+        Commits: the game's rows, its state, the lobby's standing and the
+        journal row are one decision, and half of it is worse than none of it.
         """
-        lobby = await self._lock_lobby(session, encounter_id)
+        lobby = await lock_encounter(session, encounter_id)
         if not 1 <= position <= lobby.best_of:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=[ApiExc(code="ffa_game_out_of_range", msg=f"This lobby plays games 1..{lobby.best_of}")],
             )
-        participants = await self.participant_repo.list_for_encounter(session, lobby.id)
-        try:
-            normalized = normalize_game_lines(
-                lines, [p.team_id for p in participants], await self._rules(session, lobby)
-            )
-        except FfaResultError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=[ApiExc(code=exc.code, msg=str(exc))]
-            ) from exc
-        # Only an ENTERED place is stored. ``normalize_game_lines`` ranks a
-        # placeless game so it can validate and order it, but persisting that
-        # rank would freeze it under today's formula: the readers derive it
-        # again from the current one (plan §5.2). The journal records what was
-        # entered, so a NULL here is a NULL there.
-        if any(item.placement is not None for item in lines):
-            stored = normalized
-        else:
-            stored = tuple(FfaGameLine(team_id=item.team_id, placement=None, stats=item.stats) for item in normalized)
-
         game = await self._live_game(session, lobby, position)
-        correcting = game.state == EncounterGameState.CONFIRMED
-        if correcting and not reason:
+        if game.state == EncounterGameState.CONFIRMED and not (reason or "").strip():
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=[ApiExc(code="ffa_reason_required", msg="Correcting a confirmed game needs a reason")],
             )
-        before = await self._snapshot(session, game)
-        await self.result_repo.replace_for_game(session, game, stored)
-        now = datetime.now(UTC)
-        game.state = EncounterGameState.CONFIRMED
-        game.result_source = EncounterGameResultSource.ADMIN
-        game.confirmed_at = now
-        game.result_version = (game.result_version or 0) + 1
-        lobby.started_at = lobby.started_at or now
-        self._journal(
+        await self.games.record_result(
             session,
             lobby,
-            action=EncounterResultAuditAction.GAME_CORRECT if correcting else EncounterResultAuditAction.GAME_CONFIRM,
+            game,
+            results=results,
+            source=EncounterGameResultSource.ADMIN,
             actor_user_id=actor_user_id,
-            game=game,
-            before=before,
-            after=[{"team_id": i.team_id, "placement": i.placement, "stats": dict(i.stats)} for i in stored],
             reason=reason,
         )
-        await self.refresh_completion(session, lobby, actor_user_id=actor_user_id)
         await enqueue_tournament_recalculation(session, lobby.tournament_id)
+        if lobby.result_status == EncounterResultStatus.CONFIRMED:
+            await enqueue_challonge_push(session, lobby)
         await session.commit()
         return lobby
 
@@ -236,41 +203,26 @@ class FfaEncounterService:
         *,
         actor_user_id: int | None,
         reason: str,
-    ) -> models.Encounter:
+    ) -> Encounter:
         """Retire one game as history, freeing its position for a replay.
 
         The partial unique index on ``(encounter_id, position)`` skips cancelled
         rows, so the next result for this position is a NEW game -- the void one
         stays readable instead of being overwritten. Commits.
         """
-        lobby = await self._lock_lobby(session, encounter_id)
-        if not reason:
+        lobby = await lock_encounter(session, encounter_id)
+        if not (reason or "").strip():
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=[ApiExc(code="ffa_reason_required", msg="Cancelling a game needs a reason")],
             )
-        games = await self.game_repo.list_for_encounter(session, lobby.id)
-        game = next((item for item in games if item.position == position), None)
+        game = next((row for row in await self.games.list_games(session, lobby.id) if row.position == position), None)
         if game is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=[ApiExc(code="ffa_game_not_found", msg=f"This lobby has no live game {position}")],
             )
-        before = await self._snapshot(session, game)
-        was_confirmed = game.state == EncounterGameState.CONFIRMED
-        game.state = EncounterGameState.CANCELLED
-        if was_confirmed:
-            self._journal(
-                session,
-                lobby,
-                action=EncounterResultAuditAction.GAME_CANCEL,
-                actor_user_id=actor_user_id,
-                game=game,
-                before=before,
-                after=[],
-                reason=reason,
-            )
-        await self.refresh_completion(session, lobby, actor_user_id=actor_user_id)
+        await self.games.cancel_games(session, lobby, [game], actor_user_id=actor_user_id, reason=reason)
         await enqueue_tournament_recalculation(session, lobby.tournament_id)
         await session.commit()
         return lobby
@@ -282,15 +234,16 @@ class FfaEncounterService:
         games: int,
         *,
         actor_user_id: int | None,
-    ) -> models.Encounter:
+    ) -> Encounter:
         """Change how many games THIS lobby plays. Commits.
 
         Never below what it already played: the games are the record, so a
         smaller number would silently drop confirmed results from the table.
         """
-        lobby = await self._lock_lobby(session, encounter_id)
-        live = await self.game_repo.list_for_encounter(session, lobby.id)
-        confirmed = sum(item.state == EncounterGameState.CONFIRMED for item in live)
+        lobby = await lock_encounter(session, encounter_id)
+        confirmed = sum(
+            row.state == EncounterGameState.CONFIRMED for row in await self.games.list_games(session, lobby.id)
+        )
         # A lobby that plays no games at all is not a lobby, hence the floor of 1.
         if games < max(confirmed, 1):
             raise HTTPException(
@@ -307,62 +260,29 @@ class FfaEncounterService:
                 ],
             )
         lobby.best_of = games
+        await session.flush()
+        # The end formula reads ``best_of``: raising the count reopens a lobby
+        # that was complete, lowering it can finish one, and the single result
+        # writer settles both without a second copy of the rule here.
         await self.refresh_completion(session, lobby, actor_user_id=actor_user_id)
         await enqueue_tournament_recalculation(session, lobby.tournament_id)
         await session.commit()
         return lobby
 
     async def refresh_completion(
-        self,
-        session: AsyncSession,
-        encounter: models.Encounter,
-        *,
-        actor_user_id: int | None,
+        self, session: AsyncSession, encounter: Encounter, *, actor_user_id: int | None
     ) -> None:
-        """Settle "is this lobby finished?" from its live games. No commit.
+        """Settle "is this lobby finished?" from its live games. No commit."""
+        from shared.core.enums import EncounterResultAuditAction  # noqa: PLC0415 - local to this one call
+        from shared.services.encounter.result import refresh_from_games  # noqa: PLC0415 - avoids a cycle
 
-        Both directions are here on purpose: whatever made the lobby stop
-        qualifying -- a cancelled game, a raised games count -- must reopen it,
-        or a lobby stays COMPLETED with a result it no longer holds.
-        """
-        games = await self.game_repo.list_for_encounter(session, encounter.id)
-        confirmed = sum(game.state == EncounterGameState.CONFIRMED for game in games)
-        complete = confirmed >= encounter.best_of
-        if complete and encounter.status != EncounterStatus.COMPLETED:
-            was = encounter.result_status
-            now = datetime.now(UTC)
-            encounter.status = EncounterStatus.COMPLETED
-            encounter.result_status = EncounterResultStatus.CONFIRMED
-            encounter.confirmed_at = now
-            encounter.ended_at = now
-            self._journal(
-                session,
-                encounter,
-                action=EncounterResultAuditAction.CONFIRM,
-                actor_user_id=actor_user_id,
-                game=None,
-                before=[],
-                after=await self._totals_snapshot(session, encounter),
-                from_result_status=was,
-            )
-            await enqueue_encounter_completed(session, encounter)
-        elif not complete and encounter.status == EncounterStatus.COMPLETED:
-            was = encounter.result_status
-            totals = await self._totals_snapshot(session, encounter)
-            encounter.status = EncounterStatus.OPEN
-            encounter.result_status = EncounterResultStatus.NONE
-            encounter.confirmed_at = None
-            encounter.ended_at = None
-            self._journal(
-                session,
-                encounter,
-                action=EncounterResultAuditAction.REOPEN,
-                actor_user_id=actor_user_id,
-                game=None,
-                before=totals,
-                after=[],
-                from_result_status=was,
-            )
+        await refresh_from_games(
+            session,
+            encounter,
+            action=EncounterResultAuditAction.CONFIRM,
+            audit_source="admin" if actor_user_id is not None else "system",
+            actor_user_id=actor_user_id,
+        )
 
     # -- reads -------------------------------------------------------------
     async def load_stage_results(self, session: AsyncSession, stage_id: int) -> FfaStageResults:
@@ -372,45 +292,79 @@ class FfaEncounterService:
         rebuilds every group at once.
         """
         participants: dict[int, list[int]] = {}
-        for row in await self.participant_repo.list_for_stage(session, stage_id):
-            seats = participants.setdefault(row.stage_item_id, [])
+        seats = (
+            (
+                await session.execute(
+                    sa.select(EncounterTeam, BracketEncounter.stage_item_id)
+                    .join(BracketEncounter, BracketEncounter.encounter_id == EncounterTeam.encounter_id)
+                    .where(BracketEncounter.stage_id == stage_id, EncounterTeam.active.is_(True))
+                    .order_by(EncounterTeam.encounter_id, EncounterTeam.slot)
+                )
+            )
+            .tuples()
+            .all()
+        )
+        for seat, stage_item_id in seats:
+            if stage_item_id is None or seat.team_id is None:
+                continue
+            bucket = participants.setdefault(stage_item_id, [])
             # A team seated in two lobbies of one group is still one competitor.
-            if row.team_id not in seats:
-                seats.append(row.team_id)
+            if seat.team_id not in bucket:
+                bucket.append(seat.team_id)
 
-        rules = ffa_rules(await self.stage_repo.get(session, stage_id))
-        grouped: dict[int, list[list[FfaGameLine]]] = {}
+        team_by_participation = {seat.id: seat.team_id for seat, _item in seats}
+        grouped: dict[int, list[list[GameLine]]] = {}
         current: tuple[int, int] | None = None
-        for row in await self.result_repo.list_confirmed_for_stage(session, stage_id):
-            bucket = grouped.setdefault(row.stage_item_id, [])
-            key = (row.encounter_id, row.position)
+        rows = (
+            (
+                await session.execute(
+                    sa.select(EncounterGameTeam, EncounterGame.position, BracketEncounter.stage_item_id)
+                    .join(EncounterGame, EncounterGame.id == EncounterGameTeam.game_id)
+                    .join(BracketEncounter, BracketEncounter.encounter_id == EncounterGame.encounter_id)
+                    .where(
+                        BracketEncounter.stage_id == stage_id,
+                        EncounterGame.state == EncounterGameState.CONFIRMED,
+                    )
+                    .order_by(EncounterGame.encounter_id, EncounterGame.position, EncounterGameTeam.encounter_team_id)
+                )
+            )
+            .tuples()
+            .all()
+        )
+        for line, position, stage_item_id in rows:
+            if stage_item_id is None or line.encounter_team_id not in team_by_participation:
+                continue
+            bucket = grouped.setdefault(stage_item_id, [])
+            key = (line.encounter_id, position)
             if key != current:
                 current = key
                 bucket.append([])
-            bucket[-1].append(FfaGameLine(team_id=row.team_id, placement=row.placement, stats=row.stats))
+            bucket[-1].append(
+                GameLine(
+                    # Keyed by the SOURCE team: the standings rank competitors
+                    # across a group's lobbies, not seats of one of them.
+                    encounter_team_id=team_by_participation[line.encounter_team_id],
+                    score=line.score,
+                    placement=line.placement,
+                    values=dict(line.column_values or {}),
+                )
+            )
         return FfaStageResults(
             participants=participants,
-            # ``rank_game``, not the stored order: a game with no entered places
-            # is ranked here by the CURRENT formula, so the ``Standing`` rows
-            # advancement reads never rank by a formula that was replaced.
-            games_by_item={item_id: [rank_game(game, rules) for game in bucket] for item_id, bucket in grouped.items()},
+            # The stored lines, not a frozen ranking: a game with no entered
+            # places is placed by the CURRENT formula wherever it is read.
+            games_by_item={item_id: [tuple(game) for game in bucket] for item_id, bucket in grouped.items()},
         )
 
     async def load_lobby(self, session: AsyncSession, encounter_id: int) -> FfaLobbyRead:
-        """One lobby as the table it is: rules, seats, game cells, standing.
-
-        404 for an unknown encounter, 409 for a duel -- a lobby table cannot be
-        drawn from a series.
-        """
+        """One lobby as the table it is: rules, seats, game cells, standing."""
         lobby = await self.encounter_repo.get(session, encounter_id)
         if lobby is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=[ApiExc(code="encounter_not_found", msg=f"Encounter {encounter_id} not found")],
             )
-        ensure_format(lobby, EncounterFormat.FFA)
-        stage = await self.stage_repo.get(session, lobby.stage_id) if lobby.stage_id else None
-        return (await self._read_lobbies(session, [lobby], stage))[0]
+        return (await self._read_lobbies(session, [lobby]))[0]
 
     async def load_stage_lobbies(
         self, session: AsyncSession, stage_id: int, *, tournament_id: int
@@ -428,102 +382,76 @@ class FfaEncounterService:
                 detail=[ApiExc(code="stage_not_found", msg=f"Stage {stage_id} not found")],
             )
         rows = await session.execute(
-            sa.select(models.Encounter)
-            .outerjoin(models.StageItem, models.StageItem.id == models.Encounter.stage_item_id)
-            .where(
-                models.Encounter.stage_id == stage_id,
-                models.Encounter.format == EncounterFormat.FFA,
-            )
-            .order_by(models.StageItem.order.nulls_last(), models.Encounter.id)
+            sa.select(Encounter)
+            .join(BracketEncounter, BracketEncounter.encounter_id == Encounter.id)
+            .outerjoin(models.StageItem, models.StageItem.id == BracketEncounter.stage_item_id)
+            .where(BracketEncounter.stage_id == stage_id, Encounter.scoring_preset == "points")
+            .order_by(models.StageItem.order.nulls_last(), Encounter.id)
         )
-        return await self._read_lobbies(session, list(rows.scalars()), stage)
+        return await self._read_lobbies(session, list(rows.scalars()))
 
     async def is_participant_captain(
-        self, session: AsyncSession, auth_user: models.AuthUser, encounter: models.Encounter
+        self, session: AsyncSession, auth_user: models.AuthUser, encounter: Encounter
     ) -> bool:
-        """Does this account captain a team SEATED in this lobby?
-
-        The lobby has no sides, so the duel question ("are you home or away?")
-        has no answer here -- the participant rows are the whole roster.
-        """
+        """Does this account captain a team SEATED in this encounter?"""
         return bool(
             await session.scalar(
                 sa.select(
                     sa.exists()
-                    .where(EncounterParticipant.encounter_id == encounter.id)
-                    .where(models.Team.id == EncounterParticipant.team_id)
+                    .where(EncounterTeam.encounter_id == encounter.id)
+                    .where(EncounterTeam.active.is_(True))
+                    .where(models.Team.id == EncounterTeam.team_id)
                     .where(models.User.id == models.Team.captain_id)
                     .where(models.User.auth_user_id == auth_user.id)
                 )
             )
         )
 
-    async def _read_lobbies(
-        self,
-        session: AsyncSession,
-        lobbies: Sequence[models.Encounter],
-        stage: models.Stage | None,
-    ) -> list[FfaLobbyRead]:
-        """Build the read model for a whole stage in a fixed number of queries.
-
-        A stage read is one page of the tournament, so the seats, games,
-        results, teams and standings of EVERY lobby are fetched once each
-        instead of per lobby.
-        """
+    async def _read_lobbies(self, session: AsyncSession, lobbies: Sequence[Encounter]) -> list[FfaLobbyRead]:
+        """Build the read model for a whole stage in a fixed number of queries."""
         if not lobbies:
             return []
-        rules = ffa_rules(stage)
-        # The full rule set, hidden columns included: ``public_view`` is what
-        # trims it for a public endpoint, so an admin read needs no second path.
-        rules_read = FfaRulesRead(
-            columns=[
-                FfaColumnRead(key=column.key, label=column.label, public=column.public, better=column.better)
-                for column in rules.columns
-            ],
-            placement_points=list(rules.placement_points),
-            formula=rules.formula.source,
-            requires_placement=rules.requires_placement,
-        )
-
         lobby_ids = [lobby.id for lobby in lobbies]
-        seats: dict[int, list[EncounterParticipant]] = {lobby_id: [] for lobby_id in lobby_ids}
+
+        seats: dict[int, list[EncounterTeam]] = {lobby_id: [] for lobby_id in lobby_ids}
         for seat in (
             await session.execute(
-                sa.select(EncounterParticipant)
-                .where(EncounterParticipant.encounter_id.in_(lobby_ids))
-                .order_by(EncounterParticipant.encounter_id, EncounterParticipant.slot)
+                sa.select(EncounterTeam)
+                .where(EncounterTeam.encounter_id.in_(lobby_ids), EncounterTeam.active.is_(True))
+                .order_by(EncounterTeam.encounter_id, EncounterTeam.slot)
             )
         ).scalars():
             seats[seat.encounter_id].append(seat)
 
-        # Cancelled games are history: the position they held is free again
-        # (the partial unique index says so), so the cell must read as unplayed.
-        games: dict[int, list[models.EncounterGame]] = {lobby_id: [] for lobby_id in lobby_ids}
+        # Cancelled games are history: the position they held is free again, so
+        # the cell must read as unplayed.
+        games: dict[int, list[EncounterGame]] = {lobby_id: [] for lobby_id in lobby_ids}
         for game in (
             await session.execute(
-                sa.select(models.EncounterGame)
+                sa.select(EncounterGame)
                 .where(
-                    models.EncounterGame.encounter_id.in_(lobby_ids),
-                    models.EncounterGame.state != EncounterGameState.CANCELLED,
+                    EncounterGame.encounter_id.in_(lobby_ids),
+                    EncounterGame.state != EncounterGameState.CANCELLED,
                 )
-                .order_by(models.EncounterGame.encounter_id, models.EncounterGame.position)
+                .order_by(EncounterGame.encounter_id, EncounterGame.position)
             )
         ).scalars():
             games[game.encounter_id].append(game)
 
-        game_ids = [game.id for lobby_games in games.values() for game in lobby_games]
-        lines: dict[int, dict[int, FfaGameLine]] = {game_id: {} for game_id in game_ids}
-        for row in await self.result_repo.list_for_games(session, game_ids):
-            lines[row.game_id][row.team_id] = FfaGameLine(team_id=row.team_id, placement=row.placement, stats=row.stats)
-        # One ranking for the whole read: the cell's place, the row's wins and
-        # the standings all come from these lines, so a game with no entered
-        # places is ranked once, here, by the current formula.
-        lines = {
-            game_id: {line.team_id: line for line in rank_game(list(by_team.values()), rules)}
-            for game_id, by_team in lines.items()
-        }
+        game_ids = [game.id for rows in games.values() for game in rows]
+        lines: dict[int, dict[int, GameLine]] = {game_id: {} for game_id in game_ids}
+        if game_ids:
+            for row in (
+                await session.execute(sa.select(EncounterGameTeam).where(EncounterGameTeam.game_id.in_(game_ids)))
+            ).scalars():
+                lines[row.game_id][row.encounter_team_id] = GameLine(
+                    encounter_team_id=row.encounter_team_id,
+                    score=row.score,
+                    placement=row.placement,
+                    values=dict(row.column_values or {}),
+                )
 
-        team_ids = [seat.team_id for lobby_seats in seats.values() for seat in lobby_seats]
+        team_ids = [seat.team_id for rows in seats.values() for seat in rows if seat.team_id is not None]
         teams = {
             row.id: row
             for row in (
@@ -534,8 +462,13 @@ class FfaEncounterService:
                 )
             ).all()
         }
-
-        item_ids = [lobby.stage_item_id for lobby in lobbies if lobby.stage_item_id is not None]
+        positions = {
+            row.encounter_id: row
+            for row in (
+                await session.execute(sa.select(BracketEncounter).where(BracketEncounter.encounter_id.in_(lobby_ids)))
+            ).scalars()
+        }
+        item_ids = [row.stage_item_id for row in positions.values() if row.stage_item_id is not None]
         ranked = {
             (row.stage_item_id, row.team_id): row
             for row in (
@@ -560,33 +493,58 @@ class FfaEncounterService:
                 )
             ).all()
         }
+        stage_ids = {row.stage_id for row in positions.values() if row.stage_id is not None}
+        stage_advance = {
+            row.id: row.advance_count
+            for row in (
+                await session.execute(
+                    sa.select(models.Stage.id, models.Stage.advance_count).where(models.Stage.id.in_(stage_ids))
+                )
+            ).all()
+        }
 
-        return [
-            self._read_lobby(
-                lobby, seats[lobby.id], games[lobby.id], lines, teams, ranked, advance, stage, rules, rules_read
+        out = []
+        for lobby in lobbies:
+            rules = await self.games.rules(session, lobby)
+            out.append(
+                self._read_lobby(
+                    lobby,
+                    seats[lobby.id],
+                    games[lobby.id],
+                    lines,
+                    teams,
+                    ranked,
+                    advance,
+                    stage_advance,
+                    positions.get(lobby.id),
+                    rules,
+                )
             )
-            for lobby in lobbies
-        ]
+        return out
 
     def _read_lobby(
         self,
-        lobby: models.Encounter,
-        seats: Sequence[EncounterParticipant],
-        games: Sequence[models.EncounterGame],
-        lines: dict[int, dict[int, FfaGameLine]],
+        lobby: Encounter,
+        seats: Sequence[EncounterTeam],
+        games: Sequence[EncounterGame],
+        lines: dict[int, dict[int, GameLine]],
         teams: dict[int, sa.Row],
         ranked: dict[tuple[int, int], sa.Row],
         advance: dict[int, int | None],
-        stage: models.Stage | None,
-        rules: FfaRules,
-        rules_read: FfaRulesRead,
+        stage_advance: dict[int, int | None],
+        position_row: BracketEncounter | None,
+        rules: ScoringRules,
     ) -> FfaLobbyRead:
         by_position = {game.position: game for game in games}
         # Normally 1..best_of, but a lowered games count must never hide a
         # result that was already recorded past the new end.
         last = max([lobby.best_of, *by_position], default=lobby.best_of)
+        # One placing and one payout for the whole read: a game with no entered
+        # places is placed once, here, by the current formula.
+        placements = {game_id: resolve_placements(rules, list(by_team.values())) for game_id, by_team in lines.items()}
+        points = {game_id: game_points(rules, list(by_team.values())) for game_id, by_team in lines.items()}
         totals = team_totals(
-            [seat.team_id for seat in seats],
+            [seat.id for seat in seats],
             [
                 tuple(sorted(lines[game.id].values(), key=_line_order))
                 for game in games
@@ -594,17 +552,19 @@ class FfaEncounterService:
             ],
             rules,
         )
-        item_advance = advance.get(lobby.stage_item_id) if lobby.stage_item_id is not None else None
+        stage_item_id = position_row.stage_item_id if position_row is not None else None
+        stage_id = position_row.stage_id if position_row is not None else None
+        item_advance = advance.get(stage_item_id) if stage_item_id is not None else None
         rows = []
         for seat in seats:
-            total = totals[seat.team_id]
-            team = teams[seat.team_id]
-            standing = ranked.get((lobby.stage_item_id, seat.team_id))
+            total = totals[seat.id]
+            team = teams.get(seat.team_id) if seat.team_id is not None else None
+            standing = ranked.get((stage_item_id, seat.team_id))
             rows.append(
                 FfaLobbyRowRead(
                     team_id=seat.team_id,
-                    team_name=team.name,
-                    team_image_url=team.image_url,
+                    team_name=team.name if team is not None else seat.name,
+                    team_image_url=team.image_url if team is not None else None,
                     slot=seat.slot,
                     position=standing.position if standing is not None else None,
                     tie_group=standing.tie_group if standing is not None else None,
@@ -614,7 +574,7 @@ class FfaEncounterService:
                     wins=total.wins,
                     stats=dict(total.stats),
                     games=[
-                        self._read_cell(position, by_position.get(position), lines, seat.team_id, rules)
+                        self._read_cell(position, by_position.get(position), lines, placements, points, seat.id)
                         for position in range(1, last + 1)
                     ],
                 )
@@ -624,161 +584,72 @@ class FfaEncounterService:
         return FfaLobbyRead(
             encounter_id=lobby.id,
             tournament_id=lobby.tournament_id,
-            stage_id=lobby.stage_id,
-            stage_item_id=lobby.stage_item_id,
+            stage_id=stage_id,
+            stage_item_id=stage_item_id,
             name=lobby.name,
             status=lobby.status,
             result_status=lobby.result_status,
             best_of=lobby.best_of,
             scheduled_at=lobby.scheduled_at,
-            advance_count=item_advance if item_advance is not None else (stage.advance_count if stage else None),
-            rules=rules_read,
+            advance_count=item_advance if item_advance is not None else stage_advance.get(stage_id),
+            rules=FfaRulesRead(
+                columns=[
+                    FfaColumnRead(key=column.key, label=column.label, public=column.public, better=column.better)
+                    for column in rules.columns
+                ],
+                placement_points=list(rules.placement_points),
+                formula=rules.game_formula.source,
+                requires_placement=rules.requires_placement,
+            ),
             rows=rows,
         )
 
     @staticmethod
     def _read_cell(
         position: int,
-        game: models.EncounterGame | None,
-        lines: dict[int, dict[int, FfaGameLine]],
-        team_id: int,
-        rules: FfaRules,
+        game: EncounterGame | None,
+        lines: dict[int, dict[int, GameLine]],
+        placements: dict[int, dict[int, int]],
+        points: dict[int, dict[int, float]],
+        encounter_team_id: int,
     ) -> FfaGameCellRead:
         game_lines = lines.get(game.id, {}) if game is not None else {}
-        line = game_lines.get(team_id)
+        line = game_lines.get(encounter_team_id)
+        placed = placements.get(game.id, {}) if game is not None else {}
+        # ``teams`` is a variable of the formula, so the points were paid over
+        # the lines THIS game holds, not the lobby's seat count.
+        paid = points.get(game.id, {}) if game is not None else {}
         return FfaGameCellRead(
             position=position,
             state=game.state if game is not None else None,
-            placement=line.placement if line is not None else None,
-            # ``teams`` is a variable of the formula, so it is the count of the
-            # lines THIS game holds, not the lobby's seat count: a lobby may seat
-            # a team that never played this game.
-            points=game_points(line, rules, len(game_lines)) if line is not None else None,
-            stats=dict(line.stats) if line is not None else None,
+            placement=placed.get(encounter_team_id),
+            points=paid.get(encounter_team_id),
+            stats=dict(line.values) if line is not None else None,
         )
 
     # -- internals ---------------------------------------------------------
-    async def _lock_lobby(self, session: AsyncSession, encounter_id: int) -> models.Encounter:
-        """The lobby, locked for this transaction. 404 unknown, 409 not a lobby."""
-        lobby = await self.encounter_repo.get_for_update(session, encounter_id)
-        if lobby is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=[ApiExc(code="encounter_not_found", msg=f"Encounter {encounter_id} not found")],
-            )
-        ensure_format(lobby, EncounterFormat.FFA)
-        return lobby
-
-    async def _live_game(self, session: AsyncSession, lobby: models.Encounter, position: int) -> models.EncounterGame:
+    async def _live_game(self, session: AsyncSession, lobby: Encounter, position: int) -> EncounterGame:
         """The live game of ``position``, opening it if this is its first result."""
-        games = await self.game_repo.list_for_encounter(session, lobby.id)
-        game = next((item for item in games if item.position == position), None)
+        game = next((row for row in await self.games.list_games(session, lobby.id) if row.position == position), None)
         if game is not None:
             return game
-        return await self.game_repo.create(
-            session,
-            models.EncounterGame(
-                encounter_id=lobby.id,
-                position=position,
-                format=EncounterFormat.FFA,
-                state=EncounterGameState.PLANNED,
-            ),
-        )
-
-    async def _rules(self, session: AsyncSession, lobby: models.Encounter) -> FfaRules:
-        stage = await self.stage_repo.get(session, lobby.stage_id) if lobby.stage_id else None
-        return ffa_rules(stage)
-
-    async def _snapshot(self, session: AsyncSession, game: models.EncounterGame) -> list[dict]:
-        """A game's current result rows, in table order. ``[]`` for a fresh position."""
-        if game.id is None:
-            return []
-        rows = await self.result_repo.list_for_games(session, [game.id])
-        return [
-            {"team_id": row.team_id, "placement": row.placement, "stats": dict(row.stats)}
-            for row in sorted(rows, key=_line_order)
-        ]
-
-    async def _confirmed_games(
-        self, session: AsyncSession, lobby: models.Encounter, rules: FfaRules
-    ) -> list[tuple[FfaGameLine, ...]]:
-        """The lobby's confirmed games, oldest position first, every place ranked."""
-        games = [
-            game
-            for game in await self.game_repo.list_for_encounter(session, lobby.id)
-            if game.state == EncounterGameState.CONFIRMED
-        ]
-        by_game: dict[int, list[FfaGameLine]] = {game.id: [] for game in games}
-        for row in await self.result_repo.list_for_games(session, list(by_game)):
-            by_game[row.game_id].append(FfaGameLine(team_id=row.team_id, placement=row.placement, stats=row.stats))
-        return [rank_game(by_game[game.id], rules) for game in games]
-
-    async def _totals_snapshot(self, session: AsyncSession, lobby: models.Encounter) -> list[dict]:
-        """What the lobby decided, for the journal: points and games per team."""
-        participants = await self.participant_repo.list_for_encounter(session, lobby.id)
-        rules = await self._rules(session, lobby)
-        totals = team_totals(
-            [p.team_id for p in participants],
-            await self._confirmed_games(session, lobby, rules),
-            rules,
-        )
-        return [{"team_id": row.team_id, "points": row.points, "games": row.games} for row in totals.values()]
-
-    def _journal(
-        self,
-        session: AsyncSession,
-        lobby: models.Encounter,
-        *,
-        action: EncounterResultAuditAction,
-        actor_user_id: int | None,
-        game: models.EncounterGame | None,
-        before: list[dict],
-        after: list[dict],
-        reason: str | None = None,
-        from_result_status: EncounterResultStatus | None = None,
-    ) -> models.EncounterResultAudit:
-        """Append one lobby decision to the shared encounter journal.
-
-        Private, not a ``shared/services`` helper: one service writes these rows
-        (backend/ARCHITECTURE.md:134-143). A lobby has no series score, so the
-        ``*_score_*`` columns stay NULL and the snapshot carries the truth --
-        which is exactly what ``ck_encounter_result_audit_after_shape`` demands.
-        """
-        return self.audit_repo.add(
-            session,
-            models.EncounterResultAudit(
-                encounter_id=lobby.id,
-                actor_user_id=actor_user_id,
-                action=action,
-                from_result_status=lobby.result_status if from_result_status is None else from_result_status,
-                to_result_status=lobby.result_status,
-                home_score_before=None,
-                away_score_before=None,
-                home_score_after=None,
-                away_score_after=None,
-                ffa_results_json={"before": before, "after": after},
-                game_id=game.id if game is not None else None,
-                game_result_version=game.result_version if game is not None else None,
-                reason=reason,
-                source="admin",
-            ),
-        )
+        return await self.games.open_game(session, lobby, position=position)
 
 
-def _line_order(line: FfaGameLine | EncounterGameResult) -> tuple[int, int]:
-    """Best place first, ties by team -- the order results are read back in."""
-    return (line.placement or 0, line.team_id)
+def _line_order(line: GameLine) -> tuple[int, int]:
+    """Best place first, ties by participation -- the read-back order."""
+    return (line.placement or 0, line.encounter_team_id)
 
 
 def public_view(lobby: FfaLobbyRead) -> FfaLobbyRead:
-    """The same table with every non-public column removed (plan §7.3).
+    """The same table with every non-public column removed.
 
     The service builds ONE lobby read, with every column on it, and the public
     endpoints trim it here -- so a hidden column cannot leak through a read
     nobody remembered to filter, and the admin endpoints need no second builder.
 
-    The formula is NOT trimmed: it is the rule the table is computed by, and a
-    viewer seeing a hidden key's NAME there was the accepted trade (plan §2).
+    The formula is NOT trimmed: it is the rule the table is computed by, so a
+    viewer may see a hidden key's NAME there.
     """
     public_keys = {column.key for column in lobby.rules.columns if column.public}
     if len(public_keys) == len(lobby.rules.columns):

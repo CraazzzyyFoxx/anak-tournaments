@@ -6,14 +6,16 @@ import type messages from "@/i18n/messages/en.json";
 import type { ReactNode } from "react";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { useInSettingsPreview } from "@/components/kit/SettingsContinuation";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { usePermissions } from "@/hooks/usePermissions";
 import type { Tournament } from "@/types/tournament.types";
 import { tabFallback, useHubTournamentQuery } from "../hubQueries";
-import { allowedSettingsSection, type SettingsSection, type TabAccess } from "../tab-guards";
+import { useTabAccess } from "../sub-tabs";
+import { allowedSettingsSection, type SettingsSection } from "../tab-guards";
 import { SETTINGS_SECTION_LABEL_KEYS } from "./settings-sections";
 
-export interface SettingsSectionContext {
+interface SettingsSectionContext {
   tournament: Tournament;
   tournamentId: number;
   workspaceId: number;
@@ -25,7 +27,7 @@ export interface SettingsSectionContext {
 
 export interface SettingsSectionProps {
   section: SettingsSection;
-  description: string;
+  description?: string;
   children: (context: SettingsSectionContext) => ReactNode;
 }
 
@@ -46,27 +48,20 @@ export function SettingsSectionPage({
   const params = useParams<{ id: string }>();
   const t = useTranslations("adminTournament.settings");
   const tournamentId = Number(params.id);
-  const { canAccessPermission, isLoaded: permissionsLoaded } = usePermissions();
+  const { isLoaded: permissionsLoaded } = usePermissions();
 
   const tournamentQuery = useHubTournamentQuery(tournamentId);
   const tournament = tournamentQuery.data;
-  const workspaceId = tournament?.workspace_id ?? null;
-
-  const access: TabAccess = {
-    canUpdateTournament: canAccessPermission("tournament.update", workspaceId),
-    canUpdateEncounter: canAccessPermission("match.update", workspaceId),
-    canTeamRead: canAccessPermission("team.read", workspaceId),
-    canTeamCreate: canAccessPermission("team.create", workspaceId),
-    canReadTournamentLink: canAccessPermission("tournament_link.read", workspaceId),
-    canDeleteTournament: canAccessPermission("tournament.delete", workspaceId),
-    teamFormation: tournament?.team_formation === "draft" ? "draft" : "balancer"
-  };
+  const access = useTabAccess(tournament);
 
   const sectionLabel = t(
     `sections.${SETTINGS_SECTION_LABEL_KEYS[section]}` as `sections.${keyof typeof messages.adminTournament.settings.sections}`
   );
 
-  const header = (
+  // As the next section's ghost the page is titled by the ghost itself; a
+  // second h1 there would be a heading for something not open.
+  const inPreview = useInSettingsPreview();
+  const header = inPreview ? null : (
     <AdminPageHeader title={sectionLabel} description={description} />
   );
 

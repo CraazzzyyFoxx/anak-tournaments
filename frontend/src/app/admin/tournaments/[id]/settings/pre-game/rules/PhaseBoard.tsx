@@ -1,12 +1,18 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, MoreHorizontal, Plus } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { SortableGrip, SortableRows, useSortableRow } from "@/components/kit/SortableRows";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { RowButton } from "@/components/ui/row-button";
 import {
   Select,
   SelectContent,
@@ -28,6 +34,7 @@ import {
   stepSummary,
   updatePhase,
   type PickBanStepTemplate,
+  actorsMessageKey,
 } from "@/lib/tournament/pick-ban-config";
 import type {
   PickBanGenerator,
@@ -49,12 +56,12 @@ const GENERATOR_NONE = "__none__";
 const phasePath = (index: number) => `phases[${index}]`;
 
 /**
- * The phase board: one card per phase, each holding its ordered steps.
+ * The phase board: one section per phase, each holding its ordered steps.
  *
- * A phase is "which steps run on which map of the series" — the `when` chip is
+ * A phase is "which steps run on which map of the series": the `when` chip is
  * the condition that decides, and the first phase whose condition matches the
- * round wins. That ordering is why phases move up and down rather than living
- * in a set.
+ * round wins. That ordering is why phases are dragged into order rather than
+ * living in a set.
  */
 export function PhaseBoard({
   ruleset,
@@ -81,9 +88,14 @@ export function PhaseBoard({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid gap-3 lg:grid-cols-2">
-        {ruleset.phases.map((phase, index) => (
-          <PhaseCard
+      <SortableRows
+        className="flex flex-col divide-y divide-border"
+        items={ruleset.phases}
+        getId={(phase) => phase.id}
+        onReorder={(phases) => onChange({ ...ruleset, phases })}
+      >
+        {(phase, index) => (
+          <PhaseSection
             key={phase.id}
             phase={phase}
             index={index}
@@ -99,16 +111,15 @@ export function PhaseBoard({
             ruleset={ruleset}
             onSelect={onSelect}
           />
-        ))}
-      </div>
+        )}
+      </SortableRows>
 
       {canManage ? (
         <div>
           <Button
             type="button"
-            variant="outline"
+            variant="dashed"
             size="sm"
-            className="border-dashed"
             onClick={() =>
               onChange({ ...ruleset, phases: [...ruleset.phases, newPhase(ruleset)] })
             }
@@ -122,7 +133,107 @@ export function PhaseBoard({
   );
 }
 
-function PhaseCard({
+/**
+ * The actions of a phase or a step: reorder and duplicate one click away,
+ * delete in the menu. When delete is impossible the item stays, disabled,
+ * with the reason under it.
+ */
+function RowActions({
+  scope,
+  index,
+  total,
+  removeBlockedReason,
+  onMove,
+  onDuplicate,
+  onRemove,
+}: Readonly<{
+  scope: "phase" | "step";
+  index: number;
+  total: number;
+  removeBlockedReason?: string;
+  onMove: (delta: -1 | 1) => void;
+  onDuplicate: () => void;
+  onRemove: () => void;
+}>) {
+  const t = useTranslations("pickBan.rules");
+  const n = index + 1;
+  const moveUp = t(`${scope}.moveUp`, { n });
+  const moveDown = t(`${scope}.moveDown`, { n });
+  const duplicate = t(`${scope}.duplicate`, { n });
+  const actions = t(`${scope}.actions`, { n });
+
+  return (
+    <div className="flex shrink-0 items-center gap-0.5">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-7"
+        disabled={index === 0}
+        aria-label={moveUp}
+        title={moveUp}
+        onClick={() => onMove(-1)}
+      >
+        <ArrowUp aria-hidden className="size-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-7"
+        disabled={index === total - 1}
+        aria-label={moveDown}
+        title={moveDown}
+        onClick={() => onMove(1)}
+      >
+        <ArrowDown aria-hidden className="size-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-7"
+        aria-label={duplicate}
+        title={duplicate}
+        onClick={onDuplicate}
+      >
+        <Copy aria-hidden className="size-4" />
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            aria-label={actions}
+            title={actions}
+          >
+            <MoreHorizontal aria-hidden className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            className="text-danger focus:text-danger"
+            disabled={removeBlockedReason != null}
+            onSelect={onRemove}
+          >
+            <span>
+              {t("rowMenu.remove")}
+              {removeBlockedReason == null ? null : (
+                <span className="block text-caption text-muted-foreground">
+                  {removeBlockedReason}
+                </span>
+              )}
+            </span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+function PhaseSection({
   phase,
   index,
   total,
@@ -152,182 +263,156 @@ function PhaseCard({
   onSelect: (selection: { phaseId: string; stepId: string } | null) => void;
 }>) {
   const t = useTranslations("pickBan.rules");
+  const { ref, style, handleProps } = useSortableRow(phase.id, !canManage);
   const generated = phase.generator != null;
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-3 pt-5">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs tabular-nums text-muted-foreground">{index + 1}</span>
-          <Input
-            className="h-8 max-w-52 text-sm"
-            value={phase.name ?? ""}
-            disabled={!canManage}
-            aria-label={t("phase.name", { n: index + 1 })}
-            placeholder={t("phase.namePlaceholder")}
-            onChange={(event) =>
-              onChange(updatePhase(ruleset, phase.id, { name: event.target.value || null }))
-            }
-          />
-          <div className="flex-1" />
-          {canManage ? (
-            <div className="flex items-center gap-0.5">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-7"
-                disabled={index === 0}
-                aria-label={t("phase.moveUp", { n: index + 1 })}
-                onClick={() => onChange(movePhase(ruleset, phase.id, -1))}
-              >
-                <ArrowUp aria-hidden className="size-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-7"
-                disabled={index === total - 1}
-                aria-label={t("phase.moveDown", { n: index + 1 })}
-                onClick={() => onChange(movePhase(ruleset, phase.id, 1))}
-              >
-                <ArrowDown aria-hidden className="size-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-7"
-                aria-label={t("phase.duplicate", { n: index + 1 })}
-                onClick={() => onChange(duplicatePhase(ruleset, phase.id))}
-              >
-                <Copy aria-hidden className="size-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-7"
-                disabled={total === 1}
-                aria-label={t("phase.remove", { n: index + 1 })}
-                onClick={() => onChange(removePhase(ruleset, phase.id))}
-              >
-                <Trash2 aria-hidden className="size-4 text-destructive" />
-              </Button>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <ConditionField
-            label={t("phase.when")}
-            description={t("phase.whenHint")}
-            value={phase.when}
-            context="round"
-            kind={kind}
-            catalog={catalog}
-            catalogue={catalogue}
-            disabled={!canManage}
-            onChange={(next) => onChange(updatePhase(ruleset, phase.id, { when: next }))}
-          />
-          <ConditionField
-            label={t("phase.poolFilter")}
-            description={t("phase.poolFilterHint")}
-            value={phase.pool_filter}
-            context="pool"
-            kind={kind}
-            catalog={catalog}
-            catalogue={catalogue}
-            disabled={!canManage}
-            onChange={(next) => onChange(updatePhase(ruleset, phase.id, { pool_filter: next }))}
-          />
-        </div>
-
-        {/* Only a map veto has a shape the server can generate: banning a pool
-            down to the maps a series plays. A hero pool stays playable. */}
-        {kind === "map" ? (
-          <label className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            {t("phase.generator")}
-            <Select
-              value={phase.generator ?? GENERATOR_NONE}
-              disabled={!canManage}
-              onValueChange={(value) =>
-                onChange(
-                  updatePhase(ruleset, phase.id, {
-                    generator: value === GENERATOR_NONE ? null : (value as PickBanGenerator),
-                    // A generated phase expands server-side; hand-written steps
-                    // would never run, so they are dropped rather than hidden.
-                    steps: value === GENERATOR_NONE ? phase.steps : [],
-                  })
-                )
-              }
-            >
-              <SelectTrigger className="h-7 w-48 text-xs">
-                {t(`phase.generatorValue.${phase.generator ?? "none"}`)}
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={GENERATOR_NONE}>{t("phase.generatorValue.none")}</SelectItem>
-                <SelectItem value="bracket">{t("phase.generatorValue.bracket")}</SelectItem>
-                <SelectItem value="slot_veto">{t("phase.generatorValue.slot_veto")}</SelectItem>
-              </SelectContent>
-            </Select>
-          </label>
+    <section
+      ref={ref}
+      style={style}
+      className="flex flex-col gap-3 bg-card py-4 first:pt-0 last:pb-0"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        {canManage && total > 1 ? (
+          <SortableGrip handleProps={handleProps} label={t("phase.reorder", { n: index + 1 })} />
         ) : null}
+        <span className="text-xs tabular-nums text-muted-foreground">{index + 1}</span>
+        <Input
+          size="sm"
+          className="max-w-52"
+          value={phase.name ?? ""}
+          disabled={!canManage}
+          aria-label={t("phase.name", { n: index + 1 })}
+          onChange={(event) =>
+            onChange(updatePhase(ruleset, phase.id, { name: event.target.value || null }))
+          }
+        />
+        <div className="flex-1" />
+        {canManage ? (
+          <RowActions
+            scope="phase"
+            index={index}
+            total={total}
+            removeBlockedReason={total > 1 ? undefined : t("rowMenu.lastPhase")}
+            onMove={(delta) => onChange(movePhase(ruleset, phase.id, delta))}
+            onDuplicate={() => onChange(duplicatePhase(ruleset, phase.id))}
+            onRemove={() => onChange(removePhase(ruleset, phase.id))}
+          />
+        ) : null}
+      </div>
 
-        {generated ? (
-          <p className="text-xs text-muted-foreground">{t("phase.generatedHint")}</p>
-        ) : (
-          <>
-            <ol className="flex flex-col gap-1.5">
-              {phase.steps.map((step, stepIndex) => (
-                <li key={step.id}>
-                  <StepCard
-                    step={step}
-                    index={stepIndex}
-                    total={phase.steps.length}
-                    issues={issues.filter((issue) =>
-                      issue.path.startsWith(`${pathPrefix}.steps[${stepIndex}]`)
-                    )}
-                    selected={selected?.phaseId === phase.id && selected.stepId === step.id}
-                    canManage={canManage}
-                    onSelect={() => onSelect({ phaseId: phase.id, stepId: step.id })}
-                    onMove={(delta) => onChange(moveStep(ruleset, phase.id, step.id, delta))}
-                    onDuplicate={() => onChange(duplicateStep(ruleset, phase.id, step.id))}
-                    onRemove={() => {
-                      if (selected?.stepId === step.id) onSelect(null);
-                      onChange(removeStep(ruleset, phase.id, step.id));
-                    }}
-                  />
-                </li>
-              ))}
-            </ol>
+      <div className="flex flex-wrap gap-2">
+        <ConditionField
+          label={t("phase.when")}
+          description={t("phase.whenHint")}
+          value={phase.when}
+          context="round"
+          kind={kind}
+          catalog={catalog}
+          catalogue={catalogue}
+          disabled={!canManage}
+          onChange={(next) => onChange(updatePhase(ruleset, phase.id, { when: next }))}
+        />
+        <ConditionField
+          label={t("phase.poolFilter")}
+          description={t("phase.poolFilterHint")}
+          value={phase.pool_filter}
+          context="pool"
+          kind={kind}
+          catalog={catalog}
+          catalogue={catalogue}
+          disabled={!canManage}
+          onChange={(next) => onChange(updatePhase(ruleset, phase.id, { pool_filter: next }))}
+        />
+      </div>
 
-            {phase.steps.length === 0 ? (
-              <p className="text-xs text-muted-foreground">{t("phase.noSteps")}</p>
-            ) : null}
+      {/* Only a map veto has a shape the server can generate: banning a pool
+          down to the maps a series plays. A hero pool stays playable. */}
+      {kind === "map" ? (
+        <label className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          {t("phase.generator")}
+          <Select
+            value={phase.generator ?? GENERATOR_NONE}
+            disabled={!canManage}
+            onValueChange={(value) =>
+              onChange(
+                updatePhase(ruleset, phase.id, {
+                  generator: value === GENERATOR_NONE ? null : (value as PickBanGenerator),
+                  // A generated phase expands server-side; hand-written steps
+                  // would never run, so they are dropped rather than hidden.
+                  steps: value === GENERATOR_NONE ? phase.steps : [],
+                })
+              )
+            }
+          >
+            <SelectTrigger size="sm" className="h-7 w-48">
+              {t(`phase.generatorValue.${phase.generator ?? "none"}`)}
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={GENERATOR_NONE}>{t("phase.generatorValue.none")}</SelectItem>
+              <SelectItem value="bracket">{t("phase.generatorValue.bracket")}</SelectItem>
+              <SelectItem value="slot_veto">{t("phase.generatorValue.slot_veto")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </label>
+      ) : null}
 
-            {canManage ? (
-              <StepPalette
-                onAdd={(template) => {
-                  const next = addStep(ruleset, phase.id, template);
-                  const created = next.phases.find((one) => one.id === phase.id)?.steps.at(-1);
-                  onChange(next);
-                  if (created) onSelect({ phaseId: phase.id, stepId: created.id });
-                }}
-              />
-            ) : null}
-          </>
-        )}
+      {generated ? (
+        <p className="text-xs text-muted-foreground">{t("phase.generatedHint")}</p>
+      ) : (
+        <>
+          {phase.steps.length > 0 ? (
+            <SortableRows
+              className="flex flex-col divide-y divide-border"
+              items={phase.steps}
+              getId={(step) => step.id}
+              onReorder={(steps) => onChange(updatePhase(ruleset, phase.id, { steps }))}
+            >
+              {(step, stepIndex) => (
+                <StepRow
+                  key={step.id}
+                  step={step}
+                  index={stepIndex}
+                  total={phase.steps.length}
+                  issues={issues.filter((issue) =>
+                    issue.path.startsWith(`${pathPrefix}.steps[${stepIndex}]`)
+                  )}
+                  selected={selected?.phaseId === phase.id && selected.stepId === step.id}
+                  canManage={canManage}
+                  onSelect={() => onSelect({ phaseId: phase.id, stepId: step.id })}
+                  onMove={(delta) => onChange(moveStep(ruleset, phase.id, step.id, delta))}
+                  onDuplicate={() => onChange(duplicateStep(ruleset, phase.id, step.id))}
+                  onRemove={() => {
+                    if (selected?.stepId === step.id) onSelect(null);
+                    onChange(removeStep(ruleset, phase.id, step.id));
+                  }}
+                />
+              )}
+            </SortableRows>
+          ) : (
+            <p className="text-xs text-muted-foreground">{t("phase.noSteps")}</p>
+          )}
 
-        {/* Issues whose path names the phase itself, not one of its steps. */}
-        <IssueList issues={issues.filter((issue) => !issue.path.includes(".steps["))} />
-      </CardContent>
-    </Card>
+          {canManage ? (
+            <StepPalette
+              onAdd={(template) => {
+                const next = addStep(ruleset, phase.id, template);
+                const created = next.phases.find((one) => one.id === phase.id)?.steps.at(-1);
+                onChange(next);
+                if (created) onSelect({ phaseId: phase.id, stepId: created.id });
+              }}
+            />
+          ) : null}
+        </>
+      )}
+
+      {/* Issues whose path names the phase itself, not one of its steps. */}
+      <IssueList issues={issues.filter((issue) => !issue.path.includes(".steps["))} />
+    </section>
   );
 }
 
-function StepCard({
+function StepRow({
   step,
   index,
   total,
@@ -346,88 +431,53 @@ function StepCard({
   selected: boolean;
   canManage: boolean;
   onSelect: () => void;
-  onMove: (delta: number) => void;
+  onMove: (delta: -1 | 1) => void;
   onDuplicate: () => void;
   onRemove: () => void;
 }>) {
   const t = useTranslations("pickBan.rules");
+  const { ref, style, handleProps } = useSortableRow(step.id, !canManage);
   const summary = stepSummary(step);
   const lifetime = stepLifetimeSummary(step);
   const hasError = issues.some((issue) => issue.severity === "error");
 
   return (
     <div
-      className={cn(
-        "rounded-md border bg-card p-2",
-        selected ? "border-primary ring-1 ring-primary" : "border-border",
-        hasError && "border-destructive"
-      )}
+      ref={ref}
+      style={style}
+      className={cn("rounded-md bg-card px-1 py-1.5", selected && "bg-accent/40")}
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
+      <div className="flex items-center gap-2">
+        {canManage && total > 1 ? (
+          <SortableGrip handleProps={handleProps} label={t("step.reorder", { n: index + 1 })} />
+        ) : null}
+        <RowButton
           onClick={onSelect}
           aria-pressed={selected}
-          className="flex min-w-0 flex-1 items-center gap-2 text-start"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-sm"
         >
           <span className="text-xs tabular-nums text-muted-foreground">{index + 1}</span>
-          <span className="truncate text-sm font-medium">
-            {t(`action.${step.action}`)} · {t(`actors.${step.actors}`)}
+          <span className={cn("truncate text-sm font-medium", hasError && "text-danger")}>
+            {t(`action.${step.action}`)} · {t(`actors.${actorsMessageKey(step.actors)}`)}
           </span>
-          <Badge variant="secondary" className="shrink-0">
-            {t(`summary.${summary.key}`, summary.values)}
-          </Badge>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            · {t(`summary.${summary.key}`, summary.values)}
+          </span>
           {lifetime == null ? null : (
-            <Badge variant="outline" className="shrink-0">
-              {t(`summary.${lifetime.key}`, lifetime.values)}
-            </Badge>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              · {t(`summary.${lifetime.key}`, lifetime.values)}
+            </span>
           )}
-        </button>
+        </RowButton>
         {canManage ? (
-          <div className="flex items-center gap-0.5">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-7"
-              disabled={index === 0}
-              aria-label={t("step.moveUp", { n: index + 1 })}
-              onClick={() => onMove(-1)}
-            >
-              <ArrowUp aria-hidden className="size-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-7"
-              disabled={index === total - 1}
-              aria-label={t("step.moveDown", { n: index + 1 })}
-              onClick={() => onMove(1)}
-            >
-              <ArrowDown aria-hidden className="size-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-7"
-              aria-label={t("step.duplicate", { n: index + 1 })}
-              onClick={onDuplicate}
-            >
-              <Copy aria-hidden className="size-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-7"
-              aria-label={t("step.remove", { n: index + 1 })}
-              onClick={onRemove}
-            >
-              <Trash2 aria-hidden className="size-4 text-destructive" />
-            </Button>
-          </div>
+          <RowActions
+            scope="step"
+            index={index}
+            total={total}
+            onMove={onMove}
+            onDuplicate={onDuplicate}
+            onRemove={onRemove}
+          />
         ) : null}
       </div>
       <IssueList issues={issues} />
@@ -445,13 +495,12 @@ function StepPalette({ onAdd }: Readonly<{ onAdd: (template: PickBanStepTemplate
         <Button
           key={template}
           type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 border-dashed text-xs font-normal"
+          variant="dashed"
+          size="xs"
           title={t(`template.${template}.hint`)}
           onClick={() => onAdd(template)}
         >
-          <Plus aria-hidden className="size-3.5" />
+          <Plus aria-hidden />
           {t(`template.${template}.label`)}
         </Button>
       ))}

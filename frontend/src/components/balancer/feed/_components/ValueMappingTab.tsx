@@ -9,6 +9,7 @@ import type {
   ValueMappingState,
 } from "@/types/balancer-admin.types";
 import type { SubroleCatalog } from "@/types/registration.types";
+import type { RoleOntology } from "@/lib/roster/ontology";
 
 import { ValueMapEditor } from "./ValueMapEditor";
 
@@ -16,6 +17,8 @@ interface ValueMappingTabProps {
   valueState: ValueMappingState;
   valueCategories: MappingValueCategory[];
   subroleCatalog: SubroleCatalog;
+  /** The tournament's game: the roles a sheet's text maps to. `null` while it loads. */
+  ontology: RoleOntology | null;
   onAdd: (category: MappingValueCategoryName) => void;
   onUpdate: (
     category: MappingValueCategoryName,
@@ -37,6 +40,7 @@ export function ValueMappingTab({
   valueState,
   valueCategories,
   subroleCatalog,
+  ontology,
   onAdd,
   onUpdate,
   onRemove,
@@ -76,6 +80,7 @@ export function ValueMappingTab({
           title={t("categories.roles")}
           description={t("descriptions.roles")}
           kind="role"
+          ontology={ontology}
           rows={valueState.roles}
           canSeed={Object.keys(roleDefaults).length > 0}
           onAdd={() => onAdd("roles")}
@@ -111,6 +116,7 @@ export function ValueMappingTab({
             title={t("categories.roleSubroles")}
             description={t("descriptions.roleSubroles")}
             kind="role_subrole"
+            ontology={ontology}
             rows={valueState.role_subroles}
             canSeed={Object.keys(roleSubroleDefaults).length > 0}
             subroleCatalog={subroleCatalog}

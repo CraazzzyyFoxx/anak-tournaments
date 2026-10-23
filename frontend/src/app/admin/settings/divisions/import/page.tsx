@@ -6,8 +6,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
 import { WizardShell, type WizardStep } from "@/components/kit/WizardShell";
-import { StatusPill } from "@/components/kit/StatusPill";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { Card } from "@/components/ui/card";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { PageStateCard } from "@/components/ui/page-state-card";
@@ -23,11 +23,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
 import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { DivisionGridMarketplaceImportRequest } from "@/types/workspace.types";
-import { Spinner } from "@/components/ui/spinner";
 import { divisionGridQueryKeys } from "@/lib/divisions/query-keys";
 
 const STEPS = ["source", "version", "create"] as const;
@@ -64,7 +62,7 @@ export default function DivisionGridImportPage() {
   const sourceVersionId = numberParam(searchParams, "version");
   const jobId = numberParam(searchParams, "job");
   const includeIcons = searchParams?.get("icons") !== "0";
-  const includeOwRanks = searchParams?.get("ow") !== "0";
+  const includeNativeRanks = searchParams?.get("ow") !== "0";
 
   const workspacesQuery = useQuery({
     queryKey: divisionGridQueryKeys.importWorkspaces(workspaceId),
@@ -88,7 +86,7 @@ export default function DivisionGridImportPage() {
           source_grid_id: sourceGridId,
           source_version_id: sourceVersionId,
           include_icons: includeIcons,
-          include_ow_rank_mappings: includeOwRanks
+          include_native_rank_mappings: includeNativeRanks
         };
 
   const preflightQuery = useQuery({
@@ -110,7 +108,8 @@ export default function DivisionGridImportPage() {
 
   const importedGridId = job?.result?.imported_grids[0]?.target_grid_id ?? null;
   const importedVersionsQuery = useQuery({
-    queryKey: divisionGridQueryKeys.versions(workspaceId, importedGridId),
+    // The import result names the target grid, not its game; the grid id identifies the entry.
+    queryKey: divisionGridQueryKeys.versions(workspaceId, null, importedGridId),
     queryFn: () => workspaceService.getDivisionGridVersions(workspaceId!, importedGridId!),
     enabled: canImport && importedGridId !== null
   });
@@ -289,7 +288,7 @@ export default function DivisionGridImportPage() {
             </div>
 
             <fieldset className="flex flex-col gap-2">
-              <legend className={EYEBROW_CLASS}>{t("whatToCopy")}</legend>
+              <legend className={eyebrowClass("muted")}>{t("whatToCopy")}</legend>
               <div className="flex items-center gap-2">
                 <Checkbox
                   id="import-icons"
@@ -303,7 +302,7 @@ export default function DivisionGridImportPage() {
               <div className="flex items-center gap-2">
                 <Checkbox
                   id="import-ow"
-                  checked={includeOwRanks}
+                  checked={includeNativeRanks}
                   onCheckedChange={(checked) => setParams({ ow: checked ? null : "0" })}
                 />
                 <Label htmlFor="import-ow" className="font-normal">
@@ -327,19 +326,14 @@ export default function DivisionGridImportPage() {
                 onAction={() => void preflightQuery.refetch()}
               />
             ) : preflightQuery.data ? (
-              <div className="rounded-xl border border-border bg-card p-3 text-sm">
-                <p className={cn(EYEBROW_CLASS, "font-mono")}>{t("preview")}</p>
+              <Card variant="flat" className="p-3 text-sm">
+                <p className={eyebrowClass("muted")}>{t("preview")}</p>
                 <p className="mt-1">
                   {t("previewSummary", { divisions: preflightQuery.data.tiers_count, mappings: preflightQuery.data.mappings_count, crests: preflightQuery.data.assets_to_copy })}
                 </p>
                 {preflightQuery.data.conflicts.length > 0 ? (
-                  <p className="mt-2">
-                    <StatusPill tone="warning">
-                      {t("conflicts", { count: preflightQuery.data.conflicts.length })}
-                    </StatusPill>{" "}
-                    <span className="text-muted-foreground">
-                      {t("conflictsNote")}
-                    </span>
+                  <p className="mt-2 text-muted-foreground">
+                    {t("conflicts", { count: preflightQuery.data.conflicts.length })}
                   </p>
                 ) : null}
                 {preflightQuery.data.warnings.length > 0 ? (
@@ -351,7 +345,7 @@ export default function DivisionGridImportPage() {
                     ))}
                   </ul>
                 ) : null}
-              </div>
+              </Card>
             ) : null}
           </div>
         ) : null}
@@ -369,18 +363,15 @@ export default function DivisionGridImportPage() {
                 }
               />
             ) : job.status === "completed" ? (
-              <div className="rounded-xl border border-border bg-card p-3 text-sm">
+              <Card variant="flat" className="p-3 text-sm">
                 <p className="font-medium">{t("draftCreated")}</p>
                 <p className="mt-1 text-muted-foreground">
                   {t("createdSummary", { versions: job.result?.created_versions ?? 0, divisions: job.result?.created_tiers ?? 0, mappings: job.result?.copied_mappings ?? 0 })}
                 </p>
-              </div>
+              </Card>
             ) : (
               <div className="flex flex-col gap-2">
-                <p className="flex items-center gap-2 text-sm">
-                  <Spinner />
-                  {t("copying")}
-                </p>
+                <p className="text-sm">{t("copying")}</p>
                 <Progress value={job.progress} />
               </div>
             )}

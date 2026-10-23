@@ -1,12 +1,12 @@
-import type { Tone } from "@/components/kit/tone";
+import type { Tone } from "@/components/ui/tone";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
 /**
  * What a version is, as the user sees it.
  *
  * The backend stores three statuses — `draft`, `published`, `archived` — and
- * "active" is not one of them: it is the workspace pointing
- * `default_division_grid_version_id` at a published version. The strip has to
+ * "active" is not one of them: it is the workspace's explicit selection for the
+ * grid's discipline in `default_division_grid_versions`. The strip has to
  * show four states, so the fourth is derived here, once, instead of at each
  * call site.
  */
@@ -22,9 +22,13 @@ export function versionState(
   return "published";
 }
 
-export const VERSION_STATE_TONE: Record<VersionState, Tone> = {
-  archived: "neutral",
-  published: "info",
-  active: "success",
-  draft: "warning"
+/**
+ * The pill a version state earns. Only the two that want attention get one:
+ * published is the norm on a version list and archived is already dimmed.
+ */
+export const VERSION_PILL: Partial<
+  Record<VersionState, { tone: Tone; key: "versionState.draft" | "versionState.active" }>
+> = {
+  draft: { tone: "warning", key: "versionState.draft" },
+  active: { tone: "success", key: "versionState.active" }
 };

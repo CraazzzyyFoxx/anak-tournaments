@@ -57,11 +57,7 @@ class ReservedSlugTests(IsolatedAsyncioTestCase):
 
 
 class ProvisionOwnerTests(IsolatedAsyncioTestCase):
-    async def test_stamps_owner_id_and_still_grants_the_rbac_owner_role(self) -> None:
-        """Two distinct writes for two distinct concerns, in one transaction:
-        ``owner_id`` is accountability (the create cap), the RBAC role is
-        permission. Neither replaces the other."""
-        session = SimpleNamespace(commit=AsyncMock(), refresh=AsyncMock())
+    async def _provision(self, session, *, broker=None, rpc=None):
         created: list[object] = []
 
         async def _capture(_session, obj):
@@ -71,14 +67,27 @@ class ProvisionOwnerTests(IsolatedAsyncioTestCase):
         with (
             patch.object(workspaces, "get_by_slug", AsyncMock(return_value=None)),
             patch.object(workspaces.workspace_repo, "create", AsyncMock(side_effect=_capture)),
-            patch.object(workspace_service, "get_default_division_grid_version_id", AsyncMock(return_value=3)),
+            patch.object(workspaces.workspace_repo, "load_effective_grid_versions", AsyncMock()),
+            patch.object(workspace_service, "provision_default_grids", AsyncMock()),
             patch.object(workspace_service, "ensure_workspace_system_roles", AsyncMock()),
             patch.object(workspaces, "add_member", AsyncMock()),
             patch.object(workspace_service, "assign_workspace_system_role", AsyncMock()) as grant,
+            patch.object(workspace_service, "enqueue_outbox_event", AsyncMock()),
+            patch.object(workspace_service, "optional_broker", MagicMock(return_value=broker)),
+            patch.object(workspace_service, "request_rpc", rpc or AsyncMock()),
         ):
             workspace = await workspaces.provision(
                 session, payload={"slug": "acme", "name": "Acme Cup"}, owner_auth_user_id=42
             )
+        return workspace, created, grant
+
+    async def test_stamps_owner_id_and_still_grants_the_rbac_owner_role(self) -> None:
+        """Two distinct writes for two distinct concerns, in one transaction:
+        ``owner_id`` is accountability (the create cap), the RBAC role is
+        permission. Neither replaces the other."""
+        session = SimpleNamespace(commit=AsyncMock(), refresh=AsyncMock())
+
+        workspace, created, grant = await self._provision(session)
 
         self.assertIs(created[0], workspace)
         self.assertEqual(42, workspace.owner_id)
@@ -93,13 +102,34 @@ class ProvisionOwnerTests(IsolatedAsyncioTestCase):
         )
         session.commit.assert_awaited_once()
 
+    async def test_the_creator_is_an_owner_on_their_very_next_request(self) -> None:
+        """The /get-workspace wizard saves the profile straight after creating.
+        The outbox copy of the event reaches identity up to a second later, so
+        provision waits -- after its commit -- for identity to drop the
+        creator's cached RBAC (and the gateway's cached principal) itself."""
+        order: list[object] = []
+        session = SimpleNamespace(commit=AsyncMock(side_effect=lambda: order.append("commit")), refresh=AsyncMock())
+
+        async def _rpc(_broker, payload, subject, *, timeout):
+            order.append((subject, payload["auth_user_ids"], payload["change"]))
+            return SimpleNamespace(ok=True)
+
+        await self._provision(session, broker=object(), rpc=AsyncMock(side_effect=_rpc))
+
+        self.assertEqual(["commit", ("rpc.identity.workspace_member_changed", [42], "added")], order)
+
+    async def test_an_unreachable_identity_does_not_fail_the_committed_create(self) -> None:
+        session = SimpleNamespace(commit=AsyncMock(), refresh=AsyncMock())
+
+        workspace, _, _ = await self._provision(
+            session, broker=object(), rpc=AsyncMock(side_effect=TimeoutError("identity is slow"))
+        )
+
+        self.assertEqual(42, workspace.owner_id)
+        session.commit.assert_awaited_once()
+
 
 class CreateRPCTests(IsolatedAsyncioTestCase):
-    def setUp(self) -> None:
-        p = patch.object(workspaces_rpc, "_invalidate_auth_rbac_cache", AsyncMock())
-        p.start()
-        self.addCleanup(p.stop)
-
     async def _call(self, identity, payload, *, limit_error=None):
         session = _RecordingSession()
         handler = _handler(workspaces_rpc, "rpc.app.workspaces.create")

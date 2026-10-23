@@ -1,12 +1,11 @@
-"""Workspace player-sub-role catalog.
+"""Workspace sub-roles: catalog.role rows with a workspace_id.
 
-Write path is the admin CRUD; the public registration catalog is the same rows
-grouped by registration role code. Both go through ``PlayerSubRoleRepository``
-so the filter/order cannot drift.
+Write path is the admin CRUD; the registration catalog is the same rows grouped by their parent's code.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,155 +13,194 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.domain.player_sub_roles import build_subrole_catalog, normalize_role, normalize_sub_role
-from shared.repository import PlayerSubRoleRepository
+from shared.disciplines import DISCIPLINES
+from shared.domain.player_sub_roles import build_subrole_catalog, normalize_role, workspace_sub_role_code
+from shared.domain.roles import UnknownRole, validate_presentation
+from shared.repository import CatalogRoleRepository
 
-__all__ = (
-    "PlayerSubRoleService",
-    "SubroleCatalog",
-    "player_sub_role_service",
-)
+__all__ = ("PlayerSubRoleService", "SubroleCatalog", "player_sub_role_service")
 
 SubroleCatalog = dict[str, list[dict[str, str]]]
 
 
 class _CreateData(Protocol):
     workspace_id: int
+    discipline: str
     role: str
     label: str
     slug: str | None
     description: str | None
     sort_order: int
     is_active: bool
+    icon: str | None
+    color: str | None
+    model_fields_set: set[str]
 
 
 class _UpdateData(Protocol):
     def model_dump(self, *, exclude_unset: bool = False) -> dict[str, Any]: ...
 
 
-def _normalize_role_or_raise(role: str | None) -> str:
-    normalized = normalize_role(role)
+def _code_or_raise(parent: str, slug: str | None, label: str | None) -> str:
+    normalized = workspace_sub_role_code(parent, slug or label)
     if normalized is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Role is required.")
-    return normalized
-
-
-def _normalize_slug_or_raise(slug: str | None, label: str | None) -> str:
-    normalized = normalize_sub_role(slug or label)
-    if normalized is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sub-role slug or label is required.")
+    if len(normalized) > 64:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Sub-role slug or label is required.",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Sub-role code must be at most 64 characters after normalization.",
         )
     return normalized
 
 
+_PRESENTATION_KEYS = ("icon", "color")
+
+
+def _presentation(values: Mapping[str, Any], *, discipline: str) -> dict[str, Any]:
+    """The icon/color keys the caller sent (explicit ``None`` included), checked; omitted keys stay untouched."""
+    attrs = {key: values[key] for key in _PRESENTATION_KEYS if key in values}
+    try:
+        validate_presentation(attrs, discipline=discipline)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"invalid_role_presentation: {exc}"
+        ) from None
+    return attrs
+
+
 class PlayerSubRoleService:
-    def __init__(
-        self,
-        *,
-        sub_role_repo: PlayerSubRoleRepository = PlayerSubRoleRepository(),
+    """Workspace sub-roles: ``catalog.role`` rows with ``workspace_id`` under a module role.
+
+    A sub-role keeps its parent for life -- an assignment is the leaf, so moving it would rewrite every holder's
+    top-level role. Its code prefixes the normalized slug with that parent, so ``main``/``flex`` can exist under
+    several parents while codes remain unique per dimension and workspace.
+    """
+
+    def __init__(self, *, roles: CatalogRoleRepository = CatalogRoleRepository()) -> None:
+        self.roles = roles
+
+    async def _parent(self, session: AsyncSession, *, discipline: str, code: str | None) -> models.CatalogRole:
+        try:
+            parent = await self.roles.resolve(
+                session, discipline=discipline, workspace_id=None, dimension=None, code=normalize_role(code) or ""
+            )
+        except UnknownRole:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown role {code!r}.") from None
+        return parent
+
+    async def _assert_code_free(
+        self, session: AsyncSession, *, parent: models.CatalogRole, workspace_id: int, code: str
     ) -> None:
-        self.sub_role_repo = sub_role_repo
+        if await self.roles.code_taken(session, dimension_id=parent.dimension_id, workspace_id=None, code=code):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"sub_role_code_reserved: {code!r} is a role of the game, not a sub-role.",
+            )
+        if await self.roles.code_taken(session, dimension_id=parent.dimension_id, workspace_id=workspace_id, code=code):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="Player sub-role already exists for this workspace."
+            )
 
     async def list_sub_roles(
         self,
         session: AsyncSession,
         *,
         workspace_id: int,
+        discipline: str | None,
         role: str | None = None,
         include_inactive: bool = False,
-    ) -> list[models.PlayerSubRole]:
+    ) -> list[models.CatalogRole]:
+        """The workspace's sub-roles on ``discipline``'s rated dimension; ``None`` is every installed game's, in
+        installed order. A parent ``role`` names one game's role, so it needs the game."""
+        if discipline is None:
+            if role is not None:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="role requires discipline")
+            rows: list[models.CatalogRole] = []
+            for code in DISCIPLINES:
+                rows += await self.list_sub_roles(
+                    session, workspace_id=workspace_id, discipline=code, include_inactive=include_inactive
+                )
+            return rows
+        ontology = await self.roles.ontology(session, discipline=discipline, workspace_id=workspace_id)
+        parent_id = None if role is None else (await self._parent(session, discipline=discipline, code=role)).id
         return list(
-            await self.sub_role_repo.list_for_workspace(
+            await self.roles.list_sub_roles(
                 session,
-                workspace_id,
-                role=None if role is None else _normalize_role_or_raise(role),
+                workspace_id=workspace_id,
+                dimension_id=ontology.rated.id,
+                parent_id=parent_id,
                 only_active=not include_inactive,
             )
         )
 
-    async def catalog_for_workspace(self, session: AsyncSession, workspace_id: int) -> SubroleCatalog:
-        rows = await self.sub_role_repo.list_for_workspace(session, workspace_id, only_active=True)
-        return build_subrole_catalog(rows)
+    async def catalog_for_workspace(
+        self, session: AsyncSession, workspace_id: int, *, discipline: str
+    ) -> SubroleCatalog:
+        ontology = await self.roles.ontology(session, discipline=discipline, workspace_id=workspace_id)
+        return build_subrole_catalog(ontology, workspace_id)
 
-    async def get_sub_role(self, session: AsyncSession, sub_role_id: int) -> models.PlayerSubRole:
-        sub_role = await self.sub_role_repo.get(session, sub_role_id)
-        if sub_role is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Player sub-role not found.",
-            )
+    async def get_sub_role(self, session: AsyncSession, sub_role_id: int) -> models.CatalogRole:
+        sub_role = await self.roles.get(session, sub_role_id)
+        if sub_role is None or sub_role.workspace_id is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Player sub-role not found.")
         return sub_role
 
-    async def create_sub_role(self, session: AsyncSession, data: _CreateData) -> models.PlayerSubRole:
-        role = _normalize_role_or_raise(data.role)
-        slug = _normalize_slug_or_raise(data.slug, data.label)
-
-        existing = await self.sub_role_repo.get_by_slug(session, workspace_id=data.workspace_id, role=role, slug=slug)
-        if existing is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Player sub-role already exists for this workspace and role.",
-            )
-
-        sub_role = await self.sub_role_repo.create(
+    async def create_sub_role(self, session: AsyncSession, data: _CreateData) -> models.CatalogRole:
+        parent = await self._parent(session, discipline=data.discipline, code=data.role)
+        code = _code_or_raise(parent.code, data.slug, data.label)
+        await self._assert_code_free(session, parent=parent, workspace_id=data.workspace_id, code=code)
+        presentation = _presentation(
+            {key: getattr(data, key) for key in data.model_fields_set if key in _PRESENTATION_KEYS},
+            discipline=data.discipline,
+        )
+        sub_role = await self.roles.create(
             session,
-            models.PlayerSubRole(
+            models.CatalogRole(
+                dimension_id=parent.dimension_id,
                 workspace_id=data.workspace_id,
-                role=role,
-                slug=slug,
-                label=data.label.strip(),
+                parent_role_id=parent.id,
+                code=code,
+                name=data.label.strip(),
                 description=data.description,
                 sort_order=data.sort_order,
-                is_active=data.is_active,
+                active=data.is_active,
+                attrs=presentation,
             ),
         )
         await session.commit()
         await session.refresh(sub_role)
         return sub_role
 
-    async def update_sub_role(
-        self,
-        session: AsyncSession,
-        sub_role_id: int,
-        data: _UpdateData,
-    ) -> models.PlayerSubRole:
+    async def update_sub_role(self, session: AsyncSession, sub_role_id: int, data: _UpdateData) -> models.CatalogRole:
         sub_role = await self.get_sub_role(session, sub_role_id)
         update_data = data.model_dump(exclude_unset=True)
-
-        if "role" in update_data:
-            update_data["role"] = _normalize_role_or_raise(update_data["role"])
+        presentation = _presentation(update_data, discipline=sub_role.dimension.discipline)
+        if "role" in update_data and normalize_role(update_data["role"]) != sub_role.parent.code:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="sub_role_parent_fixed: a sub-role keeps its role; create a new sub-role instead.",
+            )
         if "slug" in update_data:
-            update_data["slug"] = _normalize_slug_or_raise(
-                update_data["slug"],
-                update_data.get("label", sub_role.label),
-            )
-        if "label" in update_data and update_data["label"] is not None:
-            update_data["label"] = update_data["label"].strip()
-
-        next_role = update_data.get("role", sub_role.role)
-        next_slug = update_data.get("slug", sub_role.slug)
-        if next_role != sub_role.role or next_slug != sub_role.slug:
-            existing = await self.sub_role_repo.get_by_slug(
-                session, workspace_id=sub_role.workspace_id, role=next_role, slug=next_slug
-            )
-            if existing is not None:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Player sub-role already exists for this workspace and role.",
+            code = _code_or_raise(sub_role.parent.code, update_data["slug"], update_data.get("label", sub_role.name))
+            if code != sub_role.code:
+                await self._assert_code_free(
+                    session, parent=sub_role.parent, workspace_id=sub_role.workspace_id, code=code
                 )
-
-        for field, value in update_data.items():
-            setattr(sub_role, field, value)
-
+                sub_role.code = code
+        if update_data.get("label") is not None:
+            sub_role.name = update_data["label"].strip()
+        for field, column in (("description", "description"), ("sort_order", "sort_order"), ("is_active", "active")):
+            if field in update_data:
+                setattr(sub_role, column, update_data[field])
+        if presentation:
+            sub_role.attrs = {**sub_role.attrs, **presentation}  # reassigned: JSONB does not track in-place changes
         await session.commit()
         await session.refresh(sub_role)
         return sub_role
 
     async def deactivate_sub_role(self, session: AsyncSession, sub_role_id: int) -> None:
         sub_role = await self.get_sub_role(session, sub_role_id)
-        sub_role.is_active = False
+        sub_role.active = False
         await session.commit()
 
 

@@ -13,6 +13,8 @@ var WorkspaceWriteRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/v1/workspaces", Queue: "rpc.app.workspaces.create", Body: true, Auth: edge.AuthRequired, Success: 201},
 	{Method: "PATCH", Pattern: "/api/v1/workspaces/{id}", Queue: "rpc.app.admin.update", Entity: "workspace", Action: "update", IDParam: "id", Body: true, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/workspaces/{id}", Queue: "rpc.app.admin.delete", Entity: "workspace", Action: "delete", IDParam: "id", Auth: edge.AuthRequired, Success: 204},
+	{Method: "GET", Pattern: "/api/v1/workspaces/{workspace_id}/team-formats/{discipline}", Queue: "rpc.app.workspaces.team_format_get", Path: []string{"workspace_id", "discipline"}, Auth: edge.AuthRequired},
+	{Method: "PUT", Pattern: "/api/v1/workspaces/{workspace_id}/team-formats/{discipline}", Queue: "rpc.app.workspaces.team_format_put", Path: []string{"workspace_id", "discipline"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/workspaces/{workspace_id}/members", Queue: "rpc.app.workspaces.members_list", Path: []string{"workspace_id"}, AllQuery: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/workspaces/{workspace_id}/members/autofill-roles", Queue: "rpc.app.workspaces.members_autofill_roles", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/workspaces/{workspace_id}/members", Queue: "rpc.app.workspaces.member_add", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired, Success: 201},
@@ -23,13 +25,6 @@ var WorkspaceWriteRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/v1/workspaces/{workspace_id}/custom-domain", Queue: "rpc.app.workspaces.set_custom_domain", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/workspaces/{workspace_id}/custom-domain/verify", Queue: "rpc.app.workspaces.verify_custom_domain", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/workspaces/{workspace_id}/custom-domain", Queue: "rpc.app.workspaces.clear_custom_domain", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
-	// --- discord entities: read the linked guild's roles, text channels and
-	// connection status for the workspace settings pickers. Reads, but gated on
-	// workspace.update in the worker like the custom-domain endpoints -- a guild's
-	// role and channel names are not public.
-	{Method: "GET", Pattern: "/api/v1/workspaces/{workspace_id}/discord/roles", Queue: "rpc.app.workspaces.discord_roles", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
-	{Method: "GET", Pattern: "/api/v1/workspaces/{workspace_id}/discord/channels", Queue: "rpc.app.workspaces.discord_channels", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
-	{Method: "GET", Pattern: "/api/v1/workspaces/{workspace_id}/discord/guild", Queue: "rpc.app.workspaces.discord_guild", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	// --- discord guild verification (self-service design §4.1): proves the
 	// caller administers the guild on Discord (via identity-service) before it
 	// can be bound to the workspace. workspace.update, like every sibling here.
@@ -40,7 +35,7 @@ var WorkspaceWriteRoutes = []edge.RouteSpec{
 	// gates public directory listing. Enforced in app-service, not here.
 	{Method: "POST", Pattern: "/api/v1/workspaces/{workspace_id}/verification", Queue: "rpc.app.workspaces.verification_set", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	// --- owner: resolves owner_id to a person (GET, workspace.update in the
-	// worker like the discord_* reads -- the public workspace model carries no
+	// worker like the custom-domain endpoints -- the public workspace model carries no
 	// owner at all), and reassigns it (PUT, superuser-only: owner_id is what the
 	// per-account create cap is counted over).
 	{Method: "GET", Pattern: "/api/v1/workspaces/{workspace_id}/owner", Queue: "rpc.app.workspaces.owner_get", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
@@ -59,7 +54,7 @@ var WorkspaceWriteRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/v1/workspaces/{workspace_id}/quota", Queue: "rpc.app.workspaces.quota_set", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	// --- notification delivery (event-notifications design §4.8): the channel
 	// this workspace's broadcasts are posted to, its language and which kinds
-	// are posted. workspace.update in the worker, like the discord_* reads --
+	// are posted. workspace.update in the worker, like the custom-domain endpoints --
 	// the stored channel makes the bot speak in a private guild.
 	{Method: "GET", Pattern: "/api/v1/workspaces/{workspace_id}/notification-config", Queue: "rpc.app.workspaces.notification_config_get", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "PUT", Pattern: "/api/v1/workspaces/{workspace_id}/notification-config", Queue: "rpc.app.workspaces.notification_config_update", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},

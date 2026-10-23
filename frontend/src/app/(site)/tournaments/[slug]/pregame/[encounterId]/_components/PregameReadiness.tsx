@@ -6,15 +6,18 @@ import { useTranslations } from "next-intl";
 import TeamName, { type TeamNameInput } from "@/components/TeamName";
 import EncounterRosterPanel from "@/components/match/EncounterRosterPanel";
 import { Button } from "@/components/ui/button";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/utils";
+import { seatAt, seatTeam, seatsBySlot } from "@/lib/encounter/seats";
 import type { Encounter } from "@/types/encounter.types";
 import { Spinner } from "@/components/ui/spinner";
 
 interface PregameReadinessProps {
   encounter: Encounter;
-  readiness: { home: boolean; away: boolean };
-  /** Null for a spectator: they watch the gate, they never confirm. */
-  viewerSide: "home" | "away" | null;
+  /** `EncounterTeam.id` (as a string) -> whether that captain confirmed. */
+  readiness: Record<string, boolean>;
+  /** The participation the viewer captains; null for a spectator: they watch the gate, they never confirm. */
+  viewerTeamId: number | null;
   pending: boolean;
   onReady: () => void;
 }
@@ -32,19 +35,19 @@ interface PregameReadinessProps {
  * standing.
  *
  * So the room renders for real: header above, and this panel where the pool
- * will go, naming both sides and which of them the room is still waiting on,
+ * will go, naming both teams and which of them the room is still waiting on,
  * with both rosters under the ready button (captains crowned) so the wait shows
  * who is playing and whom to ping.
  */
 export function PregameReadiness({
   encounter,
   readiness,
-  viewerSide,
+  viewerTeamId,
   pending,
   onReady
 }: Readonly<PregameReadinessProps>) {
   const t = useTranslations("pickBan.room");
-  const viewerReady = viewerSide != null && readiness[viewerSide];
+  const viewerReady = viewerTeamId != null && readiness[String(viewerTeamId)] === true;
 
   return (
     <section className="flex flex-col gap-4 rounded-xl border border-[color:var(--aqt-border)] p-4">
@@ -59,23 +62,20 @@ export function PregameReadiness({
       </div>
 
       <ul className="grid gap-2 sm:grid-cols-2">
-        <ReadyRow
-          team={encounter.home_team ?? null}
-          fallbackName={t("side.home")}
-          ready={readiness.home}
-          accentVar="--aqt-teal"
-        />
-        <ReadyRow
-          team={encounter.away_team ?? null}
-          fallbackName={t("side.away")}
-          ready={readiness.away}
-          accentVar="--aqt-rose"
-        />
+        {seatsBySlot(encounter.teams).map((seat) => (
+          <ReadyRow
+            key={seat.id}
+            team={seatTeam(seat)}
+            fallbackName={t("tbd")}
+            ready={readiness[String(seat.id)] === true}
+            accentVar={seat.slot === 1 ? "--aqt-teal" : "--aqt-rose"}
+          />
+        ))}
       </ul>
 
-      {viewerSide != null ? (
+      {viewerTeamId != null ? (
         viewerReady ? (
-          <p className="text-sm text-[color:var(--aqt-support)]">
+          <p className="text-sm text-[color:var(--aqt-positive)]">
             {t("ready.confirmed")} · {t("ready.waitingOpponent")}
           </p>
         ) : (
@@ -90,13 +90,15 @@ export function PregameReadiness({
 
       <div className="grid gap-4 lg:grid-cols-2">
         <EncounterRosterPanel
-          team={encounter.home_team ?? null}
-          side="home"
+          team={seatAt(encounter.teams, 1)?.team ?? null}
+          slot={1}
+          discipline={encounter.discipline}
           tournamentGrid={encounter.tournament?.division_grid_version ?? null}
         />
         <EncounterRosterPanel
-          team={encounter.away_team ?? null}
-          side="away"
+          team={seatAt(encounter.teams, 2)?.team ?? null}
+          slot={2}
+          discipline={encounter.discipline}
           tournamentGrid={encounter.tournament?.division_grid_version ?? null}
         />
       </div>
@@ -104,7 +106,7 @@ export function PregameReadiness({
   );
 }
 
-/** One side's readiness: logo, name, and a check or an hourglass. */
+/** One seat's readiness: logo, name, and a check or an hourglass. */
 function ReadyRow({
   team,
   fallbackName,
@@ -125,7 +127,7 @@ function ReadyRow({
       className={cn(
         "flex min-w-0 items-center gap-2.5 rounded-lg border px-3 py-2.5",
         ready
-          ? "border-[color:var(--aqt-support)]/35 bg-[color:var(--aqt-support)]/[0.06]"
+          ? "border-[color:var(--aqt-positive)]/35 bg-[color:var(--aqt-positive)]/[0.06]"
           : "border-dashed border-[color:var(--aqt-border-2)]"
       )}
     >
@@ -143,8 +145,9 @@ function ReadyRow({
       />
       <span
         className={cn(
-          "inline-flex shrink-0 items-center gap-1.5 text-label uppercase tracking-label",
-          ready ? "text-[color:var(--aqt-support)]" : "text-[color:var(--aqt-fg-faint)]"
+          eyebrowClass(),
+          "inline-flex shrink-0 items-center gap-1.5",
+          ready && "text-[color:var(--aqt-positive)]"
         )}
       >
         <StateIcon className="h-3.5 w-3.5" aria-hidden />

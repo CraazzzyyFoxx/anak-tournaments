@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 
 from shared.testing import configure_test_cache, db_session, ensure_test_postgres  # noqa: E402,F401
 from shared.testing.db import CONNECT_TIMEOUT  # noqa: E402
+from shared.testing.stats_parity import stats_parity_database, stats_parity_template  # noqa: E402,F401
 from src.core.config import settings  # noqa: E402
 
 # The cashews cache is a process-global singleton with no default backend --
@@ -114,10 +115,13 @@ class RpcHarness:
     """Registers RPC modules against a capture broker and dispatches by topic."""
 
     def __init__(self) -> None:
-        import logging
+        from loguru import logger
 
         self.broker = _CaptureBroker()
-        self.logger = logging.getLogger("app-rpc-tests")
+        # The handlers log with loguru's ``{}`` placeholders (``serve.py`` hands them a
+        # loguru logger); a stdlib logger would turn a failing RPC into a logging
+        # TypeError that hides the real exception.
+        self.logger = logger
 
     def register(self, *modules: Any) -> RpcHarness:
         for module in modules:
@@ -140,12 +144,29 @@ class RpcHarness:
         return asyncio.run(self.call(topic, data))
 
 
+@pytest.fixture(autouse=True)
+def _drop_loop_bound_async_connections() -> Generator[None]:
+    """Forget pooled asyncpg connections once a test is over.
+
+    Tests drive the async engine through ``asyncio.run``, and every call gets a fresh
+    loop; a connection pooled by a finished loop breaks the next one ("Event loop is
+    closed", "'NoneType' object has no attribute 'send'"). ``close=False`` drops the
+    pool without touching the dead loop.
+    """
+    yield
+    from src.core import db as async_db
+
+    async_db.async_engine.sync_engine.dispose(close=False)
+
+
 @pytest.fixture(scope="session")
 def rpc() -> RpcHarness:
-    """Session-scoped harness exposing every ``rpc.app.*`` read/aggregation handler.
+    """Session-scoped harness exposing the ``rpc.app.*`` read handlers.
 
-    The bespoke read modules plus the shared CRUD read engine are registered so
-    integration tests can dispatch ``harness.call("rpc.app.<topic>", envelope)``.
+    The users identity and catalog modules are registered so integration tests can dispatch
+    ``harness.call("rpc.app.<topic>", envelope)``; the public statistics reads
+    moved to stats-service (``rpc.stats.*``, see its ``tests/conftest.py``) and the
+    organizer dashboard to tournament-service (``rpc.tournament.*``).
 
     These are read-integration tests: the handlers open their own async session
     against whatever ``POSTGRES_*`` resolved to (a local ``.env`` or the
@@ -154,24 +175,6 @@ def rpc() -> RpcHarness:
     """
     ensure_test_postgres()
 
-    from src.rpc import (
-        achievements,
-        gamemodes,
-        heroes,
-        maps,
-        reads_generic,
-        statistics,
-        users,
-    )
+    from src.rpc import catalog, users
 
-    harness = RpcHarness()
-    harness.register(
-        reads_generic,
-        users,
-        heroes,
-        maps,
-        gamemodes,
-        achievements,
-        statistics,
-    )
-    return harness
+    return RpcHarness().register(users, catalog)

@@ -9,16 +9,24 @@ merging, and staged rows silently dropped on a clean session.
 from __future__ import annotations
 
 import asyncio
+import importlib
+from unittest.mock import patch
 
 import pytest
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.util.concurrency import greenlet_spawn
 
 from shared.models.platform.realtime import WorkspaceEvent
-from shared.services.realtime import DomainEvent, Resource, Scope, emit
+from shared.services.cache_generations import versioned
+from shared.services.realtime import DomainEvent, Resource, Scope, emit, resource_generation
 from shared.services.realtime.emit import INVALIDATION_EVENT_TYPE
+from shared.testing.cache import configure_test_cache
+
+# The package re-exports the ``emit`` function under the submodule's name, so the module itself only comes by path.
+emit_module = importlib.import_module("shared.services.realtime.emit")
 
 
 # These tests exercise the session listeners, not Postgres, so they run on
@@ -179,3 +187,62 @@ def test_encounter_scope_has_no_invalidation_topic() -> None:
 def test_emit_needs_something_to_say(session: Session) -> None:
     with pytest.raises(ValueError):
         asyncio.run(emit(session, scope=Scope.tournament(42)))
+
+
+async def _never_flush(*_args: object) -> None:
+    """Stands in for the after-commit publish task: whatever a test sees happened inside the commit itself."""
+
+
+def test_an_async_commit_returns_only_after_every_cache_of_what_it_staled_misses(session: Session) -> None:
+    # The e2e bug: a balancer export committed, replied, and tournament-service kept serving the pre-export teams
+    # list until the outbox relay (a 1s tick, then a keyspace SCAN) reached it. The writer's own commit now moves
+    # the shared generation every service's cached copy is keyed by — before ``commit()`` returns, so before any
+    # reply can be sent, and without waiting for anything to be published.
+    configure_test_cache()
+    calls: list[int] = []
+
+    @versioned(
+        generations=(resource_generation(Resource.TOURNAMENT_TEAMS, "{tournament_id}"),),
+        ttl="1m",
+        key="probe:teams:{tournament_id}",
+        prefix="fastapi:",
+    )
+    async def teams(tournament_id: int) -> int:
+        calls.append(tournament_id)
+        return len(calls)
+
+    async def scenario() -> None:
+        assert await teams(42) == 1
+        assert await teams(7) == 2
+        assert await teams(42) == 1, "the read is not cached at all"
+
+        await emit(session, scope=Scope.tournament(42), invalidates=[Resource.TOURNAMENT_TEAMS])
+        with patch.object(emit_module, "_flush", _never_flush):
+            await greenlet_spawn(session.commit)  # exactly what ``AsyncSession.commit`` runs
+
+        assert await teams(42) == 3, "the pre-write teams list outlived the commit"
+        assert await teams(7) == 2, "another tournament's entry was dropped"
+
+    asyncio.run(scenario())
+
+
+def test_a_commit_also_moves_the_any_scope_generation(session: Session) -> None:
+    # Aggregates across every tournament (a user's history) cannot name the tournament a write touched.
+    configure_test_cache()
+    calls: list[int] = []
+
+    @versioned(
+        generations=(resource_generation(Resource.TOURNAMENT_STANDINGS),), ttl="1m", key="probe:any", prefix="fastapi:"
+    )
+    async def history() -> int:
+        calls.append(1)
+        return len(calls)
+
+    async def scenario() -> None:
+        assert await history() == 1
+        await emit(session, scope=Scope.tournament(42), invalidates=[Resource.TOURNAMENT_STANDINGS])
+        with patch.object(emit_module, "_flush", _never_flush):
+            await greenlet_spawn(session.commit)
+        assert await history() == 2
+
+    asyncio.run(scenario())

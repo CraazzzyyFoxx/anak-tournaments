@@ -105,7 +105,9 @@ operation is a configuration change. `balancer.job` is seeded by
 [`quota0001_quota_schema.py`](../backend/migrations/versions/quota0001_quota_schema.py) (lines
 185-189); everything else by
 [`quota0002_metered_operations.py`](../backend/migrations/versions/quota0002_metered_operations.py)
-(lines 34-56).
+(lines 34-56), less the `analytics.train` / `analytics.infer` rows that
+[`quota0003_drop_analytics_train_infer.py`](../backend/migrations/versions/quota0003_drop_analytics_train_infer.py)
+deletes with their endpoints (training and inference now run as analytics jobs).
 
 | Operation | Cost | What it does |
 |---|---|---|
@@ -114,8 +116,8 @@ operation is a configuration change. `balancer.job` is seeded by
 | `balancer.balance_ranks_export` | 3 | Rewrites tournament player ranks from a saved balance |
 | `balancer.teams_import` | 2 | Imports a multi-MB team payload and rewrites the roster |
 | `balancer.teams_export` | 2 | Materializes every complete registered team |
-| `parser.logs.upload` | 1 | Stores an uploaded match log and queues its parse |
-| `parser.logs.process_tournament` | 5 | Re-parses every log of one tournament |
+| `stats.logs.upload` | 1 | Stores an uploaded match log, or accepts one canonical `POST /api/v1/stats/matches` document, and queues its ingest |
+| `stats.logs.process_tournament` | 5 | Re-parses every log of one tournament |
 | `parser.ach.import` | 5 | Imports portable achievement rules |
 | `parser.ach.export` | 2 | Exports achievement rules |
 | `parser.ach.lib_import` | 5 | Imports the achievement library |
@@ -125,15 +127,20 @@ operation is a configuration change. `balancer.job` is seeded by
 | `tournament.challonge_export` | 5 | Pushes a bracket to Challonge |
 | `tournament.sheet_sync` | 3 | Syncs a registration Google Sheet |
 | `tournament.sheet_players_export` | 2 | Exports registered players to a Google Sheet |
-| `analytics.train` | 10 | Trains the analytics models — the most expensive call in the platform |
-| `analytics.infer` | 5 | Runs inference over a tournament |
 | `analytics.recalculate` | 5 | Recomputes analytics for a tournament |
 | `app.assets.upload` | 1 | Stores a workspace asset |
 | `app.workspace_icon_upload` | 1 | Stores a workspace icon |
 | `stream.repoll` | 3 | Re-polls every live tournament against the shared Twitch Helix budget |
 
 On the seeded 100 heavy units per key per day (§4) that is roughly 100 balancer jobs, or 20 Challonge
-imports, or 10 model trainings — and any mix of them draws on the same pool.
+imports, or 20 analytics recalculations — and any mix of them draws on the same pool.
+
+`stats.logs.upload` and `stats.logs.process_tournament` were `parser.logs.upload` and `parser.logs.process_tournament`
+before the stats-service rename; migration `ingest01` renames the `quota.operation` rows in place, with their costs
+unchanged. Usage counters are keyed by principal and day, never by operation code, so spend already recorded keeps
+counting after the rename and the release needs no counter migration or reset. A canonical document submit
+(`POST /api/v1/stats/matches`) is charged as one `stats.logs.upload` item sized by its encoded body. (The
+`parser.ach.*` achievement operations keep their codes.)
 
 An operation can also be disabled outright, in which case every call to it is refused regardless of
 budget. Metered operations that do not appear above cost one request token and nothing else.
@@ -328,7 +335,7 @@ the platform operators for anything that raises a ceiling.
 | What | Where |
 |---|---|
 | Seeded plans and their limits | [`backend/migrations/versions/quota0001_quota_schema.py`](../backend/migrations/versions/quota0001_quota_schema.py) |
-| Operation prices | [`backend/migrations/versions/quota0002_metered_operations.py`](../backend/migrations/versions/quota0002_metered_operations.py) |
+| Operation prices | [`backend/migrations/versions/quota0002_metered_operations.py`](../backend/migrations/versions/quota0002_metered_operations.py), minus [`quota0003_drop_analytics_train_infer.py`](../backend/migrations/versions/quota0003_drop_analytics_train_infer.py) |
 | Live edits (plans, prices, per-workspace and per-key overrides) | the admin surface over the `quota` schema — `rpc.quota.plan.*`, `rpc.quota.operation.*`, `rpc.app.workspaces.quota_set`, `rpc.identity.api_key.quota_set` |
 | Disable one operation | set its `enabled = false` in `quota.operation`; it takes effect without a deploy |
 | Disable the whole gate | `QUOTA_ENABLED=false` (restart-scoped; [`backend/shared/core/config.py`](../backend/shared/core/config.py)) |
@@ -364,4 +371,3 @@ uncounted, as for the per-key bucket.
 
 Cost: one Redis script per counted request (the per-key bucket already paid one; the workspace key
 rides in the same call) and one cached Postgres lookup per workspace per minute per replica.
-

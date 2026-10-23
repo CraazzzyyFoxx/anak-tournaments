@@ -3,23 +3,19 @@
 import { useId } from "react";
 import { useTranslations } from "next-intl";
 
-import { CollectionSettingsPanel, useCollectionSettings } from "@/components/admin/CollectionSettingsPanel";
+import { CollectionSettingsPanel, useCollectionSettings } from "@/components/kit/CollectionSettingsPanel";
 import { formatInterval } from "@/components/kit/format-time";
 import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { NumberInput } from "@/components/ui/number-input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { useFormatter } from "@/lib/datetime/client";
 import type { RankCollectionConfig } from "@/types/admin.types";
 
-const RANK_COLLECTION_KEY = "parser.rank_collection";
+/** The `Settings` key of a game's collector config; Overwatch's predates per-game keys and keeps its stored name. */
+export const rankCollectionKey = (discipline: string) =>
+  discipline === "overwatch" ? "parser.rank_collection" : `${discipline}.rank_collection`;
 
 const DEFAULTS: RankCollectionConfig = {
   enabled: false,
@@ -38,18 +34,18 @@ const DEFAULTS: RankCollectionConfig = {
 const read = (stored: Partial<RankCollectionConfig> | undefined) => ({ ...DEFAULTS, ...stored });
 
 /**
- * `parser.rank_collection`, grouped by the question each knob answers: whose
- * ranks, how often, how hard OverFast is hit, and when a tag is given up on.
- * min/max are the backend's own bounds (`RankCollectionConfig` in
- * `shared/schemas/settings.py`): past them it answers 422 with nothing this
- * form can show. The OW rank mapping is its own slot (`rank-mapping.tsx`).
+ * A game's `*.rank_collection` (see {@link rankCollectionKey}), grouped by the
+ * question each knob answers: whose ranks, how often, how hard the upstream is
+ * hit, and when an account is given up on. min/max are the backend's own bounds
+ * (`RankCollectionConfig` in `shared/schemas/settings.py`): past them it answers
+ * 422 with nothing this form can show.
  */
-export function RankSettingsPanel() {
+export function RankSettingsPanel({ discipline }: Readonly<{ discipline: string }>) {
   const t = useTranslations("collectors.settings.rank");
   const format = useFormatter();
   const ids = useId();
   const settings = useCollectionSettings<RankCollectionConfig>({
-    settingKey: RANK_COLLECTION_KEY,
+    settingKey: rankCollectionKey(discipline),
     read,
     invalidateKeys: [adminQueryKeys.rankStatsAll()]
   });
@@ -58,37 +54,21 @@ export function RankSettingsPanel() {
     <CollectionSettingsPanel settings={settings}>
       {(form, patch) => (
         <>
-          <SettingGroup title={t("collection.title")}>
-            <SettingRow
-              htmlFor={`${ids}-enabled`}
-              label={t("collection.enabled")}
-              hint={t("collection.enabledHint")}
-            >
-              <Switch
-                id={`${ids}-enabled`}
-                checked={form.enabled}
-                onCheckedChange={(enabled) => patch({ enabled })}
-              />
-            </SettingRow>
-            <SettingRow
-              htmlFor={`${ids}-scope`}
-              label={t("collection.scope")}
-              hint={t("collection.scopeHint")}
-            >
-              <Select
+          <SettingGroup id="collection" title={t("collection.title")}>
+            <SettingRow label={t("collection.scope")} hint={t("collection.scopeHint")}>
+              <ToggleGroup
+                type="single"
+                variant="pill"
+                size="sm"
                 value={form.scope}
                 onValueChange={(scope) => patch({ scope: scope as RankCollectionConfig["scope"] })}
+                aria-label={t("collection.scope")}
               >
-                <SelectTrigger id={`${ids}-scope`} className="h-8 w-fit min-w-[230px] max-w-full text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="registrations_only">
-                    {t("collection.scopeRegistrations")}
-                  </SelectItem>
-                  <SelectItem value="all">{t("collection.scopeAll")}</SelectItem>
-                </SelectContent>
-              </Select>
+                <ToggleGroupItem value="registrations_only">
+                  {t("collection.scopeRegistrations")}
+                </ToggleGroupItem>
+                <ToggleGroupItem value="all">{t("collection.scopeAll")}</ToggleGroupItem>
+              </ToggleGroup>
             </SettingRow>
             <SettingRow
               htmlFor={`${ids}-extra`}
@@ -103,12 +83,13 @@ export function RankSettingsPanel() {
                 value={form.extra_accounts_per_registration}
                 disabled={form.scope !== "registrations_only"}
                 onValueChange={(next) => patch({ extra_accounts_per_registration: next ?? 0 })}
-                className="h-8 w-28"
+                size="sm"
+                className="w-28"
               />
             </SettingRow>
           </SettingGroup>
 
-          <SettingGroup title={t("pace.title")}>
+          <SettingGroup id="pace" title={t("pace.title")}>
             <SettingRow
               htmlFor={`${ids}-interval`}
               label={t("pace.interval")}
@@ -125,7 +106,8 @@ export function RankSettingsPanel() {
                 onValueChange={(next) =>
                   patch({ interval_seconds: next ?? DEFAULTS.interval_seconds })
                 }
-                className="h-8 w-28"
+                size="sm"
+                className="w-28"
               />
             </SettingRow>
             <SettingRow
@@ -153,7 +135,8 @@ export function RankSettingsPanel() {
                 value={form.max_per_tick}
                 disabled={!form.auto_pace}
                 onValueChange={(max_per_tick) => patch({ max_per_tick })}
-                className="h-8 w-28"
+                size="sm"
+                className="w-28"
               />
             </SettingRow>
             <SettingRow
@@ -167,12 +150,13 @@ export function RankSettingsPanel() {
                 max={1}
                 value={form.jitter_fraction}
                 onValueChange={(next) => patch({ jitter_fraction: next ?? 0 })}
-                className="h-8 w-28"
+                size="sm"
+                className="w-28"
               />
             </SettingRow>
           </SettingGroup>
 
-          <SettingGroup title={t("limits.title")}>
+          <SettingGroup id="limits" title={t("limits.title")}>
             <SettingRow
               htmlFor={`${ids}-rate`}
               label={t("limits.rate")}
@@ -187,7 +171,8 @@ export function RankSettingsPanel() {
                 onValueChange={(next) =>
                   patch({ rate_limit_per_minute: next ?? DEFAULTS.rate_limit_per_minute })
                 }
-                className="h-8 w-28"
+                size="sm"
+                className="w-28"
               />
             </SettingRow>
             <SettingRow
@@ -202,12 +187,13 @@ export function RankSettingsPanel() {
                 max={1000}
                 value={form.batch_size}
                 onValueChange={(next) => patch({ batch_size: next ?? DEFAULTS.batch_size })}
-                className="h-8 w-28"
+                size="sm"
+                className="w-28"
               />
             </SettingRow>
           </SettingGroup>
 
-          <SettingGroup title={t("failures.title")}>
+          <SettingGroup id="failures" title={t("failures.title")}>
             <SettingRow
               htmlFor={`${ids}-max-failures`}
               label={t("failures.maxFailures")}
@@ -222,7 +208,8 @@ export function RankSettingsPanel() {
                 onValueChange={(next) =>
                   patch({ max_consecutive_failures: next ?? DEFAULTS.max_consecutive_failures })
                 }
-                className="h-8 w-28"
+                size="sm"
+                className="w-28"
               />
             </SettingRow>
             <SettingRow
@@ -241,7 +228,8 @@ export function RankSettingsPanel() {
                 onValueChange={(next) =>
                   patch({ backoff_base_seconds: next ?? DEFAULTS.backoff_base_seconds })
                 }
-                className="h-8 w-28"
+                size="sm"
+                className="w-28"
               />
             </SettingRow>
           </SettingGroup>

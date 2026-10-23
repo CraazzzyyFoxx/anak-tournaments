@@ -20,6 +20,8 @@ interface TeamData {
   total_discomfort: number;
   max_discomfort: number;
   roster: Record<string, PlayerData[]>;
+  format_violations?: string[];
+  format_advisories?: string[];
 }
 
 interface RoleFeasibility {
@@ -93,10 +95,10 @@ export type BalancerConfigValue =
   | undefined;
 
 /** Widget the drawer renders for a knob; mirrors the backend's `ConfigControl`. */
-type BalancerConfigFieldType = "boolean" | "float" | "integer" | "slider" | "roles";
+type BalancerConfigFieldType = "boolean" | "float" | "integer" | "slider" | "roles" | "open_slot";
 
 /** One numeric column of a `roles` table; its limits are the cell's limits. */
-export interface BalancerConfigColumn {
+interface BalancerConfigColumn {
   key: string;
   label: string;
   description: string;
@@ -139,7 +141,6 @@ export interface BalanceJobCreateResponse {
   status: BalanceJobStatus;
   status_url: string;
   result_url: string;
-  stream_url: string;
 }
 
 export interface BalanceJobStatusResponse {

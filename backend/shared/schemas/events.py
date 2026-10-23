@@ -1,14 +1,16 @@
 """Typed Pydantic models for RabbitMQ event messages.
 
-These schemas provide type safety and validation for all inter-service messaging,
-replacing untyped dict objects with validated Pydantic models.
+These schemas provide type safety and validation for all inter-service messaging.
 """
 
 import time
 import uuid
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from shared.schemas.identity import PlayerIdentityRead
+from shared.schemas.role import RoleRef
 
 
 class BaseEvent(BaseModel):
@@ -22,186 +24,26 @@ class BaseEvent(BaseModel):
     correlation_id: str | None = Field(default=None, description="Request correlation ID for tracing")
 
 
-#: Discord's cap on the text of every TextDisplay in one Components V2 message.
-DISCORD_CARD_TEXT_LIMIT = 4000
-
-
-#: The actions discord-service answers itself (``src/interactions/actions.py``
-#: says what each one calls). A literal rather than a string so a producer
-#: cannot put a button on a card that the bot could only answer "unknown".
-DiscordAction = Literal[
-    "invite.accept",
-    "invite.decline",
-    "check_in",
-    "registration.view",
-    "notifications.menu",
-    "notifications.mute",
-    "mix.join",
-    "mix.leave",
-    "mix.roles",
-    "mix.setup",
-    "mix.seat_set",
-    "voice.move",
-    "voice.return",
-    "voice.move_confirm",
-    "voice.return_confirm",
-]
-
-#: An emoji by name, as ``shared.domain.discord_ui.EMOJI`` spells it (``tank``,
-#: ``div_gold_3``); discord-service resolves it to the uploaded application emoji.
-_EMOJI_NAME = r"^[a-z0-9_]{1,28}$"
-
-
-class DiscordLinkButton(BaseModel):
-    """A link button: Discord opens ``url`` itself, so the bot handles no interaction."""
-
-    type: Literal["link"] = "link"
-    label: str = Field(min_length=1, max_length=80)
-    url: str = Field(max_length=512, pattern=r"^https?://")
-    emoji: str | None = Field(default=None, pattern=_EMOJI_NAME)
-
-
-class DiscordActionButton(BaseModel):
-    """A button the bot answers itself, acting as whoever clicked it.
-
-    It names *what* and *on which object*, never *who*: the clicker comes from
-    the interaction Discord signs, and the bot acts only for an account that
-    linked that Discord user. The target RPC then authorizes as it does for the
-    site, so a button can never do more than its clicker could there.
-    """
-
-    type: Literal["action"] = "action"
-    label: str = Field(min_length=1, max_length=80)
-    action: DiscordAction
-    #: The object acted on: an invite id, a tournament id, a preference group.
-    target: str = Field(pattern=r"^[A-Za-z0-9_-]{1,40}$")
-    style: Literal["primary", "secondary", "success", "danger"] = "secondary"
-    emoji: str | None = Field(default=None, pattern=_EMOJI_NAME)
-    #: Shown greyed out: the card says the action exists but is not open now.
-    disabled: bool = False
-
-
-DiscordButton = Annotated[DiscordLinkButton | DiscordActionButton, Field(discriminator="type")]
-
-
-class DiscordCard(BaseModel):
-    """One Components V2 message: an accent-coloured container the bot lays out as
-
-    ``text`` (with ``thumbnail_url`` beside it), a divider, ``details``,
-    ``image_url`` as a full-width picture and the ``answers`` row, with one
-    action row per entry of ``rows`` under the container rather than in it.
-    ``answers`` holds the card's one-click answers, ``rows`` where to read more
-    and how to stop hearing it.
-    Both texts are Discord markdown, already escaped by the publisher, and may
-    carry ``:owt_<name>:`` emoji shortcodes (``shared.domain.discord_ui``).
-    The layout lives in discord-service; this is only what fills it.
-    """
-
-    accent_color: int | None = Field(default=None, ge=0, le=0xFFFFFF)
-    text: str = Field(min_length=1)
-    details: str | None = None
-    thumbnail_url: str | None = Field(default=None, max_length=2048, pattern=r"^https?://")
-    #: A picture the card is *about* (an encounter's OpenGraph image), not its
-    #: icon: Discord shows it full width, fetching the URL itself.
-    #: ``attachment://<image_filename>`` shows the PNG the command carries.
-    image_url: str | None = Field(default=None, max_length=2048, pattern=r"^(https?|attachment)://")
-    answers: list[DiscordButton] = Field(default_factory=list, max_length=5)
-    # Discord's own caps: five buttons to a row, five rows to a message.
-    rows: list[Annotated[list[DiscordButton], Field(min_length=1, max_length=5)]] = Field(
-        default_factory=list, max_length=5
-    )
-
-    @model_validator(mode="after")
-    def _fits_one_message(self) -> DiscordCard:
-        # Discord answers 400 past this, which is a DLQ entry rather than a message.
-        if len(self.text) + len(self.details or "") > DISCORD_CARD_TEXT_LIMIT:
-            raise ValueError(f"card text exceeds Discord's {DISCORD_CARD_TEXT_LIMIT}-character limit")
-        return self
-
-    @property
-    def attachment_name(self) -> str | None:
-        """The file the card shows from its own message, ``None`` for a URL or no picture."""
-        prefix = "attachment://"
-        return self.image_url[len(prefix) :] if self.image_url and self.image_url.startswith(prefix) else None
-
-
 class DiscordCommandEvent(BaseEvent):
-    """Event for triggering Discord bot commands.
+    """A command for discord-service about one ``discord_message`` row.
 
-    Published by: parser-service (``process_all``), balancer-service and
-    app-service notification delivery (everything that sends, through
-    ``shared.services.discord_messages``)
-    Consumed by: discord-service
+    Published by: everything that sends, through
+    ``shared.services.discord_messages`` (the outbox, in the transaction that
+    claims the row). Consumed by: discord-service.
 
-    Actions:
-    - ``process_all``: re-scan every registered channel of a tournament.
-    - ``process_message``: re-process one known message.
-    - ``post_message``: post one card to a channel, with the PNG it shows when
-      ``card.image_url`` is ``attachment://<image_filename>``.
-    - ``send_dm``: send one card to one Discord user.
-    - ``edit_message``: show the card the ``discord_message`` row now holds
-      (``card_json``); the command carries no card of its own, and may carry
-      the PNG the row's card now shows. Edits of one message arriving close
-      together collapse into one read of the row.
-    - ``delete_message``: delete a message the bot sent.
-
-    Every message the platform sends is a ``discord_message`` row, and the four
-    message actions name it by ``message_ref`` (its id): the bot records the
-    Discord ids there once the message exists, and an edit or a delete is
-    resolved from that row -- a publisher never handles a Discord message id.
+    The command carries nothing but the row id: the row names the destination
+    (``channel``/``target``), the subject the bot renders the message from
+    (``kind``/``subject``/``slot``/``payload_json``) and the state the bot
+    writes back. ``send`` posts the row's message (a channel post or a DM, by
+    ``channel``); ``delete`` removes it. Edits are not commands at all: the bot
+    re-renders a live message when the fact it shows changes
+    (``pickup_mix.changed``).
     """
 
     event_type: str = Field(default="discord_command", frozen=True)
-    action: Literal["process_all", "process_message", "post_message", "send_dm", "edit_message", "delete_message"]
-    tournament_id: int | None = Field(default=None, description="Tournament ID to process (for 'process_all')")
-    channel_id: int | None = Field(default=None, description="Discord channel ID (process_message, post_message)")
-    message_id: int | None = Field(default=None, description="Discord message ID (process_message)")
-    discord_user_id: int | None = Field(default=None, description="Discord user ID (required for 'send_dm')")
+    action: Literal["send", "delete"]
     #: ``discord_message.id`` -- the platform's own handle on the message.
-    message_ref: int | None = Field(default=None, description="discord_message row (post/send/edit/delete)")
-    image_b64: str | None = Field(default=None, description="Base64 PNG the card shows (post_message, edit_message)")
-    image_filename: str = Field(default="lineup.png", pattern=r"^[A-Za-z0-9_.-]{1,64}$")
-    card: DiscordCard | None = Field(default=None, description="Components V2 card (post_message, send_dm)")
-    #: Who may be pinged. ``False`` pings nobody (notifications carry
-    #: user-written names). ``True`` pings the users the card mentions -- never
-    #: ``@everyone`` or a role, whatever the text says.
-    allow_mentions: bool = Field(default=False, description="True = the card's user mentions ping")
-
-    def model_post_init(self, __context) -> None:
-        """Validate that required fields are present for specific actions."""
-        if self.action == "process_all":
-            if self.tournament_id is None:
-                raise ValueError("tournament_id is required for action='process_all'")
-        elif self.action == "process_message":
-            if self.channel_id is None or self.message_id is None:
-                raise ValueError("channel_id and message_id are required for action='process_message'")
-        elif self.action == "post_message":
-            if self.channel_id is None or self.card is None or self.message_ref is None:
-                raise ValueError("channel_id, card and message_ref are required for action='post_message'")
-        elif self.action == "send_dm":
-            if self.discord_user_id is None or self.card is None or self.message_ref is None:
-                raise ValueError("discord_user_id, card and message_ref are required for action='send_dm'")
-        elif self.action == "edit_message":
-            # The card is the row's: one carried here would be a second,
-            # possibly older, copy that the bot would have to pick between.
-            if self.message_ref is None or self.card is not None:
-                raise ValueError("edit_message takes message_ref and no card")
-        elif self.action == "delete_message":
-            if self.message_ref is None:
-                raise ValueError("message_ref is required for action='delete_message'")
-        # The PNG and the card that shows it travel together or not at all:
-        # Discord renders neither a gallery pointing at a missing file nor a
-        # stray attachment beside a Components V2 layout.
-        shown = self.card.attachment_name if self.card is not None else None
-        if self.image_b64 is not None:
-            if self.action not in ("post_message", "edit_message"):
-                raise ValueError("image_b64 is only sent with action='post_message' or 'edit_message'")
-            # An edit carries no card (it is the row's); the bot checks the
-            # name against the row's card when it applies the edit.
-            if self.action == "post_message" and shown != self.image_filename:
-                raise ValueError("image_b64 needs a card whose image_url is attachment://<image_filename>")
-        elif shown is not None:
-            raise ValueError("card.image_url names an attachment the command does not carry")
+    message_ref: int = Field(..., description="discord_message row this command is about")
 
 
 class NotificationCreatedEvent(BaseEvent):
@@ -240,8 +82,9 @@ class PickupMixChangedEvent(BaseEvent):
     that is not about one mix (a player renamed, a rank corrected), which
     concerns every mix of the workspace.
 
-    Published by: balancer-service ``emit_pickup_mix_changed`` (outbox, same transaction)
-    Consumed by: balancer-service signup-card projector
+    Published by: ``shared.services.pickup_mix_realtime.emit_pickup_mix_changed`` (outbox, same transaction), from
+    balancer-service's mix writes and tournament-service's mix hero room crossing Pre-game <-> Live
+    Consumed by: discord-service's mix projector, which re-renders the mix's live cards
     """
 
     event_type: str = Field(default="pickup_mix.changed", frozen=True)
@@ -250,28 +93,39 @@ class PickupMixChangedEvent(BaseEvent):
     change: str = Field(..., description="What changed (roster, member, rank, close...), diagnostic only")
 
 
-class ProcessMatchLogEvent(BaseEvent):
-    """Event for processing a single match log file.
+class ProcessIngestJobEvent(BaseEvent):
+    """Event for processing one ingest job.
 
-    Published by: parser-service
-    Consumed by: parser-service (background worker)
+    Published by: stats-service (outbox, reaper, retry, tournament fanout) onto ``stats.ingest.<discipline>``
+    Consumed by: stats-service worker selecting that discipline, which refuses a job of another discipline.
     """
 
-    event_type: str = Field(default="process_match_log", frozen=True)
-    tournament_id: int = Field(..., description="Tournament ID")
-    filename: str = Field(..., description="Match log filename to process")
+    event_type: str = Field(default="process_ingest_job", frozen=True)
+    ingest_job_id: int = Field(..., gt=0, description="Authorized stats.ingest_job ID")
+    reparse_expected_revision: int | None = Field(
+        default=None,
+        ge=1,
+        description="Set for a revision-fenced replay of a done job: the observation revision seen when it was selected",
+    )
+    # A Discord upload's message, threaded from ``UploadMatchLogEvent`` to the job's ``MatchLogProcessedEvent``.
+    channel_id: int | None = Field(default=None, description="Discord channel of the upload, echoed on the result")
+    message_id: int | None = Field(default=None, description="Discord message of the upload, echoed on the result")
 
 
 class UploadMatchLogEvent(BaseEvent):
     """Event carrying a raw match-log file to be stored + queued for processing.
 
-    Published by: discord-service (bot upload, replacing the former direct
-    ``POST http://parser:8002/logs/{id}/upload`` HTTP call).
-    Consumed by: parser-service worker, which stores the log to S3, upserts the
-    LogProcessingRecord, then publishes a ``ProcessMatchLogEvent``.
+    Published by: discord-service (bot upload).
+    Consumed by: stats-service worker, which stores the log to S3, creates or
+    reuses its native ingest job, then enqueues a ``ProcessIngestJobEvent``.
 
     The file bytes ride in ``content_b64`` (base64). Keep logs reasonably sized:
     the message must fit RabbitMQ's frame/size limits.
+
+    ``channel_id``/``message_id`` name the Discord message the file came from;
+    stats echoes them back on ``MatchLogProcessedEvent`` so whichever bot
+    replica consumes the result can react on that message. The bot keeps no
+    in-memory waiter.
     """
 
     event_type: str = Field(default="upload_match_log", frozen=True)
@@ -282,31 +136,43 @@ class UploadMatchLogEvent(BaseEvent):
     uploader_discord_name: str | None = Field(
         default=None, description="Discord username of the uploader, resolved to a Player on ingest"
     )
+    channel_id: int | None = Field(default=None, description="Discord channel the attachment was posted in")
+    message_id: int | None = Field(default=None, description="Discord message carrying the attachment")
 
 
 class MatchLogProcessedEvent(BaseEvent):
     """Result of processing a single match log, sent back to the uploader.
 
-    Published by: parser-service (worker, after process_match_log finishes)
-    Consumed by: discord-service (resolves the pending upload future)
-
-    Broadcast over a fanout exchange so every discord-service replica receives a
-    copy; the replica holding the matching pending future resolves it and the
-    rest no-op. Replaces the former pg LISTEN/NOTIFY 'log_processed' channel,
-    which pgBouncer transaction pooling silently breaks.
+    Published by: stats-service (worker, after the ingest job finishes)
+    Consumed by: discord-service ``match_log_result`` (one durable work queue,
+    competing replicas): it reacts on the originating message named by
+    ``channel_id``/``message_id``. Reactions and a per-file reply are
+    idempotent, so a redelivery repeats nothing visible.
     """
 
     event_type: str = Field(default="match_log_processed", frozen=True)
-    tournament_id: int = Field(..., description="Tournament ID")
+    tournament_id: int | None = Field(..., description="Tournament hint, nullable if its owner was deleted")
     filename: str = Field(..., description="Processed match log filename")
-    status: Literal["done", "failed"] = Field(..., description="Processing outcome")
+    status: Literal["done", "failed", "awaiting_link"] = Field(..., description="Persisted processing outcome")
+    ingest_job_id: int | None = Field(
+        default=None, gt=0, description="Absent only if upload failed before job creation"
+    )
+    error_message: str | None = None
+    channel_id: int | None = Field(default=None, description="Echoed from the upload event")
+    message_id: int | None = Field(default=None, description="Echoed from the upload event")
+
+    @model_validator(mode="after")
+    def require_completed_job(self):
+        if self.ingest_job_id is None and self.status != "failed":
+            raise ValueError("A completed or awaiting-link result requires an ingest job")
+        return self
 
 
 class ProcessTournamentLogsEvent(BaseEvent):
     """Event for processing all logs for a tournament.
 
-    Published by: parser-service
-    Consumed by: parser-service (background worker)
+    Published by: stats-service
+    Consumed by: stats-service (background worker)
     """
 
     event_type: str = Field(default="process_tournament_logs", frozen=True)
@@ -336,6 +202,51 @@ class TournamentStandingsInvalidatedEvent(BaseEvent):
     event_type: str = Field(default="tournament_standings_invalidated", frozen=True)
     tournament_id: int = Field(..., description="Tournament ID whose results changed")
     reason: str = Field(default="results_changed", description="Source/reason for observability")
+
+
+class MatchIngestPlacement(BaseModel):
+    """One bound encounter team's canonical placement; ``None`` = the document carries none for it."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    encounter_team_id: int = Field(..., gt=0)
+    placement: int | None = Field(default=None, ge=1)
+
+
+class MatchIngestExtraParticipant(BaseModel):
+    """A participant the observation shows on a team whose roster lacks them (never a stats row id)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    encounter_team_id: int = Field(..., gt=0)
+    workspace_member_id: int = Field(..., gt=0)
+    handle_snapshot: str = Field(..., min_length=1, max_length=128)
+    observed_role: RoleRef | None = None
+
+
+class MatchIngestedEvent(BaseEvent):
+    """One observation revision a stats document bound to an encounter game.
+
+    Published by: stats-service (transactional outbox), event id ``match.ingested:{evidence_id}:{revision}``.
+    Consumed by: the tournament match layer, which alone decides whether it is official. Carries no raw document,
+    S3 reference or interpreted score facts: only opaque evidence identity, the game-result basis it was captured
+    against, canonical placements, the extra participants the roster lacks and the observed map and mode (an accepted
+    result fills a game that named neither).
+    """
+
+    event_type: str = Field(default="match_ingested", frozen=True)
+    workspace_id: int = Field(..., gt=0)
+    discipline: str = Field(..., min_length=1, max_length=32)
+    encounter_id: int = Field(..., gt=0)
+    encounter_game_id: int = Field(..., gt=0)
+    evidence_id: int = Field(..., gt=0, description="stats.match.id, opaque to the match layer")
+    revision: int = Field(..., ge=1, description="Observation revision of that match")
+    ingest_job_id: int = Field(..., gt=0)
+    basis_game_result_version: int = Field(..., ge=0, description="game.result_version the binding was made against")
+    placements: list[MatchIngestPlacement] = Field(default_factory=list)
+    extra_participants: list[MatchIngestExtraParticipant] = Field(default_factory=list)
+    map_id: int | None = Field(default=None, gt=0, description="catalog map the observation was played on")
+    mode_id: int | None = Field(default=None, gt=0, description="catalog mode of the observation, when it has one")
 
 
 class CacheInvalidatedEvent(BaseEvent):
@@ -381,32 +292,31 @@ class RegistrationApprovedEvent(BaseEvent):
     workspace_id: int = Field(..., description="Workspace ID")
     registration_id: int = Field(..., description="Registration ID")
     user_id: int | None = Field(default=None, description="Player user ID when linked")
-    battle_tag: str | None = Field(default=None, description="Approved registration battle tag")
+    identity: PlayerIdentityRead | None = Field(
+        default=None,
+        description="Approved registration's primary handle for its tournament's identity provider",
+    )
 
 
 class RegistrationRankCheckRequestedEvent(RegistrationApprovedEvent):
     """The registrant asked to re-check their profile from their own card.
 
-    Same payload as the approval event, so parser-service runs the same rank check
+    Same payload as the approval event, so stats-service runs the same rank check
     for it; a distinct type and routing key so it is never read as an approval.
     """
 
     event_type: str = Field(default="registration_rank_check_requested", frozen=True)
 
 
-class RegistrationRejectedEvent(BaseEvent):
-    """Domain event emitted when a tournament registration is rejected."""
-
-    event_type: str = Field(default="registration_rejected", frozen=True)
-    tournament_id: int = Field(..., description="Tournament ID")
-    workspace_id: int = Field(..., description="Workspace ID")
-    registration_id: int = Field(..., description="Registration ID")
-    user_id: int | None = Field(default=None, description="Player user ID when linked")
-    battle_tag: str | None = Field(default=None, description="Rejected registration battle tag")
-
-
 class TournamentStateChangedEvent(BaseEvent):
-    """Domain event emitted when tournament lifecycle state changes."""
+    """Domain event emitted when tournament lifecycle state changes.
+
+    Published by: tournament-service (``transition_status``, manual and automatic).
+    Consumed by: analytics-worker (``tournament_state_changed``: a ``completed``
+    tournament gets its compute job created without anyone clicking), and the
+    discord bot's channel registry (per-replica exclusive queue: a finished
+    tournament leaves the watched set).
+    """
 
     event_type: str = Field(default="tournament_state_changed", frozen=True)
     tournament_id: int = Field(..., description="Tournament ID")
@@ -415,11 +325,99 @@ class TournamentStateChangedEvent(BaseEvent):
     new_status: str = Field(..., description="New tournament status")
 
 
+class ChallongePushRequestedEvent(BaseEvent):
+    """A confirmed result of a Challonge-linked encounter is to be pushed to Challonge.
+
+    Published by: tournament-service, in the transaction that confirmed the
+    result (every confirm path: captain reports, organizer result, agreed claim,
+    lobby game, accepted log evidence).
+    Consumed by: tournament-service ``tournament_challonge_push``, which pushes
+    only if the encounter's ``result_version`` still matches -- a reopened and
+    re-confirmed encounter supersedes an older, not-yet-pushed request.
+
+    ``event_id`` is deterministic (``challonge_push:<encounter>:<version>``):
+    one request per result version, however many times the drain redelivers.
+    """
+
+    event_type: str = Field(default="challonge_push_requested", frozen=True)
+    tournament_id: int = Field(..., description="Tournament ID")
+    encounter_id: int = Field(..., description="Encounter whose result was confirmed")
+    result_version: int = Field(..., ge=0, description="encounter.result_version the push carries")
+
+    @model_validator(mode="after")
+    def _deterministic_id(self):
+        self.event_id = f"challonge_push:{self.encounter_id}:{self.result_version}"
+        return self
+
+
+class PickBanRoomOpenRequestedEvent(BaseEvent):
+    """A mix match started with hero bans: its encounter's pick-ban room is to be opened.
+
+    Published by: balancer-service ``start_mix_match``, in the transaction that started the match.
+    Consumed by: tournament-service ``tournament_pick_ban_room_open``, which runs the room healer on the encounter.
+
+    ``event_id`` is deterministic (``pick_ban_room_open:<encounter>``): one request per started match.
+    """
+
+    event_type: str = Field(default="pick_ban_room_open_requested", frozen=True)
+    encounter_id: int = Field(..., description="The started mix encounter")
+
+    @model_validator(mode="after")
+    def _deterministic_id(self):
+        self.event_id = f"pick_ban_room_open:{self.encounter_id}"
+        return self
+
+
+class WorkspaceMemberChangedEvent(BaseEvent):
+    """Workspace membership or workspace roles changed for some auth users.
+
+    Published by: app-service (member add/update/remove, owner transfer,
+    workspace create, profile merge) in the same transaction as the write.
+    Consumed by: identity-service ``workspace_member_changed``, which drops the
+    cached RBAC payload of every listed user. Dropping a key is idempotent, so
+    a redelivery is harmless and the event needs no deterministic id.
+    """
+
+    event_type: str = Field(default="workspace_member_changed", frozen=True)
+    workspace_id: int | None = Field(default=None, description="Workspace ID; None for a cross-workspace merge")
+    auth_user_ids: list[int] = Field(..., min_length=1, description="Auth users whose RBAC must be reloaded")
+    change: str = Field(..., description="added | roles_changed | removed | owner_transferred | merged")
+
+
+class SteamAccountChangedEvent(BaseEvent):
+    """A Steam ``social_account`` was created or its account id changed.
+
+    Published by: ``shared.services.social_identity`` (every social-account
+    writer) in the same transaction as the write, unless the writer already
+    supplied the display name. Consumed by: identity-service
+    ``steam_account_changed``, which fetches the persona name into
+    ``social_account.display_name``. Re-fetching is idempotent, so a redelivery
+    is harmless.
+    """
+
+    event_type: str = Field(default="steam_account_changed", frozen=True)
+    social_account_id: int = Field(..., description="players.social_account id")
+
+
+class DiscordMemberChangedEvent(BaseEvent):
+    """A Discord guild member joined, left, or had their roles changed.
+
+    Published by: discord-service straight from the gateway event (no DB
+    transaction to join, so no outbox).
+    Consumed by: stats-worker ``discord_member_changed``, which re-resolves the
+    linked account's Boosty entitlement in every workspace bound to the guild.
+    """
+
+    event_type: str = Field(default="discord_member_changed", frozen=True)
+    guild_id: str = Field(..., description="Discord guild id")
+    discord_user_id: str = Field(..., description="Discord user id")
+    reason: str = Field(..., description="role_update | member_join | member_remove")
+
+
 class AnalyticsJobRequested(BaseEvent):
     """Unified analytics job dispatch — picked up by the analytics-worker.
 
-    Replaces the v1 ``Recalculate`` + v2 ``Train ML`` + v2 ``Run inference``
-    triggers. ``kind = 'compute'`` runs every selected v1 algorithm plus v2
+    ``kind = 'compute'`` runs every selected v1 algorithm plus v2
     inference; ``kind = 'train_ml'`` (re)trains the v2 boosters and is
     superuser-only at the HTTP layer.
     """
@@ -428,54 +426,12 @@ class AnalyticsJobRequested(BaseEvent):
     job_id: int = Field(..., description="analytics.job.id of the persisted request")
 
 
-class AnalyticsTrainRequest(BaseEvent):
-    """Request to (re)train v2 ML models up to a cutoff tournament.
-
-    Published by: analytics-service HTTP (`POST /v2/train`).
-    Consumed by: analytics-service worker (`serve.py`).
-    """
-
-    event_type: str = Field(default="analytics_train_request", frozen=True)
-    cutoff_tournament_id: int = Field(..., description="Train on tournaments <= this id")
-    model_kinds: list[str] | None = Field(
-        default=None,
-        description="Subset of model kinds to train (default: all active kinds)",
-    )
-    workspace_id: int | None = Field(
-        default=None,
-        description="Optional workspace scope filter",
-    )
-    workspace_ids: list[int] | None = Field(
-        default=None,
-        description="Optional multi-workspace training scope. None means all workspaces.",
-    )
-
-
-class AnalyticsInferRequest(BaseEvent):
-    """Request to run v2 ML inference for a single tournament.
-
-    Published by: analytics-service HTTP (`POST /v2/infer`).
-    Consumed by: analytics-service worker (`serve.py`).
-    """
-
-    event_type: str = Field(default="analytics_infer_request", frozen=True)
-    tournament_id: int = Field(..., description="Tournament to infer for")
-    model_kinds: list[str] | None = Field(
-        default=None,
-        description="Subset of model kinds to run (default: all active kinds)",
-    )
-    workspace_id: int | None = Field(
-        default=None,
-        description="Optional workspace scope filter",
-    )
-
-
 class FetchRankEvent(BaseEvent):
     """Event to fetch one battle tag's competitive rank from OverFast.
 
-    Published by: parser-service scheduler (``source="scheduled"``) and the
+    Published by: stats-service scheduler (``source="scheduled"``) and the
     registration hook (``source="registration"``, via the priority queue).
-    Consumed by: parser-service worker.
+    Consumed by: stats-service worker.
     """
 
     event_type: str = Field(default="fetch_rank", frozen=True)
@@ -491,9 +447,9 @@ class FetchRankEvent(BaseEvent):
 class AchievementEvaluateEvent(BaseEvent):
     """Event for triggering achievement evaluation after parsing.
 
-    Published by: parser-service (after match/tournament processing, and when a
+    Published by: stats-service (after match/tournament processing, and when a
     manual/rule_version_bump run for an unverified workspace is deferred)
-    Consumed by: parser-service (achievement engine)
+    Consumed by: stats-service (achievement engine)
     """
 
     event_type: str = Field(default="achievement_evaluate", frozen=True)
@@ -504,7 +460,7 @@ class AchievementEvaluateEvent(BaseEvent):
     )
     changed_tables: list[str] = Field(
         ...,
-        description="DB tables that changed (e.g. ['matches.statistics', 'tournament.encounter'])",
+        description="DB tables that changed (e.g. ['stats.fact', 'encounter.encounter'])",
     )
     # Deferred-queue only: the run row already exists (status ``queued``), so the
     # consumer resumes it instead of opening a second audit row, and the slice

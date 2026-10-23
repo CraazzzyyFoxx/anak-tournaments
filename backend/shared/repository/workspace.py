@@ -9,7 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared import models
+from shared.core.errors import BaseAPIException
 from shared.core.pagination import PaginationSortParams
+from shared.core.social import SocialProvider
 from shared.models.identity.rbac import role_permissions, user_lacks_roles, user_roles
 from shared.rbac.catalog import WORKSPACE_SYSTEM_ROLE_NAMES
 from shared.repository.base import BaseRepository
@@ -27,8 +29,18 @@ class WorkspaceRepository(BaseRepository[models.Workspace]):
     def __init__(self) -> None:
         super().__init__(models.Workspace)
 
-    async def get_by_slug(self, session: AsyncSession, slug: str) -> models.Workspace | None:
-        return await self.get_by(session, options=self.default_grid_options(), slug=slug)
+    async def get_by_slug(
+        self, session: AsyncSession, slug: str, *where: sa.ColumnElement[bool]
+    ) -> models.Workspace | None:
+        """``slug``'s workspace if it also matches ``where``, with its effective grids."""
+        result = await session.execute(
+            sa.select(models.Workspace)
+            .options(*self.default_grid_options())
+            .where(models.Workspace.slug == slug, *where)
+        )
+        workspace = result.scalar_one_or_none()
+        await self.load_effective_grid_versions(session, [workspace] if workspace is not None else [])
+        return workspace
 
     async def get_by_subdomain(self, session: AsyncSession, subdomain: str) -> models.Workspace | None:
         """Resolve a platform-zone subdomain label to its workspace (Phase 1).
@@ -74,7 +86,9 @@ class WorkspaceRepository(BaseRepository[models.Workspace]):
         return result.scalar_one_or_none()
 
     async def get_with_default_grid(self, session: AsyncSession, workspace_id: int) -> models.Workspace | None:
-        return await self.get(session, workspace_id, options=self.default_grid_options())
+        workspace = await self.get(session, workspace_id, options=self.default_grid_options())
+        await self.load_effective_grid_versions(session, [workspace] if workspace is not None else [])
+        return workspace
 
     async def lock_by_id(self, session: AsyncSession, workspace_id: int) -> int | None:
         """``SELECT id ... FOR UPDATE`` — serialize concurrent writers on one workspace.
@@ -87,6 +101,21 @@ class WorkspaceRepository(BaseRepository[models.Workspace]):
             sa.select(models.Workspace.id).where(models.Workspace.id == workspace_id).with_for_update()
         )
 
+    async def set_default_grid_version(
+        self, session: AsyncSession, workspace: models.Workspace, *, discipline: str, version_id: int
+    ) -> None:
+        """Atomic per-game upsert: another discipline's activation cannot be overwritten."""
+        assignment = models.WorkspaceDivisionGridDefault
+        stmt = pg_insert(assignment).values(workspace_id=workspace.id, discipline=discipline, version_id=version_id)
+        await session.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[assignment.workspace_id, assignment.discipline],
+                set_={"version_id": stmt.excluded.version_id},
+            )
+        )
+        await session.refresh(workspace, ["division_grid_defaults"])
+        await self.load_effective_grid_versions(session, [workspace])
+
     async def clear_default_grid_version(
         self,
         session: AsyncSession,
@@ -94,25 +123,26 @@ class WorkspaceRepository(BaseRepository[models.Workspace]):
         workspace_id: int,
         version_ids: Sequence[int],
     ) -> None:
-        """Detach the workspace default when the version it points at is being deleted.
-
-        One statement over the whole set of doomed versions rather than a load-then-check
-        per version.
-        """
+        """Remove only assignments pointing at the versions being deleted."""
         if not version_ids:
             return
         await session.execute(
-            sa.update(models.Workspace)
-            .where(
-                models.Workspace.id == workspace_id,
-                models.Workspace.default_division_grid_version_id.in_(tuple(version_ids)),
+            sa.delete(models.WorkspaceDivisionGridDefault).where(
+                models.WorkspaceDivisionGridDefault.workspace_id == workspace_id,
+                models.WorkspaceDivisionGridDefault.version_id.in_(tuple(version_ids)),
             )
-            .values(default_division_grid_version_id=None)
         )
 
-    async def list_ordered(self, session: AsyncSession) -> Sequence[models.Workspace]:
+    async def list_ordered(self, session: AsyncSession, *where: sa.ColumnElement[bool]) -> Sequence[models.Workspace]:
+        """Workspaces matching ``where``, ordered by id: list rows, so no effective grids (versions and tiers).
+
+        Filter here, never over the result.
+        """
         result = await session.execute(
-            sa.select(models.Workspace).options(*self.default_grid_options()).order_by(models.Workspace.id.asc())
+            sa.select(models.Workspace)
+            .options(*self.default_grid_options())
+            .where(*where)
+            .order_by(models.Workspace.id.asc())
         )
         return result.scalars().all()
 
@@ -143,11 +173,66 @@ class WorkspaceRepository(BaseRepository[models.Workspace]):
         )
         return result.scalars().all()
 
+    async def load_effective_grid_versions(self, session: AsyncSession, workspaces: Sequence[models.Workspace]) -> None:
+        """Resolve public payloads in three batched queries, deduplicating shared versions.
+
+        Explicit selections remain separate from same-game system fallbacks. No
+        synthetic version represents a native ladder, and no async lazy read is
+        deferred into synchronous WorkspaceRead serialization.
+        """
+        if not workspaces:
+            return
+        disciplines = {
+            code
+            for workspace in workspaces
+            for code in (*workspace.disciplines_enabled, *workspace.default_division_grid_versions)
+        }
+        system = dict(
+            (
+                await session.execute(
+                    sa.select(models.DivisionGrid.discipline, sa.func.min(models.DivisionGridVersion.id))
+                    .join(models.DivisionGridVersion, models.DivisionGridVersion.grid_id == models.DivisionGrid.id)
+                    .where(models.DivisionGrid.workspace_id.is_(None), models.DivisionGrid.discipline.in_(disciplines))
+                    .group_by(models.DivisionGrid.discipline)
+                )
+            ).all()
+        )
+        version_ids = set(system.values())
+        for workspace in workspaces:
+            version_ids.update(workspace.default_division_grid_versions.values())
+        rows = (
+            (
+                await session.execute(
+                    sa.select(
+                        models.DivisionGridVersion, models.DivisionGrid.discipline, models.DivisionGrid.workspace_id
+                    )
+                    .join(models.DivisionGrid, models.DivisionGrid.id == models.DivisionGridVersion.grid_id)
+                    .options(selectinload(models.DivisionGridVersion.tiers))
+                    .where(models.DivisionGridVersion.id.in_(version_ids))
+                )
+            ).all()
+            if version_ids
+            else []
+        )
+        versions = {version.id: (version, discipline, owner) for version, discipline, owner in rows}
+        for workspace in workspaces:
+            explicit = workspace.default_division_grid_versions
+            effective = {}
+            for code in set(workspace.disciplines_enabled) | explicit.keys():
+                version_id = explicit.get(code, system.get(code))
+                if version_id is None:
+                    continue
+                row = versions.get(version_id)
+                if row is None or row[1] != code or row[2] not in (None, workspace.id):
+                    raise BaseAPIException(
+                        status_code=422, detail="division_grid_discipline_mismatch: invalid workspace default"
+                    )
+                effective[code] = row[0]
+            workspace._effective_grid_versions = effective
+
     @staticmethod
     def default_grid_options() -> list[object]:
-        return [
-            selectinload(models.Workspace.default_division_grid_version).selectinload(models.DivisionGridVersion.tiers)
-        ]
+        return [selectinload(models.Workspace.division_grid_defaults)]
 
 
 class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
@@ -173,6 +258,8 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
             .options(selectinload(models.WorkspaceMember.player))
             .where(
                 models.WorkspaceMember.workspace_id == workspace_id,
+                models.WorkspaceMember.removed_at.is_(None),
+                models.WorkspaceMember.observed_only.is_(False),
                 models.User.auth_user_id == auth_user_id,
             )
         )
@@ -193,6 +280,41 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
         )
         return result.scalars().first()
 
+    async def discord_ids(self, session: AsyncSession, member_ids: Sequence[int]) -> Sequence[sa.Row[tuple[int, str]]]:
+        """``(member_id, discord_id)`` for each of ``member_ids`` whose account linked a Discord.
+
+        One batched read down the identity chain: workspace member -> player ->
+        auth user -> ``auth.oauth_connections``.
+        """
+        return (
+            await session.execute(
+                sa.select(models.WorkspaceMember.id, models.OAuthConnection.provider_user_id)
+                .select_from(models.WorkspaceMember)
+                .join(models.User, models.User.id == models.WorkspaceMember.player_id)
+                .join(models.OAuthConnection, models.OAuthConnection.auth_user_id == models.User.auth_user_id)
+                .where(
+                    models.WorkspaceMember.id.in_(member_ids),
+                    models.OAuthConnection.provider == SocialProvider.DISCORD,
+                    models.OAuthConnection.provider_user_id.is_not(None),
+                )
+            )
+        ).all()
+
+    async def auth_user_ids(self, session: AsyncSession, member_ids: Sequence[int]) -> dict[int, int]:
+        """``{member_id: auth_user_id}`` for each of ``member_ids`` with a site account behind its player.
+
+        The identity chain of :meth:`discord_ids`, one step shorter; a shadow player (no account) is left out.
+        """
+        if not member_ids:
+            return {}
+        rows = await session.execute(
+            sa.select(models.WorkspaceMember.id, models.User.auth_user_id)
+            .select_from(models.WorkspaceMember)
+            .join(models.User, models.User.id == models.WorkspaceMember.player_id)
+            .where(models.WorkspaceMember.id.in_(member_ids), models.User.auth_user_id.is_not(None))
+        )
+        return {int(member_id): int(auth_user_id) for member_id, auth_user_id in rows.all()}
+
     async def list_memberships_for_auth_user(
         self,
         session: AsyncSession,
@@ -208,7 +330,11 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
             sa.select(models.WorkspaceMember.workspace_id, models.Workspace.slug)
             .join(models.Workspace, models.Workspace.id == models.WorkspaceMember.workspace_id)
             .join(models.User, models.User.id == models.WorkspaceMember.player_id)
-            .where(models.User.auth_user_id == auth_user_id)
+            .where(
+                models.User.auth_user_id == auth_user_id,
+                models.WorkspaceMember.removed_at.is_(None),
+                models.WorkspaceMember.observed_only.is_(False),
+            )
         )
         return [(workspace_id, slug) for workspace_id, slug in result.all()]
 
@@ -225,45 +351,13 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
             .join(models.User, models.User.id == models.WorkspaceMember.player_id)
             .where(
                 models.WorkspaceMember.workspace_id == workspace_id,
+                models.WorkspaceMember.removed_at.is_(None),
+                models.WorkspaceMember.observed_only.is_(False),
                 models.User.auth_user_id == auth_user_id,
             )
             .limit(1)
         )
         return found is True
-
-    async def list_by_workspace(
-        self,
-        session: AsyncSession,
-        workspace_id: int,
-    ) -> Sequence[models.WorkspaceMember]:
-        """List the workspace's RBAC members — auth-linked players only.
-
-        ``workspace_member`` is anchored on ``player_id`` and now holds two
-        distinct populations: real RBAC members (auth users who joined via
-        ``add_member``) and tournament participants anchored by
-        registration / team / draft / achievement flows via
-        ``get_or_create_workspace_member``. The latter frequently have no auth
-        account (``players.user.auth_user_id IS NULL``) — they are pure
-        tournament players, not workspace members.
-
-        The RBAC members screen (``rpc.app.workspaces.members_list``) only
-        deals with the former, and every downstream step resolves the row's
-        auth identity (``get_member_auth_user_id``); an auth-less row would
-        make the whole listing 500. The INNER JOIN on ``players.user`` plus the
-        ``auth_user_id IS NOT NULL`` filter scope this to auth-linked members
-        (mirrors ``get_member``'s bridge join).
-        """
-        result = await session.execute(
-            sa.select(models.WorkspaceMember)
-            .join(models.User, models.User.id == models.WorkspaceMember.player_id)
-            .options(selectinload(models.WorkspaceMember.player))
-            .where(
-                models.WorkspaceMember.workspace_id == workspace_id,
-                models.User.auth_user_id.isnot(None),
-            )
-            .order_by(models.WorkspaceMember.id.asc())
-        )
-        return result.scalars().all()
 
     async def workspace_ids_for_player(self, session: AsyncSession, player_id: int) -> Sequence[int]:
         """Workspaces this player is anchored to, ids only.
@@ -272,7 +366,11 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
         needs the scope of each membership row, never the row itself.
         """
         result = await session.scalars(
-            sa.select(models.WorkspaceMember.workspace_id).where(models.WorkspaceMember.player_id == player_id)
+            sa.select(models.WorkspaceMember.workspace_id).where(
+                models.WorkspaceMember.player_id == player_id,
+                models.WorkspaceMember.removed_at.is_(None),
+                models.WorkspaceMember.observed_only.is_(False),
+            )
         )
         return result.all()
 
@@ -364,14 +462,17 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
     ) -> sa.Select[typing.Any]:
         """The auth-linked join + workspace scope shared by the count and the page.
 
-        Auth-linked only (INNER JOIN ``players.user`` + ``auth.user``), the same
-        scoping ``list_by_workspace`` applies and for the same reason: a row with
-        no auth identity is a tournament participant, not an RBAC member.
+        Auth-linked only (INNER JOIN ``players.user`` + ``auth.user``): a row
+        with no auth identity is a tournament participant, not an RBAC member.
         """
         base = (
             base.join(models.User, models.User.id == models.WorkspaceMember.player_id)
             .join(models.AuthUser, models.AuthUser.id == models.User.auth_user_id)
-            .where(models.WorkspaceMember.workspace_id == workspace_id)
+            .where(
+                models.WorkspaceMember.workspace_id == workspace_id,
+                models.WorkspaceMember.removed_at.is_(None),
+                models.WorkspaceMember.observed_only.is_(False),
+            )
         )
         if search and search.strip():
             like = f"%{search.strip()}%"
@@ -429,47 +530,105 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
         )
         return [(STAFF_ROLE_NAMES[rank_value], name) for rank_value, name in result.all()]
 
-    async def bulk_get_or_create(
-        self,
-        session: AsyncSession,
-        *,
-        workspace_id: int,
-        player_ids: set[int],
+    async def member_ids_by_player(
+        self, session: AsyncSession, *, workspace_id: int, player_ids: set[int]
     ) -> dict[int, int]:
-        """Batch counterpart of ``get_or_create_workspace_member``: resolve (or
-        create) the ``workspace_member`` anchors for a whole roster in two
-        statements.
-
-        Mirrors ``get_or_create_workspace_member``'s insert-or-select
-        idempotency (``INSERT ... ON CONFLICT DO NOTHING`` on
-        ``uq_workspace_member_workspace_player``, then one ``SELECT``), so
-        concurrent imports never raise duplicate-key errors. Returns
-        ``player_id -> member.id``.
-        """
-        if not player_ids:
-            return {}
-
-        insert_stmt = (
-            pg_insert(models.WorkspaceMember)
-            .values(
-                [
-                    {"workspace_id": workspace_id, "player_id": player_id}
-                    # Sorted for a deterministic insert order (avoids deadlocks
-                    # between concurrent bulk imports).
-                    for player_id in sorted(player_ids)
-                ]
-            )
-            .on_conflict_do_nothing(constraint="uq_workspace_member_workspace_player")
-        )
-        await session.execute(insert_stmt)
-
-        result = await session.execute(
+        """``player_id -> member.id`` for the rows that already exist, removed or not; creates nothing."""
+        rows = await session.execute(
             sa.select(models.WorkspaceMember.player_id, models.WorkspaceMember.id).where(
                 models.WorkspaceMember.workspace_id == workspace_id,
-                models.WorkspaceMember.player_id.in_(list(player_ids)),
+                models.WorkspaceMember.player_id.in_(player_ids),
             )
         )
-        return dict(result.all())
+        return dict(rows.tuples().all())
+
+
+async def insert_missing_workspace_members(
+    session: AsyncSession,
+    pairs: Sequence[tuple[int, int]],
+    *,
+    observed_only: bool = False,
+) -> dict[tuple[int, int], int]:
+    """Create absent (workspace, player) anchors; never revive, grant roles or commit.
+
+    ``observed_only`` marks anchors made by a stats observation: not a membership until a real admission.
+    """
+    from shared.services.stats_evidence import (
+        OWNER_BATCH,
+        capture_stats_evidence,
+        owner_scopes,
+        stage_stats_evidence,
+    )
+
+    if not pairs:
+        return {}
+    existing = await session.execute(
+        sa.select(models.WorkspaceMember.workspace_id, models.WorkspaceMember.player_id).where(
+            sa.tuple_(models.WorkspaceMember.workspace_id, models.WorkspaceMember.player_id).in_(pairs)
+        )
+    )
+    missing = sorted(set(pairs) - set(existing.tuples().all()))
+    created = {}
+    for offset in range(0, len(missing), OWNER_BATCH):
+        batch = missing[offset : offset + OWNER_BATCH]
+        ids = list(
+            await session.scalars(
+                sa.text(
+                    "SELECT nextval(pg_get_serial_sequence('workspace_member','id')) FROM generate_series(1,:count)"
+                ),
+                {"count": len(batch)},
+            )
+        )
+        # Separate sealed captures let ON CONFLICT discard race losers without
+        # claiming that their reserved, still-absent owner ids were created.
+        before = {
+            member_id: await capture_stats_evidence(session, scopes=owner_scopes("member", (member_id,)))
+            for member_id in ids
+        }
+        rows = (
+            await session.execute(
+                pg_insert(models.WorkspaceMember)
+                .values(
+                    [
+                        {
+                            "id": member_id,
+                            "workspace_id": workspace_id,
+                            "player_id": player_id,
+                            "observed_only": observed_only,
+                        }
+                        for member_id, (workspace_id, player_id) in zip(ids, batch, strict=True)
+                    ]
+                )
+                .on_conflict_do_nothing(constraint="uq_workspace_member_workspace_player")
+                .returning(
+                    models.WorkspaceMember.id, models.WorkspaceMember.workspace_id, models.WorkspaceMember.player_id
+                )
+            )
+        ).all()
+        for member_id, workspace_id, player_id in rows:
+            after = await capture_stats_evidence(session, scopes=owner_scopes("member", (member_id,)))
+            await stage_stats_evidence(
+                session,
+                operation="stats.member_create",
+                before=before[member_id],
+                after=after,
+                workspace_id=workspace_id,
+                entity_type="workspace_member",
+                entity_id=member_id,
+            )
+            created[(workspace_id, player_id)] = member_id
+    return created
+
+
+async def insert_observation_members(session: AsyncSession, pairs: Sequence[tuple[int, int]]) -> None:
+    """Anchor observations to (workspace, player) pairs without conferring any membership.
+
+    New anchors are ``observed_only``: membership/visibility reads and the link-time role autofill skip them, no role or
+    rank is granted and ``removed_at`` stays NULL (nothing was removed). Existing rows are untouched: an admitted member
+    stays admitted, a genuinely removed one stays removed. A real admission (``get_or_create_workspace_member``) clears
+    the flag.
+    """
+    await insert_missing_workspace_members(session, pairs, observed_only=True)
 
 
 async def get_or_create_workspace_member(
@@ -485,39 +644,41 @@ async def get_or_create_workspace_member(
     row already existed, so concurrent calls never raise
     ``IntegrityError``/duplicate-key races.
     """
-    insert_stmt = (
-        pg_insert(models.WorkspaceMember)
-        .values(workspace_id=workspace_id, player_id=player_id)
-        .on_conflict_do_nothing(constraint="uq_workspace_member_workspace_player")
-        .returning(models.WorkspaceMember.id)
-    )
-    result = await session.execute(insert_stmt)
-    member_id = result.scalar_one_or_none()
+    created = await insert_missing_workspace_members(session, [(workspace_id, player_id)])
+    member_id = created.get((workspace_id, player_id))
     if member_id is not None:
         await session.flush()
         member = await session.get(models.WorkspaceMember, member_id)
         assert member is not None
-        # Autofill the baseline ``member`` RBAC role for a brand-new anchor of an
-        # auth-linked player: the members screen treats every auth-linked row as
-        # an RBAC member, so a fresh row must not be role-less. Fires ONLY on a
-        # real insert (not idempotent hits) and ONLY when the player has an auth
-        # account; the helper is additive (never downgrades a later ``player`` /
-        # explicit grant). Local import avoids any shared.repository<->shared.rbac
-        # import-time coupling on this widely-imported module.
-        from shared.rbac import assign_default_member_role_if_roleless
-
-        auth_user_id = await session.scalar(sa.select(models.User.auth_user_id).where(models.User.id == player_id))
-        if auth_user_id is not None:
-            await assign_default_member_role_if_roleless(session, user_id=auth_user_id, workspace_id=workspace_id)
-        return member
-
-    existing = await WorkspaceMemberRepository().get_by_player(session, workspace_id=workspace_id, player_id=player_id)
-    if existing is None:
-        raise RuntimeError(
-            f"get_or_create_workspace_member: no row after ON CONFLICT DO NOTHING "
-            f"(workspace_id={workspace_id}, player_id={player_id})"
+    else:
+        member = await WorkspaceMemberRepository().get_by_player(
+            session, workspace_id=workspace_id, player_id=player_id
         )
-    return existing
+        if member is None:
+            raise RuntimeError(
+                f"get_or_create_workspace_member: no row after ON CONFLICT DO NOTHING "
+                f"(workspace_id={workspace_id}, player_id={player_id})"
+            )
+        if member.removed_at is None and not member.observed_only:
+            return member
+        # Re-adding a removed member reuses the row (its roster history hangs on it); admitting an observation-only
+        # anchor makes it a real member. Both are real admissions.
+        member.removed_at = None
+        member.observed_only = False
+        await session.flush()
+    # Autofill the baseline ``member`` RBAC role for a brand-new (or re-added) anchor of an
+    # auth-linked player: the members screen treats every auth-linked row as
+    # an RBAC member, so such a row must not be role-less. Fires ONLY on a
+    # real insert or a revival (not idempotent hits) and ONLY when the player has an auth
+    # account; the helper is additive (never downgrades a later ``player`` /
+    # explicit grant). Local import avoids any shared.repository<->shared.rbac
+    # import-time coupling on this widely-imported module.
+    from shared.rbac import assign_default_member_role_if_roleless
+
+    auth_user_id = await session.scalar(sa.select(models.User.auth_user_id).where(models.User.id == player_id))
+    if auth_user_id is not None:
+        await assign_default_member_role_if_roleless(session, user_id=auth_user_id, workspace_id=workspace_id)
+    return member
 
 
 async def resolve_workspace_member_id(
@@ -530,7 +691,7 @@ async def resolve_workspace_member_id(
     resolved from the tournament they are joining — or ``None`` if
     ``tournament_id`` names no tournament.
 
-    ``tournament-service`` (admin player CRUD) and ``parser-service`` (roster
+    ``tournament-service`` (admin player CRUD) and ``stats-service`` (roster
     import) each derived this identically — workspace from tournament, then
     ``get_or_create_workspace_member`` — and each raises its own not-found
     error on ``None``, so that part stays with the caller rather than here.

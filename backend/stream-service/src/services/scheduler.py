@@ -1,7 +1,5 @@
 """APScheduler trigger for the Twitch live-status poll tick.
 
-Mirrors ``parser-service/src/services/subscription_collection/scheduler.py``.
-
 The job fires on a short fixed heartbeat and decides *inside* the tick whether the
 configured ``interval_seconds`` has elapsed, rather than being registered at that
 interval: the interval is admin-editable at runtime through the
@@ -30,7 +28,7 @@ from shared.services.distributed_lock import (
 from shared.services.scheduler import IntervalScheduler
 from shared.services.settings_provider import settings_provider
 from src.core import db
-from src.rpc._clients import realtime_redis
+from src.core.clients import realtime_redis
 from src.services import poller
 from src.services.state import StreamStateStore
 
@@ -69,9 +67,6 @@ async def run_stream_poll_tick(
                         logger.debug("Stream poll not due for another {:.0f}s; skipping tick", due_at - time.time())
                         return 0
 
-                # The `enabled` gate lives in `run_poll_tick` itself, not here: the
-                # admin re-poll reaches the tick by a different route and must be
-                # gated by the same line.
                 count = await poller.run_poll_tick(session, redis_client, cfg)
                 logger.info("Stream poll tick updated {} tournaments", count)
                 return count

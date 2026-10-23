@@ -3,13 +3,15 @@
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { usePermissions } from "@/hooks/usePermissions";
-import { tabFallback, useHubTournamentQuery } from "../hubQueries";
+import { tabError, tabFallback, useHubTournamentQuery } from "../hubQueries";
 
 export interface MatchesViewScope {
   workspaceId: number | null;
   tournamentName: string;
+  /** The tournament's own game (owner scope). */
+  discipline: string;
 }
 
 /**
@@ -39,21 +41,18 @@ export function MatchesView({
   if (tournamentQuery.isLoading || !isLoaded) return tabFallback;
 
   const tournament = tournamentQuery.data;
-  if (!tournament) return null;
+  if (!tournament) return tabError(() => void tournamentQuery.refetch());
 
   const workspaceId = tournament.workspace_id ?? null;
   if (!canAccessPermission("match.read", workspaceId)) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("unauthorized")}</CardTitle>
-          <CardDescription>
-            {t("unauthorizedDescription")}
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      <PageStateCard
+        state="error"
+        title={t("unauthorized")}
+        description={t("unauthorizedDescription")}
+      />
     );
   }
 
-  return <>{children({ workspaceId, tournamentName: tournament.name })}</>;
+  return <>{children({ workspaceId, tournamentName: tournament.name, discipline: tournament.discipline })}</>;
 }

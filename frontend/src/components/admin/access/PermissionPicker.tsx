@@ -2,22 +2,15 @@
 
 import { useId, useState } from "react";
 import { useTranslations } from "next-intl";
-import { CheckSquare, XSquare } from "lucide-react";
+import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
+import { Check } from "lucide-react";
 
-import { EYEBROW_CLASS, TONE_CLASS } from "@/components/kit/tone";
-import { Badge } from "@/components/ui/badge";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { SearchField } from "@/components/ui/search-field";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
-} from "@/components/ui/table";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 
@@ -37,8 +30,11 @@ export interface PermissionPickerProps {
   catalog: PermissionCatalogEntry[];
   value: Set<string>;
   onChange: (next: Set<string>) => void;
-  /** `matrix` is resource × action; `list` is a flat run of named rows. */
-  mode?: "matrix" | "list";
+  /**
+   * `chips` is one row per resource holding only that resource's actions as
+   * toggle chips; `list` is a flat run of named rows with descriptions.
+   */
+  mode?: "chips" | "list";
   /**
    * Wildcard keys this picker may grant, e.g. `admin.*` or `team.*`. Holding
    * one checks and LOCKS every row it covers: the individual boxes would be
@@ -50,10 +46,10 @@ export interface PermissionPickerProps {
 }
 
 /** The catalogue-wide wildcard: not the `admin` resource, but "everything". */
-const GLOBAL_WILDCARD = "admin.*";
+export const GLOBAL_WILDCARD = "admin.*";
 
 /**
- * Action order, so the matrix reads read → write → destroy rather than
+ * Action order, so a resource reads read → write → destroy rather than
  * alphabetically. Anything unlisted sorts after, alphabetically.
  */
 const ACTION_ORDER = [
@@ -79,7 +75,7 @@ const ACTION_ORDER = [
   "revoke"
 ];
 
-function sortActions(left: string, right: string): number {
+export function sortActions(left: string, right: string): number {
   const leftIndex = ACTION_ORDER.indexOf(left);
   const rightIndex = ACTION_ORDER.indexOf(right);
   if (leftIndex !== -1 || rightIndex !== -1) {
@@ -91,8 +87,8 @@ function sortActions(left: string, right: string): number {
   return left.localeCompare(right);
 }
 
-/** `foo_bar` → `foo bar`; `*` is the whole-resource column. */
-function humanize(value: string): string {
+/** `foo_bar` → `foo bar`. */
+export function humanize(value: string): string {
   return value.replaceAll("_", " ");
 }
 
@@ -109,7 +105,6 @@ export function wildcardCovers(wildcard: string, entry: PermissionCatalogEntry):
 interface ResourceGroup {
   resource: string;
   entries: PermissionCatalogEntry[];
-  byAction: Map<string, PermissionCatalogEntry>;
 }
 
 /**
@@ -122,6 +117,9 @@ interface ResourceGroup {
  * and about whether "nothing selected" is legal, so the same question got
  * three different answers depending on which screen asked it.
  *
+ * `chips` replaced a resource × action matrix: most actions belong to one
+ * resource, so the grid was mostly empty cells and scrolled both ways.
+ *
  * Selection is a `Set` of keys the caller owns; this component holds no draft.
  * The narrowing box and the "Granted only" chip are deliberately local: this
  * is a form control, and it is mounted inside a dialog often enough that
@@ -132,7 +130,7 @@ export function PermissionPicker({
   catalog,
   value,
   onChange,
-  mode = "matrix",
+  mode = "chips",
   wildcards,
   readOnly = false
 }: Readonly<PermissionPickerProps>) {
@@ -141,15 +139,21 @@ export function PermissionPicker({
   const ti = useTranslations("adminAccess.pickerUi");
   const fieldId = useId();
   const [query, setQuery] = useState("");
-  const [grantedOnly, setGrantedOnly] = useState(false);
+  // A read-only role is read for what it grants, not for the 130 boxes it does
+  // not: start narrowed to the grants when there are any.
+  const [grantedOnly, setGrantedOnly] = useState(
+    () => mode === "chips" && readOnly && value.size > 0
+  );
 
   const offeredWildcards = wildcards ?? [];
   const heldWildcards = offeredWildcards.filter((wildcard) => value.has(wildcard));
 
   const isCovered = (entry: PermissionCatalogEntry): boolean =>
     heldWildcards.some((wildcard) => wildcardCovers(wildcard, entry));
+  const isGranted = (entry: PermissionCatalogEntry): boolean =>
+    value.has(entry.key) || isCovered(entry);
 
-  // Roughly 90 entries at the widest, so the narrowing runs on every render
+  // Roughly 130 entries at the widest, so the narrowing runs on every render
   // rather than through a `useMemo` whose dependency list would have to
   // restate what `value` and `wildcards` already say.
   const needle = query.trim().toLowerCase();
@@ -157,7 +161,7 @@ export function PermissionPicker({
     if (needle && !`${entry.key} ${entry.resource} ${entry.action}`.toLowerCase().includes(needle)) {
       return false;
     }
-    return !grantedOnly || value.has(entry.key) || isCovered(entry);
+    return !grantedOnly || isGranted(entry);
   });
 
   const byResource = new Map<string, PermissionCatalogEntry[]>();
@@ -167,17 +171,11 @@ export function PermissionPicker({
     else byResource.set(entry.resource, [entry]);
   }
   const groups: ResourceGroup[] = [...byResource.entries()]
-    .map(([resource, entries]) => {
-      const sorted = [...entries].sort((left, right) => sortActions(left.action, right.action));
-      return {
-        resource,
-        entries: sorted,
-        byAction: new Map(sorted.map((entry) => [entry.action, entry]))
-      };
-    })
+    .map(([resource, entries]) => ({
+      resource,
+      entries: [...entries].sort((left, right) => sortActions(left.action, right.action))
+    }))
     .sort((left, right) => left.resource.localeCompare(right.resource));
-
-  const actions = [...new Set(visible.map((entry) => entry.action))].sort(sortActions);
 
   const setKeys = (keys: string[], checked: boolean) => {
     const next = new Set(value);
@@ -188,11 +186,14 @@ export function PermissionPicker({
     onChange(next);
   };
 
-  const selectedCount = catalog.filter((entry) => value.has(entry.key) || isCovered(entry)).length;
-  // Narrowing and bulk selection exist for the ~90-entry inventory. A handful
+  const selectedCount = catalog.filter(isGranted).length;
+  // Narrowing and bulk selection exist for the ~130-entry inventory. A handful
   // of rows needs neither, and a "Grant all" over two rows in a restrictions
   // panel would read as the opposite of what checking them does.
   const showBulkControls = catalog.length > 8;
+  // "Selected only" narrows nothing at none or all; it stays while on, so it can be switched off.
+  const showSelectedOnly =
+    grantedOnly || (selectedCount > 0 && selectedCount < catalog.length);
 
   const cellCheckbox = (entry: PermissionCatalogEntry) => {
     const covered = isCovered(entry);
@@ -207,13 +208,44 @@ export function PermissionPicker({
     );
   };
 
+  const actionChip = (entry: PermissionCatalogEntry) => {
+    const covered = isCovered(entry);
+    return (
+      <CheckboxPrimitive.Root
+        key={entry.key}
+        aria-label={ti("toggle", { key: entry.key })}
+        title={entry.description}
+        checked={covered || value.has(entry.key)}
+        disabled={readOnly || covered}
+        onCheckedChange={(checked) => setKeys([entry.key], checked === true)}
+        className={cn(
+          "inline-flex h-7 items-center gap-1 rounded-md border px-2.5 text-xs font-medium transition-colors",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "data-[state=unchecked]:border-border data-[state=unchecked]:text-muted-foreground",
+          "enabled:data-[state=unchecked]:hover:border-foreground/30 enabled:data-[state=unchecked]:hover:text-foreground",
+          "data-[state=checked]:border-primary/40 data-[state=checked]:bg-primary/10 data-[state=checked]:text-primary",
+          "enabled:data-[state=checked]:hover:bg-primary/15",
+          "disabled:cursor-not-allowed data-[state=unchecked]:disabled:opacity-50"
+        )}
+      >
+        <CheckboxPrimitive.Indicator>
+          <Check aria-hidden className="size-3" />
+        </CheckboxPrimitive.Indicator>
+        {entry.action === "*" ? ti("all") : humanize(entry.action)}
+      </CheckboxPrimitive.Root>
+    );
+  };
+
+  // A switch that is off and locked says nothing a reader needs.
+  const shownWildcards = mode === "chips" && readOnly ? heldWildcards : offeredWildcards;
+
   return (
-    <div className="space-y-2">
+    <div className={mode === "chips" ? "space-y-3" : "space-y-2"}>
       <div className="flex flex-wrap items-center gap-2">
-        <p className={EYEBROW_CLASS}>{t("permissions")}</p>
-        <Badge variant="outline" className="tabular-nums">
+        <p className={eyebrowClass("muted")}>{t("permissions")}</p>
+        <span className="text-caption tabular-nums text-muted-foreground">
           {t("selectedSummary", { selected: selectedCount, total: catalog.length })}
-        </Badge>
+        </span>
         {showBulkControls ? (
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <SearchField
@@ -223,31 +255,31 @@ export function PermissionPicker({
               value={query}
               onValueChange={setQuery}
             />
-            <FilterChip active={grantedOnly} onClick={() => setGrantedOnly(!grantedOnly)}>
-              {t("selectedOnly")}
-            </FilterChip>
+            {showSelectedOnly ? (
+              <FilterChip active={grantedOnly} onClick={() => setGrantedOnly(!grantedOnly)}>
+                {t("selectedOnly")}
+              </FilterChip>
+            ) : null}
             {readOnly ? null : (
               <>
                 <Button
                   type="button"
-                  variant="outline"
+                  variant={mode === "chips" ? "ghost" : "outline"}
                   size="sm"
                   disabled={visible.length === 0}
                   onClick={() => setKeys(visible.map((entry) => entry.key), true)}
                 >
-                  <CheckSquare aria-hidden className="size-4" />
                   {t("selectAll")}
                 </Button>
                 <Button
                   type="button"
-                  variant="outline"
+                  variant={mode === "chips" ? "ghost" : "outline"}
                   size="sm"
                   disabled={selectedCount === 0}
                   onClick={() =>
                     setKeys([...visible.map((entry) => entry.key), ...offeredWildcards], false)
                   }
                 >
-                  <XSquare aria-hidden className="size-4" />
                   {t("clearAll")}
                 </Button>
               </>
@@ -256,17 +288,56 @@ export function PermissionPicker({
         ) : null}
       </div>
 
-      {offeredWildcards.length > 0 ? (
+      {shownWildcards.length === 0 ? null : mode === "chips" ? (
+        <ul className="divide-y divide-border rounded-lg border border-border">
+          {shownWildcards.map((wildcard) => {
+            const held = value.has(wildcard);
+            const global = wildcard === GLOBAL_WILDCARD;
+            const resource = wildcard.slice(0, wildcard.indexOf("."));
+            return (
+              <li
+                key={wildcard}
+                className={cn(
+                  "flex items-center gap-4 px-4 py-3 transition-colors",
+                  held && (global ? "bg-danger/5" : "bg-primary/5")
+                )}
+              >
+                <label
+                  htmlFor={`${fieldId}-wildcard-${wildcard}`}
+                  className={cn("min-w-0 flex-1", readOnly ? "" : "cursor-pointer")}
+                >
+                  <span className="flex flex-wrap items-baseline gap-x-2 text-sm font-medium text-foreground">
+                    {global ? ti("fullAccess") : humanize(resource)}
+                    <code
+                      className={cn(
+                        "font-mono text-xs font-normal",
+                        global && held ? "text-danger" : "text-muted-foreground"
+                      )}
+                    >
+                      {wildcard}
+                    </code>
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    {global ? tp("everything") : tp("everythingScoped", { resource })}
+                  </span>
+                </label>
+                <Switch
+                  id={`${fieldId}-wildcard-${wildcard}`}
+                  checked={held}
+                  disabled={readOnly}
+                  onCheckedChange={(checked) => setKeys([wildcard], checked)}
+                />
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
         <ul className="space-y-1.5">
           {offeredWildcards.map((wildcard) => (
             <li key={wildcard}>
               <label
                 htmlFor={`${fieldId}-wildcard-${wildcard}`}
-                className={cn(
-                  "flex items-start gap-2 rounded-md border p-2",
-                  readOnly ? "" : "cursor-pointer",
-                  TONE_CLASS.danger
-                )}
+                className={cn("flex items-start gap-2", readOnly ? "" : "cursor-pointer")}
               >
                 <Checkbox
                   id={`${fieldId}-wildcard-${wildcard}`}
@@ -276,8 +347,15 @@ export function PermissionPicker({
                   onCheckedChange={(checked) => setKeys([wildcard], checked === true)}
                 />
                 <span className="min-w-0">
-                  <span className="block font-mono text-xs font-semibold">{wildcard}</span>
-                  <span className="mt-0.5 block text-xs">
+                  <span
+                    className={cn(
+                      "block font-mono text-xs font-semibold",
+                      wildcard === GLOBAL_WILDCARD && "text-danger"
+                    )}
+                  >
+                    {wildcard}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
                     {wildcard === GLOBAL_WILDCARD
                       ? tp("everything")
                       : tp("everythingScoped", {
@@ -289,7 +367,7 @@ export function PermissionPicker({
             </li>
           ))}
         </ul>
-      ) : null}
+      )}
 
       {catalog.length === 0 ? (
         <EmptyNote size="sm">
@@ -303,7 +381,7 @@ export function PermissionPicker({
         <div className="max-h-[52dvh] space-y-3 overflow-y-auto rounded-md border border-border p-2">
           {groups.map((group) => (
             <div key={group.resource} className="space-y-1">
-              <p className={EYEBROW_CLASS}>
+              <p className={eyebrowClass("muted")}>
                 {group.resource === "*" ? ti("all") : humanize(group.resource)}
               </p>
               <ul className="grid gap-x-3 gap-y-1 sm:grid-cols-2">
@@ -331,82 +409,49 @@ export function PermissionPicker({
           ))}
         </div>
       ) : (
-        <div className="max-h-[52dvh] overflow-auto rounded-md border border-border">
-          <Table wrapperClassName="min-w-[760px] overflow-visible">
-            <TableHeader className="sticky top-0 z-10 bg-background">
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="sticky left-0 z-20 w-56 bg-background">{t("resource")}</TableHead>
-                {actions.map((action) => {
-                  const columnKeys = groups
-                    .map((group) => group.byAction.get(action))
-                    .filter((entry): entry is PermissionCatalogEntry => entry !== undefined)
-                    .map((entry) => entry.key);
-                  return (
-                    <TableHead key={action} className="min-w-24 bg-background text-center">
-                      <span className="flex flex-col items-center gap-1.5">
-                        <Checkbox
-                          aria-label={ti("toggleAction", { action })}
-                          checked={
-                            columnKeys.length > 0 && columnKeys.every((key) => value.has(key))
-                          }
-                          disabled={readOnly || columnKeys.length === 0}
-                          onCheckedChange={(checked) => setKeys(columnKeys, checked === true)}
-                        />
-                        <span className="text-xs capitalize">
-                          {action === "*" ? ti("all") : humanize(action)}
-                        </span>
-                      </span>
-                    </TableHead>
-                  );
-                })}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {groups.map((group) => {
-                const rowKeys = group.entries.map((entry) => entry.key);
-                const rowGranted = rowKeys.filter((key) => value.has(key)).length;
-                return (
-                  <TableRow key={group.resource}>
-                    <TableCell className="sticky left-0 z-[1] bg-background">
-                      <span className="flex items-center gap-3">
-                        <Checkbox
-                          aria-label={ti("toggleResource", { resource: group.resource })}
-                          checked={rowGranted === rowKeys.length}
-                          disabled={readOnly}
-                          onCheckedChange={(checked) => setKeys(rowKeys, checked === true)}
-                        />
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-medium">
-                            {group.resource === "*" ? ti("all") : humanize(group.resource)}
-                          </span>
-                          <span className="block text-xs tabular-nums text-muted-foreground">
-                            {rowGranted}/{rowKeys.length}
-                          </span>
-                        </span>
-                      </span>
-                    </TableCell>
-                    {actions.map((action) => {
-                      const entry = group.byAction.get(action);
-                      if (!entry) {
-                        return (
-                          <TableCell key={action} className="text-center text-muted-foreground">
-                            <span aria-hidden>—</span>
-                            <span className="sr-only">{t("notApplicable")}</span>
-                          </TableCell>
-                        );
-                      }
-                      return (
-                        <TableCell key={action} className="text-center">
-                          <span className="flex justify-center">{cellCheckbox(entry)}</span>
-                        </TableCell>
-                      );
-                    })}
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+        <ul className="divide-y divide-border rounded-lg border border-border">
+          {groups.map((group) => {
+            // The narrowing hides chips, not grants: the count and "All" speak
+            // for the whole resource.
+            const whole = catalog.filter((entry) => entry.resource === group.resource);
+            const rowKeys = whole.map((entry) => entry.key);
+            const rowGranted = whole.filter(isGranted).length;
+            const rowLocked = whole.every(isCovered);
+            const allGranted = rowGranted === rowKeys.length;
+            return (
+              <li
+                key={group.resource}
+                className="grid gap-x-4 gap-y-2 px-4 py-3 sm:grid-cols-[10rem_minmax(0,1fr)_auto] sm:items-start"
+              >
+                <div className="flex min-w-0 items-baseline gap-2 sm:block sm:pt-1">
+                  <p className="truncate text-sm font-medium text-foreground">
+                    {group.resource === "*" ? ti("all") : humanize(group.resource)}
+                  </p>
+                  <p className="text-xs tabular-nums text-muted-foreground">
+                    {rowGranted}/{rowKeys.length}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-1.5">{group.entries.map(actionChip)}</div>
+                {readOnly || rowLocked ? null : (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-pressed={allGranted}
+                    aria-label={ti("toggleResource", { resource: group.resource })}
+                    className={cn(
+                      "h-7 justify-self-start px-2 text-xs sm:justify-self-end",
+                      allGranted ? "text-primary" : "text-muted-foreground"
+                    )}
+                    onClick={() => setKeys(rowKeys, !allGranted)}
+                  >
+                    {ti("all")}
+                  </Button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
       )}
     </div>
   );

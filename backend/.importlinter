@@ -1,0 +1,55 @@
+[importlinter]
+# Core reaches a discipline module only through the registry ``shared.disciplines``.
+# Services are covered by backend/tests/test_discipline_module_boundary.py (their root package is ``src``).
+root_packages =
+    shared
+
+[importlinter:contract:core-reaches-modules-through-the-registry]
+name = shared core never imports shared.disciplines.<slug>
+type = forbidden
+# The registry itself imports the modules; core importing the registry is the allowed indirect path.
+allow_indirect_imports = True
+source_modules =
+    shared.balancer_subrole_catalog
+    shared.catalog_aliases
+    shared.catalog_sync
+    shared.clients
+    shared.core
+    shared.division_grid
+    shared.domain
+    shared.hero_catalog
+    shared.jobs
+    shared.messaging
+    shared.models
+    shared.observability
+    shared.quota
+    shared.rbac
+    shared.registration_statuses
+    shared.repository
+    shared.rpc
+    shared.schemas
+    shared.services
+    shared.tenancy
+    shared.testing
+forbidden_modules =
+    shared.disciplines.overwatch
+    shared.disciplines.lol
+    shared.disciplines.deadlock
+    shared.disciplines.valorant
+
+[importlinter:contract:registry-support-modules-are-module-agnostic]
+name = shared.disciplines support modules never import a concrete discipline module
+type = forbidden
+# Only the registry assembly (shared/disciplines/__init__.py) loads the module packages. The generic spec, ingest
+# protocol, analytics contract and job registry that core and service code read must stay module-agnostic.
+allow_indirect_imports = True
+source_modules =
+    shared.disciplines.spec
+    shared.disciplines.analytics
+    shared.disciplines.ingest
+    shared.disciplines.jobs
+forbidden_modules =
+    shared.disciplines.overwatch
+    shared.disciplines.lol
+    shared.disciplines.deadlock
+    shared.disciplines.valorant

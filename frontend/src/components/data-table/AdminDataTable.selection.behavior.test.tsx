@@ -108,7 +108,7 @@ describe("DataTable selection across pages", () => {
     expect(button("Select row 3")).not.toBeNull();
     // Row 1 is no longer rendered but still selected, and still in the payload.
     expect(container.textContent).toContain("bulk:1");
-    expect(container.textContent).toContain("1 on other pages");
+    expect(container.textContent).toContain("1 selected on other pages");
 
     await click(button("Select row 3"));
     expect(container.textContent).toContain("bulk:1,3");

@@ -7,7 +7,7 @@ from unittest import TestCase
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
-sys.path.insert(0, str(backend_root / "parser-service"))
+sys.path.insert(0, str(backend_root / "stats-service"))
 
 
 analytics_flows = importlib.import_module("src.services.analytics.flows")

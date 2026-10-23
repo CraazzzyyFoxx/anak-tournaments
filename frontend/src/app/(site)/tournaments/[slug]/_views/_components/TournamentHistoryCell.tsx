@@ -4,42 +4,24 @@ import { useTranslations } from "next-intl";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useRoleName } from "@/hooks/useRoleName";
 import { getDivisionLabel } from "@/lib/divisions/grid";
+import { findRole } from "@/lib/roster/ontology";
 import type { TournamentHistoryEntry } from "@/types/registration.types";
-
-const ROLE_TO_ICON: Record<string, string> = {
-  tank: "Tank",
-  damage: "Damage",
-  support: "Support",
-  flex: "Flex",
-};
-
-function getHistoryRoleLabel(
-  role: string,
-  t: ReturnType<typeof useTranslations<never>>,
-): string {
-  switch (role.toLowerCase()) {
-    case "tank":
-      return t("common.roles.tank");
-    case "damage":
-      return t("common.roles.damage");
-    case "support":
-      return t("common.roles.support");
-    case "flex":
-      return t("common.roles.flex");
-    default:
-      return role;
-  }
-}
 
 export default function TournamentHistoryCell({
   history,
   count,
+  workspaceId,
 }: Readonly<{
   history: TournamentHistoryEntry[];
   /** True total of past tournaments; `history` may be capped to a recent subset. */
   count?: number;
+  /** The roster's workspace: every past tournament in `history` is one of its own. */
+  workspaceId: number;
 }>) {
   const t = useTranslations();
 
@@ -58,57 +40,24 @@ export default function TournamentHistoryCell({
   return (
     <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="xs"
             aria-label={t("tournamentDetail.previousTournaments", { count: total })}
-            className="inline-flex items-center rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] px-1.5 py-0.5 text-xs font-medium tabular-nums text-[color:var(--aqt-fg-muted)] outline-none transition hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]"
+            className="tabular-nums"
           >
             {total}x
-          </button>
+          </Button>
         </TooltipTrigger>
         <TooltipContent
           side="top"
           className="max-w-xs border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-3 py-2 text-[color:var(--aqt-fg)] shadow-xl shadow-black/40"
         >
           <ul className="space-y-1 text-xs">
-            {history.map((h) => {
-              return (
-                <li key={h.tournament_id} className="space-y-1">
-                  <div className="text-[color:var(--aqt-fg)]">{h.tournament_name}</div>
-                  {(h.role || h.division != null) ? (
-                    <div className="flex items-center gap-2 text-[color:var(--aqt-fg-dim)]">
-                      {h.role ? (
-                        <span className="inline-flex items-center">
-                          <span className="sr-only">{getHistoryRoleLabel(h.role, t)}</span>
-                          <PlayerRoleIcon
-                            role={ROLE_TO_ICON[h.role] ?? h.role}
-                            size={16}
-                            aria-hidden
-                          />
-                        </span>
-                      ) : null}
-                      {h.division != null ? (
-                        <span className="inline-flex items-center">
-                          <span className="sr-only">
-                            {getDivisionLabel(
-                              h.division_grid_version ?? { tiers: [] },
-                              h.division
-                            ) ?? t("common.divisionWithId", { id: h.division })}
-                          </span>
-                          <DivisionIcon
-                            division={h.division}
-                            width={20}
-                            height={20}
-                            tournamentGrid={h.division_grid_version}
-                            aria-hidden
-                          />
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })}
+            {history.map((h) => (
+              <HistoryItem key={h.tournament_id} entry={h} workspaceId={workspaceId} />
+            ))}
             {total > history.length && (
               <li className="text-[color:var(--aqt-fg-dim)]">
                 +{total - history.length} {t("common.more")}
@@ -117,5 +66,47 @@ export default function TournamentHistoryCell({
           </ul>
         </TooltipContent>
       </Tooltip>
+  );
+}
+
+/** One past tournament, drawn in ITS game's ontology (read on demand; the viewed game's is already cached). */
+function HistoryItem({ entry: h, workspaceId }: Readonly<{ entry: TournamentHistoryEntry; workspaceId: number }>) {
+  const t = useTranslations();
+  const nameOf = useRoleName();
+  // Until that game's metadata resolves (or when it is not installed) the role stays neutral and by code.
+  const ontology = useDisciplineMetadata(workspaceId, h.discipline).data ?? null;
+  // The exact leaf the participation was played as (`damage_hitscan`, not its parent `damage`).
+  const node = h.role && ontology ? findRole(ontology, h.role) : null;
+
+  return (
+    <li className="space-y-1">
+      <div className="text-[color:var(--aqt-fg)]">{h.tournament_name}</div>
+      {(h.role || h.division != null) ? (
+        <div className="flex items-center gap-2 text-[color:var(--aqt-fg-dim)]">
+          {h.role ? (
+            <span className="inline-flex items-center">
+              <span className="sr-only">{node ? nameOf(node) : h.role.role}</span>
+              <PlayerRoleIcon role={h.role} ontology={ontology} size={16} aria-hidden />
+            </span>
+          ) : null}
+          {h.division != null ? (
+            <span className="inline-flex items-center">
+              <span className="sr-only">
+                {getDivisionLabel(h.division_grid_version ?? { tiers: [] }, h.division) ??
+                  t("common.divisionWithId", { id: h.division })}
+              </span>
+              <DivisionIcon
+                division={h.division}
+                width={20}
+                height={20}
+                tournamentGrid={h.division_grid_version}
+                discipline={h.discipline}
+                aria-hidden
+              />
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+    </li>
   );
 }

@@ -6,13 +6,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 
 from shared import models
 from shared.core.db import Base
 from shared.models.identity.rbac import role_permissions, user_roles
+from shared.repository.workspace import insert_missing_workspace_members
 from shared.schemas.user_merge_auth import AuthMergePreview, AuthMergeResult
 
 # Owner column, resulting uniqueness key, and data that needs explicit resolution.
@@ -25,7 +25,7 @@ RESOURCES = {
     ),
     models.MemberRank.__table__: (
         "author_user_id",
-        ("workspace_id", "author_user_id", "workspace_member_id", "role"),
+        ("workspace_id", "author_user_id", "workspace_member_id", "role_id"),
         ("rank_value",),
     ),
     models.FavoritePlayer.__table__: ("auth_user_id", ("auth_user_id", "player_id"), ()),
@@ -37,7 +37,7 @@ RESOURCES = {
     models.UserBalancerConfig.__table__: (
         "user_id",
         ("user_id",),
-        ("config_json", "role_slots_json", "points_per_win"),
+        ("config_json", "points_per_win"),
     ),
     models.NotificationPreference.__table__: ("auth_user_id", ("auth_user_id",), ("discord_dm",)),
     models.UserPermissionDeny.__table__: ("user_id", ("user_id", "permission_id", "workspace_id"), ("reason",)),
@@ -55,7 +55,7 @@ OWNERSHIP = {
     models.Workspace.__table__: ("owner_id",),
     models.CustomGame.__table__: ("host_user_id",),
     models.DraftTeam.__table__: ("captain_auth_user_id",),
-    models.BalancerRegistrationTeamInvite.__table__: ("target_auth_user_id",),
+    models.RegistrationTeamInvite.__table__: ("target_auth_user_id",),
     models.SubscriptionCheckLog.__table__: ("auth_user_id",),
     models.Notification.__table__: ("recipient_auth_user_id",),
 }
@@ -76,6 +76,7 @@ class _Plan:
     deletes: list[tuple[sa.Table, dict[str, Any]]] = field(default_factory=list)
     workspace_ids: set[int] = field(default_factory=set)
     moved_role_ids: set[int] = field(default_factory=set)
+    revive_workspace_ids: set[int] = field(default_factory=set)
 
 
 @dataclass
@@ -176,22 +177,50 @@ def row_identity(table: sa.Table, row: dict[str, Any]) -> sa.ColumnElement[bool]
     return sa.and_(*(column == row[column.name] for column in table.primary_key.columns))
 
 
-async def ensure_target_memberships(session: AsyncSession, target_id: int, workspace_ids: set[int]) -> dict[int, int]:
-    """Create anchors only, without auto-granting any implicit baseline role."""
+async def resolve_merge_memberships(
+    session: AsyncSession,
+    source_id: int,
+    target_id: int,
+    workspace_ids: set[int],
+    revive_workspace_ids: set[int],
+) -> dict[int, int]:
+    """Prefer target anchors, then retained source ids, without granting roles.
+
+    The enclosing player merge changes a retained source anchor's player_id
+    afterward, inside its own native identity evidence boundary.
+    """
     if not workspace_ids:
         return {}
     table = models.WorkspaceMember.__table__
-    await session.execute(
-        pg_insert(table)
-        .values([{"workspace_id": workspace_id, "player_id": target_id} for workspace_id in sorted(workspace_ids)])
-        .on_conflict_do_nothing(constraint="uq_workspace_member_workspace_player")
-    )
     result = await session.execute(
-        sa.select(table.c.workspace_id, table.c.id).where(
-            table.c.player_id == target_id, table.c.workspace_id.in_(workspace_ids)
-        )
+        sa.select(table.c.workspace_id, table.c.id)
+        .where(table.c.player_id.in_((source_id, target_id)), table.c.workspace_id.in_(workspace_ids))
+        .order_by(table.c.workspace_id, table.c.player_id == target_id)
+        .with_for_update()
     )
-    return dict(result.all())
+    members = dict(result.all())
+    missing = workspace_ids - members.keys()
+    if missing:
+        await insert_missing_workspace_members(session, [(workspace_id, target_id) for workspace_id in missing])
+        result = await session.execute(
+            sa.select(table.c.workspace_id, table.c.id).where(
+                table.c.player_id == target_id, table.c.workspace_id.in_(missing)
+            )
+        )
+        members.update(result.all())
+    revive_ids = [members[workspace_id] for workspace_id in revive_workspace_ids & members.keys()]
+    if revive_ids:
+        # An admitted source member (or a moved role) makes the surviving anchor a real, active membership: it
+        # revives a removed one and admits an observation-only one.
+        await session.execute(
+            sa.update(table)
+            .where(
+                table.c.id.in_(revive_ids),
+                sa.or_(table.c.removed_at.is_not(None), table.c.observed_only.is_(True)),
+            )
+            .values(removed_at=None, observed_only=False)
+        )
+    return members
 
 
 async def transfer_oauth(session: AsyncSession, destinations: dict[int, int], state: AuthMergeState) -> list[int]:
@@ -205,13 +234,15 @@ async def transfer_oauth(session: AsyncSession, destinations: dict[int, int], st
     # Core UPDATE bypasses delete-orphan bookkeeping. Expire BOTH cached
     # collections and connection backrefs so a later ORM parent delete cannot
     # walk the donor's old collection and delete the transferred connections.
+    affected_auth_ids = set(destinations.values()) | {row["auth_user_id"] for row in state.rows.get(table, [])}
     for instance in list(session.identity_map.values()):
-        if isinstance(instance, models.AuthUser) and instance.id in set(destinations.values()) | {
-            row["auth_user_id"] for row in state.rows.get(table, [])
-        }:
+        # Rollback expires even primary-key attributes. Persistent identity is
+        # available without triggering forbidden synchronous IO in AsyncSession.
+        instance_id = sa.inspect(instance).identity[0]
+        if isinstance(instance, models.AuthUser) and instance_id in affected_auth_ids:
             session.expire(instance, ["oauth_connections", "player", "roles"])
-        elif isinstance(instance, models.OAuthConnection) and instance.id in destinations:
-            set_committed_value(instance, "auth_user_id", destinations[instance.id])
+        elif isinstance(instance, models.OAuthConnection) and instance_id in destinations:
+            set_committed_value(instance, "auth_user_id", destinations[instance_id])
             session.expire(instance, ["auth_user"])
     return moved
 
@@ -238,7 +269,9 @@ async def apply_auth_merge_plan(
     """Apply a validated preservation plan without committing its transaction."""
     fresh = plan.preview
     survivor_id = fresh.policy.surviving_auth_user_id
-    members = await ensure_target_memberships(session, target.id, plan.workspace_ids)
+    members = await resolve_merge_memberships(
+        session, source.id, target.id, plan.workspace_ids, plan.revive_workspace_ids
+    )
     for source_member in state.memberships:
         if (
             source_member["player_id"] == source.id
@@ -295,13 +328,14 @@ async def apply_auth_merge_plan(
         (table, tuple(row[column.name] for column in table.primary_key.columns)) for table, row in plan.deletes
     }
     for instance in list(session.identity_map.values()):
-        if isinstance(instance, models.AuthUser) and instance.id == plan.donor_id:
+        instance_state = sa.inspect(instance)
+        instance_id = instance_state.identity[0]
+        if isinstance(instance, models.AuthUser) and instance_id == plan.donor_id:
             session.expunge(instance)
-        elif isinstance(instance, models.SocialAccount) and instance.id in social_updates:
-            for key, value in social_updates[instance.id].items():
+        elif isinstance(instance, models.SocialAccount) and instance_id in social_updates:
+            for key, value in social_updates[instance_id].items():
                 set_committed_value(instance, key, value)
         else:
-            instance_state = sa.inspect(instance)
             mapper = instance_state.mapper
             identity = (mapper.local_table, instance_state.identity)
             if identity in deleted_rows:

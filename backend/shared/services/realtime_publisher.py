@@ -1,13 +1,10 @@
 """Wire-level helpers behind ``shared.services.realtime.emit``.
 
-What is left here is the Redis leg: turning a persisted ``WorkspaceEvent`` into
-the envelope clients receive, and putting a frame on the channel. The
-publication POLICY — when, in what order, on whose session — belongs to
-``emit``, which is the only caller.
-
-The former ``publish_event`` / ``publish_patch`` entry points are gone: they
-published inside the caller's transaction, before its commit, so an event could
-describe a write that then rolled back.
+The Redis leg only: turning a persisted ``WorkspaceEvent`` into the envelope
+clients receive, and putting a frame on the channel. The publication POLICY —
+when, in what order, on whose session — belongs to ``emit``. The one other
+caller is stats-service's catalog sync, whose progress belongs to no transaction
+and goes straight to ``publish_envelope_to_redis``.
 """
 
 from __future__ import annotations
@@ -67,12 +64,10 @@ async def publish_event_to_redis_url(
     try:
         await publish_envelope_to_redis(redis, topic=topic, envelope=envelope)
     except GeneratorExit:
-        # The coroutine is being *closed*, not cancelled -- what happens when the
-        # event loop tears down (or a task is reclaimed) with a publish still in
-        # flight. A closing coroutine may not suspend again, so awaiting the
-        # client's teardown here raises ``RuntimeError: coroutine ignored
-        # GeneratorExit`` and buries the shutdown that actually caused it. The
-        # socket dies with the loop anyway.
+        # The coroutine is being *closed*, not cancelled (loop teardown or a
+        # reclaimed task). A closing coroutine may not suspend again, so awaiting
+        # the client's teardown would raise ``RuntimeError: coroutine ignored
+        # GeneratorExit`` and bury the real shutdown. The socket dies with the loop.
         closing = True
         raise
     finally:

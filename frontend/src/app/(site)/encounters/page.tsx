@@ -1,160 +1,69 @@
-import { getTranslations } from "next-intl/server";
 import encounterService from "@/services/encounter.service";
-import type { Encounter, EncounterOverview } from "@/types/encounter.types";
-import type { PaginatedResponse } from "@/types/pagination.types";
 import { resolveStatsScope } from "@/lib/site/tenant-host";
+import { resolveServerPageGame } from "@/lib/site/discipline-server";
 import type { StatsScope } from "@/lib/site/stats-scope";
 import EncountersClient from "./_components/EncountersClient";
+import type { EncountersSeed } from "./_components/useEncountersData";
 import {
+  aggregateFilters,
   ENCOUNTERS_PAGE_SIZE,
-  filtersToApiFilters,
-  normalizeEncounterFilters,
-  type EncounterFilterState,
+  GAME_SCOPED_FILTERS,
+  listReadArgs,
+  readEncountersUrl,
+  type EncountersUrlState
 } from "./_components/encounters.helpers";
 
-const DEFAULT_PAGE = 1;
-
-function emptyEncounters(page: number): PaginatedResponse<Encounter> {
-  return {
-    page,
-    per_page: ENCOUNTERS_PAGE_SIZE,
-    total: 0,
-    results: [],
-  };
-}
-
-const EMPTY_OVERVIEW: EncounterOverview = {
-  kpis: {
-    total_encounters: 0,
-    recent_count: 0,
-    with_logs_count: 0,
-    with_logs_pct: 0,
-    avg_closeness: null,
-    live_now_count: 0,
-    upcoming_count: 0,
-  },
-  preset_counts: {
-    all: 0,
-    my_team: 0,
-    finals: 0,
-    close_bo5: 0,
-    upsets: 0,
-    with_logs: 0,
-  },
-  closeness_histogram: [],
-  score_heatmap: [],
-  stage_split: [],
-  featured: {
-    closest: [],
-    upcoming: [],
-    live: [],
-  },
-  hot_maps: [],
-  pulse: {
-    avg_series_seconds: null,
-    completed_series_count: 0,
-    sweep_rate: 0,
-    sweep_count: 0,
-    went_distance_count: 0,
-    reverse_sweep_rate: 0,
-    most_decisive_map: null,
-  },
-  side_balance: {
-    home_wins: 0,
-    away_wins: 0,
-    home_win_pct: 0,
-    away_win_pct: 0,
-  },
-};
-
 type EncountersPageProps = {
-  searchParams: Promise<{
-    page?: string;
-    search?: string;
-    query?: string;
-    stage_id?: string;
-    stage_item_id?: string;
-    best_of?: string;
-    status?: string;
-    has_logs?: string;
-    closeness_min?: string;
-    closeness_max?: string;
-    scope?: string;
-    sort?: string;
-  }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 };
 
-type ParsedSearchParams = {
-  page: number;
-  filters: EncounterFilterState;
-};
-
-type EncountersContentProps = ParsedSearchParams & { scope: StatsScope };
-
-function parseSearchParams(params: Record<string, string | undefined>): ParsedSearchParams {
-  const parsedPage = Number.parseInt(params.page ?? String(DEFAULT_PAGE), 10);
-  const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : DEFAULT_PAGE;
-
-  return {
-    page,
-    filters: normalizeEncounterFilters(params),
-  };
-}
-
-async function EncountersContent({ page, filters, scope }: Readonly<EncountersContentProps>) {
-  const t = await getTranslations();
-  const apiFilters = filtersToApiFilters(filters);
-  let initialError: string | null = null;
+/**
+ * The first paint's reads: the list (in the list view), the global overview the hero shows and, when the URL
+ * narrows anything, the overview the toolbar counts. A failure seeds nothing: the browser reads again, and a
+ * failure there is the list's one error card.
+ */
+async function readSeed(
+  url: EncountersUrlState,
+  scope: StatsScope,
+  discipline: string | null
+): Promise<EncountersSeed | null> {
   // Workspace scope leaves the ambient workspace to `apiFetch`.
   const workspaceId = scope === "all" ? "all" : undefined;
-  let data = emptyEncounters(page);
-  let overview = EMPTY_OVERVIEW;
-
+  const read = listReadArgs(url.filters, url.page);
+  const counted = aggregateFilters(url.filters);
+  const narrowed = url.filters.query !== "" || Object.keys(counted).length > 0;
   try {
-    [data, overview] = await Promise.all([
-      encounterService.getAll(
-        page,
-        filters.query,
-        null,
-        ENCOUNTERS_PAGE_SIZE,
-        apiFilters.sort ?? "id",
-        "desc",
-        workspaceId,
-        {
-          ...apiFilters,
-          entities: [
-            "tournament",
-            "stage",
-            "stage_item",
-            "home_team",
-            "away_team",
-            "matches",
-            "matches.map",
-          ],
-        },
-      ),
-      encounterService.getOverview(filters.query, apiFilters, workspaceId),
+    const [data, overview, counts] = await Promise.all([
+      url.view === "list"
+        ? encounterService.getAll(
+            read.page,
+            read.query,
+            null,
+            ENCOUNTERS_PAGE_SIZE,
+            read.sort,
+            read.order,
+            workspaceId,
+            { ...read.filters, discipline }
+          )
+        : null,
+      encounterService.getOverview("", { discipline }, workspaceId),
+      narrowed ? encounterService.getOverview(url.filters.query, { ...counted, discipline }, workspaceId) : null
     ]);
+    return { discipline, data, overview, counts: counts ?? overview };
   } catch {
-    initialError = t("encounters.dataUnavailable");
+    return null;
   }
-
-  return (
-    <EncountersClient
-      initialData={data}
-      initialOverview={overview}
-      initialFilters={filters}
-      initialPage={page}
-      initialError={initialError}
-      scope={scope}
-    />
-  );
 }
 
 export default async function EncountersPage({ searchParams }: Readonly<EncountersPageProps>) {
-  const params = parseSearchParams(await searchParams);
+  const raw = await searchParams;
+  const url = readEncountersUrl(raw);
+  const [scope, browsing] = await Promise.all([resolveStatsScope(), resolveServerPageGame("multi", raw.discipline)]);
+  const game = browsing.resolution?.game;
+  // Under every game one game's tournament/stage never narrows a read (spec §6.2), the URL's included.
+  const initialUrl = game?.kind === "all" ? { ...url, filters: { ...url.filters, ...GAME_SCOPED_FILTERS } } : url;
+  const discipline = game?.kind === "game" ? game.code : null;
+  const seed = game?.kind === "all" || game?.kind === "game" ? await readSeed(initialUrl, scope, discipline) : null;
 
-  return (
-    <EncountersContent page={params.page} filters={params.filters} scope={await resolveStatsScope()} />
-  );
+  return <EncountersClient seed={seed} initial={browsing.init} initialUrl={initialUrl} scope={scope} />;
 }

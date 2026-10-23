@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api/fetch";
+import { teamFormatPayload, type TeamFormatRead, type TeamFormatWrite } from "@/lib/roster/team-format";
 import { PaginatedResponse } from "@/types/pagination.types";
 import {
   Tournament,
@@ -13,12 +14,15 @@ import {
   TournamentImageSlot
 } from "@/types/tournament.types";
 import { Team, Player } from "@/types/team.types";
-import { Encounter } from "@/types/encounter.types";
+import { Encounter, Match } from "@/types/encounter.types";
 import { User } from "@/types/user.types";
-import { Hero } from "@/types/hero.types";
-import { Achievement } from "@/types/achievement.types";
-import { Gamemode } from "@/types/gamemode.types";
-import { MapRead } from "@/types/map.types";
+import type {
+  CatalogEntityRead,
+  CatalogEntityWrite,
+  CatalogKind,
+  CatalogListFilters,
+  CatalogSyncState
+} from "@/types/catalog.types";
 import type {
   TournamentLink,
   TournamentLinkCreateInput,
@@ -56,18 +60,9 @@ import {
   SocialAccountCreateInput,
   SocialAccountUpdateInput,
   SocialVisibilityInput,
-  HeroCreateInput,
-  HeroUpdateInput,
-  GamemodeCreateInput,
-  GamemodeUpdateInput,
-  MapCreateInput,
-  MapUpdateInput,
   CatalogAliasAttachInput,
   CatalogAliasMissQuery,
   CatalogAliasMissRead,
-  AchievementCreateInput,
-  AchievementUpdateInput,
-  AchievementRegistryEntry,
   AchievementLibraryRule,
   AchievementLibraryWorkspace,
   AchievementRuleExportEnvelope,
@@ -88,11 +83,15 @@ import {
   UserMergeExecuteRequest,
   UserMergeExecuteResponse,
   DiscordChannelRead,
+  GameObservationRead,
   DiscordChannelInput,
+  LogBindRequest,
+  LogBindResponse,
   LogHistoryResponse,
   LogProcessingRecord,
   LogProcessingStats,
   LogProcessingStatus,
+  LogRetryRequest,
   LogUploadResponse,
   SeedResultRead,
   PlayerSubRole,
@@ -131,6 +130,7 @@ import {
   PregameRoomsRead,
   PregameRoomHistoryRead,
 } from "@/types/admin.types";
+import type { AdminDashboard, DashboardTrends } from "@/types/admin-dashboard.types";
 
 /**
  * Serialise the reports filter set once — the list and its counters must send
@@ -167,6 +167,7 @@ function buildAdminMatchesQuery(params: AdminMatchesQuery): string {
   if (params.tournament_id != null) search.set("tournament_id", String(params.tournament_id));
   if (params.encounter_id != null) search.set("encounter_id", String(params.encounter_id));
   if (params.map_id != null) search.set("map_id", String(params.map_id));
+  if (params.discipline) search.set("discipline", params.discipline);
   if (params.unlinked_only) search.set("unlinked_only", "true");
   for (const status of params.log_status ?? []) search.append("log_status", status);
   return search.toString();
@@ -237,8 +238,8 @@ class AdminService {
     return response.json();
   }
 
-  async getTournament(id: number): Promise<Tournament> {
-    const response = await apiFetch(`/api/v1/admin/tournaments/${id}`);
+  async getTournament(id: number, signal?: AbortSignal): Promise<Tournament> {
+    const response = await apiFetch(`/api/v1/admin/tournaments/${id}`, { signal, skipWorkspace: true });
     return response.json();
   }
 
@@ -249,11 +250,20 @@ class AdminService {
   }
 
   async updateTournament(id: number, data: TournamentUpdateInput): Promise<Tournament> {
-    const response = await apiFetch(`/api/v1/admin/tournaments/${id}`, {
-      method: "PATCH",
-      body: data
-    });
+    const response = await apiFetch(`/api/v1/admin/tournaments/${id}`, { method: "PATCH", body: data });
     return response.json();
+  }
+
+  async getTournamentTeamFormat(id: number, workspaceId: number, signal?: AbortSignal): Promise<TeamFormatRead> {
+    return apiFetch(`/api/v1/admin/tournaments/${id}/team-format`, {
+      query: { workspace_id: workspaceId }, skipWorkspace: true, signal
+    }).then(response => response.json());
+  }
+
+  async updateTournamentTeamFormat(id: number, workspaceId: number, format: TeamFormatWrite): Promise<TeamFormatRead> {
+    return apiFetch(`/api/v1/admin/tournaments/${id}/team-format`, {
+      method: "PUT", query: { workspace_id: workspaceId }, skipWorkspace: true, body: teamFormatPayload(format)
+    }).then(response => response.json());
   }
 
   async setTournamentSchedule(
@@ -275,6 +285,7 @@ class AdminService {
 
   async createTournamentWithGroups(params: {
     workspace_id: number;
+    discipline: string;
     challonge_slug: string;
     is_league: boolean;
     start_date: string;
@@ -502,13 +513,15 @@ class AdminService {
     });
   }
 
+  /** The workspace's sub-roles: one game's, or every game's without `discipline` (each row names its own). */
   async getPlayerSubRoles(params: {
     workspace_id: number;
+    discipline?: string;
     role?: string;
     include_inactive?: boolean;
-  }): Promise<PlayerSubRole[]> {
+  }, signal?: AbortSignal): Promise<PlayerSubRole[]> {
     const response = await apiFetch("/api/v1/admin/player-sub-roles", {
-      query: params
+      query: params, signal, skipWorkspace: true
     });
     return response.json();
   }
@@ -576,13 +589,13 @@ class AdminService {
   }
 
   /**
-   * The single admin result write: score, status, result_status and the audit
-   * row move together. An empty body confirms whatever is already there, which
-   * covers the common case of two agreeing captain reports.
+   * The single admin result write: the standing, status, result_status and the
+   * audit row move together. Names either the participations' numbers or
+   * `adopt_report_team_id`, and always a `reason` for the journal.
    */
   async setEncounterResult(
     id: number,
-    data: EncounterSetResultInput = {}
+    data: EncounterSetResultInput
   ): Promise<EncounterResultRead> {
     const response = await apiFetch(`/api/v1/admin/encounters/${id}/result`, {
       method: "POST",
@@ -591,10 +604,11 @@ class AdminService {
     return response.json();
   }
 
-  /** Un-confirm a result so it can be replayed or re-reported. */
-  async reopenEncounterResult(id: number): Promise<EncounterResultRead> {
+  /** Un-confirm a result so it can be replayed or re-reported; the reason is journaled. */
+  async reopenEncounterResult(id: number, reason: string): Promise<EncounterResultRead> {
     const response = await apiFetch(`/api/v1/admin/encounters/${id}/result/reopen`, {
-      method: "POST"
+      method: "POST",
+      body: { reason }
     });
     return response.json();
   }
@@ -649,21 +663,7 @@ class AdminService {
     return response.json();
   }
 
-  async updateMatch(
-    matchId: number,
-    data: MatchUpdateInput
-  ): Promise<{
-    id: number;
-    encounter_id: number;
-    home_team_id: number;
-    away_team_id: number;
-    home_score: number;
-    away_score: number;
-    map_id: number;
-    code: string | null;
-    time: number;
-    log_name: string;
-  }> {
+  async updateMatch(matchId: number, data: MatchUpdateInput): Promise<Match> {
     const response = await apiFetch(`/api/v1/admin/encounters/matches/${matchId}`, {
       method: "PATCH",
       body: data
@@ -674,10 +674,10 @@ class AdminService {
   /**
    * Uses the same backend sync engine as the Integrations tab's "Import"
    * button (`challongeImport`): both used to hit independently-maintained
-   * copies of the Challonge sync logic (parser-service vs tournament-service),
+   * copies of the Challonge sync logic (stats-service vs tournament-service),
    * which had drifted -- tournament-service's copy tracks pick-ban session
    * resets on team changes and cache-invalidation reasoning that
-   * parser-service's never had. Consolidated onto tournament-service's route.
+   * stats-service's never had. Consolidated onto tournament-service's route.
    */
   async syncEncountersFromChallonge(tournamentId: number): Promise<Record<string, unknown>> {
     const response = await apiFetch(`/api/v1/admin/challonge/sync/import/${tournamentId}`, {
@@ -870,177 +870,102 @@ class AdminService {
     return response.json();
   }
 
-  // ─── Hero CRUD ─────────────────────────────────────────────────────────────
+  // ─── Game catalog (admin CRUD by discipline and kind) ──────────────────────
 
-  async getHeroes(
-    params: {
-      page?: number;
-      per_page?: number;
-      search?: string;
-      role?: string;
-      sort?: string;
-      order?: string;
-    } = {}
-  ): Promise<PaginatedResponse<Hero>> {
-    const response = await apiFetch("/api/v1/admin/heroes", {
-      query: {
-        ...(params.page != null && { page: params.page }),
-        ...(params.per_page != null && { per_page: params.per_page }),
-        ...(params.search && { search: params.search }),
-        ...(params.role && { role: params.role }),
-        ...(params.sort && { sort: params.sort }),
-        ...(params.order && { order: params.order })
-      }
+  async listCatalogEntities(
+    discipline: string,
+    kind: CatalogKind,
+    filters: CatalogListFilters = {},
+    opts: { signal?: AbortSignal } = {}
+  ): Promise<PaginatedResponse<CatalogEntityRead>> {
+    const { attrs, ...rest } = filters;
+    const response = await apiFetch(`/api/v1/admin/catalog/${discipline}/${kind}`, {
+      signal: opts.signal,
+      query: { ...rest, ...(attrs !== undefined && { attrs: JSON.stringify(attrs) }) }
     });
     return response.json();
   }
 
-  async createHero(data: HeroCreateInput): Promise<Hero> {
-    const response = await apiFetch("/api/v1/admin/heroes", {
-      method: "POST",
-      body: data
-    });
+  async createCatalogEntity(
+    discipline: string,
+    kind: CatalogKind,
+    data: CatalogEntityWrite
+  ): Promise<CatalogEntityRead> {
+    const response = await apiFetch(`/api/v1/admin/catalog/${discipline}/${kind}`, { method: "POST", body: data });
     return response.json();
   }
 
-  async updateHero(id: number, data: HeroUpdateInput): Promise<Hero> {
-    const response = await apiFetch(`/api/v1/admin/heroes/${id}`, {
+  async updateCatalogEntity(
+    discipline: string,
+    kind: CatalogKind,
+    id: number,
+    data: CatalogEntityWrite
+  ): Promise<CatalogEntityRead> {
+    const response = await apiFetch(`/api/v1/admin/catalog/${discipline}/${kind}/${id}`, {
       method: "PATCH",
       body: data
     });
     return response.json();
   }
 
-  async deleteHero(id: number): Promise<void> {
-    await apiFetch(`/api/v1/admin/heroes/${id}`, {
-      method: "DELETE"
-    });
+  async deleteCatalogEntity(discipline: string, kind: CatalogKind, id: number): Promise<void> {
+    await apiFetch(`/api/v1/admin/catalog/${discipline}/${kind}/${id}`, { method: "DELETE" });
   }
 
-  async syncHeroes(): Promise<BulkOperationResult> {
-    const response = await apiFetch("/api/v1/heroes/update", {
-      method: "POST"
-    });
-    return response.json();
-  }
-
-  // ─── Gamemode CRUD ─────────────────────────────────────────────────────────
-
-  async getGamemodes(
-    params: {
-      page?: number;
-      per_page?: number;
-      search?: string;
-      sort?: string;
-      order?: string;
-    } = {}
-  ): Promise<PaginatedResponse<Gamemode>> {
-    const response = await apiFetch("/api/v1/admin/gamemodes", {
-      query: buildAdminListQuery(params)
-    });
-    return response.json();
-  }
-
-  async createGamemode(data: GamemodeCreateInput): Promise<Gamemode> {
-    const response = await apiFetch("/api/v1/admin/gamemodes", {
+  /**
+   * Stores an image for a catalog entity in our bucket and returns its public URL; the caller saves it as
+   * `image_path`. A fresh key per upload, so a replaced image is never served from a cache.
+   */
+  async uploadCatalogImage(discipline: string, kind: CatalogKind, file: File): Promise<{ key: string; public_url: string }> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const suffix = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+    const response = await apiFetch(`/api/v1/assets/catalog/${discipline}-${kind}-${suffix}`, {
       method: "POST",
-      body: data
+      body: formData
     });
     return response.json();
   }
 
-  async updateGamemode(id: number, data: GamemodeUpdateInput): Promise<Gamemode> {
-    const response = await apiFetch(`/api/v1/admin/gamemodes/${id}`, {
-      method: "PATCH",
-      body: data
-    });
+  /**
+   * Every character of one discipline's catalog, for a workspace's achievement editor. A read open to the
+   * workspace's achievement editors (the platform catalog list is superuser-only).
+   */
+  async getCatalogCharacters(workspaceId: number, discipline: string): Promise<CatalogEntityRead[]> {
+    const page: PaginatedResponse<CatalogEntityRead> = await (
+      await apiFetch(`/api/v1/admin/ws/${workspaceId}/catalog/${discipline}/character`, {
+        query: { per_page: -1, sort: "name", order: "asc" }
+      })
+    ).json();
+    return page.results;
+  }
+
+  /** Start pulling a discipline's catalog from its module's source (OverFast, Data Dragon) in the background; 409
+   *  `catalog_sync_running` while one already runs. */
+  async startCatalogSync(discipline: string): Promise<CatalogSyncState> {
+    const response = await apiFetch(`/api/v1/admin/catalog-sync/${discipline}`, { method: "POST" });
     return response.json();
   }
 
-  async deleteGamemode(id: number): Promise<void> {
-    await apiFetch(`/api/v1/admin/gamemodes/${id}`, {
-      method: "DELETE"
-    });
-  }
-
-  async syncGamemodes(): Promise<BulkOperationResult> {
-    const response = await apiFetch("/api/v1/gamemodes/update", {
-      method: "POST"
-    });
-    return response.json();
-  }
-
-  // ─── Map CRUD ──────────────────────────────────────────────────────────────
-
-  async getMaps(
-    params: {
-      page?: number;
-      per_page?: number;
-      search?: string;
-      gamemode_id?: number;
-      in_competitive?: boolean;
-      sort?: string;
-      order?: string;
-    } = {}
-  ): Promise<PaginatedResponse<MapRead>> {
-    const response = await apiFetch("/api/v1/admin/maps", {
-      query: {
-        ...(params.page != null && { page: params.page }),
-        ...(params.per_page != null && { per_page: params.per_page }),
-        ...(params.search && { search: params.search }),
-        ...(params.gamemode_id != null && { gamemode_id: params.gamemode_id }),
-        // `!= null`, not truthiness: `false` is a real filter value (casual pool).
-        ...(params.in_competitive != null && { in_competitive: params.in_competitive }),
-        ...(params.sort && { sort: params.sort }),
-        ...(params.order && { order: params.order })
-      }
-    });
-    return response.json();
-  }
-
-  async createMap(data: MapCreateInput): Promise<MapRead> {
-    const response = await apiFetch("/api/v1/admin/maps", {
-      method: "POST",
-      body: data
-    });
-    return response.json();
-  }
-
-  async updateMap(id: number, data: MapUpdateInput): Promise<MapRead> {
-    const response = await apiFetch(`/api/v1/admin/maps/${id}`, {
-      method: "PATCH",
-      body: data
-    });
-    return response.json();
-  }
-
-  async deleteMap(id: number): Promise<void> {
-    await apiFetch(`/api/v1/admin/maps/${id}`, {
-      method: "DELETE"
-    });
-  }
-
-  async syncMaps(): Promise<BulkOperationResult> {
-    const response = await apiFetch("/api/v1/maps/update", {
-      method: "POST"
-    });
+  /** The discipline's latest sync; null when none ran in the last 15 minutes or its worker died mid-run. */
+  async getCatalogSync(discipline: string): Promise<CatalogSyncState | null> {
+    const response = await apiFetch(`/api/v1/admin/catalog-sync/${discipline}`);
     return response.json();
   }
 
   // ─── Catalog aliases (superuser) ───────────────────────────────────────────
 
   /**
-   * Names the log parser could not resolve, worst offenders first. Open misses
+   * Unresolved names of every discipline and kind, worst offenders first. Open misses
    * only unless `include_resolved` asks for the dismissed ones too.
    */
-  async getCatalogAliasMisses(
-    params: CatalogAliasMissQuery = {}
-  ): Promise<PaginatedResponse<CatalogAliasMissRead>> {
+  async getCatalogAliasMisses(params: CatalogAliasMissQuery = {}): Promise<PaginatedResponse<CatalogAliasMissRead>> {
     const response = await apiFetch("/api/v1/admin/catalog-aliases/misses", {
       query: {
+        ...(params.discipline && { discipline: params.discipline }),
         ...(params.page != null && { page: params.page }),
         ...(params.per_page != null && { per_page: params.per_page }),
-        ...(params.entity_type && { entity_type: params.entity_type }),
+        ...(params.kind && { kind: params.kind }),
         ...(params.include_resolved && { include_resolved: params.include_resolved })
       }
     });
@@ -1054,7 +979,7 @@ class AdminService {
   async attachCatalogAlias(data: CatalogAliasAttachInput): Promise<void> {
     await apiFetch("/api/v1/admin/catalog-aliases/attach", {
       method: "POST",
-      body: data
+      body: { entity_id: data.entity_id, alias: data.alias }
     });
   }
 
@@ -1065,68 +990,12 @@ class AdminService {
     });
   }
 
-  // ─── Achievement CRUD ──────────────────────────────────────────────────────
-
-  async getAchievements(
-    params: {
-      page?: number;
-      per_page?: number;
-      search?: string;
-      sort?: string;
-      order?: string;
-    } = {}
-  ): Promise<PaginatedResponse<Achievement>> {
-    const response = await apiFetch("/api/v1/admin/achievements", {
-      query: params
-    });
-    return response.json();
-  }
-
-  async getAchievementRegistry(): Promise<{ entries: AchievementRegistryEntry[] }> {
-    const response = await apiFetch("/api/v1/admin/achievements/registry");
-    return response.json();
-  }
-
-  async createAchievement(data: AchievementCreateInput): Promise<Achievement> {
-    const response = await apiFetch("/api/v1/admin/achievements", {
-      method: "POST",
-      body: data
-    });
-    return response.json();
-  }
-
-  async updateAchievement(id: number, data: AchievementUpdateInput): Promise<Achievement> {
-    const response = await apiFetch(`/api/v1/admin/achievements/${id}`, {
-      method: "PATCH",
-      body: data
-    });
-    return response.json();
-  }
-
-  async deleteAchievement(id: number): Promise<void> {
-    await apiFetch(`/api/v1/admin/achievements/${id}`, {
-      method: "DELETE"
-    });
-  }
-
-  async calculateAchievements(
-    slugs?: string[],
-    tournamentId?: number
-  ): Promise<BulkOperationResult> {
-    const url = tournamentId
-      ? `/api/v1/achievement/calculate/${tournamentId}`
-      : "/api/v1/achievement/calculate";
-    const response = await apiFetch(url, {
-      method: "POST",
-      body: { slugs, ensure_created: true }
-    });
-    return response.json();
-  }
-
   // ─── Achievement Rule Engine ────────────────────────────────────────────────
 
+  /** The workspace's rules: one game's, or every game's when `discipline` is `null` (each rule names its own). */
   async getAchievementRules(
     workspaceId: number,
+    discipline: string | null,
     params: {
       page?: number;
       per_page?: number;
@@ -1140,6 +1009,7 @@ class AdminService {
     const { category, enabled, ...list } = params;
     const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/rules`, {
       query: {
+        discipline,
         ...buildAdminListQuery(list),
         ...(category != null && { category }),
         ...(enabled != null && { enabled })
@@ -1213,10 +1083,11 @@ class AdminService {
 
   async validateConditionTree(
     workspaceId: number,
+    discipline: string,
     conditionTree: Record<string, unknown>
   ): Promise<ConditionTreeValidateResponse> {
     const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/rules/validate`,
-      { method: "POST", body: { condition_tree: conditionTree } }
+      { method: "POST", body: { discipline, condition_tree: conditionTree } }
     );
     return response.json();
   }
@@ -1234,10 +1105,11 @@ class AdminService {
 
   async evaluateAchievements(
     workspaceId: number,
+    discipline: string,
     params: { tournament_id?: number; rule_ids?: number[] } = {}
   ): Promise<EvaluationRunRead> {
     const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/rules/evaluate`,
-      { method: "POST", body: params }
+      { method: "POST", body: { discipline, ...params } }
     );
     return response.json();
   }
@@ -1247,28 +1119,33 @@ class AdminService {
     return response.json();
   }
 
-  async seedAchievementRules(workspaceId: number): Promise<SeedResultRead> {
+  async seedAchievementRules(workspaceId: number, discipline: string): Promise<SeedResultRead> {
     const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/rules/seed`, {
-      method: "POST"
+      method: "POST",
+      query: { discipline }
     });
     return response.json();
   }
 
-  async hardResetAchievementRules(workspaceId: number): Promise<HardResetResultRead> {
+  async hardResetAchievementRules(workspaceId: number, discipline: string): Promise<HardResetResultRead> {
     const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/rules/reset`, {
-      method: "POST"
+      method: "POST",
+      query: { discipline }
     });
     return response.json();
   }
 
   async exportAchievementRules(
-    workspaceId: number
+    workspaceId: number,
+    discipline: string
   ): Promise<{ blob: Blob; filename: string; data: AchievementRuleExportEnvelope }> {
-    const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/rules/export`);
+    const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/rules/export`, {
+      query: { discipline }
+    });
     const blob = await response.blob();
     const filename =
       response.headers.get("Content-Disposition")?.match(/filename=\"?([^"]+)\"?/)?.[1] ??
-      `achievements-workspace-${workspaceId}.json`;
+      `achievements-workspace-${workspaceId}-${discipline}.json`;
     const data = JSON.parse(await blob.text()) as AchievementRuleExportEnvelope;
     return {
       blob: new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }),
@@ -1289,26 +1166,29 @@ class AdminService {
   }
 
   async getAchievementLibraryWorkspaces(
-    workspaceId: number
+    workspaceId: number,
+    discipline: string
   ): Promise<AchievementLibraryWorkspace[]> {
-    const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/library/workspaces`
-    );
+    const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/library/workspaces`, {
+      query: { discipline }
+    });
     return response.json();
   }
 
   async getAchievementLibraryRules(
     workspaceId: number,
-    sourceWorkspaceId: number
+    sourceWorkspaceId: number,
+    discipline: string
   ): Promise<AchievementLibraryRule[]> {
     const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/library`, {
-      query: { source_workspace_id: sourceWorkspaceId }
+      query: { source_workspace_id: sourceWorkspaceId, discipline }
     });
     return response.json();
   }
 
   async importAchievementLibraryRules(
     workspaceId: number,
-    data: { source_workspace_id: number; slugs: string[] }
+    data: { source_workspace_id: number; discipline: string; slugs: string[] }
   ): Promise<AchievementRuleImportResult> {
     const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/library/import`, {
       method: "POST",
@@ -1317,13 +1197,17 @@ class AdminService {
     return response.json();
   }
 
-  async getConditionTypes(workspaceId: number): Promise<ConditionTypeInfo[]> {
-    const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/rules/condition-types`);
+  async getConditionTypes(workspaceId: number, discipline: string): Promise<ConditionTypeInfo[]> {
+    const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/rules/condition-types`, {
+      query: { discipline }
+    });
     return response.json();
   }
 
-  async getAchievementOverrides(workspaceId: number): Promise<AchievementOverrideRead[]> {
-    const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/overrides`);
+  async getAchievementOverrides(workspaceId: number, discipline: string): Promise<AchievementOverrideRead[]> {
+    const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/overrides`, {
+      query: { discipline }
+    });
     return response.json();
   }
 
@@ -1483,12 +1367,31 @@ class AdminService {
     return response.json();
   }
 
-  /** `encounterId` attaches the log to that encounter before it is requeued. */
-  async retryLogRecord(recordId: number, encounterId?: number): Promise<LogProcessingRecord> {
+  /** Omitted hints preserve the job's current binding; game IDs are never series positions. */
+  async retryLogRecord(recordId: number, request: LogRetryRequest = {}): Promise<LogProcessingRecord> {
     const response = await apiFetch(`/api/v1/admin/logs/${recordId}/retry`, {
       method: "POST",
-      body: { encounter_id: encounterId ?? null }
+      body: request
     });
+    return response.json();
+  }
+
+  /**
+   * Binds an awaiting_link job's stored document to one game with the operator's complete team map and
+   * publishes it in the same transaction. The client never sends the document; `expected_revision` is the
+   * operator's view of the target game (0 = empty) and is required when the game already has an observation.
+   */
+  async bindLogRecord(recordId: number, request: LogBindRequest): Promise<LogBindResponse> {
+    const response = await apiFetch(`/api/v1/admin/logs/${recordId}/bind`, {
+      method: "POST",
+      body: request
+    });
+    return response.json();
+  }
+
+  /** The authoritative current observation of one game: its `revision` is the bind's `expected_revision`. */
+  async getGameObservation(encounterGameId: number): Promise<GameObservationRead> {
+    const response = await apiFetch(`/api/v1/admin/logs/games/${encounterGameId}/observation`);
     return response.json();
   }
 
@@ -1771,18 +1674,20 @@ class AdminService {
   }
 
   /**
-   * Perform one ban/pick/protect on behalf of a side on an OPEN step (admin
-   * override). `target_player_id` is required when the step names an opponent
-   * player. Returns the new room state, like every other pick-ban mutation.
+   * Perform one ban/pick/protect/side pick on behalf of a participation on an
+   * OPEN step (admin override). `target_player_id` is required when the step
+   * names an opponent player. Returns the new room state, like every other
+   * pick-ban mutation.
    */
   async adminPickBanAct(
     encounterId: number,
     data: {
       kind: PickBanKind;
-      side: "home" | "away";
+      encounter_team_id: number;
       item_id: number;
-      action: "pick" | "ban" | "protect";
+      action: "pick" | "ban" | "protect" | "side_pick";
       target_player_id?: number | null;
+      member_id?: number | null;
     }
   ): Promise<PickBanState> {
     const response = await apiFetch(`/api/v1/admin/encounters/${encounterId}/pick-ban-act`, {
@@ -1792,13 +1697,13 @@ class AdminService {
     return response.json();
   }
 
-  /** Replace (and optionally lock) a side's whole draft on a BLIND step, for a
-   * captain who cannot submit it themselves. */
+  /** Replace (and optionally lock) a participation's whole draft on a BLIND step,
+   * for a captain who cannot submit it themselves. */
   async adminPickBanSubmit(
     encounterId: number,
     data: {
       kind: PickBanKind;
-      side: "home" | "away";
+      encounter_team_id: number;
       items: PickBanSubmissionItem[];
       lock: boolean;
     }
@@ -1824,7 +1729,7 @@ class AdminService {
    * behalf of a losing captain who is not there to name it (admin override). */
   async adminPickBanElectOpener(
     encounterId: number,
-    data: { kind: PickBanKind; first_side: "home" | "away" }
+    data: { kind: PickBanKind; first_team_id: number }
   ): Promise<PickBanState> {
     const response = await apiFetch(`/api/v1/admin/encounters/${encounterId}/pick-ban-elect-opener`, {
       method: "POST",
@@ -1881,14 +1786,14 @@ class AdminService {
     return response.json();
   }
 
-  /** End the encounter against one side: every session cancelled, every
-   * unconfirmed game cancelled, the result set and confirmed in one go. */
+  /** End the encounter against one participation: every session cancelled, every
+   * unconfirmed game cancelled, the result set and confirmed in one go. `results`
+   * states the exact forfeit scores; omitted, the default forfeit score applies. */
   async adminTechnicalLoss(
     encounterId: number,
     data: {
-      loser_side: "home" | "away";
-      home_score?: number;
-      away_score?: number;
+      loser_team_id: number;
+      results?: { encounter_team_id: number; score: number }[];
       reason: string;
     }
   ): Promise<EncounterResultRead> {
@@ -1900,7 +1805,8 @@ class AdminService {
   }
 
   /**
-   * Flip one side's readiness for a captain who cannot press the button —
+   * Force one participation's readiness for a captain who cannot press the
+   * button —
    * the gate that holds BOTH kinds' sessions shut, so an absent captain
    * otherwise freezes the whole room (backend:
    * `pick_ban_session.ensure_pick_ban_session`). Clearing readiness is
@@ -1909,8 +1815,8 @@ class AdminService {
    */
   async setEncounterReadiness(
     encounterId: number,
-    data: { side: "home" | "away"; ready: boolean }
-  ): Promise<{ readiness: { home: boolean; away: boolean } }> {
+    data: { encounter_team_id: number; ready: boolean }
+  ): Promise<{ readiness: Record<string, boolean> }> {
     const response = await apiFetch(`/api/v1/admin/encounters/${encounterId}/readiness`, {
       method: "POST",
       body: data
@@ -1983,33 +1889,38 @@ class AdminService {
     return response.json();
   }
 
-  // ─── OverFast rank collection ─────────────────────────────────────────────
+  // ─── Native rank collection ───────────────────────────────────────────────
   // `workspace_id` is injected (no `skipWorkspace`): it is the RBAC scope these
   // endpoints authorize against, so dropping it demands the GLOBAL
   // `rank.read`/`update` and locks out a workspace owner/admin holding it only
   // in their own workspace. It also scopes the rows to that workspace.
+  // `discipline` picks the game's collector (OverFast for Overwatch, Riot for League).
 
-  async getRankCollectionStatus(userId: number): Promise<RankCollectionStatusRow[]> {
-    const response = await apiFetch(`/api/v1/admin/rank/users/${userId}/collection`);
+  async getRankCollectionStatus(userId: number, discipline: string): Promise<RankCollectionStatusRow[]> {
+    const response = await apiFetch(`/api/v1/admin/rank/users/${userId}/collection`, {
+      query: { discipline }
+    });
     return response.json();
   }
 
-  async triggerRankCollection(data: CollectTriggerInput): Promise<CollectTriggerResult> {
+  async triggerRankCollection(discipline: string, data: CollectTriggerInput): Promise<CollectTriggerResult> {
     const response = await apiFetch("/api/v1/admin/rank/collect", {
       method: "POST",
+      query: { discipline },
       body: data
     });
     return response.json();
   }
 
-  async getRankCollectionStats(): Promise<RankCollectionStats> {
-    const response = await apiFetch("/api/v1/admin/rank/stats");
+  async getRankCollectionStats(discipline: string): Promise<RankCollectionStats> {
+    const response = await apiFetch("/api/v1/admin/rank/stats", { query: { discipline } });
     return response.json();
   }
 
-  async getRankFetchLog(params: RankFetchLogQuery = {}): Promise<RankFetchLogRow[]> {
+  async getRankFetchLog(discipline: string, params: RankFetchLogQuery = {}): Promise<RankFetchLogRow[]> {
     const response = await apiFetch("/api/v1/admin/rank/fetch-log", {
       query: {
+        discipline,
         status: params.status,
         source: params.source,
         before_id: params.before_id,
@@ -2020,10 +1931,12 @@ class AdminService {
   }
 
   async reenableDisabledRankCollection(
+    discipline: string,
     onlyPreviouslySucceeded = false
   ): Promise<{ reenabled: number }> {
     const response = await apiFetch("/api/v1/admin/rank/reenable-disabled", {
       method: "POST",
+      query: { discipline },
       body: { only_previously_succeeded: onlyPreviouslySucceeded }
     });
     return response.json();
@@ -2110,6 +2023,20 @@ class AdminService {
       skipWorkspace: allWorkspaces === true,
       query
     });
+    return response.json();
+  }
+
+  // ─── Organizer dashboard ───────────────────────────────────────────────────
+
+  /** The admin home of the ambient workspace: phase cards, timeline, work queue, backlog. */
+  async getDashboard(): Promise<AdminDashboard> {
+    const response = await apiFetch("/api/v1/admin/dashboard");
+    return response.json();
+  }
+
+  /** The last ten finished tournaments of the ambient workspace, every game. */
+  async getDashboardTrends(): Promise<DashboardTrends> {
+    const response = await apiFetch("/api/v1/admin/dashboard/trends");
     return response.json();
   }
 }

@@ -1,0 +1,176 @@
+"""participation — organisational work a player does around the matches themselves.
+
+Two nodes that read the paperwork trail instead of the telemetry:
+``captain_report_activity`` (result reports, per-map reports, replay codes,
+readiness confirmations) and ``log_upload_count`` (match logs uploaded).
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from shared import models
+from shared.domain.achievements.context import EvalContext
+from shared.models.achievements.achievement import AchievementGrain
+
+from . import ResultSet, register
+
+OPERATORS = {
+    "==": lambda col, val: col == val,
+    "!=": lambda col, val: col != val,
+    ">=": lambda col, val: col >= val,
+    ">": lambda col, val: col > val,
+    "<=": lambda col, val: col <= val,
+    "<": lambda col, val: col < val,
+}
+
+
+@register(
+    "captain_report_activity",
+    grain=AchievementGrain.user_tournament,
+    description="How much of the result reporting the player did for their team",
+    required=("metric", "op", "value"),
+    depends_on=("tournament.encounter_report", "tournament.encounter_game", "tournament.encounter"),
+)
+async def execute_captain_report_activity(
+    session: AsyncSession,
+    params: dict[str, Any],
+    context: EvalContext,
+) -> ResultSet:
+    """Count reporting rows a player filed, per tournament. Grain: user_tournament."""
+    metric = params["metric"]
+    op = params["op"]
+    value = params["value"]
+    op_fn = OPERATORS[op]
+
+    # Every metric counts the filer's own rows, each of which names its encounter.
+    if metric == "series_reported":
+        # One report of the whole series per participation.
+        source = models.EncounterTeamReport
+        user_col = models.EncounterTeamReport.reporter_user_id
+        encounter_col = models.EncounterTeamReport.encounter_id
+        counted = models.EncounterTeamReport.id
+    elif metric == "map_reports":
+        # A claim about one game's result.
+        source = models.EncounterGameClaim
+        user_col = models.EncounterGameClaim.reporter_user_id
+        encounter_col = models.EncounterGameClaim.encounter_id
+        counted = models.EncounterGameClaim.id
+    elif metric == "map_codes":
+        # The replay code is written on the filer's own participation in the
+        # game, so it is credited through the claim that participation filed.
+        source = models.EncounterGameClaim
+        user_col = models.EncounterGameClaim.reporter_user_id
+        encounter_col = models.EncounterGameClaim.encounter_id
+        counted = models.EncounterGameClaim.id
+    elif metric == "readiness":
+        source = models.EncounterReadiness
+        user_col = models.EncounterReadiness.ready_user_id
+        encounter_col = models.EncounterReadiness.encounter_id
+        counted = models.EncounterReadiness.id
+    else:
+        raise ValueError(f"Unsupported captain_report_activity metric: {metric!r}")
+
+    count_expr = sa.func.count(sa.distinct(counted))
+    query = sa.select(user_col, models.Encounter.tournament_id, count_expr).select_from(source)
+
+    if metric == "map_codes":
+        query = query.join(
+            models.EncounterGameTeam,
+            sa.and_(
+                models.EncounterGameTeam.game_id == models.EncounterGameClaim.game_id,
+                models.EncounterGameTeam.encounter_team_id == models.EncounterGameClaim.claimant_team_id,
+                models.EncounterGameTeam.replay_code.is_not(None),
+            ),
+        )
+
+    query = (
+        query.join(models.Encounter, models.Encounter.id == encounter_col)
+        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+        .where(
+            user_col.isnot(None),
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
+        )
+        .group_by(user_col, models.Encounter.tournament_id)
+        .having(op_fn(count_expr, value))
+    )
+
+    if context.tournament:
+        query = query.where(models.Encounter.tournament_id == context.tournament.id)
+
+    result = await session.execute(query)
+    keys: ResultSet = set()
+    for row in result:
+        key = (row[0], row[1])
+        keys.add(key)
+        context.record_evidence(key, metric=metric, count=int(row[2]))
+    return keys
+
+
+@register(
+    "log_upload_count",
+    grain=AchievementGrain.user,
+    description="Match logs the player uploaded",
+    required=("op", "value"),
+    optional=("scope", "status"),
+    depends_on=("stats.ingest_job",),
+    grain_for=lambda params: (
+        AchievementGrain.user_tournament if params.get("scope") == "tournament" else AchievementGrain.user
+    ),
+)
+async def execute_log_upload_count(
+    session: AsyncSession,
+    params: dict[str, Any],
+    context: EvalContext,
+) -> ResultSet:
+    """Count uploaded log files. Grain: user, or user_tournament with scope="tournament"."""
+    op = params["op"]
+    value = params["value"]
+    scope = params.get("scope", "global")
+    status = params.get("status", "done")
+    op_fn = OPERATORS[op]
+
+    job = models.IngestJob
+    group_cols = [job.uploader_user_id]
+    if scope == "tournament":
+        group_cols.append(job.hint_tournament_id)
+
+    count_expr = sa.func.count(sa.distinct(job.id))
+    query = (
+        sa.select(*group_cols, count_expr)
+        .join(
+            models.Tournament,
+            sa.and_(
+                models.Tournament.id == job.hint_tournament_id,
+                models.Tournament.workspace_id == job.workspace_id,
+                models.Tournament.discipline == job.discipline,
+            ),
+        )
+        .where(
+            job.uploader_user_id.is_not(None),
+            job.workspace_id == context.workspace_id,
+            job.discipline == "overwatch",
+        )
+        .group_by(*group_cols)
+        .having(op_fn(count_expr, value))
+    )
+
+    if status != "any":
+        query = query.where(job.status == models.IngestJobStatus(status))
+
+    if context.tournament and scope == "tournament":
+        query = query.where(job.hint_tournament_id == context.tournament.id)
+
+    result = await session.execute(query)
+    keys: ResultSet = set()
+    for row in result:
+        key = tuple(row[:-1])
+        keys.add(key)
+        context.record_evidence(key, count=int(row[-1]), status=status)
+    return keys

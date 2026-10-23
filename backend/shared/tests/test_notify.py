@@ -519,3 +519,32 @@ class TeamRosterKindTests(IsolatedAsyncioTestCase):
             recipient_auth_user_id=7,
         )
         self.assertEqual("Duplicate roster", row.payload_json["reason"])
+
+
+class MixRoomKindTests(IsolatedAsyncioTestCase):
+    async def test_a_mix_room_dm_names_the_mix_and_a_lobby_letter_and_is_muted_with_matches(self) -> None:
+        """R3-3: a captain's DM links the lobby's room, so the payload carries the mix and the lobby's letter. It
+        reaches Discord by default, and the ``matches`` switch mutes it like any match news."""
+        for kind in ("mix.ban_room_opened", "mix.draft_started"):
+            with self.subTest(kind=kind):
+                session = _Session()
+                row = await notify(
+                    session,
+                    kind=kind,
+                    payload={"custom_game_id": 12, "mix_name": "Friday", "lobby": "B"},
+                    recipient_auth_user_id=7,
+                    source_workspace_id=4,
+                    dedupe_key="mix_draft:5:70",
+                )
+                self.assertEqual({"custom_game_id": 12, "mix_name": "Friday", "lobby": "B"}, row.payload_json)
+                (event,) = session.outbox()
+                self.assertEqual(row.id, event.payload_json["notification_id"])
+                self.assertTrue(wants_discord_dm({}, kind, workspace_id=4))
+                self.assertFalse(wants_discord_dm({"matches": False}, kind, workspace_id=4))
+                with self.assertRaises(ValidationError):
+                    await notify(
+                        _Session(),
+                        kind=kind,
+                        payload={"custom_game_id": 12, "mix_name": "Friday", "lobby": "G"},
+                        recipient_auth_user_id=7,
+                    )

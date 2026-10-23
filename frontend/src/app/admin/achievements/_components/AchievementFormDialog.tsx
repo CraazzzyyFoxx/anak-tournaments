@@ -1,11 +1,12 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { useTranslations } from "next-intl";
-import { Upload, X } from "lucide-react";
 
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
+import { InspectorField } from "@/components/kit/InspectorField";
 import { Button } from "@/components/ui/button";
+import { FileButton } from "@/components/ui/file-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -17,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { GameField } from "@/components/workspace/GameField";
 import {
   ACHIEVEMENT_IMAGE_ACCEPT,
   ACHIEVEMENT_IMAGE_PREVIEW_CLASS,
@@ -27,16 +29,24 @@ import type {
   AchievementRuleCreateInput,
   AchievementScope,
 } from "@/types/admin.types";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 
 import { CATEGORIES, GRAINS, SCOPES } from "../achievement-meta";
 import type { AchievementRuleForm } from "../_hooks/useAchievementRuleForm";
+import { useDisciplineLabel } from "../_hooks/useDisciplineLabel";
+import { RuleEntityField } from "./RuleEntityField";
 
 /**
- * Create and edit share one dialog: the fields are the same, and the only
- * difference is that an existing rule's slug is frozen. The condition tree is
- * not here — it is edited on the rule's own page, where there is room for it.
+ * Create and edit share one dialog, on the list and on a rule's own page: the
+ * fields are the same, and the only difference is that an existing rule's slug
+ * is frozen. An existing rule's game is its own and immutable, so it is stated;
+ * a new rule picks it in the game field (spec §7.2). The condition tree is not
+ * here — it is edited on the rule's own page, where there is room for it.
  */
-export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRuleForm }>) {
+export function AchievementFormDialog({
+  form,
+  games = [],
+}: Readonly<{ form: AchievementRuleForm; games?: DisciplineDescriptor[] }>) {
   const t = useTranslations("adminAchievements");
   const {
     open,
@@ -45,15 +55,16 @@ export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRule
     setFormData,
     imagePreview,
     imageError,
-    imageInputRef,
     isDirty,
     isSubmitting,
     error,
     reset,
     pickImage,
     clearImage,
-    submit
+    submit,
+    discipline
   } = form;
+  const disciplineLabel = useDisciplineLabel();
 
   return (
     <EntityFormDialog
@@ -69,7 +80,6 @@ export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRule
       }
       onSubmit={submit}
       isSubmitting={isSubmitting}
-      submittingLabel={editingRule ? t("common.updating") : t("common.creating")}
       errorMessage={error}
       isDirty={isDirty}
     >
@@ -82,7 +92,6 @@ export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRule
                 id="slug"
                 value={(formData as AchievementRuleCreateInput).slug ?? ""}
                 onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
-                placeholder={t("form.slugPlaceholder")}
                 required
                 disabled={!!editingRule}
               />
@@ -93,10 +102,30 @@ export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRule
                 id="name"
                 value={formData.name ?? ""}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder={t("form.achievementName")}
                 required
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            {discipline && !editingRule && games.length > 1 ? (
+              <GameField
+                id="rule-game"
+                games={games}
+                value={discipline}
+                onChange={form.chooseDiscipline}
+                disabled={isSubmitting}
+              />
+            ) : discipline ? (
+              <InspectorField label={t("form.discipline")}>{disciplineLabel(discipline)}</InspectorField>
+            ) : null}
+            {discipline && (
+              <RuleEntityField
+                discipline={discipline}
+                value={formData.entity_id}
+                onChange={(entity_id) => setFormData({ ...formData, entity_id })}
+              />
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -173,33 +202,24 @@ export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRule
                 />
               )}
               <div className="flex flex-col gap-2">
-                <input
-                  ref={imageInputRef}
-                  type="file"
+                <FileButton
                   accept={ACHIEVEMENT_IMAGE_ACCEPT}
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) pickImage(file);
-                  }}
-                />
-                <Button
-                  type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => imageInputRef.current?.click()}
+                  onFiles={([file]) => pickImage(file)}
                 >
-                  <Upload className="mr-2 h-4 w-4" aria-hidden />
-                  {imagePreview ? t("form.changeImage") : t("form.uploadImage")}
-                </Button>
-                {imagePreview && (
+                  {imagePreview || formData.image_url ? t("form.changeImage") : t("form.uploadImage")}
+                </FileButton>
+                {(imagePreview || formData.image_url) && (
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={clearImage}
+                    onClick={() => {
+                      clearImage();
+                      if (formData.image_url) setFormData({ ...formData, image_url: null });
+                    }}
                   >
-                    <X className="mr-2 h-4 w-4" aria-hidden />
                     {t("form.removeImage")}
                   </Button>
                 )}

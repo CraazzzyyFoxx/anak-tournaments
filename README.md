@@ -23,7 +23,7 @@ OWT is a multi-tenant platform for running Overwatch tournaments from registrati
 - Browse tournaments, divisions, teams, matches, maps, heroes, and player performance.
 - Register teams, complete check-in, and follow tournament progress.
 - Watch bracket, standings, map-veto, draft, analytics-job, and stream updates in real time.
-- Link Discord, Twitch, and Battle.net identities to one OWT account.
+- Link Discord, Twitch, Battle.net, Riot, and Steam identities to one OWT account.
 - Follow live Twitch channels attached to a tournament.
 
 ### For organizers
@@ -64,10 +64,10 @@ See [docs/architecture.md](./docs/architecture.md) for request flow, messaging g
 
 | Directory                                                              | Runtime                             | Responsibility                                                                                                     |
 | ---------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| [`backend/app-service`](./backend/app-service/README.md)               | `app-svc`                           | Public data API, statistics, workspace administration, metadata, and binary assets                                 |
+| [`backend/app-service`](./backend/app-service/README.md)               | `app-svc`                           | Game catalog, player identity, workspace administration, notifications, and binary assets                          |
 | [`backend/identity-service`](./backend/identity-service/README.md)     | `identity-svc`                      | JWT sessions, OAuth, RBAC, memberships, API keys, custom domains, and player linking                               |
-| [`backend/tournament-service`](./backend/tournament-service/README.md) | `tournament-svc`                    | Tournament lifecycle, registration, brackets, standings, Challonge/Sheets sync, map veto, and transactional outbox |
-| [`backend/parser-service`](./backend/parser-service/README.md)         | `parser-svc`                        | Match-log ingestion, parsing, rank synchronization, achievements, and backfills                                    |
+| [`backend/tournament-service`](./backend/tournament-service/README.md) | `tournament-svc`                    | Tournament lifecycle, registration, brackets, standings, Challonge/Sheets sync, map veto, organizer dashboard, and transactional outbox |
+| [`backend/stats-service`](./backend/stats-service/README.md)         | `stats-svc`, `stats-worker`         | Match-log ingestion, parsing, rank synchronization, achievements, backfills, and the public statistics and player-statistics reads |
 | [`backend/balancer-service`](./backend/balancer-service/README.md)     | `balancer-svc`                      | Genetic team balancing, native Rust `tournament_balancer`, and live captain drafts                                            |
 | [`backend/analytics-service`](./backend/analytics-service/README.md)   | `analytics-svc`, `analytics-worker` | Analytics RPC plus long-running ML training and inference jobs                                                     |
 | [`backend/stream-service`](./backend/stream-service/README.md)         | `stream-svc`                        | Twitch live-status polling and public tournament stream state                                                      |

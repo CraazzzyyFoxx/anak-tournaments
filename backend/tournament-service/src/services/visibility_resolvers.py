@@ -1,7 +1,6 @@
 """Resolve the owning ``tournament_id`` for entity-level reads so the shared
-hidden-tournament guard can gate them. Lightweight scalar queries mirroring the
-workspace resolvers in ``src/core/auth.py``; each raises 404 when the entity is
-absent (indistinguishable from a hidden tournament to outsiders).
+hidden-tournament guard can gate them. Each resolver raises 404 when the entity
+is absent (indistinguishable from a hidden tournament to outsiders).
 """
 
 from __future__ import annotations
@@ -9,17 +8,16 @@ from __future__ import annotations
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from src import models
 
 
 class VisibilityResolverService:
     """Scalar ``tournament_id`` lookups.
 
-    Deliberately not repository ``get()`` calls: each resolver reads exactly one
-    column, so loading the whole ORM row (and populating the identity map with it)
-    would cost more than the guard it feeds.
+    Each resolver reads exactly one column: loading the whole ORM row (and
+    populating the identity map with it) would cost more than the guard it feeds.
     """
 
     async def _scalar_or_404(self, session: AsyncSession, stmt: sa.Select, detail: str) -> int:
@@ -46,8 +44,15 @@ class VisibilityResolverService:
         return await self._scalar_or_404(
             session,
             sa.select(models.Encounter.tournament_id)
-            .join(models.Match, models.Match.encounter_id == models.Encounter.id)
-            .where(models.Match.id == match_id),
+            .join(
+                models.StatsMatch,
+                sa.and_(
+                    models.StatsMatch.encounter_id == models.Encounter.id,
+                    models.StatsMatch.workspace_id == models.Encounter.workspace_id,
+                    models.StatsMatch.discipline == models.Encounter.discipline,
+                ),
+            )
+            .where(models.StatsMatch.id == match_id),
             "Match not found",
         )
 

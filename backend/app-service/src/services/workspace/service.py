@@ -4,13 +4,18 @@ from datetime import UTC, datetime
 
 import dns.asyncresolver
 import sqlalchemy as sa
+from loguru import logger
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.domain.workspace_tier import is_verified_or_trusted
+from shared.domain.workspace_tier import VERIFIED_STATUSES
+from shared.messaging.config import WORKSPACE_MEMBER_CHANGED_QUEUE
+from shared.messaging.outbox import enqueue_outbox_event
 from shared.messaging.rpc import request_rpc
 from shared.models.identity.auth_user import AuthUser
+from shared.observability.broker import optional_broker
 from shared.rbac import (
     assign_default_member_role_if_roleless,
     assign_workspace_system_role,
@@ -28,11 +33,12 @@ from shared.repository import (
     WorkspaceRepository,
     get_or_create_workspace_member,
 )
+from shared.schemas.events import WorkspaceMemberChangedEvent
 from shared.services.audit import record_audit
-from shared.services.division_grid.access import get_default_division_grid_version_id
+from shared.services.division_grid.provisioning import provision_default_grids
 from shared.services.settings_provider import settings_provider
+from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
 from shared.tenancy.hostnames import RESERVED_SUBDOMAINS, normalize_custom_domain
-from src import models
 
 __all__ = ["MEMBERS_SORT_FIELDS", "RESERVED_SLUGS", "WorkspaceService", "reject_reserved_slug", "workspaces"]
 
@@ -44,22 +50,25 @@ _CUSTOM_DOMAIN_TOKEN_PREFIX = "owt-verify-"
 _DOMAIN_CONFLICT_MESSAGE = "This custom domain is already claimed by another workspace"
 _GUILD_CONFLICT_MESSAGE = "This Discord guild is already claimed by another workspace"
 # Internal, service-to-service subject -- no gateway route, no shared
-# RabbitQueue constant (workspace self-service design §4.1/§4.6): every other
-# rpc.identity.* subject is called the same way, by its bare subject string,
-# because the caller has always been the Go gateway until now. This is the
-# first Python-to-Python call to it; the bare string still routes correctly
-# because @broker.subscriber("rpc.identity.oauth_discord_guilds") declares a
-# same-named queue on the default exchange.
+# RabbitQueue constant: called by its bare subject string, which routes because
+# @broker.subscriber("rpc.identity.oauth_discord_guilds") declares a same-named
+# queue on the default exchange.
 _DISCORD_GUILDS_SUBJECT = "rpc.identity.oauth_discord_guilds"
 # Discord-guild list/verify fail closed on an unreachable identity-service
 # and say so identically -- one is the picker for the other. Clear does not
 # talk to Discord at all.
 _GUILD_UNREACHABLE_MESSAGE = "Could not reach Discord for guild verification"
+# Internal, service-to-service like the subject above: identity drops the listed
+# users' cached RBAC and has the gateway evict their principals, then answers.
+_MEMBER_CHANGED_SUBJECT = "rpc.identity.workspace_member_changed"
+# Short on purpose: the write has already committed, so a slow identity only
+# costs the head start, and the outbox copy of the event still lands.
+_MEMBER_CHANGED_TIMEOUT = 2.0
 
 MEMBERS_SORT_FIELDS = ("username", "role")
 
-# Slugs the platform keeps for itself, rejected by self-service create (design
-# §4.4). Built on the reserved subdomain labels because a slug is the natural
+# Slugs the platform keeps for itself, rejected by self-service create. Built
+# on the reserved subdomain labels because a slug is the natural
 # candidate for a workspace's ``subdomain``, plus the platform's own top-level
 # route names. Superusers are not exempt: the collision is with the platform,
 # not with a permission.
@@ -76,9 +85,22 @@ def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
 
-def _is_listed(workspace: models.Workspace) -> bool:
+def _listed() -> sa.ColumnElement[bool]:
     """The public-directory bar: not hidden, and past the ``unverified`` tier."""
-    return not workspace.is_hidden and is_verified_or_trusted(workspace)
+    return sa.and_(models.Workspace.is_hidden.is_(False), models.Workspace.verification_status.in_(VERIFIED_STATUSES))
+
+
+ListScope = typing.Literal["public", "admin", "all"]
+
+
+def _visible_to(user: AuthUser | None, scope: ListScope) -> tuple[sa.ColumnElement[bool], ...]:
+    """The WHERE clause of ``scope`` for ``user`` (see ``WorkspaceService.get_all``); empty = every workspace."""
+    if scope == "public" or user is None:
+        return (sa.false(),) if scope == "admin" else (_listed(),)
+    if user.is_superuser:
+        return ()
+    mine = models.Workspace.id.in_(user.get_workspace_ids())
+    return (mine,) if scope == "admin" else (sa.or_(mine, _listed()),)
 
 
 class WorkspaceService:
@@ -110,11 +132,21 @@ class WorkspaceService:
     async def get_by_slug(self, session: AsyncSession, slug: str) -> models.Workspace | None:
         return await self.workspace_repo.get_by_slug(session, slug)
 
+    async def get_visible_by_slug(
+        self, session: AsyncSession, slug: str, *, user: AuthUser | None
+    ) -> models.Workspace | None:
+        """``slug``'s workspace if the switcher (``scope=all``) lists it for ``user``, else ``None``.
+
+        The community page's lookup: listed, a membership, or a superuser -- a hidden or ``unverified``
+        workspace never opens to anyone else by its slug.
+        """
+        return await self.workspace_repo.get_by_slug(session, slug, *_visible_to(user, "all"))
+
     async def get_by_subdomain(self, session: AsyncSession, subdomain: str) -> models.Workspace | None:
         return await self.workspace_repo.get_by_subdomain(session, subdomain)
 
     async def get_by_custom_domain(self, session: AsyncSession, domain: str) -> models.Workspace | None:
-        """Resolve a verified custom domain to its workspace (Phase 2 of ``by_host``).
+        """Resolve a verified custom domain to its workspace (``by_host``'s non-platform-host branch).
 
         Delegates to the verified-only repo query — an unverified ``custom_domain``
         never resolves here.
@@ -126,16 +158,16 @@ class WorkspaceService:
         session: AsyncSession,
         *,
         user: AuthUser | None = None,
-        scope: typing.Literal["public", "admin", "all"] = "public",
+        scope: ListScope = "public",
     ) -> typing.Sequence[models.Workspace]:
         """Workspaces the caller is entitled to see under ``scope``.
 
         ``public`` (the default, and what the home-page directory asks for) is
         the strict directory: ``not is_hidden`` AND a trust tier past
-        ``unverified`` (design §4.5). It has NO bypasses -- membership does not
+        ``unverified``. It has NO bypasses -- membership does not
         lift it and neither does ``is_superuser``, because the directory is one
         shared public surface and an operator browsing the home page must see
-        exactly what a visitor sees (revised 2026-09-07).
+        exactly what a visitor sees.
 
         ``admin`` is the management list: everything for a superuser, otherwise
         only the caller's own workspaces at any tier (the admin table narrows
@@ -143,30 +175,21 @@ class WorkspaceService:
         permission question this layer does not answer).
 
         ``all`` is ``admin`` unioned with the public directory -- the workspace
-        switcher and slug resolution, where a member must reach their own
-        brand-new ``unverified`` workspace while still being able to browse
-        every listed one.
-
-        Direct lookups (``get_by_id``, ``get_by_slug``, ``get_by_subdomain``,
-        ``get_by_custom_domain``) are untouched by all of this: a fresh
-        ``unverified`` workspace is fully reachable and usable by slug,
-        subdomain or verified custom domain the moment it is created, it just
+        switcher, and ``get_visible_by_slug``'s community page, where a member
+        must reach their own brand-new ``unverified`` workspace while still being
+        able to browse every listed one.
+        Every other direct lookup (``get_by_id``, ``get_by_slug``,
+        ``get_by_subdomain``, ``get_by_custom_domain``) is untouched by all of
+        this: a fresh ``unverified`` workspace is fully reachable and usable by
+        id, subdomain or verified custom domain the moment it is created, it just
         does not appear in the public directory until a superuser marks it
         ``verified``.
-        """
-        workspaces = await self.workspace_repo.list_ordered(session)
-        if scope == "public":
-            return [w for w in workspaces if _is_listed(w)]
-        if user is None:
-            return [] if scope == "admin" else [w for w in workspaces if _is_listed(w)]
-        if user.is_superuser:
-            return workspaces
-        member_ids = set(user.get_workspace_ids())
-        if scope == "admin":
-            return [w for w in workspaces if w.id in member_ids]
-        return [w for w in workspaces if w.id in member_ids or _is_listed(w)]
 
-    # --- custom domain (white-label Phase 2) --------------------------------
+        List rows carry no effective grids: read one workspace for those.
+        """
+        return await self.workspace_repo.list_ordered(session, *_visible_to(user, scope))
+
+    # --- custom domain (white-label) ----------------------------------------
 
     async def _dns_txt_contains(self, name: str, expected: str) -> bool:
         """True iff a TXT record at ``name`` has a string that exactly equals ``expected``.
@@ -274,75 +297,36 @@ class WorkspaceService:
 
     # --- writes -------------------------------------------------------------
 
-    async def validate_default_division_grid_version(
-        self,
-        session: AsyncSession,
-        *,
-        workspace_id: int | None,
-        version_id: int,
-    ) -> None:
-        owner_id = await session.scalar(
-            sa.select(sa.func.coalesce(models.DivisionGrid.workspace_id, -1))
-            .join(
-                models.DivisionGridVersion,
-                models.DivisionGridVersion.grid_id == models.DivisionGrid.id,
-            )
-            .where(models.DivisionGridVersion.id == version_id)
-        )
-        if owner_id is None:
-            raise HTTPException(status_code=404, detail="Division grid version not found")
-        if owner_id != -1 and owner_id != workspace_id:
-            raise HTTPException(
-                status_code=400,
-                detail="Default division grid version must belong to the workspace or be global",
-            )
-
-    async def _resolve_default_division_grid_version_id(
-        self,
-        session: AsyncSession,
-        version_id: int | None,
-        *,
-        workspace_id: int | None = None,
-    ) -> int:
-        if version_id is not None:
-            await self.validate_default_division_grid_version(
-                session,
-                workspace_id=workspace_id,
-                version_id=version_id,
-            )
-            return version_id
-
-        resolved_version_id = await get_default_division_grid_version_id(session)
-        if resolved_version_id is None:
-            raise RuntimeError("System default division grid version is not configured")
-        return resolved_version_id
-
     async def create(self, session: AsyncSession, **kwargs) -> models.Workspace:
-        payload = dict(kwargs)
-        payload["default_division_grid_version_id"] = await self._resolve_default_division_grid_version_id(
-            session,
-            payload.get("default_division_grid_version_id"),
-        )
-
-        workspace = models.Workspace(**payload)
-        return await self.workspace_repo.create(session, workspace)
+        workspace = models.Workspace(division_grid_defaults=[], **kwargs)
+        await self.workspace_repo.create(session, workspace)
+        await provision_default_grids(session, workspace)
+        await self.workspace_repo.load_effective_grid_versions(session, [workspace])
+        return workspace
 
     async def update(self, session: AsyncSession, workspace: models.Workspace, data: dict) -> models.Workspace:
-        if "default_division_grid_version_id" in data:
-            raise HTTPException(
-                status_code=400,
-                detail="Activate division grid versions through the division-grid activation endpoint",
-            )
+        enabled_before = set(workspace.disciplines_enabled)
         await self.workspace_repo.update_fields(session, workspace, dict(data))
+        if "disciplines_enabled" in data:
+            await provision_default_grids(
+                session, workspace, disciplines=set(workspace.disciplines_enabled) - enabled_before
+            )
+            await self.workspace_repo.load_effective_grid_versions(session, [workspace])
         return workspace
 
     async def delete(self, session: AsyncSession, workspace: models.Workspace) -> None:
+        captures = await capture_owner_delete(session, workspace_id=workspace.id)
         await self.workspace_repo.delete(session, workspace)
+        await stage_owner_delete(
+            session,
+            captures,
+            workspace_id=workspace.id,
+            entity_type="workspace",
+            entity_id=workspace.id,
+            source="admin",
+        )
 
     # --- members ------------------------------------------------------------
-
-    async def get_members(self, session: AsyncSession, workspace_id: int) -> typing.Sequence[models.WorkspaceMember]:
-        return await self.member_repo.list_by_workspace(session, workspace_id)
 
     async def get_staff(self, session: AsyncSession, workspace_id: int) -> list[tuple[str, str]]:
         """Public staff roster: ``(role, player name)`` pairs, owner first."""
@@ -409,9 +393,8 @@ class WorkspaceService:
         bare player if none exists.
 
         ``workspace_member`` is anchored on ``player_id``, so adding a member needs
-        the auth user to have a linked ``players.user``. Post-Phase-A signups get one
-        automatically, but legacy accounts (registered before that provisioning) have
-        none — and Add Member explicitly targets staff who never played. Rather than
+        the auth user to have a linked ``players.user``. Not every auth user has
+        one — and Add Member explicitly targets staff who never played. Rather than
         500 on such users, provision the identity backbone on demand (mirrors
         ``ensure_player_for_auth_user``); the auth user's existence is validated by
         the caller (member_add) before we get here.
@@ -424,10 +407,9 @@ class WorkspaceService:
     async def add_member(self, session: AsyncSession, workspace_id: int, auth_user_id: int) -> models.WorkspaceMember:
         """Create (or fetch) the membership row for the player linked to ``auth_user_id``.
 
-        Callers keep passing ``auth_user_id`` (unchanged signature); internally we
-        resolve the ``player_id`` the ``workspace_member`` row is actually
-        anchored on. No longer accepts/writes a ``role`` — the column was dropped;
-        RBAC (``user_roles``, keyed on ``auth_user_id``) is the source of truth.
+        Takes ``auth_user_id`` and resolves the ``player_id`` the
+        ``workspace_member`` row is anchored on. Writes no ``role``: RBAC
+        (``user_roles``, keyed on ``auth_user_id``) is the source of truth.
         """
         await ensure_workspace_system_roles(session, workspace_id)
         player_id = await self._resolve_player_id_for_auth_user(session, auth_user_id)
@@ -538,13 +520,57 @@ class WorkspaceService:
         )
 
     async def remove_member(self, session: AsyncSession, member: models.WorkspaceMember) -> None:
+        """Revoke the member's roles and stamp ``removed_at``; the row stays.
+
+        Roster snapshots (``encounter.team_member``) hang on the row, so it is
+        never deleted -- only the workspace's own deletion takes it. Re-adding the
+        player (``get_or_create_workspace_member``) clears the stamp.
+        """
         auth_user_id = await self.get_member_auth_user_id(session, member)
         await self.user_role_repo.revoke_workspace_roles(
             session, user_id=auth_user_id, workspace_id=member.workspace_id
         )
-        await self.member_repo.delete(session, member)
+        await self.member_repo.update_fields(session, member, {"removed_at": datetime.now(UTC)})
 
-    # --- ownership cap guard (design §4.4) ----------------------------------
+    async def _commit_member_change(
+        self, session: AsyncSession, workspace_id: int, auth_user_ids: typing.Iterable[int], change: str
+    ) -> None:
+        """Commit a write that changes who holds which workspace role, and make it count at once.
+
+        Every transactional operation that changes membership or roles ends
+        here. The event that makes identity drop these users' cached RBAC is
+        staged in the write's own transaction, so only a committed change is
+        ever announced. The relay delivers it up to a second after the commit,
+        though -- later than the actor's very next request, which is the one
+        that needs it (the creator's first settings save, a removed member's
+        next call). So the same event is also sent to identity right after the
+        commit and waited on; identity drops the cache and has the gateway evict
+        those users' principals before it answers. A failed call loses only
+        that head start: the outbox copy still lands.
+        """
+        event = WorkspaceMemberChangedEvent(
+            workspace_id=workspace_id,
+            auth_user_ids=sorted(auth_user_ids),
+            change=change,
+            source_service="app-service",
+        )
+        await enqueue_outbox_event(session, event, exchange="", routing_key=WORKSPACE_MEMBER_CHANGED_QUEUE.name)
+        await session.commit()
+
+        broker = optional_broker()
+        if broker is None:
+            return
+        try:
+            reply = await request_rpc(
+                broker, event.model_dump(mode="json"), _MEMBER_CHANGED_SUBJECT, timeout=_MEMBER_CHANGED_TIMEOUT
+            )
+        except Exception as exc:
+            reply = None
+            logger.warning(f"identity did not confirm the RBAC drop for {event.auth_user_ids}: {exc!r}")
+        if reply is not None and not reply.ok:
+            logger.warning(f"identity refused the RBAC drop for {event.auth_user_ids}: {reply.error}")
+
+    # --- ownership cap guard ------------------------------------------------
 
     async def ensure_create_limit(
         self,
@@ -609,14 +635,8 @@ class WorkspaceService:
         await assign_workspace_system_role(
             session, user_id=owner_auth_user_id, workspace_id=workspace.id, role_name="owner"
         )
-        await session.commit()
-        # The workspace was built in Python and only flushed, so its
-        # ``default_division_grid_version`` was never loaded -- ``selectin`` is
-        # a query-time strategy and does not run for an instance that never
-        # went through a SELECT. Reading it below would then lazy-load from
-        # sync Pydantic code (MissingGreenlet) whenever the create body named
-        # a version. Awaited here, it is ordinary IO.
-        await session.refresh(workspace, ["default_division_grid_version"])
+        await self._commit_member_change(session, workspace.id, [owner_auth_user_id], "added")
+        await session.refresh(workspace, ["division_grid_defaults"])
         return workspace
 
     async def backfill_member_roles(self, session: AsyncSession, workspace_id: int) -> int:
@@ -652,7 +672,7 @@ class WorkspaceService:
         if await self.get_member(session, workspace_id, auth_user_id):
             raise HTTPException(status_code=400, detail="User is already a member")
         member = await self.add_member_with_roles(session, workspace_id, auth_user_id, role_ids=role_ids)
-        await session.commit()
+        await self._commit_member_change(session, workspace_id, [auth_user_id], "added")
         return member
 
     async def change_member_roles(
@@ -663,12 +683,14 @@ class WorkspaceService:
         role_ids: list[int],
     ) -> models.WorkspaceMember:
         member = await self.update_member_roles(session, member, role_ids=role_ids)
-        await session.commit()
+        auth_user_id = await self.get_member_auth_user_id(session, member)
+        await self._commit_member_change(session, member.workspace_id, [auth_user_id], "roles_changed")
         return member
 
     async def revoke_member(self, session: AsyncSession, member: models.WorkspaceMember) -> None:
         await self.remove_member(session, member)
-        await session.commit()
+        auth_user_id = await self.get_member_auth_user_id(session, member)
+        await self._commit_member_change(session, member.workspace_id, [auth_user_id], "removed")
 
     async def _record_domain_change(
         self,
@@ -790,7 +812,7 @@ class WorkspaceService:
         await session.commit()
         return workspace
 
-    # --- Discord guild verification (self-service design §4.1) -------------
+    # --- Discord guild verification -----------------------------------------
 
     async def verify_discord_guild(
         self,
@@ -810,11 +832,15 @@ class WorkspaceService:
         (which fails open on a missing/unreachable guild config) -- there, a
         missing answer only widens who can register for a tournament; here, it
         would let an unproven claim permanently attach to a workspace's
-        identity. See the design's Risks section.
+        identity.
 
-        Raises ``HTTPException(403)`` if ``actor`` does not administer
-        ``guild_id`` on Discord (owner or ``MANAGE_GUILD``, per
-        ``rpc.identity.oauth_discord_guilds``).
+        Raises ``HTTPException(403, "discord_relink_required")`` when identity
+        reports no usable Discord OAuth token for ``actor`` (nothing linked, or
+        the token expired): the guild list is unknown, not empty.
+
+        Raises ``HTTPException(403, "discord_guild_not_administered")`` if
+        ``actor`` does not administer ``guild_id`` on Discord (owner or
+        ``MANAGE_GUILD``, per ``rpc.identity.oauth_discord_guilds``).
 
         Raises ``HTTPException(409)`` if another workspace already claims this
         guild -- the ``uq_workspace_discord_guild_id`` unique constraint is the
@@ -830,10 +856,12 @@ class WorkspaceService:
             raise HTTPException(status_code=503, detail=_GUILD_UNREACHABLE_MESSAGE)
 
         payload = reply.data if isinstance(reply.data, dict) else {}
+        if payload.get("relink_required"):
+            raise HTTPException(status_code=403, detail="discord_relink_required")
         guilds = payload.get("guilds") or []
         administered = {g["guild_id"] for g in guilds if g.get("can_manage")}
         if guild_id not in administered:
-            raise HTTPException(status_code=403, detail="You do not administer this Discord guild")
+            raise HTTPException(status_code=403, detail="discord_guild_not_administered")
 
         guild_id_before = workspace.discord_guild_id
         verified_at_before = workspace.discord_guild_verified_at
@@ -926,7 +954,8 @@ class WorkspaceService:
         itself. Same subject, same timeout and the same fail-closed 503 as the
         verification call it feeds: an empty list would read as "you administer
         nothing", which is a different (and misleading) answer from "we could
-        not ask".
+        not ask". ``relink_required`` passes through for the same reason: an
+        empty list with it set means "re-link Discord".
         """
         try:
             reply = await request_rpc(broker, {"auth_user_id": auth_user_id}, _DISCORD_GUILDS_SUBJECT, timeout=5.0)
@@ -934,9 +963,12 @@ class WorkspaceService:
             raise HTTPException(status_code=503, detail=_GUILD_UNREACHABLE_MESSAGE) from exc
         if reply is None or not reply.ok or not isinstance(reply.data, dict):
             raise HTTPException(status_code=503, detail=_GUILD_UNREACHABLE_MESSAGE)
-        return {"guilds": reply.data.get("guilds") or []}
+        return {
+            "guilds": reply.data.get("guilds") or [],
+            "relink_required": bool(reply.data.get("relink_required")),
+        }
 
-    # --- verification tier (design §4.3) -----------------------------------
+    # --- verification tier --------------------------------------------------
 
     async def set_verification_status(
         self,
@@ -986,7 +1018,7 @@ class WorkspaceService:
         and has already proven ``owner_id`` names a real ``auth.user`` row.
 
         Two things this deliberately does NOT do. It does not touch RBAC: the
-        stamp and the ``owner`` role are decoupled by design (§4.4), so who may
+        stamp and the ``owner`` role are decoupled by design, so who may
         administer the workspace stays a ``member_update`` decision. And it does
         not re-check ``max_owned_per_user`` -- that cap gates self-service
         creation, and a superuser assignment is exactly the override for it; the
@@ -1070,7 +1102,9 @@ class WorkspaceService:
             before={"owner_id": owner_before},
             after={"owner_id": workspace.owner_id},
         )
-        await session.commit()
+        await self._commit_member_change(
+            session, workspace.id, {new_owner_auth_user_id, owner_before} - {None}, "owner_transferred"
+        )
         return workspace
 
 

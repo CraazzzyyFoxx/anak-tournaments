@@ -2,12 +2,15 @@
 
 import { useTranslations } from "next-intl";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
+import { ProfileStat } from "@/components/profile/atoms";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import type { BracketRoundShape } from "@/lib/bracket/round-name";
 import { useFormatter } from "@/lib/datetime/client";
-import type { Encounter } from "@/types/encounter.types";
-import type { HeroPlaytime } from "@/types/hero.types";
+import { seatAt } from "@/lib/encounter/seats";
+import { getEncounterWinner } from "@/lib/encounter/status";
+import type { Encounter, EncounterTeam } from "@/types/encounter.types";
+import type { CharacterPlaytime } from "@/types/user.types";
 import type { Team } from "@/types/team.types";
 import type { StageSummary, Standings, Tournament } from "@/types/tournament.types";
 
@@ -17,17 +20,15 @@ import {
   findGrandFinal,
   findLowerFinal,
   rosterBattletags,
-  tournamentDaySpan,
-  winnerSide
+  tournamentDaySpan
 } from "../tournamentOverview.model";
 import { CardLink, OverviewCard } from "./OverviewCards";
-import { StatTile } from "./RegistrationSummary";
 
-/** The five heroes the tournament was actually played on, by share of playtime. */
+/** The five characters the tournament was actually played on, by share of playtime. */
 function TopHeroesCard({
   topHeroes,
   overviewHref
-}: Readonly<{ topHeroes: readonly HeroPlaytime[]; overviewHref: string }>) {
+}: Readonly<{ topHeroes: readonly CharacterPlaytime[]; overviewHref: string }>) {
   const t = useTranslations();
   const format = useFormatter();
 
@@ -47,23 +48,14 @@ function TopHeroesCard({
           return (
             <li
               className="grid grid-cols-[1rem_1.5rem_minmax(0,1fr)_auto_2.75rem] items-center gap-2"
-              key={entry.hero.id}
+              key={entry.entity.id}
             >
               <span className="aqt-tnum text-label text-[color:var(--aqt-fg-faint)]" aria-hidden>
                 {String(index + 1).padStart(2, "0")}
               </span>
-              <Avatar className="size-6 border-none bg-transparent">
-                {entry.hero.image_path ? (
-                  <AvatarImage
-                    src={entry.hero.image_path}
-                    alt={entry.hero.name}
-                    className="object-contain"
-                  />
-                ) : null}
-                <AvatarFallback className="bg-transparent" />
-              </Avatar>
-              <span className="min-w-0 truncate text-caption" title={entry.hero.name}>
-                {entry.hero.name}
+              <CatalogEntityImage entity={entry.entity} size={24} decorative />
+              <span className="min-w-0 truncate text-caption" title={entry.entity.name}>
+                {entry.entity.name}
               </span>
               <span
                 aria-hidden
@@ -114,7 +106,7 @@ export function OverviewCompletedView({
   encounters: readonly Encounter[];
   standings: readonly Standings[];
   teams: readonly Team[];
-  topHeroes: readonly HeroPlaytime[];
+  topHeroes: readonly CharacterPlaytime[];
   stage: StageSummary | null;
   stageId: number | null;
   roundShape: BracketRoundShape;
@@ -142,22 +134,28 @@ export function OverviewCompletedView({
       ? null
       : findLowerFinal(encounters, stageId);
 
-  const podiumTeam = (team: Team | null | undefined, note: string | null): PodiumTeam | null => {
-    if (!team) return null;
-    return { id: team.id, name: team.name, image_url: team.image_url, note };
+  const podiumTeam = (
+    entry: EncounterTeam | Team | null | undefined,
+    note: string | null
+  ): PodiumTeam | null => {
+    if (!entry) return null;
+    // A seat names its source team by `team_id`; a team read is the team itself.
+    const id = "slot" in entry ? (entry.team_id ?? entry.id) : entry.id;
+    const image_url = "slot" in entry ? entry.team?.image_url : entry.image_url;
+    return { id, name: entry.name, image_url, note };
   };
 
   let podium: { first: PodiumTeam; second: PodiumTeam; third: PodiumTeam | null } | null = null;
 
   if (grandFinal) {
-    const side = winnerSide(grandFinal);
-    const championSide = side ?? "home";
-    const champion = championSide === "home" ? grandFinal.home_team : grandFinal.away_team;
-    const runnerUp = championSide === "home" ? grandFinal.away_team : grandFinal.home_team;
-    const championScore = championSide === "home" ? grandFinal.score.home : grandFinal.score.away;
-    const runnerUpScore = championSide === "home" ? grandFinal.score.away : grandFinal.score.home;
+    // A drawn final has no champion; slot 1 stands in, as it always led the card.
+    const championSlot = getEncounterWinner(grandFinal) ?? 1;
+    const champion = seatAt(grandFinal.teams, championSlot);
+    const runnerUp = seatAt(grandFinal.teams, championSlot === 1 ? 2 : 1);
+    const championScore = champion?.score ?? 0;
+    const runnerUpScore = runnerUp?.score ?? 0;
     // The roster comes off the teams read; the encounters read carries no players.
-    const roster = rosterBattletags(teamById.get(champion?.id ?? -1) ?? champion);
+    const roster = rosterBattletags(teamById.get(champion?.team_id ?? -1) ?? champion?.team);
     const first = podiumTeam(champion, roster.length > 0 ? roster : null);
     const second = podiumTeam(
       runnerUp,
@@ -167,10 +165,9 @@ export function OverviewCompletedView({
     );
     let third: PodiumTeam | null = null;
     if (lowerFinal) {
-      const lowerSide = winnerSide(lowerFinal);
-      const eliminated = lowerSide === "home" ? lowerFinal.away_team : lowerFinal.home_team;
+      const lowerWinner = getEncounterWinner(lowerFinal);
       third = podiumTeam(
-        eliminated,
+        seatAt(lowerFinal.teams, lowerWinner === 1 ? 2 : 1),
         t("tournamentDetail.overview.result.exitedIn", {
           round: roundLabel(lowerFinal.round, roundShape)
         })
@@ -237,15 +234,12 @@ export function OverviewCompletedView({
             the header cannot: how much was played, and over how long. */}
         <OverviewCard title={t("tournamentDetail.overview.numbers.title")}>
           <div className="grid gap-2 sm:grid-cols-2">
-            <StatTile
+            <ProfileStat
               label={t("tournamentDetail.overview.numbers.matches")}
-              value={String(encounters.length)}
+              value={encounters.length}
             />
             {days !== null ? (
-              <StatTile
-                label={t("tournamentDetail.overview.numbers.days")}
-                value={String(days)}
-              />
+              <ProfileStat label={t("tournamentDetail.overview.numbers.days")} value={days} />
             ) : null}
           </div>
         </OverviewCard>

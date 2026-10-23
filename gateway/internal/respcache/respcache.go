@@ -21,11 +21,12 @@
 // the Redis channel "realtime:tournament:{id}:bracket". The gateway already
 // PSUBSCRIBEs to realtime:* for WebSocket fan-out (internal/events); this
 // cache is simply a second consumer of that same worker-emitted signal:
-// events.Fanout(hub, cache). Draft events ("tournament:{id}:draft") change
-// team compositions mid-draft, so they invalidate too. The balancer topic is
-// deliberately ignored — it carries ephemeral presence heartbeats that would
-// otherwise keep the cache permanently cold for any tournament with an open
-// balancer session.
+// events.Fanout(hub, cache). Draft events ride their session's own
+// "draft:{session_id}:board" topic and are data only: a pick writes no public
+// row, and what a draft does stale (its export) arrives as a tournament
+// invalidation. The balancer topic is deliberately ignored — it carries
+// ephemeral presence heartbeats that would otherwise keep the cache
+// permanently cold for any tournament with an open balancer session.
 //
 // The TTL is a staleness backstop, not the primary mechanism: some writes
 // (e.g. public registration create → participants_count) do not emit
@@ -89,6 +90,16 @@ const (
 	// leaves ~87% of the hard memory limit for the Go runtime, connection
 	// buffers, and the gateway's other in-memory caches.
 	maxTotalBytes = 32 << 20
+	// upstreamSettle caps the life of an entry filled shortly after an
+	// invalidation of its tournament. The event lands here right after the
+	// writer's commit, and the services caching the same read have already
+	// missed it by then (the commit bumps their shared cache generations) —
+	// unless that bump failed, in which case they miss only when the outbox
+	// relay re-bumps (a 1s tick). A fill in that gap is the upstream's
+	// pre-write copy, and with no event left to evict it, it would live a full
+	// TTL. ponytail: fixed window; an upstream lagging past it (broker outage)
+	// is still TTL-bounded.
+	upstreamSettle = 10 * time.Second
 )
 
 // Extractor resolves the invalidation scope for a request: a positive
@@ -164,6 +175,13 @@ type entry struct {
 	exp          time.Time
 }
 
+// invalidation is a tournament's latest Invalidate: its position in the
+// Cache.invalidations sequence and its wall time.
+type invalidation struct {
+	seq uint64
+	at  time.Time
+}
+
 // Cache is the bounded LRU store plus the singleflight herd-collapse. A nil
 // *Cache is valid and inert (Wrap returns next unchanged, Broadcast is a
 // no-op), so callers can wire it unconditionally and disable via config.
@@ -180,6 +198,14 @@ type Cache struct {
 	lru        *list.List               // front = most recently used
 	byID       map[int64]map[string]struct{}
 	totalBytes int64 // sum of len(entry.body) for all stored entries
+	// invalidations counts Invalidate calls; invalidated holds each
+	// tournament's latest one (one small record per tournament ever
+	// invalidated; ids only come from the internal bus). A flight snapshots
+	// the count before going upstream: a body read before a write committed
+	// must neither be stored after that write's invalidation — which found
+	// nothing to evict yet — nor be handed to a request arriving after it.
+	invalidations uint64
+	invalidated   map[int64]invalidation
 }
 
 // New returns a Cache with the given staleness backstop, or nil (disabled)
@@ -201,6 +227,8 @@ func newCache(ttl time.Duration, max int, maxBytes int64, log *slog.Logger) *Cac
 		keys:     make(map[string]*list.Element),
 		lru:      list.New(),
 		byID:     make(map[int64]map[string]struct{}),
+
+		invalidated: make(map[int64]invalidation),
 	}
 }
 
@@ -320,8 +348,12 @@ func (c *Cache) Wrap(next http.Handler, rule Rule) http.Handler {
 		// one per client, and the 200 repopulates the entry even when no
 		// anonymous viewer ever arrives (during a check-in window everyone
 		// on the participants page is logged in).
-
-		ch := c.flight.DoChan(key, func() (any, error) {
+		//
+		// The flight key carries the tournament's invalidation generation, so
+		// a request arriving after an invalidation starts a fresh flight
+		// instead of joining one that went upstream before the write.
+		start, gen := c.generation(tid, tidOK)
+		ch := c.flight.DoChan(key+"\x00"+strconv.FormatUint(gen, 10), func() (any, error) {
 			rec := &recorder{header: make(http.Header), status: http.StatusOK}
 			// Detach from the initiating client's lifetime; the edge
 			// dispatcher's per-route RPC timeout still bounds the call.
@@ -347,7 +379,7 @@ func (c *Cache) Wrap(next http.Handler, rule Rule) http.Handler {
 			// deliberately not cached either — rare, and correctness-critical
 			// around visibility flips.)
 			if resolvedOK && e.status == http.StatusOK && len(e.body) <= maxBodyBytes {
-				c.store(e)
+				c.store(e, start)
 			}
 			return e, nil
 		})
@@ -380,13 +412,17 @@ func (c *Cache) Wrap(next http.Handler, rule Rule) http.Handler {
 
 // Invalidate drops cached responses for the tournament whose key contains any
 // of patterns, or every response for the tournament when patterns is nil.
-// Returns how many entries were removed.
+// Returns how many entries were removed. It also records the invalidation even
+// when nothing matched: a fetch already in flight has no entry yet, and store
+// must still refuse its pre-write body.
 func (c *Cache) Invalidate(tournamentID int64, patterns []string) int {
 	if c == nil {
 		return 0
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.invalidations++
+	c.invalidated[tournamentID] = invalidation{seq: c.invalidations, at: c.now()}
 	keys := c.byID[tournamentID]
 	// removeLocked deletes from this same set as we range (legal in Go).
 	n := 0
@@ -481,10 +517,11 @@ func patternsFor(resources []string) []string {
 // existing realtime subscription (events.Fanout(hub, cache)).
 //
 // ONLY `<scope>:invalidation` topics are consumed. Domain topics (:bracket,
-// :draft, :balancer, :streams, :map-veto, ...) carry data for the UI and are
-// ignored here by design: mixing the two is what produced both halves of the
-// bug this rail replaced — a draft pick dropped the whole tournament while a
-// balancer export, which really did rewrite team rows, dropped nothing.
+// :balancer, :streams, :map-veto, a draft's draft:{session_id}:board, ...)
+// carry data for the UI and are ignored here by design: mixing the two is
+// what produced both halves of the bug this rail replaced — a draft pick
+// dropped the whole tournament while a balancer export, which really did
+// rewrite team rows, dropped nothing.
 //
 // Only the tournament scope has anything cached here (this cache stores
 // anonymous public reads); workspace/user invalidations parse fine and match
@@ -535,9 +572,33 @@ func (c *Cache) get(key string) *entry {
 	return e
 }
 
-func (c *Cache) store(e *entry) {
+// generation snapshots the invalidation count before a flight goes upstream
+// (start, checked by store) and the flight's join generation: its tournament's
+// latest invalidation, or the global count when the id is only known from the
+// response body.
+func (c *Cache) generation(tid int64, tidOK bool) (start, gen uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if tidOK {
+		return c.invalidations, c.invalidated[tid].seq
+	}
+	return c.invalidations, c.invalidations
+}
+
+// store keeps e unless its tournament was invalidated after the flight's
+// start snapshot (the body predates the write), and caps a fill landing
+// within upstreamSettle of an invalidation at the end of that window.
+func (c *Cache) store(e *entry, start uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if inv, ok := c.invalidated[e.tournamentID]; ok {
+		if inv.seq > start {
+			return
+		}
+		if settled := inv.at.Add(upstreamSettle); c.now().Before(settled) && settled.Before(e.exp) {
+			e.exp = settled
+		}
+	}
 	if el, ok := c.keys[e.key]; ok {
 		c.removeLocked(el)
 	}

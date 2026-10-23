@@ -4,18 +4,24 @@ import statistics
 import typing
 from collections import Counter
 
+from shared.domain.player_sub_roles import workspace_sub_role_code
+from shared.domain.roles import Ontology
 from shared.domain.roster_shape import FLEX_SLOT_CODE
+from shared.domain.team_format import TeamFormat, export_advisories, export_violations
 from src.domain.balancer.backends.base import BalanceMetrics
+from src.domain.balancer.config.defaults import MAX_RESULT_VARIANTS, AlgorithmConfig
+from src.domain.balancer.config.public_contract import serialize_algorithm_config
 from src.domain.balancer.entities import Player, Team
 from src.domain.balancer.feasibility_analyzer import FeasibilityReport
-from src.services.balancer.config.defaults import MAX_RESULT_VARIANTS, AlgorithmConfig
-from src.services.balancer.config.public_contract import serialize_algorithm_config
 
 
 def teams_to_json(
     teams: list[Team],
     mask: dict[str, int],
     benched_players: list[Player] | None = None,
+    *,
+    team_format: TeamFormat | None = None,
+    ontology: Ontology | None = None,
 ) -> dict[str, typing.Any]:
     """Convert teams to a JSON-serializable dictionary for API responses."""
     result = {"teams": [], "statistics": {}, "benched_players": []}
@@ -43,6 +49,8 @@ def teams_to_json(
             "total_discomfort": team.discomfort,
             "max_discomfort": team.max_pain,
             "roster": {},
+            "format_violations": [],
+            "format_advisories": [],
         }
 
         for role, players in team.roster.items():
@@ -61,6 +69,22 @@ def teams_to_json(
                 }
                 for player in players
             ]
+
+        if team_format is not None and ontology is not None:
+            starters = [
+                ()
+                if role == FLEX_SLOT_CODE
+                else (
+                    ontology.node(
+                        ontology.rated.code,
+                        workspace_sub_role_code(role, player.subclasses.get(role)) or role,
+                    ),
+                )
+                for role, players in team.roster.items()
+                for player in players
+            ]
+            team_data["format_violations"] = list(export_violations(team_format, ontology, starters))
+            team_data["format_advisories"] = list(export_advisories(team_format, ontology, starters))
 
         result["teams"].append(team_data)
 
@@ -137,10 +161,8 @@ def teams_to_json(
 
 
 def _is_off_role(player: Player, role: str) -> bool:
-    """Off-role: a non-flex player sitting on a role slot that is not their main
-    role. A flex SLOT names no role, so nobody is off-role on it -- and
-    ``primary_role`` (not ``preferences[0]``, which the loader sets to ``flex``
-    whenever the roster fields one) is what "their main role" means."""
+    """Off-role: a non-flex player on a role slot other than their ``primary_role``.
+    A flex SLOT names no role, so nobody is off-role on it."""
     if player.is_flex or role == FLEX_SLOT_CODE:
         return False
     return player.primary_role is not None and player.primary_role != role
@@ -154,6 +176,9 @@ def _build_response_payload(
     has_applied_overrides: bool,
     metrics: BalanceMetrics | None = None,
     feasibility: FeasibilityReport | None = None,
+    *,
+    team_format: TeamFormat | None = None,
+    ontology: Ontology | None = None,
 ) -> dict[str, typing.Any]:
     placed_uuids: set[str] = set()
     for team in result:
@@ -162,7 +187,7 @@ def _build_response_payload(
                 placed_uuids.add(player.uuid)
 
     benched = [player for player in valid_players if player.uuid not in placed_uuids]
-    response_payload = teams_to_json(result, mask, benched_players=benched)
+    response_payload = teams_to_json(result, mask, benched_players=benched, team_format=team_format, ontology=ontology)
     stats = response_payload.get("statistics") or {}
     if metrics is not None:
         stats.update({key: round(value, 4) for key, value in metrics.to_dict().items()})
@@ -191,8 +216,7 @@ def lobby_document(payloads: typing.Iterable[typing.Any]) -> dict[str, typing.An
     discomfort detail have no reader of the stored document.
 
     Tolerant of malformed entries because :func:`as_lobby_document` also feeds
-    it documents stored by older code: a seat without a uuid is skipped, as the
-    readers always did.
+    it legacy stored documents: a seat without a uuid is skipped.
     """
     players: dict[str, dict[str, typing.Any]] = {}
     feasibility: typing.Any = None
@@ -241,6 +265,8 @@ def lobby_document(payloads: typing.Iterable[typing.Any]) -> dict[str, typing.An
                     "id": team.get("id"),
                     "average_mmr": team.get("average_mmr"),
                     "total_rating": team.get("total_rating"),
+                    "format_violations": list(team.get("format_violations") or []),
+                    "format_advisories": list(team.get("format_advisories") or []),
                     "roster": (
                         {role: seats(entries, role) for role, entries in roster.items()}
                         if isinstance(roster, typing.Mapping)
@@ -255,10 +281,10 @@ def lobby_document(payloads: typing.Iterable[typing.Any]) -> dict[str, typing.An
 def as_lobby_document(stored: typing.Any) -> dict[str, typing.Any] | None:
     """A mix's stored solver document in the lobby form, whichever form it was written in.
 
-    Mixes balanced before :func:`lobby_document` hold ``{"variants": [payload, ...]}``
-    (or one bare payload) and are upgraded here, on read, trimmed to the cap like
-    a fresh run. Not by a migration: a release migrates while the previous
-    containers are still serving, and those cannot read the lobby form.
+    Legacy documents hold ``{"variants": [payload, ...]}`` (or one bare payload)
+    and are upgraded here, on read, trimmed to the cap like a fresh run. Not by a
+    migration: a release migrates while the previous containers are still
+    serving, and those cannot read the lobby form.
     """
     if not isinstance(stored, typing.Mapping):
         return None

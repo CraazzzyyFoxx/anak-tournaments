@@ -75,9 +75,7 @@ async function mount() {
 }
 
 function switchFor(scope: ParentNode, group: string): HTMLButtonElement {
-  const found = scope.querySelector<HTMLButtonElement>(
-    `[role="switch"][aria-labelledby="dm-${group}-label"]`
-  );
+  const found = scope.querySelector<HTMLButtonElement>(`[role="switch"]#dm-${group}`);
   if (!found) throw new Error(`Expected the ${group} switch`);
   return found;
 }
@@ -147,7 +145,7 @@ describe("NotificationsSection", () => {
 
   it("offers the organizer switches only to staff, one per workspace, inert while the group is off", async () => {
     const plain = await mount();
-    expect(plain.querySelector('[aria-labelledby="dm-staff-label"]')).toBeNull();
+    expect(plain.querySelector("#dm-staff")).toBeNull();
 
     document.body.innerHTML = "";
     const staff: NotificationPreferences = {

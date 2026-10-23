@@ -2,23 +2,22 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { XCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { ConfirmDialog, type ConfirmIntent } from "@/components/kit/ConfirmDialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { WizardShell, type WizardStep } from "@/components/kit/WizardShell";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { notify } from "@/lib/notify";
 import type { RosterShape } from "@/lib/roster/shape";
+import { roleOf, toRoleRef } from "@/lib/roster/role-ref";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
 import balancerAdminService from "@/services/balancer-admin.service";
 import draftService from "@/services/draft.service";
 import type {
   DraftBoard,
-  DraftFormatSettings,
+  DraftRole,
   DraftSeedRequest,
   DraftSeedResponse,
   DraftSession
@@ -32,6 +31,7 @@ import { DraftConfigStep } from "./DraftConfigStep";
 import { DraftOrderStep } from "./DraftOrderStep";
 import { DraftPoolStep } from "./DraftPoolStep";
 import { DraftReadyStep } from "./DraftReadyStep";
+import { DraftReseedDiff } from "./DraftReseedDiff";
 import { DraftReviewStep } from "./DraftReviewStep";
 import {
   canCancelDraftSetup,
@@ -47,6 +47,7 @@ import {
   type DraftSetupStep,
   validateSetupStep
 } from "./setup-model";
+import { configFromSession, createEmptyCaptainSetup, formatFromSession } from "./setup-session";
 import type { DraftCaptainSetup, DraftSetupConfig } from "./setup-types";
 import { captainSeat, isInDraftPool, poolRegistrationSummary } from "./setup-types";
 import { balancerQueryKeys } from "@/lib/balancer/query-keys";
@@ -60,37 +61,6 @@ interface DraftSetupWizardProps {
   aside?: ReactNode;
 }
 
-function configFromSession(session: DraftSession | null): DraftSetupConfig {
-  const teamCount = session?.settings_json?.team_count;
-  return {
-    teamCount: typeof teamCount === "number" ? teamCount : null,
-    pickTimeSeconds: session?.pick_time_seconds ?? 45,
-    overtimeSeconds: session?.overtime_seconds ?? 0,
-    autopickStrategy: session?.autopick_strategy ?? "best_fit",
-    allowAdminOverride: session?.allow_admin_override ?? true
-  };
-}
-
-/** The snapshot a created session drafts with — the server copied it from the tournament. */
-function formatFromSession(session: DraftSession): DraftFormatSettings {
-  const roundRules = session.settings_json?.round_rules;
-  return {
-    format: session.format,
-    round_rules: Array.isArray(roundRules) ? roundRules.map(String) : [],
-    avg_tie_seed_reverse: session.settings_json?.avg_tie_seed_reverse === true
-  };
-}
-
-function createEmptyCaptainSetup(): DraftCaptainSetup {
-  return {
-    ids: [],
-    teamNames: {},
-    roles: {},
-    order: "weakest_first",
-    randomSeed: Math.floor(Math.random() * 2_147_483_647)
-  };
-}
-
 export function DraftSetupWizard({
   tournamentId,
   board,
@@ -98,7 +68,6 @@ export function DraftSetupWizard({
   aside
 }: Readonly<DraftSetupWizardProps>) {
   const t = useTranslations("draftAdmin");
-  const tAdmin = useTranslations("adminTournament.draft");
   const queryClient = useQueryClient();
   const boardKey = tournamentQueryKeys.draftBoard(tournamentId);
   const initialSession = board?.session ?? null;
@@ -127,7 +96,9 @@ export function DraftSetupWizard({
   // already mounts this query under the same key, so this is a cache read.
   const tournament = useHubTournamentQuery(tournamentId).data;
   const tournamentGridVersion = tournament?.division_grid_version ?? null;
-  const workspaceGrid = useDivisionGrid();
+  const workspaceGrid = useDivisionGrid(tournament?.discipline);
+  // The owner game's role dictionary (tournament scope): names, glyphs and the roles a pool can cover.
+  const ontology = useDisciplineMetadata(tournament?.workspace_id ?? "all", tournament?.discipline ?? null).data ?? null;
   const divisionGrid: DivisionGrid = useMemo(
     () => (tournamentGridVersion?.tiers ? { tiers: tournamentGridVersion.tiers } : workspaceGrid),
     [tournamentGridVersion, workspaceGrid]
@@ -170,8 +141,10 @@ export function DraftSetupWizard({
         // keeps following their registration's lead role.
         roles: Object.fromEntries(
           board.players.flatMap((player) =>
-            player.is_captain && player.captain_role && player.captain_role !== player.primary_role
-              ? [[player.registration_id, player.captain_role]]
+            player.is_captain &&
+            player.captain_role &&
+            roleOf(player.captain_role) !== roleOf(player.primary_role)
+              ? [[player.registration_id, roleOf(player.captain_role) as DraftRole]]
               : []
           )
         )
@@ -271,7 +244,7 @@ export function DraftSetupWizard({
       return {
         registration_id: id,
         name: captains.teamNames[id]?.trim() || null,
-        role: pinned && seated === pinned ? pinned : null
+        role: pinned && seated === pinned && shape.dimension ? toRoleRef(pinned, null, shape.dimension) : null
       };
     }),
     preview_only: previewOnly,
@@ -308,7 +281,7 @@ export function DraftSetupWizard({
   });
 
   const startMutation = useMutation({
-    mutationFn: () => draftService.lifecycle(tournamentId, session!.id, "start"),
+    mutationFn: () => draftService.lifecycle(session!.id, "start"),
     onSuccess: async (result) => {
       setLocalSession(result);
       notify.success(t("draftStarted"));
@@ -320,7 +293,7 @@ export function DraftSetupWizard({
   const cancelMutation = useMutation({
     mutationFn: () => {
       if (!session) throw new Error("Draft session is missing");
-      return draftService.lifecycle(tournamentId, session.id, "cancel");
+      return draftService.lifecycle(session.id, "cancel");
     },
     onSuccess: async (result) => {
       queryClient.setQueryData<DraftBoard | null>(boardKey, (current) =>
@@ -361,19 +334,7 @@ export function DraftSetupWizard({
           description: (
             <>
               {t("reseedConfirmDescription")}
-              {preview && (
-                <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl bg-muted/50 p-3 text-center text-sm tabular-nums">
-                  <div>
-                    {tAdmin("diff", { label: t("teams"), before: preview.diff.teams_before, after: preview.diff.teams_after })}
-                  </div>
-                  <div>
-                    {tAdmin("diff", { label: t("players"), before: preview.diff.players_before, after: preview.diff.players_after })}
-                  </div>
-                  <div>
-                    {tAdmin("diff", { label: t("picks"), before: preview.diff.picks_before, after: preview.diff.picks_after })}
-                  </div>
-                </div>
-              )}
+              {preview && <DraftReseedDiff diff={preview.diff} />}
             </>
           ),
           confirmLabel: t("seedDraft"),
@@ -460,22 +421,23 @@ export function DraftSetupWizard({
     state: index < currentIndex ? "done" : index === currentIndex ? "current" : "todo"
   }));
 
+  // No "Save draft": the wizard has nothing to save before the seed preview
+  // creates the server session, and creating it earlier locks the config.
+  // Discarding is a quiet text action; the confirm carries the weight.
   const cancelButton = canCancelSetup ? (
     <Button
       type="button"
       size="sm"
-      variant="outline"
+      variant="ghost"
       disabled={pending}
-      className="border-[color:var(--aqt-live)]/40 text-[color:var(--aqt-live)] hover:border-[color:var(--aqt-live)] hover:bg-[color:var(--aqt-live)]/10"
       onClick={() => setConfirming("cancel")}
     >
-      <XCircle className="mr-2 h-4 w-4" aria-hidden />
       {session ? t("actions.cancel") : t("discardSetup")}
     </Button>
   ) : null;
 
   return (
-    <div className="space-y-5 text-[color:var(--aqt-fg)]">
+    <>
       <WizardShell
         steps={wizardSteps}
         aside={aside}
@@ -495,28 +457,19 @@ export function DraftSetupWizard({
               }
         }
       >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className={EYEBROW_CLASS}>
-              {t("stepOf", { current: currentIndex + 1, total: SETUP_STEPS.length })}
-            </p>
-            <h2 className="mt-2 font-onest text-xl font-semibold">{t(`stepTitles.${step}`)}</h2>
-            <p className="mt-1 max-w-3xl text-sm leading-relaxed text-[color:var(--aqt-fg-muted)]">
-              {t(`stepDescriptions.${step}`)}
-            </p>
-          </div>
-          {session && (
-            <Badge variant="outline" className="tabular-nums">
-              {tAdmin("sessionVersion", { id: session.id, version: session.version })}
-            </Badge>
-          )}
-        </div>
+        <h2 className="font-onest text-xl font-semibold">{t(`stepTitles.${step}`)}</h2>
+        {(step === "config" || step === "pool") && (
+          <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+            {t(`stepDescriptions.${step}`)}
+          </p>
+        )}
         <div className="mt-6">
           {step === "config" && (
             <DraftConfigStep
               value={config}
               onChange={setConfig}
               rosterShape={shape}
+              ontology={ontology}
               format={draftFormat}
               tournamentId={tournamentId}
               locked={!!session}
@@ -528,6 +481,7 @@ export function DraftSetupWizard({
               feasibility={preview?.feasibility ?? feasibilityQuery.data ?? null}
               loading={poolQuery.isLoading}
               failed={poolQuery.isError}
+              onRetry={() => void poolQuery.refetch()}
               teamCount={teamCount}
               maxTeamCount={maxTeams}
               pinned={config.teamCount != null}
@@ -535,6 +489,7 @@ export function DraftSetupWizard({
                 setConfig((current) => ({ ...current, teamCount: next }))
               }
               locked={!!session}
+              ontology={ontology}
             />
           )}
           {step === "captains" && (
@@ -545,6 +500,7 @@ export function DraftSetupWizard({
               onChange={setCaptainsAndReset}
               divisionGrid={divisionGrid}
               rosterShape={shape}
+              ontology={ontology}
             />
           )}
           {step === "order" && (
@@ -579,6 +535,9 @@ export function DraftSetupWizard({
               tournamentId={tournamentId}
               session={session}
               feasibility={committedFeasibility ?? feasibilityQuery.data ?? null}
+              // A retry in flight reads as "Checking…" again, not as the stale error.
+              feasibilityFailed={feasibilityQuery.isError && !feasibilityQuery.isFetching}
+              onRetryFeasibility={() => void feasibilityQuery.refetch()}
               pending={pending}
               onStart={() => startMutation.mutate()}
               onReseed={() => {
@@ -604,6 +563,6 @@ export function DraftSetupWizard({
           else resetSetupState();
         }}
       />
-    </div>
+    </>
   );
 }

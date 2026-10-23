@@ -39,6 +39,7 @@ class TestCustomGameModel:
             "balance_result_version",
             "selected_variant_index",
             "next_map_id",
+            "next_map_kind",
             "balanced_at",
         } <= set(columns.keys())
         assert [column.name for column in models.CustomGameLobby.__table__.primary_key] == [
@@ -63,15 +64,14 @@ class TestCustomGameModel:
         assert "benched" in checks["ck_custom_game_self_signup"]
 
     def test_what_the_host_configures_is_not_on_the_mix(self):
-        # The solver knobs, the roster shape and the points knob describe how a
-        # person runs their mixes, so they live on `balancer.user_config`; the
-        # Discord target is the workspace's. None of them is a fact about one
-        # lobby, and a mix that stored its own diverged from all three editors.
+        # Solver and points knobs belong to the host; the mix's format is its own
+        # roster.team_format row and its Discord target belongs to the workspace.
         columns = models.CustomGame.__table__.columns
         assert "points_per_win" not in columns
         assert "discord_channel_id" not in columns
         user_columns = models.UserBalancerConfig.__table__.columns
-        assert "role_slots_json" in user_columns
+        assert "role_slots_json" not in user_columns
+        assert "custom_game_id" in models.RosterTeamFormat.__table__.columns
         assert "points_per_win" in user_columns
 
     def test_lineup_state_is_one_enum_like_column(self):
@@ -85,9 +85,9 @@ class TestCustomGameModel:
         assert "team_index" not in columns
 
     def test_repeating_groups_have_relational_models(self):
-        assert models.CustomGameCoHost.__table__.schema == "balancer"
-        assert models.CustomGamePlayerRole.__table__.schema == "balancer"
-        assert models.CustomGameTeamName.__table__.schema == "balancer"
+        assert models.CustomGameCoHost.__table__.schema == "mix"
+        assert models.CustomGamePlayerRole.__table__.schema == "mix"
+        assert models.CustomGameTeamName.__table__.schema == "mix"
         assert not hasattr(models, "CustomGameRoleSlot")
 
     def test_co_host_grant_addresses_a_login_not_a_roster_row(self):
@@ -105,28 +105,3 @@ class TestCustomGameModel:
             if isinstance(constraint, sa.UniqueConstraint)
         }
         assert ("custom_game_player_id", "priority") in unique_columns
-
-
-class TestCasualHistoryModel:
-    def test_match_is_the_history_aggregate_root(self):
-        match_columns = models.CasualMatch.__table__.columns
-        team_columns = models.CasualTeam.__table__.columns
-        assert "workspace_id" not in match_columns
-        assert "home_team_id" not in match_columns
-        assert "away_team_id" not in match_columns
-        assert "home_score" not in match_columns
-        assert "away_score" not in match_columns
-        assert {"match_id", "side", "score"} <= set(team_columns.keys())
-        assert "workspace_id" not in team_columns
-
-    def test_historical_player_survives_workspace_member_deletion(self):
-        column = models.CasualPlayer.__table__.columns["workspace_member_id"]
-        assert column.nullable is True
-        assert next(iter(column.foreign_keys)).ondelete == "SET NULL"
-        assert "display_name_snapshot" in models.CasualPlayer.__table__.columns
-
-    def test_a_match_records_which_lobby_played_it(self):
-        assert "lobby_index" in models.CasualMatch.__table__.columns
-        busy = models.CasualMatchBusyPlayer.__table__
-        assert busy.schema == "casual"
-        assert [column.name for column in busy.primary_key] == ["match_id", "workspace_member_id"]

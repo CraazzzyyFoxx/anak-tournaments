@@ -3,44 +3,38 @@
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { ResTag, ScoreCell, resolveMvpPlacement } from "@/components/match/cells";
+import { ResTag, ScoreCell } from "@/components/match/cells";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
-import { HeroStrip } from "@/components/hero/HeroImage";
+import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import MvpOrdinal from "@/app/(site)/users/components/shared/MvpOrdinal";
+import MatchRowBadge from "@/components/match/MatchRowBadge";
+import {
+  encounterLogEntries,
+  encounterPerspective,
+  uniqueViewerCharacters
+} from "@/app/(site)/users/components/shared/encounter-perspective";
+import { GameIcon } from "@/components/workspace/GameIcon";
 import { EncounterWithUserStats } from "@/types/user.types";
-import type { Hero } from "@/types/hero.types";
 import { tournamentHref } from "@/lib/tournament/url";
 
 interface MatchRowProps {
   enc: EncounterWithUserStats;
   selfUserId: number;
+  showGame?: boolean;
 }
 
-const MatchRow = ({ enc, selfUserId }: MatchRowProps) => {
+const MatchRow = ({ enc, selfUserId, showGame = false }: MatchRowProps) => {
   const router = useRouter();
   const t = useTranslations();
-  const isUserHome = (enc.home_team?.players ?? []).some((p) => p.user_id === selfUserId);
-  const userScore = isUserHome ? enc.score.home : enc.score.away;
-  const oppScore = isUserHome ? enc.score.away : enc.score.home;
-  const scoreKind = userScore > oppScore ? "win" : userScore < oppScore ? "loss" : "draw";
-  const resKind = userScore > oppScore ? "w" : userScore < oppScore ? "l" : "d";
-  const opponentName = isUserHome ? enc.away_team?.name : enc.home_team?.name;
+  const { opponent, userScore, oppScore, kind: scoreKind } = encounterPerspective(enc, selfUserId);
+  const resKind = scoreKind === "win" ? "w" : scoreKind === "loss" ? "l" : "d";
+  const opponentName = opponent?.name;
   const tournamentName = enc.tournament?.name ?? `#${enc.tournament_id}`;
-  const heroSet = new Set<string>();
-  const heroList: Pick<Hero, "name" | "image_path" | "role">[] = [];
-  (enc.matches ?? []).forEach((match) => {
-    // MatchWithUserStats.heroes is already the viewer's heroes for
-    // this match (computed server-side from MatchStatistics).
-    (match.heroes ?? []).forEach((h) => {
-      if (!heroSet.has(h.name)) {
-        heroSet.add(h.name);
-        heroList.push({ name: h.name, image_path: h.image_path, role: h.type ?? h.role });
-      }
-    });
-  });
+  // `viewer.characters` is already the viewer's characters for each match (the module's eligibility rule is
+  // applied server-side from native character facts).
+  const heroList = uniqueViewerCharacters(enc);
 
-  const mvpMatches = (enc.matches ?? []).filter((m) => resolveMvpPlacement(m) != null);
+  const observedMatches = (enc.matches ?? []).filter((m) => m.viewer != null);
 
   return (
     <tr
@@ -48,14 +42,17 @@ const MatchRow = ({ enc, selfUserId }: MatchRowProps) => {
       className="cursor-pointer border-b border-[color:var(--aqt-border)] transition-colors last:border-b-0 hover:bg-[color:var(--aqt-overlay-2)]"
     >
       <td className="px-3.5 py-3">
-        <HoverPrefetchLink
-          href={tournamentHref(enc.tournament_id)}
-          onClick={(e) => e.stopPropagation()}
-          title={tournamentName}
-          className="block max-w-[200px] truncate text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-teal)]"
-        >
-          {tournamentName}
-        </HoverPrefetchLink>
+        <span className="inline-flex max-w-[220px] items-center gap-1.5">
+          {showGame ? <GameIcon slug={enc.discipline} /> : null}
+          <HoverPrefetchLink
+            href={tournamentHref(enc.tournament_id)}
+            onClick={(e) => e.stopPropagation()}
+            title={tournamentName}
+            className="block max-w-[200px] truncate text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-teal)]"
+          >
+            {tournamentName}
+          </HoverPrefetchLink>
+        </span>
       </td>
       <td className="px-3.5 py-3 text-[color:var(--aqt-fg-dim)]">
         {(enc.stage_item?.name ?? enc.stage?.name)?.trim() || "—"}
@@ -76,14 +73,14 @@ const MatchRow = ({ enc, selfUserId }: MatchRowProps) => {
         <ScoreCell kind={scoreKind} value={`${userScore}-${oppScore}`} />
       </td>
       <td className="px-3.5 py-3">
-        <HeroStrip heroes={heroList} size="sm" limit={4} />
+        <CatalogEntityStrip entities={heroList} size="sm" limit={4} />
       </td>
       <td className="px-3.5 py-3">
-        {mvpMatches.length > 0 ? (
+        {observedMatches.length > 0 ? (
           <TooltipProvider delayDuration={150}>
             <span className="inline-flex items-center gap-2">
-              {mvpMatches.map((m) => (
-                <MvpOrdinal key={m.id} match={m} />
+              {observedMatches.map((m) => (
+                <MatchRowBadge key={m.id} match={m} />
               ))}
             </span>
           </TooltipProvider>
@@ -95,17 +92,7 @@ const MatchRow = ({ enc, selfUserId }: MatchRowProps) => {
         {enc.closeness != null ? `${(enc.closeness * 100).toFixed(0)}%` : "—"}
       </td>
       <td className="px-3.5 py-3" onClick={(e) => e.stopPropagation()}>
-        <MatchLogIndicator
-          hasLogs={enc.has_logs}
-          logs={
-            enc.has_logs
-              ? (enc.matches ?? []).map((m, i) => ({
-                  matchId: m.id,
-                  label: m.map?.name ?? t("users.matches.mapLabel", { number: String(i + 1) })
-                }))
-              : undefined
-          }
-        />
+        <MatchLogIndicator hasLogs={enc.has_logs} logs={encounterLogEntries(enc, t("encounters.match.mapAlt"))} />
       </td>
     </tr>
   );

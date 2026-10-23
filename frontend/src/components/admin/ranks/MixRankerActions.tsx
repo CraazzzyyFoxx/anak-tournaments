@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, SlidersHorizontal } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -16,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import {
   Select,
   SelectContent,
@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { balancerQueryKeys } from "@/lib/balancer/query-keys";
 import { notify } from "@/lib/notify";
@@ -112,7 +113,6 @@ export function MixRankerActions({ workspaceId }: Readonly<{ workspaceId: number
   return (
     <>
       <Button variant="outline" size="sm" onClick={() => openSettings(true)}>
-        <SlidersHorizontal aria-hidden className="size-4" />
         {t("settings")}
       </Button>
       <Button
@@ -121,7 +121,6 @@ export function MixRankerActions({ workspaceId }: Readonly<{ workspaceId: number
         disabled={rebuild.isPending}
         onClick={() => setConfirmOpen(true)}
       >
-        <RefreshCw aria-hidden className="size-4" />
         {rebuild.isPending ? t("rebuilding") : t("rebuild")}
       </Button>
 
@@ -159,10 +158,21 @@ export function MixRankerActions({ workspaceId }: Readonly<{ workspaceId: number
             </DialogDescription>
           </DialogHeader>
 
-          {form == null ? (
-            <p className="text-sm text-muted-foreground">
-              {rankerQuery.isError ? t("loadError") : t("loading")}
-            </p>
+          {form == null && rankerQuery.isError ? (
+            <PageStateCard
+              state="error"
+              description={t("loadError")}
+              onAction={() => void rankerQuery.refetch()}
+            />
+          ) : form == null ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-2">
+                {FIELDS.map(({ key }) => (
+                  <Skeleton key={key} className="h-14 w-full" />
+                ))}
+              </div>
+              <Skeleton className="h-14 w-full" />
+            </div>
           ) : (
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-2">

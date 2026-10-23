@@ -1,31 +1,26 @@
 """The single realtime publication path.
 
-Everything a service wants to announce goes through :func:`emit`. It replaced
-six mechanisms that each carried their own guarantees, picked by hand at the
-call site: ``register_tournament_realtime_update`` (session hook, bracket only),
-``register_realtime_update`` (generic factory), ``publish_event`` /
-``publish_patch`` (durable, published BEFORE the caller's commit),
-``publish_envelope_to_redis`` (non-durable, no row), ``emit_balancer_data_event``
-(its own session, fire-and-forget task) and ``enqueue_tournament_changed``
-(outbox to RabbitMQ). Two production bugs came directly out of that choice
-being manual — see docs/plans/2026-09-09-unified-event-delivery.md §1.
+Everything a service wants to announce goes through :func:`emit`.
 
 Invariants this module owns, so no caller has to remember them:
 
 1. **Publication happens after the caller's commit, never before.** Rows are
-   staged on the session and persisted in its ``before_flush``; the publish
+   staged on the session and persisted in its ``before_commit``; the publish
    fires from ``after_commit``. A rolled-back transaction publishes nothing.
 2. **Invalidation is a set.** Every ``invalidates`` list registered in one
    transaction for one scope is UNIONed into a single event. Union is
    commutative and idempotent, which is precisely why invalidation needs no
    ordering guarantees — unlike the domain patches, whose order matters and
    which are therefore never merged.
-3. **Ordering after commit: local cache first, then clients.** The service's
-   own cache is dropped before anything is published, so a client that reacts
-   instantly cannot repopulate a gateway entry from a cache we were about to
-   clear. (The cross-service half of that race is bounded by the outbox drain;
-   the row itself is written inside the caller's transaction, so it is already
-   durable by the time anything is published.)
+3. **Ordering after commit: caches first, then clients.** Every resource the
+   transaction staled has its cache generation bumped (``resource_generation``)
+   before anything is published — and, on an ``AsyncSession``, before its
+   ``commit()`` returns. The generations are shared, so this moves every
+   service's cached reads of the resource, not only this process's: neither a
+   client reacting to the event nor the caller's reply can re-read what the
+   transaction just staled. (The outbox row ``enqueue_invalidation_outbox``
+   writes inside the transaction re-bumps them from each consuming service: the
+   durable copy of a bump that failed here.)
 4. **A resource may only be published under its own scope kind.** The manifest
    decides; a ``workspace.*`` resource on a tournament topic would be delivered
    to a different audience than the one allowed to see it.
@@ -34,7 +29,7 @@ Invariants this module owns, so no caller has to remember them:
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -42,13 +37,15 @@ from typing import Any
 from loguru import logger
 from sqlalchemy import event
 from sqlalchemy.orm import Session
+from sqlalchemy.util.concurrency import await_only, in_greenlet
 
 from shared.messaging.config import CACHE_INVALIDATION_EXCHANGE
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.models.platform.realtime import WorkspaceEvent
 from shared.schemas.events import CacheInvalidatedEvent
 from shared.schemas.realtime import WorkspaceEventEnvelope
-from shared.services.realtime.resources import Resource, scope_kind_of
+from shared.services.cache_generations import bump, configure_generations
+from shared.services.realtime.resources import Resource, resource_generation, scope_kind_of
 from shared.services.realtime.scope import Scope
 from shared.services.realtime_publisher import event_to_envelope, publish_event_to_redis_url
 
@@ -58,31 +55,27 @@ INVALIDATION_EVENT_TYPE = "cache.invalidated"
 
 _STAGED_KEY = "realtime_staged"
 _PENDING_KEY = "realtime_pending"
+_SAVEPOINTS_KEY = "realtime_savepoints"
 
 # asyncio keeps only a weak reference to a running task, so a fire-and-forget
 # publish whose handle nobody holds can be collected mid-flight.
 _background_tasks: set[asyncio.Task[Any]] = set()
 
-CacheInvalidator = Callable[[Scope, frozenset[Resource], Mapping[str, Sequence[int]]], Awaitable[None]]
-
 _redis_url: str | None = None
-_cache_invalidator: CacheInvalidator | None = None
 
 
-def configure_realtime(*, redis_url: str, cache_invalidator: CacheInvalidator | None = None) -> None:
+def configure_realtime(*, redis_url: str) -> None:
     """Wire the process into the realtime rail. One call per entrypoint.
 
-    Same shape and same reason as ``configure_cache()``: this module is shared
-    across services and has no ``src.core.config`` of its own. ``main`` and
-    ``serve`` are separate processes and each configures independently.
-
-    ``cache_invalidator`` is how a service declares "I own caches that these
-    resources describe". It runs BEFORE the publish (invariant 3). A service
-    with no server-side cache passes nothing.
+    This module is shared across services and has no ``src.core.config`` of its
+    own (same reason as ``configure_cache()``). ``main`` and ``serve`` are
+    separate processes and each configures independently. The same Redis holds
+    the cache generations every service's invalidations bump and its cached
+    reads are keyed by (``shared.services.cache_generations``).
     """
-    global _redis_url, _cache_invalidator
+    global _redis_url
     _redis_url = redis_url
-    _cache_invalidator = cache_invalidator
+    configure_generations(redis_url)
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,14 +119,13 @@ async def emit(
 ) -> None:
     """Stage an invalidation and/or a domain event for this transaction.
 
-    Async purely for call-site symmetry with the rest of the service layer (and
-    so a future implementation may do IO here); it stages synchronously and
-    performs no IO of its own.
+    Async for call-site symmetry with the rest of the service layer; it stages
+    synchronously and performs no IO of its own.
 
     ``entity_ids`` narrows an invalidation for consumers that can use it
     (``{"registration_ids": [77]}``). Every consumer is free to ignore it and
-    drop the whole resource — it exists so that adding precision later is not a
-    format change across every publisher.
+    drop the whole resource, so adding precision is never a format change
+    across every publisher.
     """
     if not invalidates and data is None:
         raise ValueError("emit() needs invalidates, data, or both")
@@ -145,9 +137,8 @@ async def emit(
 
     staged = _staged(session)
     if staged is None:
-        # No session.info (a plain object in a unit test): nothing to hang the
-        # transaction hooks on. Silently doing nothing here is what the old
-        # factory did too, and it keeps callers free of session-shape checks.
+        # Not a real session (a plain object in a unit test): nothing to hang the
+        # transaction hooks on. Doing nothing keeps callers free of session-shape checks.
         return
 
     if invalidates:
@@ -163,10 +154,9 @@ async def emit(
 def _staged(session: Any) -> _Staged | None:
     sync_session = getattr(session, "sync_session", None)
     info = getattr(sync_session or session, "info", None)
-    # A real Session.info is always a dict. Anything else means this is not a
-    # session at all (a Mock or a plain object in a unit test), and there is
-    # nothing to hang the transaction hooks on — staging into it would produce
-    # an event nobody ever publishes.
+    # A real Session.info is always a dict. Anything else (a Mock, a plain
+    # object) has no transaction hooks, so staging into it would produce an
+    # event nobody ever publishes.
     if not isinstance(info, dict):
         return None
     staged = info.get(_STAGED_KEY)
@@ -208,17 +198,14 @@ def _domain_row(scope: Scope, data: DomainEvent, actor_user_id: int | None) -> W
 # before_commit, NOT before_flush: Session._flush early-returns on a clean
 # session, so a commit whose write already landed elsewhere (or that has no ORM
 # write at all — the balancer job worker keeps its jobs in Redis) would never
-# fire before_flush and would drop the staged rows silently. The predecessor
-# factory had exactly this hole, which is why tournament-service carried a
-# second after_commit listener of its own "regardless of whether the shared
-# factory's own before_flush actually ran this transaction".
-#
+# fire before_flush and would drop the staged rows silently.
 # _prepare_impl dispatches before_commit and only THEN runs its
 # `while not _is_clean(): flush()` loop, so rows added here are still flushed
-# inside the caller's transaction and still get their ids before after_commit
-# reads them.
+# inside the caller's transaction and get their ids before after_commit reads them.
 @event.listens_for(Session, "before_commit")
 def _persist_staged(session: Session) -> None:
+    if session.in_nested_transaction():
+        return  # releasing a SAVEPOINT is not a commit: nothing may persist (or later publish) before the root commits
     staged: _Staged | None = session.info.get(_STAGED_KEY)
     if staged is None:
         return
@@ -245,44 +232,115 @@ def _persist_staged(session: Session) -> None:
 
 @event.listens_for(Session, "after_commit")
 def _publish_staged(session: Session) -> None:
+    if session.in_nested_transaction():
+        return
     pending = session.info.pop(_PENDING_KEY, [])
     if not pending:
         return
+    generations = _generations(pending)
+    if generations and in_greenlet():
+        # An AsyncSession commit runs in SQLAlchemy's greenlet, which can await: the caller's ``await commit()``
+        # returns only once every cache's copy of what it staled is unreachable, so not even its own reply can
+        # race the invalidation (invariant 3).
+        await_only(_bump(generations))
+        generations = []
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         logger.warning("Cannot publish realtime events without a running event loop")
         return
-    task = loop.create_task(_flush(pending))
+    task = loop.create_task(_flush(pending, generations))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
 
 
-# BOTH rollback hooks: after_rollback fires only when a DBAPI transaction was
-# actually begun, so a session that staged an event and rolled back before
-# touching the database (a validation failure between emit and the write) would
-# otherwise keep the event staged and publish it on its NEXT commit — an event
-# describing a write that never happened.
+def _generations(
+    pending: list[tuple[Scope, WorkspaceEvent | None, frozenset[Resource], dict[str, list[int]]]],
+) -> list[str]:
+    return list(
+        dict.fromkeys(
+            name
+            for scope, _row, resources, _entity_ids in pending
+            for resource in sorted(resources)
+            for name in (resource_generation(resource, scope.id), resource_generation(resource))
+        )
+    )
+
+
+async def _bump(generations: list[str]) -> None:
+    try:
+        await bump(*generations)
+    except Exception:
+        logger.exception("Cache generation bump failed", generations=generations)
+
+
+# Rollback hooks. A SAVEPOINT release is not a commit and a SAVEPOINT rollback is not a transaction rollback: the
+# savepoint's snapshot of what was staged when it opened comes back, so only its own effects are dropped. A root
+# rollback drops everything -- through BOTH ``after_rollback`` and ``after_soft_rollback``, because the former
+# fires only when a DBAPI transaction was actually begun, so a session that staged an event and rolled back before
+# touching the database would otherwise keep it staged and publish it on its NEXT commit -- an event describing a
+# write that never happened.
+@event.listens_for(Session, "after_transaction_create")
+def _snapshot_at_savepoint(session: Session, transaction: Any) -> None:
+    """What was staged when a SAVEPOINT opened, so rolling it back drops only what it staged itself."""
+    if not transaction.nested:
+        return
+    staged: _Staged | None = session.info.get(_STAGED_KEY)
+    snapshot = (
+        None
+        if staged is None
+        else _Staged(
+            invalidations={
+                scope: (set(resources), {key: list(ids) for key, ids in entity_ids.items()})
+                for scope, (resources, entity_ids) in staged.invalidations.items()
+            },
+            domain=list(staged.domain),
+        )
+    )
+    session.info.setdefault(_SAVEPOINTS_KEY, {})[transaction] = snapshot
+
+
+@event.listens_for(Session, "after_transaction_end")
+def _forget_savepoint(session: Session, transaction: Any) -> None:
+    if transaction.nested:
+        session.info.get(_SAVEPOINTS_KEY, {}).pop(transaction, None)
+
+
 @event.listens_for(Session, "after_rollback")
+def _drop_staged_on_rollback(session: Session) -> None:
+    # Fires for a SAVEPOINT rollback too, while that savepoint is still the session's nested transaction: put back
+    # what was staged before it opened. Only a root rollback drops everything.
+    nested = session.get_nested_transaction()
+    snapshots: dict[Any, _Staged | None] = session.info.get(_SAVEPOINTS_KEY, {})
+    if nested is not None and nested in snapshots:
+        snapshot = snapshots[nested]
+        if snapshot is None:
+            session.info.pop(_STAGED_KEY, None)
+        else:
+            session.info[_STAGED_KEY] = snapshot
+        return
+    _drop_staged(session)
+
+
 @event.listens_for(Session, "after_soft_rollback")
-def _drop_staged(session: Session, _previous_transaction: Any = None) -> None:
+def _drop_staged_on_soft_rollback(session: Session, previous_transaction: Any) -> None:
+    if previous_transaction.nested:
+        return  # a savepoint: ``_drop_staged_on_rollback`` already restored its snapshot
+    _drop_staged(session)
+
+
+def _drop_staged(session: Session) -> None:
     session.info.pop(_STAGED_KEY, None)
     session.info.pop(_PENDING_KEY, None)
 
 
 async def _flush(
     pending: list[tuple[Scope, WorkspaceEvent | None, frozenset[Resource], dict[str, list[int]]]],
+    generations: list[str],
 ) -> None:
-    # Invariant 3: every local cache drop completes before the first publish,
-    # so a client reacting to the event cannot re-read what we just staled.
-    if _cache_invalidator is not None:
-        for scope, _row, resources, entity_ids in pending:
-            if not resources:
-                continue
-            try:
-                await _cache_invalidator(scope, resources, entity_ids)
-            except Exception:
-                logger.exception("Local cache invalidation failed", scope=str(scope), resources=sorted(resources))
+    # Invariant 3: the generations move before the first publish. Already done at commit for an AsyncSession.
+    if generations:
+        await _bump(generations)
 
     if _redis_url is None:
         logger.warning("Realtime not configured (configure_realtime); dropping publish")
@@ -322,13 +380,13 @@ async def enqueue_invalidation_outbox(
     resources: Sequence[Resource],
     entity_ids: Mapping[str, Sequence[int]] | None = None,
 ) -> None:
-    """Cross-service half of an invalidation: one outbox row, retried and DLQ'd.
+    """Durable half of a cross-service invalidation: one outbox row, retried and DLQ'd.
 
-    Redis pub/sub is at-most-once. For clients that is covered by the gateway's
-    TTL and by cursor replay on resubscribe; for another service's cashews
-    entries nothing covers it, which is why the cross-service path is the
-    transactional outbox and not a second publish. Called by the owning service
-    when a resource it stales is cached elsewhere too.
+    ``emit`` already bumps the shared cache generations at commit, but that bump
+    is a single attempt. Each consuming service re-bumps them from this row (and
+    hangs its own follow-up work off it), so a bump lost to a Redis blip is
+    retried instead of leaving another service's cached reads stale until TTL.
+    Called by the owning service when a resource it stales is cached elsewhere too.
     """
     await enqueue_outbox_event(
         session,

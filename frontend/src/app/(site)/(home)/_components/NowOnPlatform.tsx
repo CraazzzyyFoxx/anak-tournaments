@@ -6,21 +6,21 @@ import { Calendar, Clock, Network, Trophy } from "lucide-react";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
 import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
 import {
-  EYEBROW_CLASS,
-  EmptyNote,
   Fact,
   Facts,
   Feat,
   FEAT_META_CLASS,
   FEAT_NAME_CLASS,
   LiveDot,
-  LoadError,
   MoreLink,
+  OpenEmptyRow,
+  OpenLoadError,
   Roster,
   Section,
   SectionHead
 } from "@/components/site/open-layout";
 import { owtButton } from "@/components/site/owt-button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getFormatter } from "@/lib/datetime/server";
 import { getPlayerSlug } from "@/lib/player";
@@ -31,7 +31,7 @@ import tournamentService from "@/services/tournament.service";
 import workspaceService from "@/services/workspace.service";
 import { cn } from "@/lib/utils";
 import type { Tournament } from "@/types/tournament.types";
-import type { Workspace } from "@/types/workspace.types";
+import type { WorkspaceListItem } from "@/types/workspace.types";
 
 const TITLE_ID = "home-now-title";
 
@@ -65,7 +65,7 @@ interface NowData {
   /** Nothing active: the most recent finished tournament takes the big slot. */
   last: FinishedTournament | null;
   small: NowItem[];
-  workspaces: Map<number, Workspace>;
+  workspaces: Map<number, WorkspaceListItem>;
 }
 
 async function loadNow(): Promise<NowData> {
@@ -122,9 +122,9 @@ export async function NowOnPlatform() {
         aside={<MoreLink href="/tournaments" className="min-h-11">{t("more")}</MoreLink>}
       />
       {data === null ? (
-        <LoadError what={t("error")} dashed />
+        <OpenLoadError what={t("error")} dashed />
       ) : !data.lead && !data.last && data.small.length === 0 ? (
-        <EmptyNote>{t("emptyBody")}</EmptyNote>
+        <OpenEmptyRow>{t("emptyBody")}</OpenEmptyRow>
       ) : (
         <div className={BENTO_CLASS}>
           {data.lead ? (
@@ -154,7 +154,7 @@ export async function NowOnPlatform() {
 function WorkspaceLine({
   workspace,
   children
-}: Readonly<{ workspace: Workspace | undefined; children?: ReactNode }>) {
+}: Readonly<{ workspace: WorkspaceListItem | undefined; children?: ReactNode }>) {
   if (!workspace) return null;
   return (
     <div className={FEAT_WS_CLASS}>
@@ -169,7 +169,7 @@ function WorkspaceLine({
 async function LeadFeat({
   tournament,
   workspace
-}: Readonly<{ tournament: Tournament; workspace: Workspace | undefined }>) {
+}: Readonly<{ tournament: Tournament; workspace: WorkspaceListItem | undefined }>) {
   const [t, tSite, statusLabel, format] = await Promise.all([
     getTranslations("home.now"),
     getTranslations("site"),
@@ -330,7 +330,7 @@ async function LeadFeat({
 async function LastFinishedFeat({
   entry,
   workspace
-}: Readonly<{ entry: FinishedTournament; workspace: Workspace | undefined }>) {
+}: Readonly<{ entry: FinishedTournament; workspace: WorkspaceListItem | undefined }>) {
   const [t, format] = await Promise.all([getTranslations("home.now"), getFormatter()]);
   const { tournament, winner } = entry;
   const start = new Date(tournament.start_date);
@@ -347,7 +347,7 @@ async function LastFinishedFeat({
       }
       head={
         <>
-          <span className={cn(EYEBROW_CLASS, "mb-2 block")}>{t("lastTournament")}</span>
+          <Eyebrow className="mb-2 block">{t("lastTournament")}</Eyebrow>
           <Link
             href={tournamentHref(tournament)}
             prefetch={false}
@@ -391,7 +391,7 @@ async function LastFinishedFeat({
 async function TCard({
   item,
   workspace
-}: Readonly<{ item: NowItem; workspace: Workspace | undefined }>) {
+}: Readonly<{ item: NowItem; workspace: WorkspaceListItem | undefined }>) {
   const [t, statusLabel, format] = await Promise.all([
     getTranslations("home.now"),
     getTranslations("common.statusBadge"),

@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
 
+from shared.schemas.role import RoleRef
+
 __all__ = (
     "TeamCreate",
     "TeamUpdate",
@@ -15,8 +17,6 @@ __all__ = (
 
 
 class TeamCreate(BaseModel):
-    """Schema for creating a team"""
-
     name: str
     balancer_name: str | None = None
     tournament_id: int
@@ -24,23 +24,19 @@ class TeamCreate(BaseModel):
 
 
 class TeamUpdate(BaseModel):
-    """Schema for updating a team"""
-
     name: str | None = None
     balancer_name: str | None = None
     captain_id: int | None = None
 
 
 class PlayerCreate(BaseModel):
-    """Schema for creating a player"""
-
     name: str
     user_id: int
     team_id: int
     tournament_id: int
-    role: str | None = None
-    rank: int = 0
-    sub_role: str | None = None
+    role: RoleRef | None = None
+    #: ``None`` = rank not specified (e.g. a 1v1 duel).
+    rank: int | None = Field(default=None, ge=1)
     is_newcomer: bool = False
     is_newcomer_role: bool = False
     is_substitution: bool = False
@@ -48,12 +44,10 @@ class PlayerCreate(BaseModel):
 
 
 class PlayerUpdate(BaseModel):
-    """Schema for updating a player"""
-
     name: str | None = None
-    role: str | None = None
-    rank: int | None = None
-    sub_role: str | None = None
+    role: RoleRef | None = None
+    #: Omitted = unchanged; an explicit ``null`` clears the rank.
+    rank: int | None = Field(default=None, ge=1)
     is_newcomer: bool | None = None
     is_newcomer_role: bool | None = None
     is_substitution: bool | None = None

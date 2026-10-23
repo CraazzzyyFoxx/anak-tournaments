@@ -2,9 +2,9 @@
 
 ``core/auth.py`` reimplemented the identical set of "resolve this entity's
 owning workspace, 404 if missing, then check the caller's permission in that
-workspace" getters in tournament-service, parser-service, and
+workspace" getters in tournament-service, stats-service, and
 analytics-service — the last two were a **byte-for-byte identical file**
-(parser-service's docstring even survived, unedited, inside analytics-service).
+(stats-service's docstring even survived, unedited, inside analytics-service).
 balancer-service overlaps on the tournament/registration getters while adding
 its own token-based user resolution and balance/draft-specific lookups, which
 stay local. This module is the single source of truth for the shared subset;
@@ -45,7 +45,7 @@ __all__ = (
     "get_encounter_workspace_id",
     "get_match_workspace_id",
     "get_standing_workspace_id",
-    "get_log_record_workspace_id",
+    "get_ingest_job_workspace_id",
     "get_registration_workspace_id",
     "get_tournament_link_workspace_id",
     "require_tournament_id_permission",
@@ -126,7 +126,9 @@ async def get_player_workspace_id(session: AsyncSession, player_id: int) -> int:
 
 async def get_player_sub_role_workspace_id(session: AsyncSession, sub_role_id: int) -> int:
     workspace_id = await session.scalar(
-        sa.select(models.PlayerSubRole.workspace_id).where(models.PlayerSubRole.id == sub_role_id)
+        sa.select(models.CatalogRole.workspace_id).where(
+            models.CatalogRole.id == sub_role_id, models.CatalogRole.workspace_id.is_not(None)
+        )
     )
     if workspace_id is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Player sub-role not found")
@@ -182,10 +184,7 @@ async def get_encounter_workspace_id(session: AsyncSession, encounter_id: int) -
 
 async def get_match_workspace_id(session: AsyncSession, match_id: int) -> int:
     workspace_id = await session.scalar(
-        sa.select(models.Tournament.workspace_id)
-        .join(models.Encounter, models.Encounter.tournament_id == models.Tournament.id)
-        .join(models.Match, models.Match.encounter_id == models.Encounter.id)
-        .where(models.Match.id == match_id)
+        sa.select(models.StatsMatch.workspace_id).where(models.StatsMatch.id == match_id)
     )
     if workspace_id is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
@@ -203,24 +202,20 @@ async def get_standing_workspace_id(session: AsyncSession, standing_id: int) -> 
     return int(workspace_id)
 
 
-async def get_log_record_workspace_id(session: AsyncSession, record_id: int) -> int:
-    workspace_id = await session.scalar(
-        sa.select(models.Tournament.workspace_id)
-        .join(models.LogProcessingRecord, models.LogProcessingRecord.tournament_id == models.Tournament.id)
-        .where(models.LogProcessingRecord.id == record_id)
-    )
+async def get_ingest_job_workspace_id(session: AsyncSession, job_id: int) -> int:
+    workspace_id = await session.scalar(sa.select(models.IngestJob.workspace_id).where(models.IngestJob.id == job_id))
     if workspace_id is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Log processing record not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ingest job not found")
     return int(workspace_id)
 
 
 async def get_registration_workspace_id(session: AsyncSession, registration_id: int) -> int:
-    # BalancerRegistration has no denormalized workspace_id column — derive it via
+    # Registration has no denormalized workspace_id column — derive it via
     # the owning tournament (registrations are always tournament-scoped).
     workspace_id = await session.scalar(
         sa.select(models.Tournament.workspace_id)
-        .join(models.BalancerRegistration, models.BalancerRegistration.tournament_id == models.Tournament.id)
-        .where(models.BalancerRegistration.id == registration_id)
+        .join(models.Registration, models.Registration.tournament_id == models.Tournament.id)
+        .where(models.Registration.id == registration_id)
     )
     if workspace_id is None:
         raise HTTPException(

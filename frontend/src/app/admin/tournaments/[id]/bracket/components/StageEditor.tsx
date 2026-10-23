@@ -33,7 +33,7 @@ import {
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
-import type { Stage, StageItem, Tournament } from "@/types/tournament.types";
+import type { Stage, Tournament } from "@/types/tournament.types";
 import type { Team } from "@/types/team.types";
 
 import {
@@ -56,20 +56,21 @@ import {
   type StageForm
 } from "../stageForm";
 import { BracketLayoutSection } from "./BracketLayoutSection";
+import { BracketPreview } from "./BracketPreview";
 import { FfaScoringSection } from "./FfaScoringSection";
-import { RoundScheduleSection } from "./RoundScheduleSection";
+import { RoundScheduleSection, useRoundSchedule } from "./RoundScheduleSection";
 import { StageItemsSection } from "./StageItemsSection";
-import {
-  BestOfSection,
-  GeneralSection,
-  SeedingSection,
-  TiebreakersSection
-} from "./StageSettingsSections";
+import { BestOfSection } from "./stage-settings/BestOfSection";
+import { GeneralSection } from "./stage-settings/GeneralSection";
+import { SeedingSection } from "./stage-settings/SeedingSection";
+import { SwissSection } from "./stage-settings/SwissSection";
+import { TiebreakersSection } from "./stage-settings/TiebreakersSection";
 import { tabFallback } from "../../hubQueries";
+import { useStageOperations } from "./stage-editor/useStageOperations";
 import { MatchesView } from "../../matches/MatchesView";
 
 // The standings table is the heaviest thing the editor can show and only one
-// section of eight needs it, so it is split out of the Bracket tab's bundle.
+// tab of four needs it, so it is split out of the Bracket tab's bundle.
 const StandingsBrowser = dynamic(
   () =>
     import("@/components/admin/StandingsBrowser").then((module) => ({
@@ -78,42 +79,9 @@ const StandingsBrowser = dynamic(
   { loading: () => tabFallback }
 );
 
-export const BRACKET_SECTIONS = [
-  "general",
-  "seeding",
-  "ffa-scoring",
-  "tiebreakers",
-  "best-of",
-  "schedule",
-  "layout",
-  "standings",
-  "items"
-] as const;
-export type BracketSection = (typeof BRACKET_SECTIONS)[number];
-
-/** Each section's tab label key in `adminBracket.editor`. */
-const BRACKET_SECTION_MESSAGE_KEYS = {
-  general: "general",
-  seeding: "seeding",
-  "ffa-scoring": "ffaScoring",
-  tiebreakers: "tiebreakers",
-  "best-of": "bestOf",
-  schedule: "schedule",
-  layout: "layout",
-  standings: "standings",
-  items: "items"
-} as const satisfies Record<BracketSection, string>;
-
-/** Every confirm-guarded stage operation, and what the dialog says about it. */
-type PendingOp =
-  | { kind: "delete-stage" }
-  | { kind: "delete-item"; item: StageItem }
-  | { kind: "remove-input"; inputId: number; label: string }
-  | { kind: "seed" }
-  | { kind: "merge" }
-  | { kind: "force-activate" }
-  | { kind: "deactivate" }
-  | { kind: "regenerate" };
+/** The tabs, each named by its own key in `adminBracket.editor`. */
+const BRACKET_SECTIONS = ["settings", "layout", "standings", "items"] as const;
+type BracketSection = (typeof BRACKET_SECTIONS)[number];
 
 interface StageEditorProps {
   stage: Stage;
@@ -131,11 +99,13 @@ interface StageEditorProps {
 }
 
 /**
- * The detail column of the Bracket tab: one stage, five sections, one save.
+ * The detail column of the Bracket tab: one stage, four tabs, one save.
  *
  * The pre-redesign screen put all of this behind an `Advanced` disclosure and
- * spread seven separate delete-confirmation dialogs around it. Here the
- * sections are routed (`?section=`), the drafts are one object, and every
+ * spread seven separate delete-confirmation dialogs around it. Here every
+ * setting of the stage, round times included, sits on one Settings page under
+ * the bracket preview and is saved by one `SaveBar`; the bracket layout, the
+ * standings and the items are tabs of their own (`?section=`). Every
  * destructive operation goes through the single `ConfirmDialog` below with a
  * swapped `intent`.
  *
@@ -157,18 +127,16 @@ export function StageEditor({
   const t = useTranslations("adminBracket.editor");
   const tRoot = useTranslations("adminBracket");
   const formatRound = useBracketRoundLabel();
-  const intentT = t as unknown as (key: string, values?: Record<string, unknown>) => string;
-  const intentRootT = tRoot as unknown as (key: string, values?: Record<string, unknown>) => string;
   const tr = (key: string, values?: Record<string, unknown>) => tRoot(key as never, values as never);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [form, setForm] = useState<StageForm>(() => stageFormFromStage(stage));
-  const [pendingOp, setPendingOp] = useState<PendingOp | null>(null);
   // The last refusal of a save. The FFA rules are the one part of this form the
   // server rejects by position inside a field, and a toast cannot point at one.
   const [saveError, setSaveError] = useState<unknown>(null);
 
   const hasEncounters = (progress?.total ?? 0) > 0;
+  const stageStatus = getStageStatus(stage, hasEncounters);
   const changes = stageFormChanges(stage, form);
   // The engine's own round list: the shape the bracket will actually be
   // generated in, including an uneven upper/lower split (and, later, a custom
@@ -208,27 +176,31 @@ export function StageEditor({
       )
     : [];
   const mergedName = getDefaultMergedStageName(stage);
+  const {
+    pendingOp,
+    setPendingOp,
+    intent,
+    opPending,
+    runPendingOp,
+    activateMutation,
+    generateMutation,
+    applyBestOfMutation,
+    autoWireMutation,
+    activateAndGenerateMutation
+  } = useStageOperations({ stage, teams, mergeCandidates, mergedName, onChanged, onSelect });
 
-  const sectionAllowed: Record<BracketSection, boolean> = {
-    general: true,
-    seeding: true,
-    "ffa-scoring": FFA_STAGE_TYPES.includes(form.stageType),
-    // Standings presets and tiebreakers rank the stages that produce a table:
-    // a group, and an FFA league (whose lobby IS its table).
-    tiebreakers:
-      GROUP_STAGE_TYPES.includes(form.stageType) || FFA_STAGE_TYPES.includes(form.stageType),
-    "best-of": true,
-    schedule: true,
-    // Only an elimination bracket HAS a layout to draw.
-    layout: BRACKET_STAGE_TYPES.includes(form.stageType),
-    standings: true,
-    items: true
-  };
+  const isFfaForm = FFA_STAGE_TYPES.includes(form.stageType);
+  // Standings presets and tiebreakers rank the stages that produce a table:
+  // a group, and an FFA league (whose lobby IS its table).
+  const ranksTable = GROUP_STAGE_TYPES.includes(form.stageType) || isFfaForm;
+  // Only an elimination bracket HAS a layout to draw.
+  const hasLayout = BRACKET_STAGE_TYPES.includes(form.stageType);
   const requested = searchParams?.get("section") ?? "";
-  const section: BracketSection = (BRACKET_SECTIONS as readonly string[]).includes(requested)
-    ? (requested as BracketSection)
-    : "general";
-  const activeSection = sectionAllowed[section] ? section : "general";
+  const activeSection: BracketSection =
+    (BRACKET_SECTIONS as readonly string[]).includes(requested) &&
+    (requested !== "layout" || hasLayout)
+      ? (requested as BracketSection)
+      : "settings";
 
   const sectionHref = (key: BracketSection) => {
     const next = new URLSearchParams(searchParams?.toString() ?? "");
@@ -236,6 +208,8 @@ export function StageEditor({
     next.set("section", key);
     return `${pathname}?${next.toString()}`;
   };
+
+  const patchForm = (patch: Partial<StageForm>) => setForm((current) => ({ ...current, ...patch }));
 
   const updateMutation = useMutation({
     mutationFn: () => adminService.updateStage(stage.id, buildStageUpdatePayload(stage, form)),
@@ -250,129 +224,49 @@ export function StageEditor({
     }
   });
 
-  const activateMutation = useMutation({
-    mutationFn: () => adminService.activateStage(stage.id),
-    onSuccess: () => onChanged()
+  // Round times are matches, not stage fields, but they are drafts of the same
+  // `SaveBar`: the editor owns them so a save sees them from any tab.
+  const schedule = useRoundSchedule({
+    stage,
+    bracketTeamCount: projection.bracketTeams.count,
+    lowerBracketTeamCount: projection.lowerBracketTeamCount,
+    plannedRounds,
+    onChanged
   });
+  const tSchedule = useTranslations("adminBracket.roundSchedule");
+  const [confirmingSchedule, setConfirmingSchedule] = useState(false);
+  const movedRounds = [...new Set(schedule.moved.map((write) => write.round))].join(", ");
+  const scheduleIntent: ConfirmIntent = {
+    title: tSchedule("confirmTitle", { count: schedule.moved.length }),
+    description: tSchedule("confirmDescription", {
+      count: schedule.moved.length,
+      round: movedRounds
+    }),
+    confirmLabel: tSchedule("confirmLabel"),
+    tone: "warning"
+  };
 
-  const deactivateMutation = useMutation({
-    mutationFn: () => adminService.deactivateStage(stage.id),
-    onSuccess: () => {
-      setPendingOp(null);
-      onChanged();
-      notify.success(t("reverted"));
-    },
-    onError: (error) => notify.apiError(error, { title: t("revertError") })
-  });
-
-  const generateMutation = useMutation({
-    mutationFn: () => adminService.generateBracket(stage.id),
-    onSuccess: () => {
-      setPendingOp(null);
-      onChanged();
-    },
-    onError: (error) => notify.apiError(error, { title: t("generateError") })
-  });
-
-  const applyBestOfMutation = useMutation({
-    mutationFn: () => adminService.applyStageBestOf(stage.id),
-    onSuccess: ({ updated }) => {
-      notify.success(t("updatedBestOf", { count: updated }));
-      onChanged();
-    },
-    onError: (error) =>
-      notify.apiError(error, { title: t("applyBestOfError") })
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: () => adminService.deleteStage(stage.id),
-    onSuccess: () => {
-      setPendingOp(null);
-      onSelect(null);
-      onChanged();
+  /**
+   * The stage first, then its round times: a refused stage sends no match
+   * write. A save that would overwrite individually moved matches asks first;
+   * the answer comes back here as `overwriteMoved`.
+   */
+  const save = async (overwriteMoved?: boolean) => {
+    if (overwriteMoved === undefined && schedule.moved.length > 0) {
+      setConfirmingSchedule(true);
+      return;
     }
-  });
-
-  const mergeMutation = useMutation({
-    mutationFn: () =>
-      adminService.mergeGroupStages(stage.id, {
-        source_stage_ids: mergeCandidates.map((candidate) => candidate.id),
-        target_name: mergedName
-      }),
-    onSuccess: (merged) => {
-      setPendingOp(null);
-      onSelect(merged.id);
-      onChanged();
-    }
-  });
-
-  const autoWireMutation = useMutation({
-    mutationFn: () => adminService.autoWireStage(stage.id),
-    onSuccess: () => {
-      onChanged();
-      notify.success(t("autoWired"));
-    },
-    onError: (error) =>
-      notify.apiError(error, { title: t("autoWireError") })
-  });
-
-  const activateAndGenerateMutation = useMutation({
-    mutationFn: (force?: boolean) =>
-      adminService.activateAndGenerateStage(stage.id, force ? { force: true } : undefined),
-    onSuccess: () => {
-      setPendingOp(null);
-      onChanged();
-    },
-    onError: (error, force) => {
-      // The server refuses while an upstream stage is unfinished; that refusal
-      // is the prompt for the force confirmation, not an error toast.
-      const detail =
-        error && typeof error === "object" && "detail" in error ? error.detail : null;
-      const upstreamPending =
-        typeof detail === "object" &&
-        detail !== null &&
-        "code" in detail &&
-        typeof detail.code === "string" &&
-        detail.code === "upstream_stages_not_completed";
-      if (upstreamPending && !force) {
-        setPendingOp({ kind: "force-activate" });
-        return;
+    setConfirmingSchedule(false);
+    if (changes.length > 0) {
+      try {
+        await updateMutation.mutateAsync();
+      } catch {
+        return; // `onError` already said why.
       }
-      setPendingOp(null);
-      notify.apiError(error, { title: t("activateError") });
     }
-  });
-
-  const seedMutation = useMutation({
-    mutationFn: () =>
-      adminService.seedTeams(stage.id, {
-        team_ids: teams.map((team) => team.id),
-        mode: "snake_sr"
-      }),
-    onSuccess: () => {
-      setPendingOp(null);
-      onChanged();
-    },
-    onError: (error) => notify.apiError(error, { title: t("seedError") })
-  });
-
-  const deleteItemMutation = useMutation({
-    mutationFn: (stageItemId: number) => adminService.deleteStageItem(stageItemId),
-    onSuccess: () => {
-      setPendingOp(null);
-      onChanged();
-    },
-    onError: (error) => notify.apiError(error, { title: t("deleteItemError") })
-  });
-
-  const removeInputMutation = useMutation({
-    mutationFn: (inputId: number) => adminService.deleteStageItemInput(inputId),
-    onSuccess: () => {
-      setPendingOp(null);
-      onChanged();
-    },
-    onError: (error) => notify.apiError(error, { title: t("removeSlotError") })
-  });
+    // `onError` reports a refused match write; the round drafts stay to retry.
+    if (schedule.dirty) await schedule.save(overwriteMoved ?? false).catch(() => undefined);
+  };
 
   const isBracket = BRACKET_STAGE_TYPES.includes(stage.stage_type);
   // A lobby is seated the same way a group is filled: teams into the stage's
@@ -380,56 +274,30 @@ export function StageEditor({
   const canSeed = !isBracket && teams.length > 0 && stage.items.length > 0;
   const canDeactivate = (stage.is_active || stage.is_published) && !stage.is_completed;
 
-  const intent = pendingOp
-    ? INTENTS(intentT, intentRootT)[pendingOp.kind](stage, pendingOp, {
-        teamCount: teams.length,
-        mergedName,
-        mergeCandidates
-      })
-    : NEUTRAL_INTENT;
-
-  const pendingByOp: Record<PendingOp["kind"], boolean> = {
-    "delete-stage": deleteMutation.isPending,
-    "delete-item": deleteItemMutation.isPending,
-    "remove-input": removeInputMutation.isPending,
-    seed: seedMutation.isPending,
-    merge: mergeMutation.isPending,
-    "force-activate": activateAndGenerateMutation.isPending,
-    deactivate: deactivateMutation.isPending,
-    regenerate: generateMutation.isPending
-  };
-  const opPending = pendingOp ? pendingByOp[pendingOp.kind] : false;
-
-  const runPendingOp = () => {
-    if (!pendingOp) return;
-    if (pendingOp.kind === "delete-stage") deleteMutation.mutate();
-    else if (pendingOp.kind === "delete-item") deleteItemMutation.mutate(pendingOp.item.id);
-    else if (pendingOp.kind === "remove-input") removeInputMutation.mutate(pendingOp.inputId);
-    else if (pendingOp.kind === "seed") seedMutation.mutate();
-    else if (pendingOp.kind === "merge") mergeMutation.mutate();
-    else if (pendingOp.kind === "force-activate") activateAndGenerateMutation.mutate(true);
-    else if (pendingOp.kind === "deactivate") deactivateMutation.mutate();
-    else generateMutation.mutate();
-  };
-
   const tabs: LinkTabItem[] = BRACKET_SECTIONS.map((key) => ({
     key,
-    label: t(BRACKET_SECTION_MESSAGE_KEYS[key]),
+    label: t(key),
     href: sectionHref(key),
     badge: key === "items" ? stage.items.length || undefined : undefined,
-    hidden: !sectionAllowed[key]
+    hidden: key === "layout" && !hasLayout
   }));
 
   return (
-    <div className="min-w-0 rounded-xl border border-border bg-card">
-      <div className="border-b border-border px-4 py-3">
+    <div className="min-w-0">
+      <div className="border-b border-border pb-3">
         <EntityHubHeader
           level={2}
           title={stage.name}
-          status={{
-            label: tr(`extra.statuses.${getStageStatus(stage, hasEncounters).toLowerCase()}`),
-            tone: getStageStatusTone(stage, hasEncounters)
-          }}
+          // A pill only while captains play (or are about to): draft and
+          // completed are the default ends of every stage.
+          status={
+            stageStatus === "Active" || stageStatus === "Preview"
+              ? {
+                  label: tr(`extra.statuses.${stageStatus.toLowerCase()}`),
+                  tone: getStageStatusTone(stage, hasEncounters)
+                }
+              : undefined
+          }
           meta={[
             tRoot(`labels.types.${stage.stage_type}`),
             <span key="slots" className="tabular-nums">
@@ -543,7 +411,7 @@ export function StageEditor({
         />
       </div>
 
-      <div className="border-b border-border px-4 py-2">
+      <div className="border-b border-border py-2">
         <LinkTabs
           items={tabs}
           activeKey={activeSection}
@@ -552,68 +420,59 @@ export function StageEditor({
         />
       </div>
 
-      <div className="p-4">
-        {activeSection === "general" ? (
-          <GeneralSection
-            stage={stage}
-            form={form}
-            onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
-            isSuperuser={isSuperuser}
-            projection={projection}
-            teams={teams}
-          />
-        ) : null}
+      <div className="pt-4">
+        {activeSection === "settings" ? (
+          // The settings rail's rhythm: a stack of `SettingGroup` cards, each
+          // section building its own. The preview stays unframed between them:
+          // the bracket draws its own panel, and a card around it would be a
+          // second frame.
+          <div className="flex flex-col gap-4">
+            <GeneralSection stage={stage} form={form} onChange={patchForm} isSuperuser={isSuperuser} />
 
-        {activeSection === "seeding" ? (
-          <SeedingSection
-            stage={stage}
-            stages={stages}
-            form={form}
-            onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
-            onChanged={onChanged}
-          />
-        ) : null}
+            {/* Right under the fields that shape it: format and grand final. */}
+            <BracketPreview projection={projection} stage={stage} teams={teams} className="px-1 py-2" />
 
-        {activeSection === "ffa-scoring" ? (
-          <FfaScoringSection
-            form={form}
-            onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
-            saveError={saveError}
-          />
-        ) : null}
+            <SeedingSection
+              stage={stage}
+              stages={stages}
+              form={form}
+              onChange={patchForm}
+              onChanged={onChanged}
+            />
 
-        {activeSection === "tiebreakers" ? (
-          <TiebreakersSection
-            stage={stage}
-            form={form}
-            onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
-            winPointsDefault={tournament?.win_points ?? 1}
-            drawPointsDefault={tournament?.draw_points ?? 0.5}
-            lossPointsDefault={tournament?.loss_points ?? 0}
-          />
-        ) : null}
+            {isFfaForm ? (
+              <FfaScoringSection form={form} onChange={patchForm} saveError={saveError} />
+            ) : null}
 
-        {activeSection === "best-of" ? (
-          <BestOfSection
-            stage={stage}
-            form={form}
-            onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
-            bracketTeamCount={projection.bracketTeams.count}
-            lowerBracketTeamCount={projection.lowerBracketTeamCount}
-            plannedRounds={plannedRounds}
-            onApplyToExisting={() => applyBestOfMutation.mutate()}
-            applying={applyBestOfMutation.isPending}
-          />
-        ) : null}
+            {/* Under the advance count it checks, over the Points group's bye. */}
+            {form.stageType === "swiss" ? (
+              <SwissSection stage={stage} form={form} onChange={patchForm} />
+            ) : null}
 
-        {activeSection === "schedule" ? (
-          <RoundScheduleSection
-            stage={stage}
-            bracketTeamCount={projection.bracketTeams.count}
-            lowerBracketTeamCount={projection.lowerBracketTeamCount}
-            plannedRounds={plannedRounds}
-            onChanged={onChanged}
-          />
+            {ranksTable ? (
+              <TiebreakersSection
+                stage={stage}
+                form={form}
+                onChange={patchForm}
+                winPointsDefault={tournament?.win_points ?? 1}
+                drawPointsDefault={tournament?.draw_points ?? 0.5}
+                lossPointsDefault={tournament?.loss_points ?? 0}
+              />
+            ) : null}
+
+            <BestOfSection
+              stage={stage}
+              form={form}
+              onChange={patchForm}
+              bracketTeamCount={projection.bracketTeams.count}
+              lowerBracketTeamCount={projection.lowerBracketTeamCount}
+              plannedRounds={plannedRounds}
+              onApplyToExisting={() => applyBestOfMutation.mutate()}
+              applying={applyBestOfMutation.isPending}
+            />
+
+            <RoundScheduleSection schedule={schedule} />
+          </div>
         ) : null}
 
         {activeSection === "layout" ? <BracketLayoutSection stage={stage} /> : null}
@@ -647,18 +506,27 @@ export function StageEditor({
         ) : null}
 
         <SaveBar
-          dirty={changes.length > 0}
+          dirty={changes.length > 0 || schedule.dirty}
           summary={
             <Fragment>
-              {t("unsaved")} <span className="text-foreground">{changes.map((key) => tr(`changes.${key}`)).join(", ")}</span>
+              {t("unsaved")}{" "}
+              <span className="text-foreground">
+                {[
+                  ...changes.map((key) => tr(`changes.${key}`)),
+                  ...(schedule.dirty ? [tr("changes.roundSchedule")] : [])
+                ].join(", ")}
+              </span>
             </Fragment>
           }
-          onDiscard={() => setForm(stageFormFromStage(stage))}
-          onSave={() => updateMutation.mutate()}
-          saving={updateMutation.isPending}
-          // The five sections above are `?section=` links of THIS form, so the
-          // anchor guard would demand a discard just to look at another one.
-          // The stage list beside it is buttons, which the guard never saw.
+          onDiscard={() => {
+            setForm(stageFormFromStage(stage));
+            schedule.discard();
+          }}
+          onSave={() => void save()}
+          saving={updateMutation.isPending || schedule.saving}
+          // The tabs above are `?section=` links of THIS form, so the anchor
+          // guard would demand a discard just to look at another one. The
+          // stage list beside it is buttons, which the guard never saw.
           guardNavigation={false}
         />
       </div>
@@ -672,88 +540,18 @@ export function StageEditor({
         onConfirm={runPendingOp}
         pending={opPending}
       />
+
+      {/* The save's own question, so it is not one of `PendingOp`'s: declining
+          is not "do nothing" — it keeps the moved matches and still saves the
+          rest, which the description says. */}
+      <ConfirmDialog
+        open={confirmingSchedule}
+        onOpenChange={(open) => {
+          if (!open && confirmingSchedule) void save(false);
+        }}
+        intent={scheduleIntent}
+        onConfirm={() => save(true)}
+      />
     </div>
   );
 }
-
-const NEUTRAL_INTENT: ConfirmIntent = {
-  title: "",
-  description: "",
-  confirmLabel: "",
-  tone: "neutral"
-};
-
-/**
- * The seven confirmations of the old screen, as intents of one dialog. The
- * copy is carried over verbatim: it is the only place that explains what each
- * operation does to already-generated matches.
- */
-const INTENTS = (t: (key: string, values?: Record<string, unknown>) => string, tRoot: (key: string, values?: Record<string, unknown>) => string): Record<
-  PendingOp["kind"],
-  (
-    stage: Stage,
-    op: PendingOp,
-    context: { teamCount: number; mergedName: string; mergeCandidates: Stage[] }
-  ) => ConfirmIntent
-> => ({
-  "delete-stage": (stage) => ({
-    title: t("deleteStageTitle"),
-    description: t("deleteStageDescription", { name: stage.name }),
-    confirmLabel: t("deleteStageConfirm"),
-    tone: "danger",
-    cascade: [tRoot("extra.cascadeStageItems"), tRoot("extra.cascadeTeamSlots"), tRoot("extra.cascadeMatches")]
-  }),
-  "delete-item": (_stage, op) => {
-    const item = op.kind === "delete-item" ? op.item : null;
-    return {
-      title: t("deleteItemTitle"),
-      description: t("deleteItemDescription", { name: item?.name ?? "" }),
-      confirmLabel: t("deleteItemConfirm"),
-      tone: "danger",
-      cascade: [
-        tRoot("extra.cascadeTeamSlots"),
-        tRoot("extra.cascadeItemMatches"),
-        tRoot("extra.cascadeItemStandings")
-      ]
-    };
-  },
-  "remove-input": (_stage, op) => ({
-    title: t("removeSlotTitle"),
-    description: t("removeSlotDescription", { label: op.kind === "remove-input" ? op.label : t("slot") }),
-    confirmLabel: t("removeSlotConfirm"),
-    tone: "danger",
-    cascade: [tRoot("extra.cascadeSeedSlot"), tRoot("extra.cascadeBracketPlace")]
-  }),
-  seed: (stage, _op, { teamCount }) => ({
-    title: t("reseedTitle"),
-    description: t("reseedDescription", { teams: teamCount, groups: stage.items.length, name: stage.name }),
-    confirmLabel: t("reseedConfirm"),
-    tone: "warning",
-    cascade: [tRoot("extra.cascadeManualAssignments")]
-  }),
-  merge: (_stage, _op, { mergedName, mergeCandidates }) => ({
-    title: t("mergeTitle"),
-    description: t("mergeDescription", { count: mergeCandidates.length, name: mergedName }),
-    confirmLabel: t("mergeConfirm"),
-    tone: "warning",
-    cascade: mergeCandidates.map((candidate) => tRoot("extra.cascadeStage", { name: candidate.name }))
-  }),
-  "force-activate": (stage) => ({
-    title: t("forceActivateTitle"),
-    description: t("forceActivateDescription", { name: stage.name }),
-    confirmLabel: t("forceActivateConfirm"),
-    tone: "warning"
-  }),
-  deactivate: (stage) => ({
-    title: t("revertTitle"),
-    description: t("revertDescription", { name: stage.name }),
-    confirmLabel: t("revertConfirm"),
-    tone: "warning"
-  }),
-  regenerate: (stage) => ({
-    title: t("regenerateTitle"),
-    description: t("regenerateDescription", { name: stage.name }),
-    confirmLabel: t("regenerateConfirm"),
-    tone: "warning"
-  })
-});

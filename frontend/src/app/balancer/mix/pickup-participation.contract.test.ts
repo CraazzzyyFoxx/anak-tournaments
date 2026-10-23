@@ -9,7 +9,7 @@ function row(participation: "must_play" | "pool" | "benched", sortOrder = 0): Cu
     id: sortOrder + 1,
     workspace_member_id: sortOrder + 7,
     display_name: null,
-    battle_tag: null,
+    identity: null,
     participation,
     role_selection_mode: "all_ranked",
     sort_order: sortOrder,
@@ -25,7 +25,7 @@ function hint(status: "must_play" | "should_rest" | "neutral"): RotationRecommen
   return {
     workspace_member_id: 7,
     status,
-    reason: "",
+    reason: "default",
     consecutive_sat: 0,
     consecutive_played: 0,
     games_played: 0,

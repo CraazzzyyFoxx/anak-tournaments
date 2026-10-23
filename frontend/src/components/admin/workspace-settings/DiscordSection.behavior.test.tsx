@@ -10,9 +10,11 @@
 //     Discord account is not linked, and the fix is one screen away;
 //  4. a linked server can be unlinked, but only after a confirmation — it
 //     takes Boosty roles and match-log channels offline;
-//  5. the bound card shows who owns the Discord server, with their avatar;
-//  6. tournament announcements save on every change, always as the three
-//     fields the RPC takes, the channel a STRING id; a refusal says which one.
+//  5. the bound card shows who owns the Discord server, with their avatar, and
+//     marks nothing while the server is verified and the bot is in it;
+//  6. tournament announcements and mixes are drafts saved through one save
+//     bar, the announcement body always the three fields the RPC takes, the
+//     channel a STRING id; a refusal says which one.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -184,7 +186,6 @@ const CHANNELS: DiscordChannelsResponse = {
   ]
 };
 
-
 const WORKSPACE: Workspace = {
   id: 7,
   slug: "owt",
@@ -214,8 +215,9 @@ const WORKSPACE: Workspace = {
   discord_guild_id: null,
   discord_guild_verified_at: null,
   verification_status: "unverified",
-  default_division_grid_version_id: null,
-  default_division_grid_version: null,
+  disciplines_enabled: ["overwatch"],
+  default_division_grid_versions: {},
+  effective_division_grid_versions: {},
   newcomer_scope: "global"
 };
 
@@ -284,6 +286,11 @@ async function click(node: Element | null | undefined) {
 
 function buttonIn(scope: ParentNode, label: string) {
   return [...scope.querySelectorAll("button")].find((node) => node.textContent?.trim() === label);
+}
+
+/** The section's one save bar: announcements and mixes are drafts until this. */
+async function saveChanges() {
+  await click(buttonIn(container, "Save changes"));
 }
 
 /** Radix Select: the trigger opens on pointerdown and portals its listbox. */
@@ -373,9 +380,11 @@ beforeEach(() => {
   getDiscordChannels.mockReset().mockResolvedValue(CHANNELS);
   upsertWorkspaceBalancerConfig.mockReset().mockResolvedValue({});
   workspaceConfig.mockReset().mockResolvedValue(NOTIFICATION_CONFIG);
-  updateWorkspaceConfig.mockReset().mockImplementation((_id: number, body: unknown) =>
-    Promise.resolve({ ...NOTIFICATION_CONFIG, ...(body as object) })
-  );
+  updateWorkspaceConfig
+    .mockReset()
+    .mockImplementation((_id: number, body: unknown) =>
+      Promise.resolve({ ...NOTIFICATION_CONFIG, ...(body as object) })
+    );
 });
 
 afterEach(async () => {
@@ -436,7 +445,7 @@ describe("Workspace settings › Discord", () => {
 
   it("says the account lost access when Discord refuses, not that it is taken", async () => {
     verifyDiscordGuild.mockRejectedValue(
-      new ApiError(403, [{ msg: "You do not administer this Discord guild", code: "error" }])
+      new ApiError(403, [{ msg: "discord_guild_not_administered", code: "forbidden" }])
     );
     await render();
 
@@ -445,6 +454,19 @@ describe("Workspace settings › Discord", () => {
     const alert = container.querySelector('[role="alert"]');
     expect(alert?.textContent).toContain("no longer administer");
     expect(alert?.textContent).not.toContain("already claimed");
+  });
+
+  it("asks for a re-link when Discord could not be asked for the account", async () => {
+    verifyDiscordGuild.mockRejectedValue(
+      new ApiError(403, [{ msg: "discord_relink_required", code: "forbidden" }])
+    );
+    await render();
+
+    await click(buttonIn(container, "Link this server"));
+
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain("Re-link Discord");
+    expect(alert?.textContent).not.toContain("no longer administer");
   });
 
   it("separates a Discord outage from a refusal", async () => {
@@ -488,7 +510,9 @@ describe("Workspace settings › Discord", () => {
     await render();
 
     expect(container.textContent).toContain("Owner · Ada");
-    expect(container.textContent).toContain("Bot in server");
+    // A verified server with the bot in it is the healthy default: no marker.
+    expect(container.textContent).not.toContain("Ownership not verified");
+    expect(container.textContent).not.toContain("The bot is not in this server");
 
     await click(container.querySelector('button[aria-label="More server actions"]'));
     await click(menuItem("Unlink server"));
@@ -572,6 +596,9 @@ describe("Workspace settings › Discord", () => {
     await render();
 
     await click(channelPicker("Mix Discord channel"));
+    // Nothing is sent until the draft is saved.
+    expect(upsertWorkspaceBalancerConfig).not.toHaveBeenCalled();
+    await saveChanges();
 
     expect(upsertWorkspaceBalancerConfig).toHaveBeenCalledWith(7, {
       rank_delta_threshold: 500,
@@ -589,6 +616,7 @@ describe("Workspace settings › Discord", () => {
     await render();
 
     await pickCategory("Mixes");
+    await saveChanges();
 
     expect(upsertWorkspaceBalancerConfig).toHaveBeenCalledWith(7, {
       rank_delta_threshold: 500,
@@ -620,6 +648,8 @@ describe("Workspace settings › Discord", () => {
 
     expect(voiceToggle("Lobby")?.getAttribute("aria-pressed")).toBe("false");
     await click(voiceToggle("Lobby"));
+    expect(voiceToggle("Lobby")?.getAttribute("aria-pressed")).toBe("true");
+    await saveChanges();
 
     expect(upsertWorkspaceBalancerConfig).toHaveBeenCalledWith(7, {
       rank_delta_threshold: 500,
@@ -638,19 +668,22 @@ describe("Workspace settings › Discord", () => {
     expect(boxes.map((box) => box.getAttribute("aria-checked"))).toEqual(["true", "true", "false"]);
   });
 
-  it("saves each announcement change as the full body, the channel id a string", async () => {
+  it("saves each announcement draft as the full body, the channel id a string", async () => {
     getById.mockResolvedValue(BOUND);
     await render();
 
     await click(channelPicker("Announcement Discord channel"));
+    expect(updateWorkspaceConfig).not.toHaveBeenCalled();
+    await saveChanges();
     expect(updateWorkspaceConfig).toHaveBeenLastCalledWith(7, {
       discord_channel_id: "555555555555555555",
       locale: "ru",
       broadcast_kinds: ["registration.opened", "check_in.opened"]
     });
 
-    // The next change carries the channel the previous one saved.
+    // The next save carries the channel the previous one saved.
     await click(container.querySelector("#broadcast-encounter\\.scheduled"));
+    await saveChanges();
     expect(updateWorkspaceConfig).toHaveBeenLastCalledWith(7, {
       discord_channel_id: "555555555555555555",
       locale: "ru",
@@ -666,6 +699,7 @@ describe("Workspace settings › Discord", () => {
     await render();
 
     await click(channelPicker("Announcement Discord channel"));
+    await saveChanges();
 
     const alert = container.querySelector('[role="alert"]');
     expect(alert?.textContent).toContain("could not be reached");

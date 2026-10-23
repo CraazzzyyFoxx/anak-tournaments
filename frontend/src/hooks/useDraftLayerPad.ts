@@ -2,6 +2,8 @@
 
 import { useEffect, type RefObject } from "react";
 
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+
 /** Tailwind's `xl`: from here each draft-room panel is its own scroller. */
 export const DRAFT_WIDE_QUERY = "(min-width: 80rem)";
 
@@ -17,14 +19,14 @@ const MIN_ROOM_PX = 48;
  * list's `--draft-layer-h` padding class does the job.
  */
 export function useDraftLayerPad(ref: RefObject<HTMLElement | null>) {
+  const wide = useMediaQuery(DRAFT_WIDE_QUERY);
   useEffect(() => {
     const el = ref.current;
     const layer = document.querySelector<HTMLElement>("[data-draft-layer]");
     if (!el || !layer) return;
-    const wide = window.matchMedia(DRAFT_WIDE_QUERY);
     const sync = () => {
       let pad = "";
-      if (wide.matches) {
+      if (wide) {
         const box = el.getBoundingClientRect();
         const card = layer.getBoundingClientRect();
         const hidden = box.bottom - card.top;
@@ -48,5 +50,5 @@ export function useDraftLayerPad(ref: RefObject<HTMLElement | null>) {
       el.style.paddingBottom = "";
       el.style.scrollPaddingBottom = "";
     };
-  }, [ref]);
+  }, [ref, wide]);
 }

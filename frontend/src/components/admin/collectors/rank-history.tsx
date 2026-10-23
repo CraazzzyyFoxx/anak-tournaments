@@ -7,7 +7,6 @@ import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 
-import { LiveIndicator } from "@/components/admin/LiveIndicator";
 import { DataTable, columnMeta } from "@/components/data-table";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { useFilters, type FilterDef } from "@/components/kit/useFilters";
@@ -27,7 +26,7 @@ const SOURCE_FILTER = ["scheduled", "registration", "manual"] as const;
 const FETCH_LIMIT = 200;
 
 /**
- * Live OverFast worker fetch log.
+ * Live fetch log of the game's rank collector.
  *
  * Rows that resolve to a known player link through to that person's page:
  * per-player inspection is People's job now (F14 ·3), so this screen stays
@@ -38,7 +37,7 @@ const FETCH_LIMIT = 200;
  * row is found past the newest 200 rather than only inside them; search and
  * paging run over the fetched rows.
  */
-export function RankTaskHistory() {
+export function RankTaskHistory({ discipline }: Readonly<{ discipline: string }>) {
   const t = useTranslations("collectors.rank");
   const tCommon = useTranslations("collectors.common");
   const format = useFormatter();
@@ -69,14 +68,14 @@ export function RankTaskHistory() {
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
 
   const query = useQuery({
-    queryKey: adminQueryKeys.rankFetchLog(workspaceId, status || "all", source || "all"),
+    queryKey: adminQueryKeys.rankFetchLog(workspaceId, discipline, status || "all", source || "all"),
     queryFn: () =>
-      adminService.getRankFetchLog({
+      adminService.getRankFetchLog(discipline, {
         status: status || undefined,
         source: source || undefined,
         limit: FETCH_LIMIT
       }),
-    refetchInterval: 3000
+    refetchInterval: 10000
   });
 
   const columns = useMemo<ColumnDef<RankFetchLogRow>[]>(
@@ -91,9 +90,9 @@ export function RankTaskHistory() {
         )
       },
       {
-        accessorKey: "battle_tag",
+        accessorKey: "handle",
         header: t("history.battleTag"),
-        meta: columnMeta<RankFetchLogRow>({ searchValue: (row) => row.battle_tag }),
+        meta: columnMeta<RankFetchLogRow>({ searchValue: (row) => row.handle }),
         cell: ({ row }) =>
           row.original.user_id != null ? (
             <Link
@@ -101,15 +100,16 @@ export function RankTaskHistory() {
               className="font-medium text-primary underline-offset-2 hover:underline"
               onClick={(event) => event.stopPropagation()}
             >
-              {row.original.battle_tag}
+              {row.original.handle}
             </Link>
           ) : (
-            <span className="font-medium">{row.original.battle_tag}</span>
+            <span className="font-medium">{row.original.handle}</span>
           )
       },
       {
         accessorKey: "status",
         header: tCommon("status"),
+        meta: columnMeta<RankFetchLogRow>({ align: "center" }),
         cell: ({ row }) => <StatusBadge status={row.original.status} />
       },
       {
@@ -128,7 +128,7 @@ export function RankTaskHistory() {
         accessorKey: "snapshots_written",
         header: t("history.snapshots"),
         meta: columnMeta<RankFetchLogRow>({ align: "right", numeric: true }),
-        cell: ({ row }) => row.original.snapshots_written || "—"
+        cell: ({ row }) => row.original.snapshots_written || null
       },
       {
         accessorKey: "error",
@@ -139,9 +139,7 @@ export function RankTaskHistory() {
             <span className="block max-w-64 truncate text-xs text-danger" title={row.original.error}>
               {row.original.error}
             </span>
-          ) : (
-            <span className="text-xs text-muted-foreground">—</span>
-          )
+          ) : null
       }
     ],
     [format, t, tCommon]
@@ -149,12 +147,9 @@ export function RankTaskHistory() {
 
   return (
     <section aria-labelledby="rank-task-history" className="space-y-3">
-      <div className="flex items-center gap-2">
-        <h2 id="rank-task-history" className="font-semibold leading-none tracking-tight">
-          {tCommon("taskHistory")}
-        </h2>
-        <LiveIndicator />
-      </div>
+      <h2 id="rank-task-history" className="font-semibold leading-none">
+        {tCommon("taskHistory")}
+      </h2>
       <DataTable<RankFetchLogRow>
         rows={query.data ?? []}
         isLoading={query.isLoading}

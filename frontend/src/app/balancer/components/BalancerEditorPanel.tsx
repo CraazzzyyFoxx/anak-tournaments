@@ -2,11 +2,11 @@ import type { RefObject } from "react";
 
 import type { InternalBalancePayload } from "@/types/balancer-admin.types";
 import type { DivisionGrid } from "@/types/workspace.types";
+import type { RoleOntology } from "@/lib/roster/ontology";
 
 import { BalanceEditor } from "@/components/balancer/BalanceEditor";
-import { cn } from "@/lib/utils";
+import { Card } from "@/components/ui/card";
 
-import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { BalancerSetupChecklist } from "./BalancerSetupChecklist";
 import type { BalanceVariant } from "@/components/balancer/workspace-helpers";
 
@@ -14,6 +14,7 @@ type BalancerEditorPanelProps = {
   activeVariant: BalanceVariant | null;
   balanceEditorRef: RefObject<HTMLDivElement | null>;
   divisionGrid: DivisionGrid;
+  ontology: RoleOntology | null;
   selectedPlayerId: number | null;
   collapsedTeamIds: number[];
   poolPlayerCount: number;
@@ -35,6 +36,7 @@ export function BalancerEditorPanel({
   activeVariant,
   balanceEditorRef,
   divisionGrid,
+  ontology,
   selectedPlayerId,
   collapsedTeamIds,
   poolPlayerCount,
@@ -52,7 +54,7 @@ export function BalancerEditorPanel({
   onRunBalance
 }: Readonly<BalancerEditorPanelProps>) {
   return (
-    <div className={cn(PANEL_CLASS, "flex min-h-0 flex-1 flex-col p-4")}>
+    <Card variant="flat" className="flex min-h-0 flex-1 flex-col p-4">
       {activeVariant ? (
         <div className="min-h-0 flex-1 overflow-y-auto pr-1">
           <BalanceEditor
@@ -60,6 +62,7 @@ export function BalancerEditorPanel({
             value={activeVariant.payload}
             onChange={onChangePayload}
             divisionGrid={divisionGrid}
+            ontology={ontology}
             selectedPlayerId={selectedPlayerId}
             onSelectPlayer={onSelectPlayer}
             collapsedTeamIds={collapsedTeamIds}
@@ -80,6 +83,6 @@ export function BalancerEditorPanel({
           onRunBalance={onRunBalance}
         />
       )}
-    </div>
+    </Card>
   );
 }

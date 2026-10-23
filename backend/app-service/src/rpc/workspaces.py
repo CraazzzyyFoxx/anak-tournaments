@@ -6,49 +6,47 @@ platform's reserved slugs; the tier RPC that lifts a new workspace out of
 ``unverified`` (``verification_set``) is the superuser-only half. Member ops are
 workspace-scoped (workspace_member.{read,create,update,delete}). workspace
 update/delete go through the shared CRUD engine (see services/workspace/registry.py
-+ rpc/admin_crud.py). The custom-domain set/verify/clear trio (white-label Phase
-2) is bespoke too — like member ops, gated on the workspace-scoped
-``workspace.update`` permission — since verification has a side effect (a DNS
-lookup) the generic CRUD engine has no hook for.
++ rpc/admin_crud.py). The custom-domain set/verify/clear trio is bespoke too —
+like member ops, gated on the workspace-scoped ``workspace.update`` permission —
+since verification has a side effect (a DNS lookup) the generic CRUD engine has
+no hook for.
 
-This module is pure transport: it decodes params, runs the permission gate and
-calls one ``WorkspaceService`` operation. The service owns the transaction and
-the ``audit_log`` row for each bespoke mutation, so the trail lives or dies with
-the write. The workspace's own field updates are NOT audited from here at all:
-they go through the shared CRUD engine, which records them at its single hook.
+Each handler decodes params, runs the permission gate and calls one service
+operation. A bespoke mutation's ``audit_log`` row is staged on the session the
+service commits, so the trail lives or dies with the write (``create`` records
+it in a second transaction, once the new id exists). The workspace's own field
+updates are NOT audited from here at all: they go through the shared CRUD
+engine, which records them at its single hook.
 
-The member-payload / RBAC-cache-bust helpers stay here so the headless worker
-never depends on route internals. Role resolution lives on ``WorkspaceService``.
+Role resolution lives on ``WorkspaceService``, and so does the
+``WorkspaceMemberChangedEvent`` every membership write stages for identity's
+RBAC cache.
 """
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
 from typing import Any
 
 from faststream.rabbit import RabbitMessage
-from redis.asyncio import Redis
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared import quota
+from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.pagination import Paginated
-from shared.models import QuotaWorkspaceLimit
-from shared.quota import admin as quota_admin
-from shared.rbac import RBAC_USER_KEY_PREFIX
+from shared.disciplines import DISCIPLINES
 from shared.repository import AuthUserRepository
 from shared.rpc.identity import ensure_workspace_permission, rehydrate_user_optional
 from shared.rpc.query import parse_id_list
-from shared.schemas.quota import QuotaPlanLimitRead
+from shared.schemas.team_format import TeamFormatWrite
 from shared.services.audit import record_admin_audit
 from shared.services.discord_client import DiscordClient
-from shared.services.subscriptions.providers.discord_role import DiscordError
+from shared.services.team_format import save_workspace_format, team_format_read, workspace_format
 from shared.tenancy.hostnames import normalize_custom_domain, subdomain_from_host
-from src import models, schemas
-from src.core import config, db
+from src import schemas
+from src.core import db
 from src.rpc import _common as c
 from src.services import notification_config
+from src.services.admin.quota import quota_admin_service
 from src.services.workspace.service import MEMBERS_SORT_FIELDS, reject_reserved_slug
 from src.services.workspace.service import workspaces as workspace_service
 
@@ -64,41 +62,6 @@ def _path_int(data: dict[str, Any], key: str) -> int:
         return int(data[key])
     except (KeyError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=f"{key} is required") from exc
-
-
-def _quota_values(row: Any, scope: str) -> dict[str, Any] | None:
-    """One override row as plain numbers, ``None`` when there is no row.
-
-    The two states the journal has to tell apart: "this workspace runs on its
-    plan" is what a deleted override restores, and five explicit nulls would
-    read as the same thing while meaning something else.
-    """
-    if row is None:
-        return None
-    return {"scope": scope, **{name: getattr(row, name) for name in quota_admin.DIMENSIONS}}
-
-
-async def _quota_override(session: AsyncSession, workspace_id: int, scope: str) -> dict[str, Any] | None:
-    """The stored override before a write, for the audit row's before side."""
-    row = (
-        await session.execute(
-            select(QuotaWorkspaceLimit).where(
-                QuotaWorkspaceLimit.workspace_id == workspace_id,
-                QuotaWorkspaceLimit.scope == scope,
-            )
-        )
-    ).scalar_one_or_none()
-    return _quota_values(row, scope)
-
-
-async def _invalidate_auth_rbac_cache(auth_user_id: int, logger: Any) -> None:
-    redis = Redis.from_url(str(config.settings.redis_url), decode_responses=True)
-    try:
-        await redis.delete(f"{RBAC_USER_KEY_PREFIX}{auth_user_id}")
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to invalidate auth RBAC cache for user {}: {}", auth_user_id, exc)
-    finally:
-        await redis.aclose()
 
 
 async def _member_payload(session: AsyncSession, member: models.WorkspaceMember) -> schemas.WorkspaceMemberRead:
@@ -188,47 +151,11 @@ async def _gate_workspace(session: AsyncSession, data: dict[str, Any]) -> models
     return workspace
 
 
-def _discord_client(broker: Any) -> DiscordClient:
-    """One client per call: discord-service first, Discord's REST as fallback."""
-    return DiscordClient(broker=broker, bot_token=config.settings.discord_token, proxy=config.settings.proxy_url)
-
-
-async def _discord_lookup(
-    broker: Any,
-    logger: Any,
-    session: AsyncSession,
-    data: dict[str, Any],
-    *,
-    label: str,
-    read: Callable[[DiscordClient, str], Awaitable[Any]],
-    key: str | None,
-    empty: dict[str, Any],
-    degraded: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """One gated read of an organizer's Discord guild, shared by the three
-    ``discord_*`` subscribers.
-
-    ``read`` is the ``DiscordClient`` method to call (discord-service first,
-    Discord REST when it is down); ``key`` wraps a list result under that name.
-    ``empty`` is the body returned when no guild is linked; ``degraded``
-    (defaulting to ``empty``) is the body carrying the ``error`` when both
-    transports fail. A settings picker with no options is the right answer for
-    an unreachable bot — a 500 would take the whole settings page down with it.
-    """
-    workspace = await _gate_workspace(session, data)
-    guild_id = workspace.discord_guild_id
-    if not guild_id:
-        return {"guild_id": None, **empty}
-
-    discord = _discord_client(broker)
-    try:
-        result = await read(discord, guild_id)
-    except DiscordError as exc:  # the pickers degrade, they never 500
-        logger.warning(f"{label} lookup failed for workspace {workspace.id}: {exc}")
-        return {"guild_id": guild_id, **(degraded if degraded is not None else empty), "error": str(exc)}
-    body = {key: result} if key is not None else dict(result)
-    body.setdefault("guild_id", guild_id)
-    return body
+def _discipline(data: dict[str, Any]) -> str:
+    code = str(data.get("discipline") or "")
+    if code not in DISCIPLINES:
+        raise HTTPException(status_code=404, detail="Discipline not found")
+    return code
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -251,7 +178,7 @@ def register(broker: Any, logger: Any) -> None:
                 raise HTTPException(status_code=422, detail="scope must be one of public, admin, all")
             viewer = rehydrate_user_optional(data.get("identity"))
             workspaces = await workspace_service.get_all(session, user=viewer, scope=scope)
-            return [schemas.WorkspaceRead.model_validate(w, from_attributes=True) for w in workspaces]
+            return [schemas.WorkspaceListItem.model_validate(w, from_attributes=True) for w in workspaces]
 
         return await c.envelope(logger, "workspaces.list", op, session_factory=_SF)
 
@@ -264,6 +191,20 @@ def register(broker: Any, logger: Any) -> None:
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 
         return await c.envelope(logger, "workspaces.get", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.app.workspaces.by_slug")
+    async def _by_slug(data: dict, msg: RabbitMessage) -> dict:
+        """``?slug=``: the community page's workspace, 404 unless ``scope=all`` would list it for the viewer."""
+
+        async def op(session: Any) -> Any:
+            slug = c.q1(data, "slug", str, "")
+            viewer = rehydrate_user_optional(data.get("identity"))
+            workspace = await workspace_service.get_visible_by_slug(session, slug, user=viewer)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Workspace not found")
+            return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
+
+        return await c.envelope(logger, "workspaces.by_slug", op, session_factory=_SF)
 
     @broker.subscriber("rpc.app.workspaces.staff")
     async def _staff(data: dict, msg: RabbitMessage) -> dict:
@@ -347,7 +288,6 @@ def register(broker: Any, logger: Any) -> None:
                 after={"name": body.name, "slug": body.slug},
             )
             await session.commit()
-            await _invalidate_auth_rbac_cache(int(user.id), logger)
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 
         return await c.envelope(logger, "workspaces.create", op, session_factory=_SF)
@@ -452,9 +392,7 @@ def register(broker: Any, logger: Any) -> None:
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
-            payload = await _member_payload(session, member)
-            await _invalidate_auth_rbac_cache(body.auth_user_id, logger)
-            return payload
+            return await _member_payload(session, member)
 
         return await c.envelope(logger, "workspaces.member_add", op, session_factory=_SF)
 
@@ -489,9 +427,7 @@ def register(broker: Any, logger: Any) -> None:
                 member = await workspace_service.change_member_roles(session, member, role_ids=role_ids)
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
-            payload = await _member_payload(session, member)
-            await _invalidate_auth_rbac_cache(auth_user_id, logger)
-            return payload
+            return await _member_payload(session, member)
 
         return await c.envelope(logger, "workspaces.member_update", op, session_factory=_SF)
 
@@ -519,12 +455,11 @@ def register(broker: Any, logger: Any) -> None:
                 after={"auth_user_id": auth_user_id},
             )
             await workspace_service.revoke_member(session, member)
-            await _invalidate_auth_rbac_cache(auth_user_id, logger)
             return None
 
         return await c.envelope(logger, "workspaces.member_remove", op, session_factory=_SF)
 
-    # --- custom domain (white-label Phase 2) --------------------------------
+    # --- custom domain --------------------------------------------------------
     @broker.subscriber("rpc.app.workspaces.set_custom_domain")
     async def _set_custom_domain(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
@@ -670,39 +605,11 @@ def register(broker: Any, logger: Any) -> None:
         """
 
         async def op(session: Any) -> Any:
-            workspace_id = _path_int(data, "workspace_id")
-            user = c.actor(data)
-            c.require_active(user)
-            ensure_workspace_permission(user, workspace_id, "workspace", "update")
-            workspace = await workspace_service.get_by_id(session, workspace_id)
-            if not workspace:
-                raise HTTPException(status_code=404, detail="Workspace not found")
+            workspace = await _gate_workspace(session, data)
             body = schemas.WorkspaceQuotaSet.model_validate(c.payload(data))
-            before = await _quota_override(session, workspace_id, body.scope)
-            row = await quota_admin.apply_workspace_limits(
-                session,
-                workspace_id=workspace_id,
-                scope=body.scope,
-                values=body.limits.as_dict(),
-                updated_by=user.id,
-                allow_raise=user.is_superuser,
+            return await quota_admin_service.set_workspace_limits(
+                session, workspace, actor=c.actor(data), data=data, body=body
             )
-            await record_admin_audit(
-                session,
-                action="workspace.quota_update",
-                actor=user,
-                data=data,
-                workspace_id=workspace_id,
-                entity_type="workspace",
-                entity_id=workspace_id,
-                entity_label=workspace.name,
-                before=before,
-                after=_quota_values(row, body.scope),
-            )
-            await session.commit()
-            quota.invalidate_policy()
-            effective = await quota_admin.inherited_limits(session, workspace_id=workspace_id, scope=body.scope)
-            return QuotaPlanLimitRead(scope=body.scope, **effective)
 
         return await c.envelope(logger, "workspaces.quota_set", op, session_factory=_SF)
 
@@ -711,8 +618,8 @@ def register(broker: Any, logger: Any) -> None:
     async def _owner_get(data: dict, msg: RabbitMessage) -> dict:
         """Who is accountable for this workspace.
 
-        ``workspace.update``-gated for the same reason the ``discord_*`` reads
-        are: this resolves an internal ``auth_user_id`` to a name and an email,
+        ``workspace.update``-gated like the other settings reads here: this
+        resolves an internal ``auth_user_id`` to a name and an email,
         which the public ``WorkspaceRead`` deliberately refuses to publish.
         """
 
@@ -786,84 +693,15 @@ def register(broker: Any, logger: Any) -> None:
                 raise HTTPException(status_code=404, detail="Auth user not found")
             if not user.is_superuser:
                 await workspace_service.ensure_create_limit(session, recipient, detail="workspace_owner_limit_reached")
-            previous_owner_id = workspace.owner_id
             workspace = await workspace_service.transfer_ownership(session, workspace, body.auth_user_id, actor=user)
-            # Both sides' permissions changed, so both cached RBAC payloads are
-            # stale -- same bust the member ops do after a role write.
-            for auth_user_id in {body.auth_user_id, previous_owner_id} - {None}:
-                await _invalidate_auth_rbac_cache(auth_user_id, logger)
             return await _owner_payload(session, workspace)
 
         return await c.envelope(logger, "workspaces.owner_transfer", op, session_factory=_SF)
 
-    # --- Discord entities (roles, channels, server status) ------------------
-    # Reads of an organizer's own server config, so they carry the same
-    # workspace.update gate as the custom-domain endpoints above: the role and
-    # channel lists (and the server's name and headcount) are private to the
-    # guild, and these only ever back the workspace settings pickers.
-    @broker.subscriber("rpc.app.workspaces.discord_roles")
-    async def _discord_roles(data: dict, msg: RabbitMessage) -> dict:
-        async def op(session: Any) -> Any:
-            return await _discord_lookup(
-                broker,
-                logger,
-                session,
-                data,
-                label="discord_roles",
-                read=DiscordClient.guild_roles,
-                key="roles",
-                empty={"roles": []},
-            )
-
-        return await c.envelope(logger, "workspaces.discord_roles", op, session_factory=_SF)
-
-    @broker.subscriber("rpc.app.workspaces.discord_channels")
-    async def _discord_channels(data: dict, msg: RabbitMessage) -> dict:
-        async def op(session: Any) -> Any:
-            return await _discord_lookup(
-                broker,
-                logger,
-                session,
-                data,
-                label="discord_channels",
-                read=DiscordClient.guild_channels,
-                key="channels",
-                empty={"channels": []},
-            )
-
-        return await c.envelope(logger, "workspaces.discord_channels", op, session_factory=_SF)
-
-    @broker.subscriber("rpc.app.workspaces.discord_guild")
-    async def _discord_guild(data: dict, msg: RabbitMessage) -> dict:
-        async def op(session: Any) -> Any:
-            return await _discord_lookup(
-                broker,
-                logger,
-                session,
-                data,
-                label="discord_guild",
-                read=DiscordClient.guild_info,
-                key=None,
-                empty={
-                    "connected": False,
-                    "name": None,
-                    "icon_url": None,
-                    "member_count": 0,
-                    "owner_id": None,
-                    "owner_name": None,
-                    "owner_avatar_url": None,
-                },
-                # A failed round trip only knows the guild is unreachable; the rest
-                # of the shape would be inventing values the caller must not trust.
-                degraded={"connected": False},
-            )
-
-        return await c.envelope(logger, "workspaces.discord_guild", op, session_factory=_SF)
-
     # --- notification delivery settings -------------------------------------
     # Which channel this workspace's broadcasts are posted to, in which
-    # language, and which kinds are posted at all. Same workspace.update gate as
-    # the pickers above: it names a private channel and it makes the bot speak.
+    # language, and which kinds are posted at all. workspace.update-gated: it
+    # names a private channel and it makes the bot speak.
     @broker.subscriber("rpc.app.workspaces.notification_config_get")
     async def _notification_config_get(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
@@ -877,7 +715,8 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             workspace = await _gate_workspace(session, data)
             body = schemas.NotificationWorkspaceConfigUpdate.model_validate(c.payload(data))
-            client = _discord_client(broker)
+            # RPC-only: discord-service answers the guild's channel list.
+            client = DiscordClient(broker=broker)
             return await notification_config.write_config(
                 session,
                 workspace,
@@ -886,3 +725,41 @@ def register(broker: Any, logger: Any) -> None:
             )
 
         return await c.envelope(logger, "workspaces.notification_config_update", op, session_factory=_SF)
+
+    # --- team format default per discipline ---------------------------------
+    @broker.subscriber("rpc.app.workspaces.team_format_get")
+    async def _team_format_get(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            workspace = await _gate_workspace(session, data)
+            team_format, source = await workspace_format(
+                session, workspace_id=workspace.id, discipline=_discipline(data)
+            )
+            return await team_format_read(session, team_format, source=source, workspace_id=workspace.id)
+
+        return await c.envelope(logger, "workspaces.team_format_get", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.app.workspaces.team_format_put")
+    async def _team_format_put(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            workspace = await _gate_workspace(session, data)
+            discipline = _discipline(data)
+            body = TeamFormatWrite.model_validate(c.payload(data))
+            await save_workspace_format(
+                session, workspace_id=workspace.id, discipline=discipline, team_format=body.to_domain(discipline)
+            )
+            await record_admin_audit(
+                session,
+                action="workspace.team_format_set",
+                actor=c.actor(data),
+                data=data,
+                workspace_id=workspace.id,
+                entity_type="workspace",
+                entity_id=workspace.id,
+                entity_label=workspace.slug,
+                after={"discipline": discipline, **body.model_dump(mode="json")},
+            )
+            await session.commit()
+            team_format, source = await workspace_format(session, workspace_id=workspace.id, discipline=discipline)
+            return await team_format_read(session, team_format, source=source, workspace_id=workspace.id)
+
+        return await c.envelope(logger, "workspaces.team_format_put", op, session_factory=_SF)

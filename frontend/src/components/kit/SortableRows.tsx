@@ -23,6 +23,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
@@ -38,10 +39,9 @@ import { cn } from "@/lib/utils";
  * The caller owns the data: nothing here holds a copy of the list, and reorder
  * is reported as a whole new array.
  *
- * Two ways in, because the two call sites lay a row out differently: the
- * `SortableRow` convenience (grip, then content) and the `useSortableRow` +
- * `SortableGrip` pair for a row that needs the grip somewhere specific — the
- * tournament sheet stacks it over a `#N` label in its own column.
+ * A row wires itself through the `useSortableRow` + `SortableGrip` pair, so the
+ * grip can sit anywhere — the tournament sheet stacks it over a `#N` label in
+ * its own column.
  */
 
 type SortableRowsProps<T> = {
@@ -106,7 +106,7 @@ export function SortableRows<T>({
  * The DOM props that turn an element into the drag affordance for a row —
  * dnd-kit's sortable attributes and pointer/keyboard listeners, merged.
  */
-export type SortableHandleProps = DraggableAttributes &
+type SortableHandleProps = DraggableAttributes &
   SyntheticListenerMap & { [key: string]: unknown };
 
 export interface SortableRowHandle {
@@ -130,8 +130,7 @@ export function useSortableRow(id: string, disabled = false): SortableRowHandle 
     // Lifted out of flow while dragging so it renders over its siblings instead
     // of being clipped by the next row's background.
     zIndex: isDragging ? 50 : undefined,
-    position: isDragging ? "relative" : undefined,
-    boxShadow: isDragging ? "0 22px 56px rgba(0,0,0,0.34)" : undefined
+    position: isDragging ? "relative" : undefined
   };
 
   return {
@@ -162,46 +161,20 @@ export function SortableGrip({
   className
 }: Readonly<SortableGripProps>) {
   return (
-    <button
+    <Button
       type="button"
+      variant="outline"
+      size="icon-sm"
       disabled={disabled}
       aria-label={label}
       className={cn(
-        "flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-md",
-        "border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-dim)]",
+        "cursor-grab touch-none text-[color:var(--aqt-fg-dim)]",
         "hover:text-[color:var(--aqt-fg)] active:cursor-grabbing",
-        "disabled:cursor-default disabled:opacity-40",
         className
       )}
       {...handleProps}
     >
-      <GripVertical className="size-3" aria-hidden="true" />
-    </button>
-  );
-}
-
-type SortableRowProps = {
-  id: string;
-  children: ReactNode;
-  className?: string;
-  handleLabel: string;
-  disabled?: boolean;
-};
-
-/** Grip first, then the row's own content. */
-export function SortableRow({
-  id,
-  children,
-  className,
-  handleLabel,
-  disabled = false
-}: Readonly<SortableRowProps>) {
-  const { ref, style, handleProps } = useSortableRow(id, disabled);
-
-  return (
-    <div ref={ref} style={style} className={className}>
-      <SortableGrip handleProps={handleProps} label={handleLabel} disabled={disabled} />
-      {children}
-    </div>
+      <GripVertical aria-hidden="true" />
+    </Button>
   );
 }

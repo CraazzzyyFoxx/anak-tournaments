@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.division_grid import DEFAULT_GRID
+from shared.division_grid import stamp_canonical_numbers
 from shared.repository import (
     DivisionGridMappingRepository,
     DivisionGridMappingRuleRepository,
@@ -21,14 +22,15 @@ from shared.repository import (
 )
 from shared.services.division_grid import cache as division_grid_cache
 from shared.services.division_grid.access import get_workspace_source_version_ids
-from src import models, schemas
+from shared.services.division_grid.provisioning import create_workspace_grid
+from shared.services.ontology import assert_discipline_enabled
+from src import schemas
 from src.domain.division_grid import automap
 
 __all__ = (
     "DivisionGridService",
     "SaveOutcome",
     "division_grid_service",
-    "get_default_ow2_tiers_write",
 )
 
 _GRID_OPTIONS = (selectinload(models.DivisionGrid.versions).selectinload(models.DivisionGridVersion.tiers),)
@@ -89,28 +91,17 @@ def _classify_tier_change(
     return "cosmetic"
 
 
-def get_default_ow2_tiers_write() -> list[schemas.DivisionGridTierWrite]:
-    """Project the in-code default grid into this service's write DTO.
+def _rekeys(tier: models.DivisionGridTier, payload_tier: schemas.DivisionGridTierWrite) -> bool:
+    return (tier.sort_order, tier.slug) != (payload_tier.sort_order, payload_tier.slug)
 
-    The ladder itself lives in :data:`shared.domain.ow_ladder.LADDER` and reaches
-    here through ``DEFAULT_GRID``; nothing about it is re-derived. The DTO's only
-    extra field is ``sort_order``, which is the tier's position in the grid — and
-    ``DEFAULT_GRID.tiers`` is ordered top-first, so position and ``number`` agree.
-    """
-    return [
-        schemas.DivisionGridTierWrite(
-            slug=tier.slug or f"division-{tier.number}",
-            number=tier.number,
-            name=tier.name,
-            sort_order=index,
-            rank_min=tier.rank_min,
-            rank_max=tier.rank_max,
-            icon_url=tier.icon_url,
-            ow_rank_min=tier.ow_rank_min,
-            ow_rank_max=tier.ow_rank_max,
-        )
-        for index, tier in enumerate(DEFAULT_GRID.tiers)
-    ]
+
+async def _park_tier_keys(session: AsyncSession, tiers: list[models.DivisionGridTier]) -> None:
+    """Move the per-version unique keys (sort_order, slug) to ``-id`` / ``~id`` and flush,
+    so the tiers can then trade them without a transient unique violation."""
+    for tier in tiers:
+        tier.sort_order = -int(tier.id)
+        tier.slug = f"~{tier.id}"
+    await session.flush()
 
 
 def _validate_mapping(
@@ -162,7 +153,7 @@ class SaveOutcome:
 
 
 def _pick_active_version(grid: models.DivisionGrid, workspace: models.Workspace) -> models.DivisionGridVersion | None:
-    default_id = workspace.default_division_grid_version_id
+    default_id = workspace.default_division_grid_versions.get(grid.discipline)
     versions = list(grid.versions)
     for version in versions:
         if version.id == default_id:
@@ -193,8 +184,7 @@ class DivisionGridService:
         self.tournament_repo = tournament_repo
 
     async def get_workspace_grids(self, session: AsyncSession, workspace_id: int) -> list[models.DivisionGrid]:
-        # Not DivisionGridRepository.list_workspace_grids: that one eager-loads
-        # versions only, and DivisionGridRead needs the tiers underneath them.
+        # DivisionGridRead needs the tiers under each version, hence _GRID_OPTIONS.
         result = await session.execute(
             self.grid_repo.select()
             .options(*_GRID_OPTIONS)
@@ -203,24 +193,16 @@ class DivisionGridService:
         )
         return list(result.scalars().unique().all())
 
-    async def seed_default_grid_version(
-        self,
-        session: AsyncSession,
-        workspace_id: int,
-        grid_id: int,
-    ) -> models.DivisionGridVersion:
-        data = schemas.DivisionGridVersionCreate(
-            label="Default Overwatch 2 Grid",
-            tiers=get_default_ow2_tiers_write(),
+    async def get_grid_tournament_counts(self, session: AsyncSession, workspace_id: int) -> dict[int, int]:
+        """Tournaments pinned to any version of each of the workspace's grids, in one grouped count."""
+        rows = await session.execute(
+            sa.select(models.DivisionGridVersion.grid_id, sa.func.count(models.Tournament.id))
+            .join(models.Tournament, models.Tournament.division_grid_version_id == models.DivisionGridVersion.id)
+            .join(models.DivisionGrid, models.DivisionGrid.id == models.DivisionGridVersion.grid_id)
+            .where(models.DivisionGrid.workspace_id == workspace_id)
+            .group_by(models.DivisionGridVersion.grid_id)
         )
-        version = await self.create_version(session, workspace_id, grid_id, data)
-        await self.version_repo.update_fields(
-            session,
-            version,
-            {"status": "published", "published_at": sa.func.now()},
-        )
-        await division_grid_cache.invalidate_grid_version(version.id)
-        return version
+        return dict(rows.tuples().all())
 
     async def create_grid(
         self,
@@ -228,25 +210,35 @@ class DivisionGridService:
         workspace_id: int,
         data: schemas.DivisionGridCreate,
     ) -> models.DivisionGrid:
-        if await self.grid_repo.exists(session, workspace_id=workspace_id, slug=data.slug):
-            raise HTTPException(status_code=400, detail="Division grid slug already exists in workspace")
-
-        grid = await self.grid_repo.create(
+        """A new grid, its v1 a published copy of ``from_version_id`` (this workspace's or a system grid's, same
+        game, published) or the game's native ladder. Activates nothing."""
+        workspace = await self.workspace_repo.get(session, workspace_id)
+        if workspace is None:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+        grid_discipline = data.discipline or workspace.disciplines_enabled[0]
+        assert_discipline_enabled(workspace, grid_discipline)
+        source = None
+        if data.from_version_id is not None:
+            source = await self.get_version(session, data.from_version_id)
+            if source.grid.workspace_id not in (None, workspace_id):
+                raise HTTPException(status_code=400, detail="Division grid version does not belong to the workspace")
+            if source.grid.discipline != grid_discipline:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"division_grid_discipline_mismatch: the source version is {source.grid.discipline!r}, "
+                    f"the grid {grid_discipline!r}",
+                )
+            if source.status != "published":
+                raise HTTPException(status_code=409, detail="Only published division grid versions can be copied")
+        return await create_workspace_grid(
             session,
-            models.DivisionGrid(
-                workspace_id=workspace_id,
-                slug=data.slug,
-                name=data.name,
-                description=data.description,
-            ),
+            workspace_id=workspace_id,
+            discipline=grid_discipline,
+            name=data.name,
+            slug=data.slug,
+            description=data.description,
+            source=source,
         )
-
-        # Auto-seed default Overwatch 2 division grid
-        await self.seed_default_grid_version(session, workspace_id, grid.id)
-
-        # Reload/refresh the grid relationship
-        await session.refresh(grid)
-        return grid
 
     async def get_grid(self, session: AsyncSession, workspace_id: int, grid_id: int) -> models.DivisionGrid:
         grid = await self.grid_repo.get_by(
@@ -280,8 +272,9 @@ class DivisionGridService:
         archived = changes.pop("archived", None)
         if archived is True:
             active_version_id = await session.scalar(
-                sa.select(models.Workspace.default_division_grid_version_id).where(
-                    models.Workspace.id == grid.workspace_id
+                sa.select(models.WorkspaceDivisionGridDefault.version_id).where(
+                    models.WorkspaceDivisionGridDefault.workspace_id == grid.workspace_id,
+                    models.WorkspaceDivisionGridDefault.discipline == grid.discipline,
                 )
             )
             if active_version_id in {version.id for version in grid.versions}:
@@ -311,8 +304,9 @@ class DivisionGridService:
         version_ids = [version.id for version in grid.versions]
         if version_ids and not force:
             default_version_id = await session.scalar(
-                sa.select(models.Workspace.default_division_grid_version_id).where(
-                    models.Workspace.id == grid.workspace_id
+                sa.select(models.WorkspaceDivisionGridDefault.version_id).where(
+                    models.WorkspaceDivisionGridDefault.workspace_id == grid.workspace_id,
+                    models.WorkspaceDivisionGridDefault.discipline == grid.discipline,
                 )
             )
             if default_version_id in version_ids:
@@ -381,24 +375,23 @@ class DivisionGridService:
             ),
         )
 
-        await self.tier_repo.create_many(
-            session,
-            [
-                models.DivisionGridTier(
-                    version_id=version.id,
-                    slug=tier.slug,
-                    number=tier.number,
-                    name=tier.name,
-                    sort_order=tier.sort_order,
-                    rank_min=tier.rank_min,
-                    rank_max=tier.rank_max,
-                    icon_url=tier.icon_url,
-                    ow_rank_min=tier.ow_rank_min,
-                    ow_rank_max=tier.ow_rank_max,
-                )
-                for tier in data.tiers
-            ],
-        )
+        tiers = [
+            models.DivisionGridTier(
+                version_id=version.id,
+                slug=tier.slug,
+                number=tier.number,
+                name=tier.name,
+                sort_order=tier.sort_order,
+                rank_min=tier.rank_min,
+                rank_max=tier.rank_max,
+                icon_url=tier.icon_url,
+                native_rank_min=tier.native_rank_min,
+                native_rank_max=tier.native_rank_max,
+            )
+            for tier in data.tiers
+        ]
+        stamp_canonical_numbers(tiers, grid.discipline)
+        await self.tier_repo.create_many(session, tiers)
 
         created = await self.get_version(session, version.id)
         await division_grid_cache.invalidate_grid_version(created.id)
@@ -413,9 +406,10 @@ class DivisionGridService:
     async def delete_version(self, session: AsyncSession, version_id: int) -> None:
         version = await self.get_version(session, version_id)
 
-        workspace_uses = await self.workspace_repo.count(
-            session,
-            filters=[models.Workspace.default_division_grid_version_id == version_id],
+        workspace_uses = await session.scalar(
+            sa.select(sa.func.count())
+            .select_from(models.WorkspaceDivisionGridDefault)
+            .where(models.WorkspaceDivisionGridDefault.version_id == version_id)
         )
         if workspace_uses:
             raise HTTPException(
@@ -479,14 +473,12 @@ class DivisionGridService:
             removed_ids = set(existing_by_id) - set(payload_ids)
             if removed_ids or len(payload_ids) != len(data.tiers):
                 structural_changed = True
+            # Delete before writing: a new tier may reuse a removed tier's sort_order or slug (both unique per version).
+            for removed_id in removed_ids:
+                await self.tier_repo.delete(session, existing_by_id[removed_id])
 
-            reordered = any(
-                tier.id is not None and existing_by_id[tier.id].sort_order != tier.sort_order for tier in data.tiers
-            )
-            if reordered:
-                for existing in version.tiers:
-                    existing.sort_order = -int(existing.id)
-                await session.flush()
+            if any(tier.id is not None and _rekeys(existing_by_id[tier.id], tier) for tier in data.tiers):
+                await _park_tier_keys(session, [existing_by_id[tier_id] for tier_id in payload_ids])
 
             added_tiers: list[models.DivisionGridTier] = []
             for tier_data in data.tiers:
@@ -501,8 +493,8 @@ class DivisionGridService:
                             rank_min=tier_data.rank_min,
                             rank_max=tier_data.rank_max,
                             icon_url=tier_data.icon_url,
-                            ow_rank_min=tier_data.ow_rank_min,
-                            ow_rank_max=tier_data.ow_rank_max,
+                            native_rank_min=tier_data.native_rank_min,
+                            native_rank_max=tier_data.native_rank_max,
                         )
                     )
                     continue
@@ -518,19 +510,21 @@ class DivisionGridService:
                 existing.rank_min = tier_data.rank_min
                 existing.rank_max = tier_data.rank_max
                 existing.icon_url = tier_data.icon_url
-                existing.ow_rank_min = tier_data.ow_rank_min
-                existing.ow_rank_max = tier_data.ow_rank_max
+                existing.native_rank_min = tier_data.native_rank_min
+                existing.native_rank_max = tier_data.native_rank_max
 
+            stamp_canonical_numbers(
+                [existing_by_id[tier_id] for tier_id in payload_ids] + added_tiers, version.grid.discipline
+            )
             if added_tiers:
                 await self.tier_repo.create_many(session, added_tiers)
-
-            for removed_id in removed_ids:
-                await self.tier_repo.delete(session, existing_by_id[removed_id])
 
             if structural_changed:
                 await self.mapping_repo.mark_incomplete_for_version(session, version_id)
 
         await session.flush()
+        # New tiers went in by FK and removed ones were deleted: the loaded collection is stale.
+        session.expire(version, ["tiers"])
         updated = await self.get_version(session, version_id)
         await division_grid_cache.invalidate_grid_version(version_id)
         return updated
@@ -558,8 +552,8 @@ class DivisionGridService:
                         rank_min=tier.rank_min,
                         rank_max=tier.rank_max,
                         icon_url=tier.icon_url,
-                        ow_rank_min=tier.ow_rank_min,
-                        ow_rank_max=tier.ow_rank_max,
+                        native_rank_min=tier.native_rank_min,
+                        native_rank_max=tier.native_rank_max,
                     )
                     for tier in version.tiers
                 ],
@@ -594,7 +588,9 @@ class DivisionGridService:
                 detail="Target division grid version does not belong to the workspace",
             )
 
-        used_source_ids = await get_workspace_source_version_ids(session, workspace_id)
+        used_source_ids = await get_workspace_source_version_ids(
+            session, workspace_id, discipline=target.grid.discipline
+        )
         used_source_ids.add(target_version_id)
         missing: list[int] = []
         incomplete: list[int] = []
@@ -668,6 +664,7 @@ class DivisionGridService:
                 status_code=400,
                 detail="Division grid version does not belong to the workspace",
             )
+        assert_discipline_enabled(workspace, version.grid.discipline)
         if version.status != "published":
             raise HTTPException(status_code=409, detail="Only published division grid versions can be activated")
 
@@ -683,10 +680,8 @@ class DivisionGridService:
                 detail=f"Division grid mappings are not ready for source versions: {blocked}",
             )
 
-        await self.workspace_repo.update_fields(
-            session,
-            workspace,
-            {"default_division_grid_version_id": version_id},
+        await self.workspace_repo.set_default_grid_version(
+            session, workspace, discipline=version.grid.discipline, version_id=version_id
         )
         await division_grid_cache.invalidate_workspace(workspace.id)
         return version
@@ -774,10 +769,12 @@ class DivisionGridService:
         session: AsyncSession,
         workspace: models.Workspace,
     ) -> models.DivisionGrid:
-        """The single managed grid for a workspace: the one holding the active
-        version, else the newest non-archived, else a freshly seeded grid."""
-        grids = await self.get_workspace_grids(session, workspace.id)
-        default_id = workspace.default_division_grid_version_id
+        """Resolve the managed grid of the workspace's first enabled discipline."""
+        discipline = workspace.disciplines_enabled[0]
+        grids = [
+            grid for grid in await self.get_workspace_grids(session, workspace.id) if grid.discipline == discipline
+        ]
+        default_id = workspace.default_division_grid_versions.get(discipline)
         if default_id is not None:
             for grid in grids:
                 if any(version.id == default_id for version in grid.versions):
@@ -787,10 +784,12 @@ class DivisionGridService:
             return max(live, key=lambda grid: grid.id)
         if grids:
             return max(grids, key=lambda grid: grid.id)
-        return await self.create_grid(
+        return await create_workspace_grid(
             session,
-            workspace.id,
-            schemas.DivisionGridCreate(slug="default", name="Division Grid"),
+            workspace_id=workspace.id,
+            discipline=discipline,
+            name="Division Grid",
+            slug_base=f"{discipline}-default",
         )
 
     async def _apply_cosmetic(
@@ -798,15 +797,12 @@ class DivisionGridService:
         session: AsyncSession,
         version: models.DivisionGridVersion,
         payload_tiers: list[schemas.DivisionGridTierWrite],
+        discipline: str,
     ) -> None:
         """Apply cosmetic-only tier edits in place (no rank/count changes)."""
         by_id = {tier.id: tier for tier in version.tiers}
-        if any(by_id[p.id].sort_order != p.sort_order for p in payload_tiers):
-            # Park sort_order in a non-colliding range before reassigning to avoid
-            # transient (version_id, sort_order) unique violations.
-            for tier in version.tiers:
-                tier.sort_order = -int(tier.id)
-            await session.flush()
+        if any(_rekeys(by_id[p.id], p) for p in payload_tiers):
+            await _park_tier_keys(session, list(version.tiers))
         for payload_tier in payload_tiers:
             tier = by_id[payload_tier.id]
             tier.slug = payload_tier.slug
@@ -814,8 +810,9 @@ class DivisionGridService:
             tier.name = payload_tier.name
             tier.sort_order = payload_tier.sort_order
             tier.icon_url = payload_tier.icon_url
-            tier.ow_rank_min = payload_tier.ow_rank_min
-            tier.ow_rank_max = payload_tier.ow_rank_max
+            tier.native_rank_min = payload_tier.native_rank_min
+            tier.native_rank_max = payload_tier.native_rank_max
+        stamp_canonical_numbers(version.tiers, discipline)
         await session.flush()
         await division_grid_cache.invalidate_grid_version(version.id)
 
@@ -828,18 +825,23 @@ class DivisionGridService:
     ) -> SaveOutcome:
         """Server-authoritative grid save: classify the edit, then either apply it
         in place (cosmetic) or spawn a new version, auto-generate mappings from every
-        used source version, and auto-activate when the mappings are complete."""
+        used source version, and auto-activate when the mappings are complete and the
+        grid already holds the workspace's active version for its game (switching
+        grids is the explicit ``activate_version``)."""
         if data.grid_id is not None:
             grid = await self.get_grid_by_id(session, data.grid_id)
             if grid.workspace_id not in (None, workspace.id):
                 raise HTTPException(status_code=400, detail="Division grid does not belong to the workspace")
         else:
             grid = await self._resolve_workspace_grid(session, workspace)
+        assert_discipline_enabled(workspace, grid.discipline)
         active = _pick_active_version(grid, workspace)
+        active_id = workspace.default_division_grid_versions.get(grid.discipline)
+        owns_active = active_id is None or any(version.id == active_id for version in grid.versions)
         change = "structural" if active is None else _classify_tier_change(active.tiers, data.tiers)
 
         if change == "cosmetic" and active is not None:
-            await self._apply_cosmetic(session, active, data.tiers)
+            await self._apply_cosmetic(session, active, data.tiers, grid.discipline)
             saved_version_id = active.id
             mode = "in_place"
         else:
@@ -852,7 +854,7 @@ class DivisionGridService:
             )
             await self.publish_version(session, new_version.id)
 
-            source_ids = await get_workspace_source_version_ids(session, workspace.id)
+            source_ids = await get_workspace_source_version_ids(session, workspace.id, discipline=grid.discipline)
             if active is not None:
                 source_ids.add(active.id)
             source_ids.discard(new_version.id)
@@ -864,7 +866,7 @@ class DivisionGridService:
                     source_version_id=source_version_id,
                     target_version_id=new_version.id,
                     name=f"Auto: {source_version.label} \u2192 {new_version.label}",
-                    rules=generation.rules,
+                    rules=[schemas.DivisionGridMappingRuleWrite(**asdict(rule)) for rule in generation.rules],
                     is_complete=generation.is_complete,
                 )
 
@@ -873,7 +875,7 @@ class DivisionGridService:
                 workspace_id=workspace.id,
                 target_version_id=new_version.id,
             )
-            if readiness.is_ready:
+            if readiness.is_ready and owns_active:
                 await self.activate_version(session, workspace=workspace, version_id=new_version.id)
                 mode = "new_version_activated"
             else:
@@ -893,7 +895,7 @@ class DivisionGridService:
         return SaveOutcome(
             mode=mode,
             grid=grid,
-            active_version_id=workspace.default_division_grid_version_id,
+            active_version_id=workspace.default_division_grid_versions.get(grid.discipline),
             saved_version_id=saved_version_id,
             readiness=readiness,
         )

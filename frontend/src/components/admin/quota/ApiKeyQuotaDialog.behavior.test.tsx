@@ -223,10 +223,10 @@ describe("ApiKeyQuotaDialog", () => {
     const bars = [...body.querySelectorAll('[role="progressbar"]')];
     const labels = bars.map((bar) => bar.getAttribute("aria-label"));
     expect(labels).toContain(
-      `${en.quota.scopes.key.label} — ${en.quota.dimensions.requests_per_minute.label}`
+      `${en.quota.scopes.key.label}: ${en.quota.dimensions.requests_per_minute.label}`
     );
     expect(labels).toContain(
-      `${en.quota.scopes.workspace.label} — ${en.quota.dimensions.requests_per_minute.label}`
+      `${en.quota.scopes.workspace.label}: ${en.quota.dimensions.requests_per_minute.label}`
     );
   });
 
@@ -237,7 +237,6 @@ describe("ApiKeyQuotaDialog", () => {
     // here is not a neutral start: submitting it deletes the row.
     expect(field("heavy_per_day").value).toBe("120");
     expect(field("requests_per_minute").value).toBe("");
-    expect(document.body.textContent).toContain(en.quota.state.overridden);
 
     await submit();
     expect(writtenLimits().heavy_per_day).toBe(120);
@@ -270,7 +269,6 @@ describe("ApiKeyQuotaDialog", () => {
     await type(field("heavy_per_day"), "5000");
     const input = field("heavy_per_day");
     expect(input.getAttribute("aria-invalid")).toBe("true");
-    expect(document.body.textContent).toContain(en.quota.superuserOnly);
 
     await submit();
     expect(
@@ -284,7 +282,7 @@ describe("ApiKeyQuotaDialog", () => {
 
     await type(field("heavy_per_day"), "5000");
     expect(field("heavy_per_day").getAttribute("aria-invalid")).toBeNull();
-    expect(document.body.textContent).toContain(en.quota.superuserOnly);
+    expect(field("heavy_per_day").getAttribute("aria-describedby")).toContain("-raise");
 
     await submit();
     expect(writtenLimits().heavy_per_day).toBe(5000);

@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api/fetch";
+import type { PlayerIdentity } from "@/types/identity.types";
 import type { PaginatedResponse } from "@/types/pagination.types";
 
 /**
@@ -20,7 +21,7 @@ export type RosterMember = {
    * ranked and rostered, but can never be picked as a host or co-host.
    */
   auth_user_id: number | null;
-  battle_tag: string | null;
+  identity: PlayerIdentity | null;
   display_name: string | null;
   ranks: Record<string, number>;
   author_ranks: Record<string, number>;
@@ -48,6 +49,7 @@ export type RosterAuthor = {
 export type RankScope = "workspace" | "author";
 
 export type WorkspacePlayerListParams = {
+  discipline?: string;
   page?: number;
   perPage?: number;
   query?: string;
@@ -66,10 +68,10 @@ export type WorkspacePlayerListParams = {
  * The three history layers are what they were rated at in a past registration,
  * roster or mix seat. Omitting the filter asks for the current six.
  */
-export const CURRENT_RANK_LAYERS = [
+const CURRENT_RANK_LAYERS = [
   "canon",
   "author",
-  "ow",
+  "native",
   "hidden",
   "effective_tournament",
   "effective_mix",
@@ -81,16 +83,13 @@ export const RANK_LAYERS = [...CURRENT_RANK_LAYERS, ...HISTORY_RANK_LAYERS] as c
 
 export type RankLayer = (typeof RANK_LAYERS)[number];
 
-/** The three roles a rank can be held for; a casual seat may carry another hero class. */
-export const RANK_OVERVIEW_ROLES = ["tank", "damage", "support"] as const;
-
 /**
  * What a row is *about* beyond the member: the tournament it was registered
- * for, the mix it was seated in, or the battle tag it was scraped from. For
- * `battle_tag`, `team` carries the OW platform rather than a team name.
+ * for, the mix it was seated in, or the native account it was scraped from.
+ * For `native_account`, `team` carries the native platform rather than a team name.
  */
 export type RankOverviewContext = {
-  kind: "tournament" | "mix" | "battle_tag";
+  kind: "tournament" | "mix" | "native_account";
   id: number | null;
   label: string;
   team: string | null;
@@ -99,46 +98,51 @@ export type RankOverviewContext = {
 
 export type RankOverviewRow = {
   layer: RankLayer;
+  /** The row's game; every enabled game's rows come back without a `discipline` filter. */
+  discipline: string;
   /** `players.user` id -- what `/admin/people/{id}` takes. */
   player_id: number;
   member_id: number;
   display_name: string | null;
-  battle_tag: string | null;
+  identity: PlayerIdentity | null;
   /** `auth.user` id of the author, mix book owner or casual host. */
   author_user_id: number | null;
   author_name: string | null;
   role: string | null;
   rank_value: number;
-  /** Resolved on the WORKSPACE effective grid, server-side, for every layer. */
+  /** Resolved on the workspace's effective grid of the row's game; null when that game has none. */
   division: number | null;
   /** `effective_*` only: which layer the number was taken from. */
-  source: "author" | "workspace" | "ow" | null;
+  source: "author" | "workspace" | "native" | null;
   /** `hidden` only. */
   sigma: number | null;
   /** `casual` only: what the seat's result moved the rating by. */
   delta: number | null;
   /** `author` only: the author's number minus canon, or null when canon is unset. */
   canon_diff: number | null;
-  /** `ow` only, native ladder naming (e.g. "gold" 3). */
-  ow_division: string | null;
-  ow_tier: number | null;
+  /** `native` only, the game's ladder naming (e.g. "gold" 3). */
+  native_division: string | null;
+  native_tier: number | null;
   context: RankOverviewContext | null;
   /** Null for the computed `effective_*` layers, which have no source timestamp. */
   at: string | null;
 };
 
 export type RankOverviewListParams = {
+  /** One game; omitted = every enabled game (then `role`, `divMin`, `divMax` and rank/division sorts are refused). */
+  discipline?: string;
   page?: number;
   perPage?: number;
   /** `players.user` id -- the person tab's fixed filter. */
   playerId?: number;
-  /** Free text over battle tag and display name. */
+  /** Free text over the owner provider's handle and display name. */
   query?: string;
   layer?: string[];
   authorUserId?: number[];
   role?: string[];
-  rankMin?: number;
-  rankMax?: number;
+  /** Tier numbers on the game's workspace grid, 1 = top, inclusive; `divMin <= divMax`. */
+  divMin?: number;
+  divMax?: number;
   /** Author rows whose number is not exactly canon (including "no canon"). */
   differsFromCanon?: boolean;
   /** `YYYY-MM-DD`, on `at`. */
@@ -153,6 +157,7 @@ export const workspacePlayerKeys = {
   list: (workspaceId: number, params: WorkspacePlayerListParams = {}) =>
     [
       ...workspacePlayerKeys.all(workspaceId),
+      params.discipline ?? null,
       params.page ?? 1,
       params.perPage ?? 30,
       params.query ?? "",
@@ -165,15 +170,17 @@ export const workspacePlayerKeys = {
 };
 
 export const workspacePlayerService = {
-  list(workspaceId: number, params: WorkspacePlayerListParams = {}): Promise<PaginatedResponse<RosterMember>> {
+  list(workspaceId: number, params: WorkspacePlayerListParams = {}, opts?: { signal?: AbortSignal }): Promise<PaginatedResponse<RosterMember>> {
     return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/players`, {
       query: {
+        discipline: params.discipline,
         page: params.page ?? 1,
         per_page: params.perPage ?? 30,
         query: params.query ?? "",
         ...(params.authorUserId == null ? {} : { author_user_id: params.authorUserId }),
         ...(params.authorOnly ? { author_only: 1 } : {}),
       },
+      signal: opts?.signal,
     }).then((r) => r.json());
   },
 
@@ -198,9 +205,11 @@ export const workspacePlayerService = {
   listRanks(
     workspaceId: number,
     params: RankOverviewListParams = {},
+    opts?: { signal?: AbortSignal },
   ): Promise<PaginatedResponse<RankOverviewRow>> {
     return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/ranks`, {
       query: {
+        discipline: params.discipline,
         page: params.page ?? 1,
         per_page: params.perPage ?? 30,
         ...(params.playerId == null ? {} : { player_id: params.playerId }),
@@ -208,21 +217,27 @@ export const workspacePlayerService = {
         ...(params.layer?.length ? { layer: params.layer } : {}),
         ...(params.authorUserId?.length ? { author_user_id: params.authorUserId } : {}),
         ...(params.role?.length ? { role: params.role } : {}),
-        ...(params.rankMin == null ? {} : { rank_min: params.rankMin }),
-        ...(params.rankMax == null ? {} : { rank_max: params.rankMax }),
+        ...(params.divMin == null ? {} : { div_min: params.divMin }),
+        ...(params.divMax == null ? {} : { div_max: params.divMax }),
         ...(params.differsFromCanon ? { differs_from_canon: 1 } : {}),
         ...(params.dateFrom ? { date_from: params.dateFrom } : {}),
         ...(params.dateTo ? { date_to: params.dateTo } : {}),
         ...(params.sort ? { sort: params.sort } : {}),
         ...(params.order ? { order: params.order } : {}),
       },
+      signal: opts?.signal,
     }).then((r) => r.json());
   },
 
-  upsert(workspaceId: number, battleTag: string, displayName?: string): Promise<RosterMember> {
+  upsert(
+    workspaceId: number,
+    input: { discipline: string; identity: PlayerIdentity; display_name?: string | null },
+    opts?: { signal?: AbortSignal },
+  ): Promise<RosterMember> {
     return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/players`, {
       method: "POST",
-      body: { battle_tag: battleTag, display_name: displayName || undefined },
+      body: input,
+      signal: opts?.signal,
     }).then((r) => r.json());
   },
 
@@ -241,11 +256,12 @@ export const workspacePlayerService = {
   setRanks(
     workspaceId: number,
     memberId: number,
-    input: { scope?: RankScope; ranks: Record<string, number>; clear?: string[] },
+    input: { discipline: string; scope?: RankScope; ranks: Record<string, number>; clear?: string[] },
   ): Promise<{ ranks: Record<string, number> }> {
     return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/players/${memberId}/ranks`, {
       method: "PUT",
       body: {
+        discipline: input.discipline,
         scope: input.scope ?? "workspace",
         ranks: input.ranks,
         clear: input.clear ?? [],

@@ -1,9 +1,9 @@
 """Rolling-origin time-series splits over tournaments.
 
 Tournaments are ordered by **start date** (``coalesce(start_date, created_at)``,
-id as tie-break). Numeric id is NOT a chronology proxy in this database:
-tournament 62 started 2025-07-19 while 61 started 2026-03-14, so id-ordered
-splits silently trained on the future. For each cutoff fold the split returns
+id as tie-break). Numeric id is NOT a chronology proxy in this database
+(tournament 62 started months before 61), so id-ordered splits would train on
+the future. For each cutoff fold the split returns
 ``(train_ids, val_id, test_id)`` where ``train`` is everything that started
 before the validation tournament.
 """
@@ -16,8 +16,8 @@ from dataclasses import dataclass
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src import models
-from src.core.workspace import workspace_scope_filter
+from shared import models
+from shared.services.workspace_scope import workspace_scope_filter
 
 __all__ = (
     "TimeSeriesSplit",
@@ -43,8 +43,8 @@ class TimeSeriesSplit:
 
         ``ids`` MUST already be chronologically ordered (the contract of
         :func:`tournament_ids_up_to`); their numeric values are opaque labels.
-        Sorting them here would re-impose id-as-time and reintroduce the very
-        future-leak this module exists to prevent.
+        Sorting them here would re-impose id-as-time — the future leak this
+        module exists to prevent.
         """
         ordered = [int(i) for i in ids if int(i) != int(test_id)]
         if not ordered:
@@ -58,32 +58,47 @@ async def tournament_ids_up_to(
     session: AsyncSession,
     cutoff_tournament_id: int,
     *,
+    discipline: str,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
 ) -> list[int]:
-    """Return ids of tournaments that started on/before the cutoff, in start order.
+    """Return ids of ``discipline`` tournaments that started on/before the cutoff, in start order.
 
     Chronology is ``(coalesce(start_date, created_at), id)`` — see the module
     docstring for why numeric id must not order this list. An unknown cutoff id
-    yields ``[]`` rather than a silently mis-anchored window.
+    yields ``[]`` rather than a silently mis-anchored window. A cutoff that exists but belongs to another discipline,
+    or to a workspace outside the requested scope, contradicts the request and raises ``ValueError``: it would anchor
+    one game's (or one tenant's) history window on another's date.
     """
     chrono = sa.func.coalesce(models.Tournament.start_date, models.Tournament.created_at)
-    cutoff_key = (
+    cutoff = (
         await session.execute(
-            sa.select(chrono, models.Tournament.id).where(models.Tournament.id == cutoff_tournament_id)
+            sa.select(
+                chrono.label("started"),
+                models.Tournament.id,
+                models.Tournament.discipline,
+                models.Tournament.workspace_id,
+            ).where(models.Tournament.id == cutoff_tournament_id)
         )
     ).one_or_none()
-    if cutoff_key is None:
+    if cutoff is None:
         return []
+    if cutoff.discipline != discipline:
+        raise ValueError(
+            f"cutoff tournament {cutoff_tournament_id} belongs to {cutoff.discipline!r}, not {discipline!r}"
+        )
+    scope = workspace_ids if workspace_ids is not None else (None if workspace_id is None else [workspace_id])
+    if scope is not None and cutoff.workspace_id not in {int(w) for w in scope}:
+        raise ValueError(f"cutoff tournament {cutoff_tournament_id} is outside the requested workspace scope")
     query = (
         sa.select(models.Tournament.id)
         .where(
-            sa.tuple_(chrono, models.Tournament.id) <= sa.tuple_(*cutoff_key),
+            sa.tuple_(chrono, models.Tournament.id) <= sa.tuple_(cutoff.started, cutoff.id),
             models.Tournament.id >= 1,
+            models.Tournament.discipline == discipline,
             # Hidden tournaments are containers, not seasons. The per-workspace
-            # scrim container (docs/plans/2026-08-12-scrim-rooms.md) holds no
-            # ranked roster data, so admitting it here would insert a data-less
-            # fold boundary into the rolling-origin split.
+            # scrim container holds no ranked roster data, so admitting it here
+            # would insert a data-less fold boundary into the rolling-origin split.
             models.Tournament.is_hidden.is_(False),
             *workspace_scope_filter(workspace_id, workspace_ids),
         )

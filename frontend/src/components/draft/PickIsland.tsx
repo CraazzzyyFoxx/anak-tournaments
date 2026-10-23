@@ -5,8 +5,8 @@ import { Crown, Heart, WifiOff, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 
-import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { RankCrest } from "@/components/RankCrest";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,7 +14,6 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useDraftPlayerCardQuery, type DraftMutations } from "@/hooks/useDraftData";
 import { usePickCountdown } from "@/hooks/usePickCountdown";
 import { describeApiError } from "@/lib/api/error";
-import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import type { DraftGating } from "@/lib/draft/logic";
 import {
   turnsUntil,
@@ -25,7 +24,8 @@ import {
 } from "@/lib/draft/room-model";
 import { playerRoles, rosterRoleForPlayer } from "@/lib/draft/workspace-model";
 import { notify } from "@/lib/notify";
-import { getRoleIconName, ROLE_ACCENT } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { showsRoles, type LadderedOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { DraftAutopickPreview, DraftBoard, DraftPlayer, DraftRole } from "@/types/draft.types";
 import type { RealtimeConnectionState } from "@/types/realtime.types";
@@ -60,12 +60,12 @@ interface PickIslandProps {
   autopickPreview: DraftAutopickPreview | null;
   queue: QueueControls | null;
   divisionGrid: DivisionGrid;
+  /** The session owner's role dictionary and native ladder: names and glyphs of every role on the card, crests on its answers. */
+  ontology: LadderedOntology | null;
   /** After a successful pick/override: clear selection and card. */
   onPicked: () => void;
 }
 
-const ICON_BUTTON =
-  "flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] outline-hidden hover:bg-[color:var(--aqt-overlay-3)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]";
 const VIEW_PANEL =
   "mt-0 ring-offset-0 focus-visible:ring-inset focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-0";
 
@@ -78,13 +78,14 @@ type CardView = "info" | "stats";
  */
 export function PickIsland(props: Readonly<PickIslandProps>) {
   const { board, cardRef, gating, player, selection, onSelectRole, onClose, actingTeam, overrideMode } = props;
-  const { showTargets, target, onTargetChange, queue, divisionGrid } = props;
+  const { showTargets, target, onTargetChange, queue, divisionGrid, ontology } = props;
   const t = useTranslations("draftRedesign");
   const [announcement, setAnnouncement] = useState("");
-  const cardQuery = useDraftPlayerCardQuery(player?.user_id ?? null);
+  const cardQuery = useDraftPlayerCardQuery(player?.user_id ?? null, board.session.discipline);
   // Held here, not per player: the island outlives every card, so a captain
   // comparing players keeps the view they chose.
   const [view, setView] = useState<CardView>("info");
+  const slotLabel = useSlotLabel(ontology);
 
   const liveRegion = (
     <p className="sr-only" aria-live="polite">
@@ -93,10 +94,9 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
   );
   if (!player) return liveRegion;
 
-  const displayName = player.battle_tag ?? `#${player.id}`;
+  const displayName = player.identity?.handle ?? `#${player.id}`;
   const available = player.status === "available";
-  const profileSlug = player.battle_tag ? getPlayerSlug(player.battle_tag) : null;
-  const headerDivision = resolveDivisionFromRank(divisionGrid, player.effective_rank);
+  const profileSlug = player.player_name ? getPlayerSlug(player.player_name) : null;
   const myTurn = isMyTurnFor(gating, actingTeam);
   const hasAccount = player.user_id != null;
   const cardPending = hasAccount && cardQuery.isPending;
@@ -120,8 +120,8 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
   const priorityLine = priority
     .map(({ role, subRole }, index) =>
       subRole
-        ? t("island.rolePriorityItemSub", { n: index + 1, role: t(`roles.${role}`), subRole })
-        : t("island.rolePriorityItem", { n: index + 1, role: t(`roles.${role}`) })
+        ? t("island.rolePriorityItemSub", { n: index + 1, role: slotLabel(role), subRole })
+        : t("island.rolePriorityItem", { n: index + 1, role: slotLabel(role) })
     )
     .join(" · ");
   const tiles = (
@@ -134,6 +134,7 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
       cardPending={cardPending}
       isAdmin={gating.isAdmin}
       divisionGrid={divisionGrid}
+      ontology={ontology}
     />
   );
 
@@ -154,27 +155,17 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
         style={{ borderColor: actionBorder(board, myTurn, overrideMode) }}
       >
         <div className="flex flex-wrap items-center gap-3 px-3.5 pb-2.5 pt-3">
-          {headerDivision != null && (
-            <span className="shrink-0" title={getDivisionLabel(divisionGrid, headerDivision) ?? undefined}>
-              <DivisionIcon
-                division={headerDivision}
-                tournamentGrid={divisionGrid}
-                width={52}
-                height={52}
-                className="h-[52px] w-[52px] object-contain"
-              />
-            </span>
-          )}
+          <RankCrest rank={player.effective_rank} grid={divisionGrid} size={52} />
           <div className="min-w-0 flex-1">
             <p
               className="flex min-w-0 items-center gap-1.5 text-label font-semibold"
               style={{ color: available ? "var(--aqt-teal)" : "var(--aqt-fg-muted)" }}
             >
               <span className="truncate">{statusText}</span>
-              {draftedRole && (
+              {draftedRole && showsRoles(ontology) && (
                 <>
                   <span aria-hidden>·</span>
-                  <PlayerRoleIcon role={getRoleIconName(draftedRole)} size={14} color={ROLE_ACCENT[draftedRole]} />
+                  <PlayerRoleIcon role={draftedRole} ontology={ontology} size={14} />
                 </>
               )}
             </p>
@@ -209,7 +200,7 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
                 </span>
               )}
             </div>
-            {priority.length > 0 && (
+            {priority.length > 0 && showsRoles(ontology) && (
               <p
                 className="mt-0.5 flex min-w-0 items-center gap-1.5 text-body text-[color:var(--aqt-fg-muted)]"
                 title={priorityLine}
@@ -223,7 +214,7 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
                       </span>
                     )}
                     <span className="tabular-nums">{index + 1}.</span>
-                    <PlayerRoleIcon role={getRoleIconName(role)} size={16} color={ROLE_ACCENT[role]} />
+                    <PlayerRoleIcon role={role} ontology={ontology} size={16} />
                     {subRole && <span className="truncate">{subRole}</span>}
                   </span>
                 ))}
@@ -244,26 +235,30 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
             </ToggleGroup>
           )}
           {queue && available && (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               aria-pressed={queued}
               aria-label={queued ? t("island.queue.remove") : t("island.queue.add")}
               title={queued ? t("island.queue.remove") : t("island.queue.add")}
               onClick={() => queue.toggle(player.id)}
-              className={ICON_BUTTON}
+              className="shrink-0"
               style={{ color: queued ? "var(--aqt-teal)" : "var(--aqt-fg-muted)" }}
             >
-              <Heart className="h-5 w-5" fill={queued ? "currentColor" : "none"} aria-hidden />
-            </button>
+              <Heart fill={queued ? "currentColor" : "none"} aria-hidden />
+            </Button>
           )}
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             onClick={onClose}
             aria-label={t("island.close")}
-            className={cn(ICON_BUTTON, "text-[color:var(--aqt-fg-muted)]")}
+            className="shrink-0 text-[color:var(--aqt-fg-muted)]"
           >
-            <X className="h-[18px] w-[18px]" aria-hidden />
-          </button>
+            <X aria-hidden />
+          </Button>
         </div>
 
         <Tabs
@@ -291,7 +286,7 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
             <TabsContent value="info" className={VIEW_PANEL}>
               {tiles}
               <div className="border-t border-[color:var(--aqt-border)]">
-                <RegistrationSection player={player} />
+                <RegistrationSection player={player} ontology={ontology} />
               </div>
             </TabsContent>
             <TabsContent value="stats" className={VIEW_PANEL}>
@@ -300,7 +295,7 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
                 {hasAccount ? (
                   <>
                     <CareerStats query={cardQuery} />
-                    <CareerTables card={cardQuery.data} pending={cardPending} divisionGrid={divisionGrid} />
+                    <CareerTables card={cardQuery.data} pending={cardPending} divisionGrid={divisionGrid} ontology={ontology} />
                   </>
                 ) : (
                   <p className="px-3.5 py-3 text-body text-[color:var(--aqt-fg-muted)]">{t("island.noAccount")}</p>
@@ -345,17 +340,20 @@ function IslandFooter({
   queue,
   onPicked,
   myTurn,
-  onAnnounce
+  onAnnounce,
+  ontology
 }: Readonly<IslandFooterProps>) {
   const t = useTranslations("draftRedesign");
   const [note, setNote] = useState("");
   const current = board.current_pick;
   const countdown = usePickCountdown(current, board.session.status === "paused");
   const isConnected = connectionState === "connected";
-  const displayName = player.battle_tag ?? `#${player.id}`;
+  const displayName = player.identity?.handle ?? `#${player.id}`;
   // The action is about the card's player: a selection of somebody else is not confirmable from here.
   const chosen = selection?.playerId === player.id ? selection : null;
-  const withRole = board.session.roster_shape.has_role_slots;
+  // A one-role game's pick names the player only (its role message would read "flex" for `agent`).
+  const withRole = board.session.roster_shape.has_role_slots && showsRoles(ontology);
+  const dimension = board.session.roster_shape.dimension;
   const pickPending = mutations.makePick.isPending;
   const overridePending = mutations.override.isPending;
 
@@ -376,7 +374,7 @@ function IslandFooter({
   const confirm = () => {
     if (!canConfirm || pickPending || !current || !chosen) return;
     mutations.makePick.mutate(
-      { pickId: current.id, playerId: player.id, version: current.version, role: chosen.role },
+      { pickId: current.id, playerId: player.id, version: current.version, role: chosen.role, dimension },
       {
         onSuccess: () => {
           const message = t("pickSuccess", { player: displayName });
@@ -393,7 +391,7 @@ function IslandFooter({
     const reason = note.trim();
     if (!current || !chosen || reason.length === 0 || overridePending) return;
     mutations.override.mutate(
-      { pickId: current.id, playerId: player.id, version: current.version, role: chosen.role, note: reason },
+      { pickId: current.id, playerId: player.id, version: current.version, role: chosen.role, dimension, note: reason },
       {
         onSuccess: () => {
           const message = t("overrideSuccess", { player: displayName });
@@ -410,7 +408,7 @@ function IslandFooter({
   let hint: string | null = null;
   if (!overrideMode && gating.myTeamId != null) {
     const previewName = autopickPreview
-      ? (board.players.find((entry) => entry.id === autopickPreview.player_id)?.battle_tag ?? null)
+      ? (board.players.find((entry) => entry.id === autopickPreview.player_id)?.identity?.handle ?? null)
       : null;
     if (current != null && turnsUntil(board, gating.myTeamId) == null) hint = t("island.hint.noPicksLeft");
     else if (myTurn && chosen)
@@ -423,7 +421,7 @@ function IslandFooter({
         : t("island.hint.chooseRole");
     else hint = queue && queue.ids.length > 0 ? t("island.hint.prepareQueue") : t("island.hint.prepare");
   }
-  const captainTag = actingTeam.roster.find((entry) => entry.is_captain)?.battle_tag ?? actingTeam.team.name;
+  const captainTag = actingTeam.roster.find((entry) => entry.is_captain)?.identity?.handle ?? actingTeam.team.name;
 
   return (
     <div className="border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-3.5 pb-3 pt-2.5">

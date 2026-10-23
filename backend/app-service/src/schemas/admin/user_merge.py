@@ -36,7 +36,7 @@ class UserMergeFieldPolicy(BaseModel):
 
 class UserMergeIdentitySelection(BaseModel):
     # social_account ids on the source profile to move to the target (others are
-    # dropped with the deleted source). Replaces the legacy per-provider id lists.
+    # dropped with the deleted source).
     social_account_ids: list[int] = Field(default_factory=list)
 
 
@@ -68,6 +68,7 @@ class UserMergeUserSummary(BaseModel):
 class UserMergeConflictSummary(BaseModel):
     has_auth_conflict: bool = False
     summary: str | None = None
+    stats_member_history_conflicts: list[dict[str, int]] = Field(default_factory=list)
 
 
 class UserMergeFieldOptions(BaseModel):

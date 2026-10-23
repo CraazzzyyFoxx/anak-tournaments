@@ -6,7 +6,7 @@ swallowed ``ClientError`` -> "folder missing" -> a zero-byte ``logs/90/``
 marker PUT. The folder ops are gone (S3 has no directories), but the two
 lessons need pinning: a failed LIST must not read as an empty prefix, and the
 markers already sitting in the bucket must not be listed as objects -- the
-tournament sweep in ``parser-service/serve.py`` fans every listed key out as a
+tournament sweep in ``stats-service/serve_worker.py`` fans every listed key out as a
 log to parse.
 """
 

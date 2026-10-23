@@ -7,12 +7,11 @@ package respcache
 // cannot outlive the resource it serves.
 //
 // An EMPTY (non-nil) slice is meaningful and different from a missing entry:
-// it says "this cache holds nothing for that resource" — the registration form
-// is admin configuration nothing here caches, notifications are per-user and
-// never cached anonymously. A MISSING entry falls back to nil, which drops
-// every entry for the scope; that is the fail-safe for a resource added to the
-// manifest before this table caught up, and the parity test exists so it stays
-// theoretical.
+// it says "this cache holds nothing for that resource" — notifications are
+// per-user and never cached anonymously. A MISSING entry falls back to nil,
+// which drops every entry for the scope; that is the fail-safe for a resource
+// added to the manifest before this table caught up, and the parity test
+// exists so it stays theoretical.
 var resourcePatterns = map[string][]string{
 	// The tournament read model. bareTournamentDetailPattern (not a literal
 	// substring) because the path segment is either a numeric id or an opaque
@@ -39,10 +38,11 @@ var resourcePatterns = map[string][]string{
 	// The public participants list, plus the detail read that embeds live
 	// participants_count / registrations_count.
 	"tournament.registrations": {"/registration/list", bareTournamentDetailPattern},
-	// Not cached here at all, and deliberately not cached server-side either
-	// (registration/admission.py: a stale form is a false refusal or a false
-	// admission). Empty, so a form edit evicts nothing.
-	"tournament.registration_form": {},
+	// The form route itself is never cached (a stale form is a false refusal
+	// or a false admission), but the participants list renders from the form:
+	// hide_registrations, max_participants and which answers are public. Same
+	// rule as tournament-service's own cache (cache_resources.py).
+	"tournament.registration_form": {"/registration/list"},
 	"tournament.streams":           {"/api/v1/streams/tournament/"},
 	// Workspace- and user-scoped resources: this cache only ever stores
 	// anonymous public reads, so there is nothing of theirs to drop.

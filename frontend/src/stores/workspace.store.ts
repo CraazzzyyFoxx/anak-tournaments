@@ -1,9 +1,15 @@
 import Cookies from "js-cookie";
 import { create } from "zustand";
 import type { AuthProfile } from "@/stores/auth-profile.store";
-import { Workspace } from "@/types/workspace.types";
+import type { WorkspaceListItem } from "@/types/workspace.types";
 import workspaceService from "@/services/workspace.service";
 import { STATS_SCOPE_COOKIE, type StatsScope } from "@/lib/site/stats-scope";
+import {
+  ALL_DISCIPLINES,
+  DISCIPLINE_COOKIE,
+  LAST_GAME_COOKIE,
+  type GameScope
+} from "@/lib/site/discipline-scope";
 import { resolveHost } from "@/lib/site/host";
 
 // Canonical workspace cookie name. LEGACY_WORKSPACE_COOKIE is read as a
@@ -46,12 +52,27 @@ function statsScopeFromCookie(): StatsScope {
     : "all";
 }
 
+function cookieValue(name: string): string | undefined {
+  return typeof document === "undefined" ? undefined : Cookies.get(name);
+}
+
 type WorkspaceState = {
-  workspaces: Workspace[];
+  /** List rows (`scope=all`): no grids — `useCurrentWorkspaceRead` reads the current one in full. */
+  workspaces: WorkspaceListItem[];
   currentWorkspaceId: number | null;
   statsScope: StatsScope;
   /** Runtime-only owner of the opened object; never changes the viewing preference. */
   entityWorkspaceId: number | null;
+  /**
+   * The viewer's saved game filter (spec §2): one game or `all`. One value for the site and the
+   * admin; never host-locked, never written by an opened owner and never dropped when the viewed
+   * community does not run it (the resolver reads it as `all` there, spec §4.2).
+   */
+  gameScope: GameScope;
+  /** The last concrete game picked in the pill or a local tab. */
+  lastGame: string | null;
+  /** Runtime-only game of the opened owner (spec §3.5); never persisted. */
+  entityDiscipline: string | null;
   /**
    * On a tenant (white-label) host the workspace is fixed by the request host,
    * not the cookie/store. When set, the store scope is locked to this id so
@@ -66,15 +87,18 @@ type WorkspaceState = {
   setCurrentWorkspace: (id: number) => void;
   setStatsScope: (scope: StatsScope) => void;
   setEntityWorkspace: (id: number | null) => void;
+  setGameScope: (value: GameScope) => void;
+  setLastGame: (code: string) => void;
+  setEntityDiscipline: (code: string | null) => void;
   setHostLock: (id: number | null) => void;
-  getCurrentWorkspace: () => Workspace | undefined;
+  getCurrentWorkspace: () => WorkspaceListItem | undefined;
 };
 
-export function filterAccessibleWorkspaces(
-  workspaces: Workspace[],
+export function filterAccessibleWorkspaces<T extends WorkspaceListItem>(
+  workspaces: T[],
   authStatus: string,
   user?: AuthProfile
-): Workspace[] {
+): T[] {
   if (authStatus !== "authenticated" || !user) {
     return workspaces;
   }
@@ -88,7 +112,7 @@ export function filterAccessibleWorkspaces(
 }
 
 export function resolveCurrentWorkspaceId(
-  workspaces: Workspace[],
+  workspaces: WorkspaceListItem[],
   currentWorkspaceId: number | null
 ): number | null {
   if (workspaces.length === 0) {
@@ -107,6 +131,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   currentWorkspaceId: workspaceIdFromCookie(),
   statsScope: statsScopeFromCookie(),
   entityWorkspaceId: null,
+  gameScope: cookieValue(DISCIPLINE_COOKIE) || ALL_DISCIPLINES,
+  lastGame: cookieValue(LAST_GAME_COOKIE) || null,
+  entityDiscipline: null,
   hostLockedWorkspaceId: null,
   isLoading: false,
 
@@ -132,11 +159,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           Cookies.remove(WORKSPACE_COOKIE);
         }
       }
-      set({
-        workspaces,
-        currentWorkspaceId: nextId,
-        isLoading: false
-      });
+      set({ workspaces, currentWorkspaceId: nextId, isLoading: false });
     } catch {
       set({ isLoading: false });
     }
@@ -162,7 +185,23 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({ statsScope });
   },
 
+  setGameScope: (gameScope) => {
+    if (gameScope === ALL_DISCIPLINES) {
+      Cookies.remove(DISCIPLINE_COOKIE);
+    } else {
+      Cookies.set(DISCIPLINE_COOKIE, gameScope, { sameSite: "lax", expires: WORKSPACE_COOKIE_TTL_DAYS });
+    }
+    set({ gameScope });
+  },
+
+  setLastGame: (lastGame) => {
+    Cookies.set(LAST_GAME_COOKIE, lastGame, { sameSite: "lax", expires: WORKSPACE_COOKIE_TTL_DAYS });
+    set({ lastGame });
+  },
+
   setEntityWorkspace: (entityWorkspaceId) => set({ entityWorkspaceId }),
+
+  setEntityDiscipline: (entityDiscipline) => set({ entityDiscipline }),
 
   setHostLock: (id: number | null) => {
     // Lock (tenant host) or clear (apex) the client-side workspace scope.

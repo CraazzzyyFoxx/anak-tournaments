@@ -4,8 +4,13 @@ import { Fragment, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp } from "lucide-react";
 
-import { HeroStrip } from "@/components/hero/HeroImage";
+import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
+import { PlayerAvatar } from "@/components/PlayerAvatar";
+import PlayerName from "@/components/PlayerName";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { DataPagination } from "@/components/ui/data-pagination";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { PlaceBadge } from "@/components/ui/place-badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,25 +18,17 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { formatOptional } from "@/app/(site)/users/components/shared/list-utils";
 import { cn } from "@/lib/utils";
 import type { UserOverviewRow } from "@/types/user.types";
-import type { DivisionGridVersion } from "@/types/workspace.types";
+import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
 
 import { PlayerCard } from "./UsersCatalogView";
 import { UserExpandedRow } from "./UserExpandedRow";
-import {
-  CompareCheckbox,
-  LastActive,
-  PlayerAvatar,
-  PlayerName,
-  RolesCrests,
-  WinrateCell
-} from "./users-index.atoms";
+import { CompareCheckbox, GameMarks, LastActive, RolesCrests, WinrateCell } from "./users-index.atoms";
 import { PER_PAGE_OPTIONS, type SortValue } from "./users-index.model";
 import type { CompareSelection } from "./UsersCompareBar";
 import type { UsersIndexData } from "./useUsersIndexData";
 import type { UsersIndexParamControls } from "./useUsersIndexParams";
 
-const headCellClass =
-  "px-2 py-2 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
+const headCellClass = cn(eyebrowClass(), "px-2 py-2");
 
 /** A sortable column head: a real button inside a `th` that reports `aria-sort`. */
 function SortHead({
@@ -57,21 +54,19 @@ function SortHead({
       aria-sort={active ? (ascending ? "ascending" : "descending") : "none"}
       className={cn(headCellClass, className)}
     >
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="label"
         onClick={() => controls.toggleSort(sort)}
         className={cn(
-          // Preflight resets `text-transform` on `button`, so the uppercase
-          // label style has to be restated here or sortable heads read as
-          // sentence case beside the plain ones.
-          "inline-flex items-center gap-1 rounded uppercase tracking-label outline-none transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
+          "hover:bg-transparent hover:text-[color:var(--aqt-fg)]",
           align === "center" ? "justify-center" : "justify-start",
           active && "text-[color:var(--aqt-teal)]"
         )}
       >
         {children}
-        {active ? <Arrow aria-hidden className="size-3" /> : null}
-      </button>
+        {active ? <Arrow aria-hidden /> : null}
+      </Button>
     </th>
   );
 }
@@ -80,16 +75,20 @@ function SortHead({
 export function UsersTableView({
   controls,
   data,
-  compare
+  compare,
+  onSelectGame
 }: Readonly<{
   controls: UsersIndexParamControls;
   data: UsersIndexData;
   compare: CompareSelection;
+  /** Narrows the scope to a game (a row's mark under "all games"). */
+  onSelectGame: (code: string) => void;
 }>) {
   const t = useTranslations();
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
   const { page, perPage, minEncounters } = controls.params;
-  const { overviewQuery, maxPage, range, workspaceId } = data;
+  const { overviewQuery, maxPage, range, workspaceId, discipline } = data;
+  const allGames = discipline === null;
   const response = overviewQuery.data;
 
   const toggleRow = (id: number) =>
@@ -144,13 +143,16 @@ export function UsersTableView({
             key={user.id}
             user={user}
             grids={response.division_grids}
+            divisionGrid={controls.divisionGrid}
+            game={data}
             minEncounters={minEncounters}
             compare={compare}
+            onSelectGame={onSelectGame}
           />
         ))}
       </div>
 
-      <div className="max-md:hidden overflow-hidden rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]">
+      <Card variant="flat" className="max-md:hidden overflow-hidden">
         <table className="w-full border-collapse text-caption">
           <thead>
             <tr className="border-b border-[color:var(--aqt-border)] text-left">
@@ -164,7 +166,7 @@ export function UsersTableView({
                 {t("users.list.table.player")}
               </SortHead>
               <th scope="col" className={cn(headCellClass, "text-center")}>
-                {t("users.list.table.roles")}
+                {allGames ? t("common.discipline.column") : t("users.list.table.roles")}
               </th>
               <SortHead sort="tournaments_count" controls={controls} className="text-center">
                 {t("users.list.table.tournaments")}
@@ -181,9 +183,11 @@ export function UsersTableView({
               <SortHead sort="achievements_count" controls={controls} className="text-center">
                 {t("users.list.table.achievements")}
               </SortHead>
-              <th scope="col" className={cn(headCellClass, "text-center")}>
-                {t("users.list.table.topHeroes")}
-              </th>
+              {allGames ? null : (
+                <th scope="col" className={cn(headCellClass, "text-center")}>
+                  {t("users.list.table.topHeroes")}
+                </th>
+              )}
               <th scope="col" className={cn(headCellClass, "w-10 pr-3")}>
                 <span className="sr-only">{t("users.list.table.details")}</span>
               </th>
@@ -195,18 +199,23 @@ export function UsersTableView({
                 <PlayerRow
                   user={user}
                   grids={response.division_grids}
+                  divisionGrid={controls.divisionGrid}
+                  game={data}
                   rank={firstRank + index}
                   minEncounters={minEncounters}
                   compare={compare}
+                  onSelectGame={onSelectGame}
                   expanded={expanded.has(user.id)}
                   onToggle={() => toggleRow(user.id)}
                 />
-                {expanded.has(user.id) ? (
+                {expanded.has(user.id) && discipline !== null ? (
                   <tr className="border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)]">
                     <td colSpan={11} className="p-0">
                       <UserExpandedRow
                         user={user}
                         workspaceId={workspaceId}
+                        discipline={discipline}
+                        ontology={data.ontology}
                         compareSelected={compare.isSelected(user.id)}
                         compareDisabled={compare.isFull}
                         onToggleCompare={() => compare.toggle(user)}
@@ -218,9 +227,9 @@ export function UsersTableView({
             ))}
           </tbody>
         </table>
-      </div>
+      </Card>
 
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-2.5">
+      <Card variant="flat" className="flex flex-wrap items-center gap-3 p-2.5">
         <span className="text-label tabular-nums text-[color:var(--aqt-fg-faint)]">
           {range
             ? t("users.list.pagination.showingPlayers", {
@@ -253,7 +262,7 @@ export function UsersTableView({
           totalPages={maxPage}
           onPageChange={(next) => controls.setPage(Math.max(1, Math.min(maxPage, next)))}
         />
-      </div>
+      </Card>
     </section>
   );
 }
@@ -261,22 +270,29 @@ export function UsersTableView({
 function PlayerRow({
   user,
   grids,
+  divisionGrid,
+  game,
   rank,
   minEncounters,
   compare,
   expanded,
-  onToggle
+  onToggle,
+  onSelectGame
 }: Readonly<{
   user: UserOverviewRow;
   grids: DivisionGridVersion[] | undefined;
+  divisionGrid: DivisionGrid;
+  game: Pick<UsersIndexData, "discipline" | "ontology">;
   rank: number;
   minEncounters: number;
   compare: CompareSelection;
   expanded: boolean;
   onToggle: () => void;
+  onSelectGame: (code: string) => void;
 }>) {
   const t = useTranslations();
   const selected = compare.isSelected(user.id);
+  const allGames = game.discipline === null;
 
   return (
     <tr className="border-b border-[color:var(--aqt-border)] transition-colors last:border-b-0 hover:bg-[color:var(--aqt-overlay-1)]">
@@ -295,17 +311,27 @@ function PlayerRow({
         <div className="flex items-center gap-2.5">
           <PlayerAvatar user={user} size={32} />
           <div className="min-w-0">
-            <PlayerName name={user.name} className="block max-w-[16rem]" />
+            <PlayerName player={{ name: user.name }} className="max-w-[16rem]" />
             <LastActive at={user.last_active_at} />
           </div>
         </div>
       </td>
       <td className="px-2 py-2 text-center">
-        <RolesCrests roles={user.roles} grids={grids} />
+        {allGames ? (
+          <GameMarks codes={user.disciplines} onSelect={onSelectGame} />
+        ) : (
+          <RolesCrests
+            roles={user.roles}
+            grids={grids}
+            divisionGrid={divisionGrid}
+            discipline={game.discipline}
+            ontology={game.ontology}
+          />
+        )}
       </td>
       <td className="px-2 py-2 text-center tabular-nums">{user.tournaments_count}</td>
       <td className="px-2 py-2 text-center">
-        <WinrateCell user={user} minEncounters={minEncounters} />
+        <WinrateCell user={user} minEncounters={minEncounters} record={allGames} />
       </td>
       <td className="px-2 py-2 text-center tabular-nums">
         {formatOptional(user.averages.avg_placement)}
@@ -318,27 +344,28 @@ function PlayerRow({
         )}
       </td>
       <td className="px-2 py-2 text-center tabular-nums">{user.achievements_count}</td>
-      <td className="px-2 py-2">
-        <div className="flex justify-center">
-          <HeroStrip heroes={user.top_heroes.slice(0, 3).map((entry) => entry.hero)} limit={3} />
-        </div>
-      </td>
+      {allGames ? null : (
+        <td className="px-2 py-2">
+          <div className="flex justify-center">
+            <CatalogEntityStrip entities={user.top_characters.slice(0, 3).map((entry) => entry.character)} limit={3} />
+          </div>
+        </td>
+      )}
+      {/* The drawer reads one game's draft card: under "all games" there is nothing to expand. */}
       <td className="pr-3">
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={expanded}
-          aria-label={
-            expanded ? t("users.list.a11y.collapseDetails") : t("users.list.a11y.expandDetails")
-          }
-          className="inline-flex size-7 items-center justify-center rounded-lg border border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-2)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
-        >
-          {expanded ? (
-            <ChevronUp aria-hidden className="size-3.5" />
-          ) : (
-            <ChevronDown aria-hidden className="size-3.5" />
-          )}
-        </button>
+        {allGames ? null : (
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={onToggle}
+            aria-expanded={expanded}
+            aria-label={
+              expanded ? t("users.list.a11y.collapseDetails") : t("users.list.a11y.expandDetails")
+            }
+          >
+            {expanded ? <ChevronUp aria-hidden /> : <ChevronDown aria-hidden />}
+          </Button>
+        )}
       </td>
     </tr>
   );

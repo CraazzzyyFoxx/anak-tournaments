@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { MoreHorizontal, Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { gameFilterDefs } from "@/components/admin/game-filter";
 import {
   SchemaEditor,
   useSubroleCatalog
@@ -15,44 +16,85 @@ import {
 } from "@/components/balancer/form/_components/schemaEdits";
 import { registrationFormTemplatesKey } from "@/components/balancer/form/_components/TemplateMenu";
 import { ConfirmDialog, type ConfirmIntent } from "@/components/kit/ConfirmDialog";
+import { FilterBar } from "@/components/kit/FilterBar";
 import { InlineEditText } from "@/components/kit/InlineEditText";
+import { MasterDetail, MasterList, MasterListSkeleton } from "@/components/kit/MasterDetail";
 import { SaveBar } from "@/components/kit/SaveBar";
+import { useFilters } from "@/components/kit/useFilters";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import { GameField } from "@/components/workspace/GameField";
+import { GameIcon } from "@/components/workspace/GameIcon";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useGameScope } from "@/hooks/useGameScope";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useQueryParams } from "@/hooks/useQueryParams";
+import { balancerQueryKeys } from "@/lib/balancer/query-keys";
 import { defaultFormSchema } from "@/lib/forms/default-schema";
 import { fieldErrorsFrom } from "@/lib/forms/form-errors";
 import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
+import { defaultCreationGame, showsGameMarks } from "@/lib/site/discipline-scope";
 import registrationFormTemplatesService from "@/services/registration-form-templates.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { FormSchema } from "@/types/forms.types";
-import { Spinner } from "@/components/ui/spinner";
 
 /**
- * Saved questionnaires, shared by every tournament of the workspace.
+ * Saved questionnaires of the workspace (T4), each owned by one game (spec §6.13, §8.4).
+ *
+ * The list is a multi surface: every game's templates (marked) unless the game filter names one. A selected template
+ * is an owner: its game names the editor's roles and metadata, whatever the list's game. "New template" files under
+ * the creation game (the filtered game, else the first enabled), asking that game's identity.
  *
  * The same editor the tournament builder runs, without the tournament: there is
  * no form row to version, no stale-registration count and no policy toggles to
  * echo back — a template is a schema and a name, and applying one to a
  * tournament is the builder's "Load template".
  *
- * Copy here is plain English like its neighbours in this hub (`sub-roles`,
- * `statuses`, `divisions`); the editor inside carries its own i18n.
+ * `?template=` is the selection, written with `mode: "push"`: below `md`
+ * `MasterDetail` shows the list or the editor, and its Back is `history.back()`.
  */
 export default function WorkspaceRegistrationFormsSettingsPage() {
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
+  const scope = useGameScope({ pageClass: "multi", axis: workspaceId ?? "all" });
+  const kind = scope.resolution?.game.kind;
+  const listGame = scope.game;
+  const games = useMemo(() => scope.games ?? [], [scope.games]);
+  const marks = scope.resolution !== null && showsGameMarks(scope.resolution, games);
   const { canAccessPermission } = usePermissions();
   const queryClient = useQueryClient();
   const tErrors = useTranslations("forms.errors");
   const t = useTranslations("adminSettings.registrationForms");
+  const tTable = useTranslations("kitTable.dataTableExtra");
+  const gameT = useTranslations("common.discipline");
+  const { searchParams, setParams } = useQueryParams({ mode: "push" });
+  // An open `?template=` owns its game, so a game pick keeps it.
+  const gameDefs = gameFilterDefs(games, gameT("column"), undefined, gameT("all"));
+  const filters = useFilters(gameDefs);
 
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  /** `null` = the selected template's saved schema, untouched. */
-  const [draft, setDraft] = useState<FormSchema | null>(null);
+  const selectedId = Number(searchParams?.get("template")) || null;
+  const setSelectedId = (id: number | null) => setParams({ template: id });
+  const [edit, setEdit] = useState<{ templateId: number; schema: FormSchema } | null>(null);
+  /**
+   * The selected template's unsaved schema, `null` = its saved one. Edits
+   * belong to the template they were made on, so a selection that changes
+   * without `openTemplate` (browser Back, the narrow-viewport Back) leaves
+   * them behind instead of pasting them onto another template.
+   */
+  const draft = edit !== null && edit.templateId === selectedId ? edit.schema : null;
+  const setDraft = (schema: FormSchema | null) =>
+    setEdit(schema !== null && selectedId !== null ? { templateId: selectedId, schema } : null);
   const [newName, setNewName] = useState("");
+  const [newGame, setNewGame] = useState<string | null>(null);
   /**
    * The destructive action waiting on a confirmation: deleting a shared
    * template, or walking away from unsaved questions. Both are one dialog with
@@ -64,28 +106,55 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
   >(null);
 
   const canEdit = canAccessPermission("registration_form.update", workspaceId);
-  const { catalog, loading: catalogLoading } = useSubroleCatalog(workspaceId);
 
   const listQuery = useQuery({
-    queryKey: registrationFormTemplatesKey(workspaceId ?? 0),
-    queryFn: () => registrationFormTemplatesService.list(workspaceId as number),
-    enabled: workspaceId !== null
+    queryKey: balancerQueryKeys.registrationFormTemplateList(workspaceId ?? 0, listGame),
+    queryFn: () => registrationFormTemplatesService.list(workspaceId as number, listGame),
+    enabled: workspaceId !== null && (kind === "game" || kind === "all")
   });
 
   const templates = useMemo(() => listQuery.data ?? [], [listQuery.data]);
-  const selected = templates.find((template) => template.id === selectedId) ?? null;
+  // The selection is resolved over every game's templates: one of another game than the list's (opened by link,
+  // or just created under another game) still opens in the editor.
+  const outsideList = selectedId !== null && listGame !== null && !templates.some((entry) => entry.id === selectedId);
+  const allTemplatesQuery = useQuery({
+    queryKey: balancerQueryKeys.registrationFormTemplateList(workspaceId ?? 0, null),
+    queryFn: () => registrationFormTemplatesService.list(workspaceId as number, null),
+    enabled: workspaceId !== null && outsideList && listQuery.isSuccess
+  });
+  const selected =
+    templates.find((template) => template.id === selectedId) ??
+    allTemplatesQuery.data?.find((template) => template.id === selectedId) ??
+    null;
   const schema = draft ?? selected?.form_schema ?? null;
   const blocked = schema ? blockedFieldKeys(schema) : null;
+
+  // The selected template is an owner (spec §5): its game drives the editor.
+  const ownerGame = selected?.discipline ?? null;
+  const { catalog, loading: catalogLoading } = useSubroleCatalog(workspaceId, ownerGame);
+  const metadata = useDisciplineMetadata(workspaceId ?? "all", workspaceId !== null ? ownerGame : null);
+
+  const enabledGames = games.filter((entry) => entry.enabled);
+  // A pick counts only while it is an enabled game of the area; otherwise the default applies again.
+  const pickedGame = newGame !== null && enabledGames.some((entry) => entry.code === newGame) ? newGame : null;
+  const creationGame = pickedGame ?? defaultCreationGame(listGame, enabledGames);
+  // A template starts from the questionnaire the server would build for a fresh tournament OF ITS GAME.
+  const identityProvider = games.find((entry) => entry.code === creationGame)?.identity_provider ?? null;
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: registrationFormTemplatesKey(workspaceId ?? 0) });
 
   const createMutation = useMutation({
-    mutationFn: (name: string) =>
-      // A new template starts from the same questionnaire the server would
-      // build for a fresh tournament, so "new template" and "new tournament"
-      // never disagree about what a form asks by default.
-      registrationFormTemplatesService.create(workspaceId as number, name, defaultFormSchema()),
+    mutationFn: (name: string) => {
+      if (creationGame === null || identityProvider === null) throw new Error("no creation game");
+      // "New template" and "new tournament" never disagree about what a form asks by default.
+      return registrationFormTemplatesService.create(
+        workspaceId as number,
+        name,
+        creationGame,
+        defaultFormSchema(identityProvider)
+      );
+    },
     onSuccess: async (created) => {
       setNewName("");
       await invalidate();
@@ -160,108 +229,171 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
       />
     );
   }
+  // The list reads nothing until the area's games resolve it.
+  if (scope.resolution === null) {
+    return scope.isError ? (
+      <PageStateCard state="error" onAction={scope.refetch} />
+    ) : (
+      <Skeleton className="h-40 w-full rounded-md" />
+    );
+  }
+  if (kind === "invalid" || kind === "empty") {
+    // The way out lands on the list: a selection made under the unknown game does not follow.
+    return <GameScopeControl scope={scope} variant="multi" dropParams={["template"]} />;
+  }
+
+  if (listQuery.isError) {
+    return (
+      <PageStateCard
+        state="error"
+        title={t("errors.load")}
+        onAction={() => void listQuery.refetch()}
+      />
+    );
+  }
+
+  const canCreate = newName.trim().length > 0 && identityProvider !== null && !createMutation.isPending;
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        <div className="flex w-full shrink-0 flex-col gap-2 lg:w-72">
-          {listQuery.isLoading ? (
-            <Skeleton className="h-40 w-full rounded-md" />
-          ) : (
-            <ul className="flex flex-col gap-1.5">
-              {templates.map((template) => (
-                <li
-                  key={template.id}
-                  className={cn(
-                    "flex items-center gap-2 rounded-lg border px-2.5 py-1.5",
-                    template.id === selectedId
-                      ? "border-primary/40 bg-primary/10"
-                      : "border-border/60"
-                  )}
-                >
-                  <div className="min-w-0 flex-1">
-                    <InlineEditText
-                      value={template.name}
-                      label={t("templateName")}
-                      canEdit={canEdit}
-                      onSave={(name) =>
-                        saveMutation.mutateAsync({
-                          id: template.id,
-                          name,
-                          // Renaming must not publish the schema being edited in
-                          // the pane next to it: a rename sends what is SAVED.
-                          form_schema: template.form_schema
-                        })
-                      }
-                    />
-                    <button
-                      type="button"
-                      className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
-                      onClick={() => openTemplate(template.id)}
-                    >
-                      {template.id === selectedId ? t("editing") : t("editQuestions")}
-                    </button>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-7 shrink-0"
-                    disabled={!canEdit || deleteMutation.isPending}
-                    aria-label={t("deleteNamed", { name: template.name })}
-                    onClick={() =>
-                      setPending({ kind: "delete", id: template.id, name: template.name })
-                    }
-                  >
-                    <Trash2 className="size-3.5" aria-hidden />
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          {canEdit && (
-            <div className="flex items-center gap-2">
-              <Input
-                value={newName}
-                placeholder={t("newTemplateName")}
-                className="h-8 text-xs"
-                onChange={(event) => setNewName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && newName.trim()) {
-                    event.preventDefault();
-                    createMutation.mutate(newName.trim());
-                  }
-                }}
+      {gameDefs.length > 0 ? <FilterBar defs={gameDefs} filters={filters} /> : null}
+      <MasterDetail
+        list={
+          <div className="flex flex-col gap-2">
+            {listQuery.isLoading ? (
+              <MasterListSkeleton />
+            ) : templates.length > 0 ? (
+              <MasterList
+                label={t("listLabel")}
+                items={templates.map((template) => ({
+                  key: template.id,
+                  label: template.name,
+                  icon: marks ? <GameIcon slug={template.discipline} /> : undefined
+                }))}
+                selectedKey={selectedId}
+                onSelect={openTemplate}
               />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 shrink-0"
-                disabled={!newName.trim() || createMutation.isPending}
-                onClick={() => createMutation.mutate(newName.trim())}
-              >
-                {createMutation.isPending ? (
-                  <Spinner className="mr-1 size-3.5" />
-                ) : (
-                  <Plus className="mr-1 size-3.5" aria-hidden />
-                )}
-                {t("add")}
-              </Button>
-            </div>
-          )}
-        </div>
+            ) : null}
 
-        <div className="min-w-0 flex-1">
-          {selected && schema ? (
-            <SchemaEditor
-              key={selected.id}
-              schema={schema}
-              onChange={setDraft}
-              subroleCatalog={catalog}
-              catalogLoading={catalogLoading}
-              fieldErrors={{}}
+            {canEdit && (
+              <div className="flex flex-col gap-2">
+                {enabledGames.length > 1 ? (
+                  <GameField
+                    id="registration-template-game"
+                    games={enabledGames}
+                    value={creationGame}
+                    onChange={setNewGame}
+                  />
+                ) : null}
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={newName}
+                    aria-label={t("newTemplateName")}
+                    placeholder={t("newTemplateName")}
+                    onChange={(event) => setNewName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && canCreate) {
+                        event.preventDefault();
+                        createMutation.mutate(newName.trim());
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="shrink-0"
+                    disabled={!canCreate}
+                    onClick={() => createMutation.mutate(newName.trim())}
+                  >
+                    {createMutation.isPending ? (
+                      <Spinner className="mr-1 size-3.5" />
+                    ) : (
+                      <Plus className="mr-1 size-3.5" aria-hidden />
+                    )}
+                    {t("add")}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        }
+        detail={
+          selected && schema ? (
+            <section aria-labelledby="registration-template-title" className="space-y-4">
+              <div className="flex items-center gap-2">
+                {/* The heading names the template; the editable text beside it
+                    is the control, so the heading's name stays the bare name
+                    rather than "name, Edit template name". */}
+                <h2 id="registration-template-title" className="sr-only">
+                  {selected.name}
+                </h2>
+                <InlineEditText
+                  className="flex-1"
+                  textClassName="text-ui font-semibold text-foreground"
+                  value={selected.name}
+                  label={t("templateName")}
+                  canEdit={canEdit}
+                  onSave={(name) =>
+                    saveMutation.mutateAsync({
+                      id: selected.id,
+                      name,
+                      // Renaming must not publish the schema being edited
+                      // below it: a rename sends what is SAVED.
+                      form_schema: selected.form_schema
+                    })
+                  }
+                />
+                {canEdit && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={tTable("actionsFor", { label: selected.name })}
+                        title={tTable("actionsFor", { label: selected.name })}
+                      >
+                        <MoreHorizontal aria-hidden className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        className="text-danger focus:text-danger"
+                        onSelect={() =>
+                          setPending({ kind: "delete", id: selected.id, name: selected.name })
+                        }
+                      >
+                        {t("delete")}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+              <SchemaEditor
+                key={selected.id}
+                schema={schema}
+                onChange={setDraft}
+                subroleCatalog={catalog}
+                catalogLoading={catalogLoading}
+                metadata={metadata.data ?? null}
+                fieldErrors={{}}
+              />
+            </section>
+          ) : outsideList && allTemplatesQuery.isError ? (
+            // The selection is still in the URL: its failed lookup is an error with a retry, not "nothing selected".
+            <PageStateCard
+              state="error"
+              title={t("errors.load")}
+              onAction={() => void allTemplatesQuery.refetch()}
             />
+          ) : null
+        }
+        emptyDetail={
+          listQuery.isLoading || allTemplatesQuery.isLoading ? (
+            <div aria-hidden className="space-y-4">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-64 w-full rounded-xl" />
+            </div>
           ) : (
             <PageStateCard
               state="empty"
@@ -272,9 +404,9 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
                   : t("pickDescription")
               }
             />
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
 
       {selected && schema && (
         <SaveBar

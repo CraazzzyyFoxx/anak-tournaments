@@ -1,5 +1,6 @@
 "use client";
 
+import { roleOf, subRoleSlugOf } from "@/lib/roster/role-ref";
 import {
   createElement,
   Fragment,
@@ -22,6 +23,9 @@ import {
   RefreshCw
 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
+import Image from "@/components/ui/image";
 import { StatusDot } from "@/components/ui/status-dot";
 import { LateSignUpBadge, OnCallBadge } from "@/components/status/RegistrationBadges";
 import { cn, hexToRgba } from "@/lib/utils";
@@ -29,7 +33,10 @@ import { ApiError, getApiErrorMessage } from "@/lib/api/error";
 import { activeRequirements, formatAdmissionReason, formatRequirementName } from "@/lib/registration/admission";
 import { formatShortfall } from "@/lib/registration/team-shortfall";
 import { getRegistrationTeamStatus } from "@/lib/registration/team-tone";
-import { normalizePlayerRole, playerRoleSlotCode } from "@/lib/roster/player-role";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { roleAccent } from "@/lib/registration/role-accent";
+import { findRole, roleColor, rolePresentation, showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { reachedAtLeast } from "@/lib/tournament/lifecycle";
 import { answerFlag, answerList, answerText } from "@/lib/forms/answers";
 import { IDENTITY_PROVIDERS, identityKey, identityProvider } from "@/lib/forms/builtin-keys";
@@ -44,8 +51,10 @@ import type {
   RegistrationStatus
 } from "@/types/registration.types";
 
-import { getRoleLabel, type ColumnDefinition } from "./participantsColumns.model";
-import { ROLE_TINT } from "./RegistrationSummary";
+import {
+  IDENTITY_COLUMN_ID,
+  type ColumnDefinition
+} from "./participantsColumns.model";
 import { useTranslations } from "next-intl";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { getStatusIcon } from "@/lib/registration/status-icons";
@@ -82,39 +91,10 @@ const STATUS_BAR_CONFIG: Record<RegistrationStatus, { icon: typeof Clock; color:
   },
   insufficient_data: {
     icon: AlertTriangle,
+    // The design book's pink, as a status colour of its own (role hues belong to a game's ontology).
     color:
-      "text-[color:var(--aqt-damage)] border-[color:color-mix(in_srgb,var(--aqt-damage)_20%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-damage)_10%,transparent)]"
+      "text-[color:hsl(337_81%_66%)] border-[color:color-mix(in_srgb,hsl(337_81%_66%)_20%,transparent)] bg-[color:color-mix(in_srgb,hsl(337_81%_66%)_10%,transparent)]"
   }
-};
-
-const ROLE_ACCENT_CLASSES: Record<string, { bg: string; text: string; border: string }> = {
-  tank: {
-    bg: "bg-[color:color-mix(in_srgb,var(--aqt-tank)_10%,transparent)]",
-    text: "text-[color:var(--aqt-tank)]",
-    border: "border-[color:color-mix(in_srgb,var(--aqt-tank)_20%,transparent)]"
-  },
-  damage: {
-    bg: "bg-[color:color-mix(in_srgb,var(--aqt-damage)_10%,transparent)]",
-    text: "text-[color:var(--aqt-damage)]",
-    border: "border-[color:color-mix(in_srgb,var(--aqt-damage)_20%,transparent)]"
-  },
-  support: {
-    bg: "bg-[color:color-mix(in_srgb,var(--aqt-support)_10%,transparent)]",
-    text: "text-[color:var(--aqt-support)]",
-    border: "border-[color:color-mix(in_srgb,var(--aqt-support)_20%,transparent)]"
-  },
-  flex: {
-    bg: "bg-[color:color-mix(in_srgb,var(--aqt-violet)_10%,transparent)]",
-    text: "text-[color:var(--aqt-violet)]",
-    border: "border-[color:color-mix(in_srgb,var(--aqt-violet)_20%,transparent)]"
-  }
-};
-
-const ROLE_TO_ICON: Record<string, string> = {
-  tank: "Tank",
-  damage: "Damage",
-  support: "Support",
-  flex: "Flex"
 };
 
 const DiscordIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -147,16 +127,28 @@ const IDENTITY_ICONS: Record<
   { Icon: (props: React.SVGProps<SVGSVGElement>) => React.ReactElement; className: string }
 > = {
   // Battle.net ships as a file in /public rather than as a path in this module.
+  // Rendered at `size-3.5`, hence the 14px intrinsic size.
   battlenet: {
     Icon: (props) => (
-      // eslint-disable-next-line @next/next/no-img-element -- small static asset from /public
-      <img alt="Battle.net" className={props.className} src="/battlenet.svg" />
+      <Image alt="Battle.net" className={props.className} src="/battlenet.svg" width={14} height={14} />
     ),
     className: ""
   },
   discord: { Icon: DiscordIcon, className: "text-[color:var(--aqt-brand-discord)]" },
   twitch: { Icon: TwitchIcon, className: "text-[color:var(--aqt-brand-twitch)]" },
-  boosty: { Icon: BoostyIcon, className: "text-[color:var(--aqt-brand-boosty)]" }
+  boosty: { Icon: BoostyIcon, className: "text-[color:var(--aqt-brand-boosty)]" },
+  riot: {
+    Icon: (props) => (
+      <Image alt="Riot Games" className={props.className} src="/riot.png" width={14} height={14} />
+    ),
+    className: ""
+  },
+  steam: {
+    Icon: (props) => (
+      <Image alt="Steam" className={props.className} src="/steam.svg" width={14} height={14} />
+    ),
+    className: ""
+  }
 };
 
 type RegistrationStepTone = "done" | "active" | "failed" | "idle";
@@ -205,25 +197,27 @@ function RegistrationStepMarker({ tone }: Readonly<{ tone: RegistrationStepTone 
 function RegistrationRoleChip({
   role,
   showPrimaryMark,
+  ontology,
   t
 }: Readonly<{
   role: Registration["roles"][number];
   showPrimaryMark: boolean;
+  /** The tournament's own game's scoped ontology; roles render neutral until it loads. */
+  ontology: RoleOntology | null;
   t: ReturnType<typeof useTranslations<never>>;
 }>) {
+  const roleLabel = useSlotLabel(ontology);
+  const node = ontology ? findRole(ontology, role.role) : null;
+  const accent = roleAccent(ontology && node ? rolePresentation(ontology.roles, node.id).color : null);
   return (
     <div
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium",
-        ROLE_ACCENT_CLASSES[role.role]?.bg,
-        ROLE_ACCENT_CLASSES[role.role]?.border,
-        ROLE_ACCENT_CLASSES[role.role]?.text
-      )}
+      className="inline-flex items-center gap-1.5 rounded-md border border-transparent px-2 py-0.5 text-xs font-medium"
+      style={{ ...accent.tile, ...accent.selectedCard }}
     >
-      <PlayerRoleIcon role={ROLE_TO_ICON[role.role] ?? role.role} size={12} decorative />
-      <span>{getRoleLabel(role.role, t)}</span>
-      {role.subrole && (
-        <span className="text-label opacity-60">({formatSubroleSlug(role.subrole)})</span>
+      <PlayerRoleIcon role={role.role} ontology={ontology} size={12} decorative />
+      <span>{roleLabel(roleOf(role.role))}</span>
+      {subRoleSlugOf(role.role) && (
+        <span className="text-label opacity-60">({formatSubroleSlug(subRoleSlugOf(role.role)!)})</span>
       )}
       {showPrimaryMark && (
         <span className="text-label uppercase tracking-wide opacity-70">
@@ -241,7 +235,7 @@ const QUEUE_CHIP_CLASS =
 /** Answers the card lays out by hand — chips for roles, brand chips for the
  *  handles, a quote for the notes — so the generic details block skips them. */
 const CARD_OWN_COLUMN_IDS: Record<string, true> = {
-  identity_battlenet: true,
+  [IDENTITY_COLUMN_ID]: true,
   roles: true,
   public_notes: true
 };
@@ -277,7 +271,13 @@ function MyRegistrationCard({
   columns: readonly ColumnDefinition[];
 }>) {
   const t = useTranslations();
-  const tSlot = useTranslations("rosterShape.slotCodes");
+  // The tournament's own game: roles, slots and the identity provider are all named in its scope.
+  const ownerMetadata = useDisciplineMetadata(tournament.workspace_id, tournament.discipline);
+  const ontology = ownerMetadata.data ?? null;
+  const ownerProvider = ownerMetadata.data?.discipline.identity_provider ?? null;
+  const slotLabel = useSlotLabel(ontology);
+  // A one-role game names no role on the card: every queue, chip and open place is that role.
+  const named = showsRoles(ontology);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -326,20 +326,25 @@ function MyRegistrationCard({
   // taken in, and the site's own slot vocabulary supplies the label and tint so
   // the chip reads like the role figures on the summary beside it.
   const roleQueue =
+    named &&
     registration.queue_role != null &&
     registration.queue_role_position != null &&
     registration.queue_role_total != null
       ? (() => {
-          const slot = playerRoleSlotCode(normalizePlayerRole(registration.queue_role));
+          const slot = roleOf(registration.queue_role);
           return {
-            label: t(`common.roles.${slot}`),
-            tint: ROLE_TINT[slot],
+            label: slotLabel(slot),
+            tint: roleColor(ontology, slot) ?? "var(--aqt-fg-dim)",
             position: registration.queue_role_position,
             total: registration.queue_role_total
           };
         })()
       : null;
   const primaryRole = registration.roles.find((r) => r.is_primary);
+  // What is left of the roles once the one role goes unnamed: the specialization the registrant chose.
+  const specialization = named
+    ? null
+    : (registration.roles.map((r) => subRoleSlugOf(r.role)).find(Boolean) ?? null);
   const secondaryRoles = registration.roles
     .filter((r) => !r.is_primary)
     .sort((a, b) => a.priority - b.priority);
@@ -540,7 +545,11 @@ function MyRegistrationCard({
       teamHint = {
         text: t("registrationTeams.myCard.incomplete", {
           ...teamValues,
-          shortfall: formatShortfall(myTeam.open_slots, tSlot)
+          shortfall: named
+            ? formatShortfall(myTeam.open_slots, slotLabel)
+            : t("registrationTeams.myCard.shortfallCount", {
+                count: Object.values(myTeam.open_slots).reduce<number>((sum, count) => sum + (count ?? 0), 0)
+              })
         }),
         tone: "font-medium text-[color:var(--aqt-amber)]"
       };
@@ -618,9 +627,9 @@ function MyRegistrationCard({
           </span>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-1.5">
-              <p className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+              <Eyebrow as="p" tone="dim">
                 {t("registration.myCard.title")}
-              </p>
+              </Eyebrow>
               {/* Where this entry sits in submission order. Server-sent, because a
                   tournament that hides its participants list gives this card no
                   rows to count — and counting rows was never the same number
@@ -702,48 +711,45 @@ function MyRegistrationCard({
             // Withdraw. The glow is a box-shadow rather than a scaling halo: the
             // card is `overflow-hidden`, so anything growing past the button
             // clips at the card edge.
-            <button
+            <Button
               type="button"
+              variant="positive"
               onClick={onCheckIn}
               disabled={isCheckingIn}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[color:var(--aqt-emerald)] px-4 py-2 text-sm font-bold text-[color:var(--aqt-bg)] shadow-[0_0_18px_color-mix(in_srgb,var(--aqt-emerald)_40%,transparent)] transition-all hover:brightness-110 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+              className="shadow-[0_0_18px_color-mix(in_srgb,var(--aqt-emerald)_40%,transparent)]"
             >
-              {isCheckingIn ? (
-                <Spinner />
-              ) : (
-                <CheckCircle2 className="size-4" aria-hidden />
-              )}
+              {isCheckingIn ? <Spinner /> : <CheckCircle2 aria-hidden />}
               {isCheckingIn ? t("common.checkingIn") : t("common.checkIn")}
-            </button>
+            </Button>
           )}
           {canRecheck ? (
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="xs"
               data-registration-recheck="true"
               onClick={() => recheckMutation.mutate()}
               disabled={recheckMutation.isPending || recheckLeft > 0}
               title={t("registration.myCard.recheck.title")}
-              className="inline-flex items-center justify-center gap-1 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-2.5 py-1.5 text-label font-semibold tabular-nums text-[color:var(--aqt-fg-muted)] transition-all hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+              className="tabular-nums"
             >
-              {recheckMutation.isPending ? (
-                <Spinner className="size-3" />
-              ) : (
-                <RefreshCw className="size-3" aria-hidden />
-              )}
+              {recheckMutation.isPending ? <Spinner /> : <RefreshCw aria-hidden />}
               {recheckMutation.isPending
                 ? t("registration.myCard.recheck.pending")
                 : recheckLeft > 0
                   ? t("registration.myCard.recheck.cooldown", { seconds: recheckLeft })
                   : t("registration.myCard.recheck.action")}
-            </button>
+            </Button>
           ) : null}
           {/* Edit sits before Withdraw: "fix my answer" is the cheaper of the
               two and the one a player reaches for first. Disabled-with-a-reason
               rather than silently absent, because a registrant who edited
               yesterday and cannot today is owed the reason. */}
           {canEdit || editLockedReason ? (
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="xs"
               data-registration-edit="true"
               onClick={() => setIsEditOpen(true)}
               disabled={!canEdit}
@@ -757,27 +763,28 @@ function MyRegistrationCard({
                   ? t(`registration.edit.reason.${editLockedReason}`)
                   : t("registration.edit.action")
               }
-              className="inline-flex items-center justify-center gap-1 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-2.5 py-1.5 text-label font-semibold text-[color:var(--aqt-fg-muted)] transition-all hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
             >
-              <Pencil className="size-3" aria-hidden />
+              <Pencil aria-hidden />
               {t("registration.edit.action")}
-            </button>
+            </Button>
           ) : null}
           {canWithdraw && (
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="xs"
               onClick={onWithdraw}
               disabled={isWithdrawing || isCheckingIn}
-              className="inline-flex items-center justify-center rounded-md border border-[color:color-mix(in_srgb,var(--aqt-rose)_20%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-rose)_5%,transparent)] px-2.5 py-1.5 text-label font-semibold text-[color:var(--aqt-rose)] transition-all hover:border-[color:color-mix(in_srgb,var(--aqt-rose)_40%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--aqt-rose)_10%,transparent)] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+              className="text-[color:var(--aqt-rose)]"
             >
-              {isWithdrawing && (
-                <Spinner className="mr-1 size-3" />
-              )}
+              {isWithdrawing && <Spinner />}
               {isWithdrawing ? t("common.withdrawing") : t("common.withdraw")}
-            </button>
+            </Button>
           )}
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-sm"
             onClick={() => setIsExpanded(!isExpanded)}
             aria-expanded={isExpanded}
             aria-label={
@@ -790,10 +797,10 @@ function MyRegistrationCard({
                 ? t("registration.myCard.hideDetails")
                 : t("registration.myCard.showDetails")
             }
-            className="flex size-8 shrink-0 items-center justify-center text-[color:var(--aqt-fg-dim)] transition-colors hover:text-[color:var(--aqt-fg)]"
+            className="text-[color:var(--aqt-fg-dim)] hover:text-[color:var(--aqt-fg)]"
           >
-            {isExpanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
-          </button>
+            {isExpanded ? <ChevronUp /> : <ChevronDown />}
+          </Button>
         </div>
       </div>
 
@@ -841,34 +848,44 @@ function MyRegistrationCard({
       {isExpanded && (
         <div className="border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-4 sm:px-5">
           <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="space-y-2">
-              <h4 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-                {t("common.rolesList")}
-              </h4>
-              {primaryRole || secondaryRoles.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {primaryRole && <RegistrationRoleChip role={primaryRole} showPrimaryMark t={t} />}
-                  {secondaryRoles.map((r) => (
-                    <RegistrationRoleChip
-                      key={`${r.role}-${r.subrole ?? "base"}-${r.priority}`}
-                      role={r}
-                      showPrimaryMark={false}
-                      t={t}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs italic text-[color:var(--aqt-fg-dim)]">
-                  {t("registration.myCard.noSecondaryRoles")}
-                </p>
-              )}
-            </div>
+            {named ? (
+              <div className="space-y-2">
+                <Eyebrow as="h4" tone="dim">
+                  {t("common.rolesList")}
+                </Eyebrow>
+                {primaryRole || secondaryRoles.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {primaryRole && <RegistrationRoleChip role={primaryRole} showPrimaryMark ontology={ontology} t={t} />}
+                    {secondaryRoles.map((r) => (
+                      <RegistrationRoleChip
+                        key={`${roleOf(r.role)}-${subRoleSlugOf(r.role) ?? "base"}-${r.priority}`}
+                        role={r}
+                        showPrimaryMark={false}
+                        ontology={ontology}
+                        t={t}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs italic text-[color:var(--aqt-fg-dim)]">
+                    {t("registration.myCard.noSecondaryRoles")}
+                  </p>
+                )}
+              </div>
+            ) : specialization ? (
+              <div className="space-y-2">
+                <Eyebrow as="h4" tone="dim">
+                  {t("registration.roles.specialization")}
+                </Eyebrow>
+                <p className="text-xs text-[color:var(--aqt-fg)]">{formatSubroleSlug(specialization)}</p>
+              </div>
+            ) : null}
 
             {teamBrief && (
               <div className="space-y-2">
-                <h4 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+                <Eyebrow as="h4" tone="dim">
                   {t("registrationTeams.myCard.teamLabel")}
-                </h4>
+                </Eyebrow>
                 <div className="flex flex-wrap items-center gap-1.5 text-xs">
                   <span className="font-semibold text-[color:var(--aqt-fg)]">{teamBrief.name}</span>
                   {teamBrief.is_captain && (
@@ -890,9 +907,9 @@ function MyRegistrationCard({
             )}
 
             <div className="space-y-2">
-              <h4 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+              <Eyebrow as="h4" tone="dim">
                 {t("registration.myCard.accounts")}
-              </h4>
+              </Eyebrow>
               <div className="flex flex-wrap gap-1.5 text-xs">
                 {IDENTITY_PROVIDERS.map((provider) => {
                   // Index 0 is the primary handle; the rest of a Battle.net
@@ -901,7 +918,7 @@ function MyRegistrationCard({
                   // carry no identity answer at all, hence `primary_handle`.
                   const handle =
                     answerList(registration.answers, identityKey(provider))[0] ??
-                    (provider === "battlenet" ? registration.primary_handle : null);
+                    (provider === ownerProvider ? registration.primary_handle : null);
                   if (!handle) return null;
                   const brand = IDENTITY_ICONS[provider];
                   return (
@@ -912,9 +929,9 @@ function MyRegistrationCard({
                       {brand ? (
                         <brand.Icon aria-hidden className={cn("size-3.5", brand.className)} />
                       ) : (
-                        <span className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+                        <Eyebrow tone="dim">
                           {t(`registration.accounts.${provider}`)}
-                        </span>
+                        </Eyebrow>
                       )}
                       <span className="text-[color:var(--aqt-fg-muted)]">{handle}</span>
                     </div>
@@ -926,9 +943,9 @@ function MyRegistrationCard({
 
           {detailColumns.length > 0 ? (
             <div className="mt-4 space-y-2">
-              <h4 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+              <Eyebrow as="h4" tone="dim">
                 {t("registration.myCard.details")}
-              </h4>
+              </Eyebrow>
               <dl className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
                 {detailColumns.map((column) => (
                   <div key={column.id} className="min-w-0 space-y-1">
@@ -946,9 +963,9 @@ function MyRegistrationCard({
 
           {publicNotes ? (
             <div className="mt-4 space-y-1.5">
-              <h4 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+              <Eyebrow as="h4" tone="dim">
                 {t("registration.details.notes")}
-              </h4>
+              </Eyebrow>
               <p className="border-l-2 border-[color:var(--aqt-border-2)] pl-3 text-xs italic leading-relaxed text-[color:var(--aqt-fg-muted)]">
                 &ldquo;{publicNotes}&rdquo;
               </p>

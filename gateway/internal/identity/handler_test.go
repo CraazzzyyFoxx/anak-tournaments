@@ -464,16 +464,16 @@ func rpcClientMeta(t *testing.T, caller *fakeCaller) (userAgent, ip string) {
 
 func TestAuthedFields_StampsClientMeta(t *testing.T) {
 	caller := &fakeCaller{resp: []byte(`{"ok":true,"data":null}`)}
-	r := httptest.NewRequest(http.MethodPatch, "/api/v1/auth/player/linked/7/primary", nil)
+	r := httptest.NewRequest(http.MethodDelete, "/api/v1/auth/player/unlink/7", nil)
 	r.SetPathValue("player_id", "7")
 	r.Header.Set("Authorization", "Bearer acc")
 	r.Header.Set("X-Real-IP", "203.0.113.7")
 	r.Header.Set("User-Agent", "UA/1")
 	w := httptest.NewRecorder()
-	newHandler(caller).PlayerSetPrimary(w, r)
+	newHandler(caller).PlayerUnlink(w, r)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", w.Code)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", w.Code)
 	}
 	if ua, ip := rpcClientMeta(t, caller); ua != "UA/1" || ip != "203.0.113.7" {
 		t.Fatalf("meta = %q/%q, want \"UA/1\"/\"203.0.113.7\"", ua, ip)
@@ -578,11 +578,11 @@ func TestAuthedHelpers_LeftmostForwardedHopNeverWins(t *testing.T) {
 			name: "authedFields",
 			resp: []byte(`{"ok":true,"data":null}`),
 			newReq: func() *http.Request {
-				r := httptest.NewRequest(http.MethodPatch, "/api/v1/auth/player/linked/7/primary", nil)
+				r := httptest.NewRequest(http.MethodDelete, "/api/v1/auth/player/unlink/7", nil)
 				r.SetPathValue("player_id", "7")
 				return r
 			},
-			invoke: (*Handler).PlayerSetPrimary,
+			invoke: (*Handler).PlayerUnlink,
 		},
 		{
 			name: "authedAllQuery",
@@ -638,13 +638,13 @@ func TestAuthedHelpers_LeftmostForwardedHopNeverWins(t *testing.T) {
 // (appended by nginx), still never the client-supplied left-most one.
 func TestAuthedFields_TrustsRightmostForwardedHop(t *testing.T) {
 	caller := &fakeCaller{resp: []byte(`{"ok":true,"data":null}`)}
-	r := httptest.NewRequest(http.MethodPatch, "/api/v1/auth/player/linked/7/primary", nil)
+	r := httptest.NewRequest(http.MethodDelete, "/api/v1/auth/player/unlink/7", nil)
 	r.SetPathValue("player_id", "7")
 	r.Header.Set("Authorization", "Bearer acc")
 	r.Header.Set("X-Forwarded-For", "9.9.9.9, 10.0.0.1")
 	r.Header.Set("User-Agent", "UA/1")
 	w := httptest.NewRecorder()
-	newHandler(caller).PlayerSetPrimary(w, r)
+	newHandler(caller).PlayerUnlink(w, r)
 
 	if _, ip := rpcClientMeta(t, caller); ip != "10.0.0.1" {
 		t.Fatalf("ip_address = %q, want \"10.0.0.1\"", ip)

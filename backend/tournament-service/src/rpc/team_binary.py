@@ -1,12 +1,11 @@
 """Team logo upload/delete over typed RPC (binary body, base64 on the wire).
 
-Mirrors ``app-service/src/rpc/users_admin.py``'s ``avatar_upload`` /
-``avatar_delete`` pair, retargeted at tournament teams: the gateway's multipart
-``file`` arrives as ``data["content_b64"]`` + ``data["content_type"]``, the
-permission gate is workspace-scoped (``team.update`` on the workspace resolved
-from the team's tournament) rather than a global permission, and the reply is the
-same full ``TeamRead`` the generic admin CRUD returns for a team — so the caller
-gets ``image_url`` plus the hydrated tournament/roster/captain in one round trip.
+The gateway's multipart ``file`` arrives as ``data["content_b64"]`` +
+``data["content_type"]``, the permission gate is workspace-scoped
+(``team.update`` on the workspace resolved from the team's tournament), and the
+reply is the same full ``TeamRead`` the generic admin CRUD returns for a team —
+so the caller gets ``image_url`` plus the hydrated tournament/roster/captain in
+one round trip.
 
 S3 keys live under ``avatars/teams/{team_id}/`` (``upload_avatar`` builds them and
 removes the previous file), so a re-upload never leaves orphaned objects behind.

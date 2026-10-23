@@ -132,3 +132,17 @@ def test_the_hosts_switch_governs_role_edits_only() -> None:
 def test_not_being_on_the_roster_outranks_the_hosts_switch() -> None:
     policy = _policy(on_roster=False, self_role_edit=False)
     assert policy.edit_blocker == "not_on_roster"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "blocker"),
+    [
+        ({"on_roster": True, "self_role_edit": False}, None),
+        ({"on_roster": False}, "not_on_roster"),
+        ({"on_roster": True, "status": "completed"}, "mix_closed"),
+        ({"on_roster": True, "missing_links": frozenset({"discord"})}, "discord_not_linked"),
+    ],
+)
+def test_stepping_away_takes_the_role_edit_gate_without_the_hosts_switch(overrides, blocker) -> None:
+    policy = _policy(**overrides)
+    assert (policy.can_set_away, policy.away_blocker) == (blocker is None, blocker)

@@ -1,5 +1,4 @@
-"""Admin CRUD for users + identities + profile merge + avatar + CSV import,
-relocated from parser-service. Reads of users already live in app-service.
+"""Admin CRUD for users + identities + profile merge + avatar + CSV import.
 
 Pure transport: every handler decodes params, applies its permission gate, and
 makes one service call. No SQL and no transaction lives here — the services own
@@ -12,7 +11,7 @@ would reach into every other workspace's history. **Reads** are workspace
 grantable instead: ``admin_list`` takes ``workspace_id`` as both the
 authorization scope and the row filter (``_scope``), so a workspace owner's
 ``admin.*`` lists their own roster's identities and nothing else. Same shape as
-the rank/subscription collection admin, see ``parser-service/src/rpc/rank.py``.
+the rank/subscription collection admin, see ``stats-service/src/rpc/rank.py``.
 Social identities are managed by **superusers only**
 (add/update/verify/delete/set_primary); their per-workspace/global display
 **visibility** is a lighter capability gated on ``user.read`` — the
@@ -53,10 +52,10 @@ from shared.messaging.rpc import request_rpc
 from shared.rpc.identity import ensure_workspace_permission
 from shared.rpc.query import build_query_model
 from shared.schemas.user_merge_auth import AuthMergeFinalizationRequest, AuthMergeResult
+from shared.services import user_cache
 from shared.services.audit import record_admin_audit
 from src import schemas
 from src.core import clients, db
-from src.services import user_cache
 from src.services.admin.favorites import favorites as favorites_service
 from src.services.admin.user import users as admin_users
 from src.services.admin.user_merge import merges as merge_service
@@ -65,7 +64,7 @@ from src.services.user.service import users as user_service
 from . import _common as c
 
 _SF = db.async_session_maker
-_ENTITIES = ["discord", "battle_tag", "twitch"]
+_ENTITIES = ["social_accounts"]
 
 
 def _gate(data: dict, action: str) -> Any:
@@ -83,7 +82,7 @@ def _scope(data: dict, action: str) -> int | None:
     grant ever gets it — a workspace-scoped holder cannot widen their read into
     the platform-wide registry by dropping ``workspace_id``. Conversely a
     workspace owner (whose ``admin.*`` is workspace-scoped and so answers no
-    global check) is no longer refused outright: they get their own roster.
+    global check) gets their own roster.
     """
     user = c.actor(data)
     c.require_active(user)
@@ -125,9 +124,10 @@ def _account_gate(data: dict) -> Any:
 async def _envelope_and_invalidate(logger: Any, label: str, op: Any, data: dict) -> dict:
     """Run a user-mutating op, then drop the subject user's read caches on success.
 
-    Profile/identity edits (name, avatar, socials) are not driven by
-    TournamentChangedEvent, so without this the subject's cached profile/heroes/
-    encounters/etc. would serve stale data until ``users_cache_ttl`` elapses.
+    Profile/identity edits (name, avatar, socials) move no tournament resource,
+    so no ``CacheInvalidatedEvent`` drops these keys; without this the subject's
+    cached profile/heroes/encounters/etc. (stats-service's read caches) would serve stale data until
+    ``users_cache_ttl`` elapses.
     Runs after the DB session closes and only on ``ok`` — a failed write leaves
     the cache untouched. Cross-user cosmetic staleness (this user's name/avatar
     embedded in other users' cached lists) is left to the TTL.
@@ -470,11 +470,10 @@ def register(broker: Any, logger: Any) -> None:
             user = _account_gate(data)
             player_id = await admin_users.resolve_my_player_id_or_none(session, user.id)
             if player_id is None:
-                # Belt-and-suspenders after the iwrefac09 backfill: a self-listing
-                # endpoint must not 404 just because the caller has no linked
-                # player. Return an empty list (My Account then renders the empty
-                # state + link buttons) instead of crashing. id=0 is a "no player"
-                # sentinel; both callers read only ``.social_accounts``.
+                # A self-listing endpoint must not 404 just because the caller has
+                # no linked player: My Account renders the empty state + link
+                # buttons. id=0 is a "no player" sentinel; both callers read only
+                # ``.social_accounts``.
                 return schemas.UserRead(id=0, name="", social_accounts=[])
             return await _refresh_user(session, player_id)
 

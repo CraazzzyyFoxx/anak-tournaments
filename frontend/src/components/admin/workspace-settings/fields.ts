@@ -1,3 +1,4 @@
+import { PLATFORM_ZONE } from "@/lib/site/host";
 import { DEFAULT_WORKSPACE_TIMEZONE } from "@/lib/workspace/timezone";
 import type { Workspace } from "@/types/workspace.types";
 import type { WorkspaceRecordSectionKey } from "./sections";
@@ -28,7 +29,7 @@ const field = <T,>(
   wire?: (value: T) => T
 ) => ({ section, from, wire }) as const;
 
-export const FIELD_DEFS = {
+const FIELD_DEFS = {
   name: field("general", (ws) => ws.name),
   description: field("general", (ws) => ws.description ?? ""),
   tagline: field("general", (ws) => ws.tagline ?? ""),
@@ -37,6 +38,9 @@ export const FIELD_DEFS = {
   twitch_url: field("general", (ws) => ws.twitch_url ?? ""),
   boosty_url: field("general", (ws) => ws.boosty_url ?? ""),
   timezone: field("general", (ws) => ws.timezone ?? DEFAULT_WORKSPACE_TIMEZONE),
+  // Order is data: `[0]` is the default game for new tournaments, grids and
+  // mixes, so a drag that only reorders is a real change.
+  disciplines_enabled: field("general", (ws) => ws.disciplines_enabled),
 
   branding_enabled: field("branding", (ws) => ws.branding_enabled),
   brand_primary: field("branding", (ws) => ws.brand_primary, trimOrNull),
@@ -91,14 +95,14 @@ function buildPayload(form: WorkspaceSettingsFormState): WorkspaceSettingsFormSt
   return payload as WorkspaceSettingsFormState;
 }
 
-/** Every key whose normalised value differs from the baseline. */
+/** Every key whose normalised value differs from the baseline (by value: one field is an array). */
 function diffPayload(
   current: WorkspaceSettingsFormState,
   baseline: WorkspaceSettingsFormState
 ): Partial<WorkspaceSettingsFormState> {
   const changes: Record<string, unknown> = {};
   for (const key of FIELD_KEYS) {
-    if (current[key] !== baseline[key]) changes[key] = current[key];
+    if (JSON.stringify(current[key]) !== JSON.stringify(baseline[key])) changes[key] = current[key];
   }
   return changes as Partial<WorkspaceSettingsFormState>;
 }
@@ -125,4 +129,116 @@ export function sectionPayload(
     if (FIELD_DEFS[key].section === section && key in diff) scoped[key] = diff[key];
   }
   return scoped as Partial<WorkspaceSettingsFormState>;
+}
+
+// ─── Validation ───────────────────────────────────────────────────────────────
+//
+// Each rule mirrors the server's, so a value is refused while it is typed
+// rather than on save, with the field named. The server stays the authority:
+// a rule here that drifts looser only moves the refusal back to the save bar.
+
+/** `_LINK_HOSTS` in app-service `schemas/workspace.py`: https, the service's own host. */
+export const LINK_HOSTS = {
+  discord_url: ["discord.gg", "discord.com"],
+  twitch_url: ["twitch.tv"],
+  boosty_url: ["boosty.to"]
+} as const satisfies Partial<Record<WorkspaceFieldKey, readonly string[]>>;
+
+/** `RESERVED_SUBDOMAINS` in `shared/tenancy/hostnames.py`. */
+const RESERVED_SUBDOMAINS = new Set([
+  "www", "api", "auth", "admin", "app", "assets", "static", "cdn", "mail", "ws"
+]);
+
+/** `_DOMAIN_RE` in `shared/tenancy/hostnames.py`: a multi-label FQDN. */
+const DOMAIN_RE =
+  /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+
+/** What is wrong with a value, as a message key under `workspaceSettings.errors`. */
+export type FieldIssue =
+  | { key: "nameRequired" }
+  | { key: "tooLong"; values: { max: number } }
+  | { key: "link"; values: { hosts: string } }
+  | { key: "hex" }
+  | { key: "subdomainLength" }
+  | { key: "subdomainHyphen" }
+  | { key: "subdomainReserved"; values: { label: string } }
+  | { key: "domain" }
+  | { key: "domainPlatform"; values: { zone: string } };
+
+const tooLong = (value: string, max: number): FieldIssue | null =>
+  value.length > max ? { key: "tooLong", values: { max } } : null;
+
+function linkIssue(field: keyof typeof LINK_HOSTS, value: string): FieldIssue | null {
+  const url = value.trim();
+  if (!url) return null;
+  const hosts: readonly string[] = LINK_HOSTS[field];
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "https:" && hosts.includes(parsed.hostname.replace(/^www\./, ""))) {
+      return tooLong(url, 512);
+    }
+  } catch {
+    // Not a URL at all: the same answer as the wrong host.
+  }
+  return { key: "link", values: { hosts: hosts.join(" / ") } };
+}
+
+const hexIssue = (value: string | null): FieldIssue | null =>
+  value?.trim() && !HEX_RE.test(value.trim()) ? { key: "hex" } : null;
+
+/** `validate_subdomain_label`; blank means "no subdomain" and is fine. */
+function subdomainIssue(value: string | null): FieldIssue | null {
+  const label = value?.trim().toLowerCase() ?? "";
+  if (!label) return null;
+  if (label.length > 63) return { key: "subdomainLength" };
+  if (label.startsWith("-") || label.endsWith("-")) return { key: "subdomainHyphen" };
+  if (RESERVED_SUBDOMAINS.has(label)) return { key: "subdomainReserved", values: { label } };
+  return null;
+}
+
+/** `normalize_custom_domain`, for the custom-domain draft outside the form. */
+export function customDomainIssue(value: string): FieldIssue | null {
+  const domain = value.trim().toLowerCase().split(":", 1)[0].replace(/\.+$/, "");
+  if (!domain || !domain.includes(".") || !DOMAIN_RE.test(domain)) return { key: "domain" };
+  if (domain === PLATFORM_ZONE || domain.endsWith(`.${PLATFORM_ZONE}`)) {
+    return { key: "domainPlatform", values: { zone: PLATFORM_ZONE } };
+  }
+  return null;
+}
+
+const RULES: {
+  [K in WorkspaceFieldKey]?: (value: WorkspaceSettingsFormState[K]) => FieldIssue | null;
+} = {
+  name: (value) => (value.trim() ? tooLong(value.trim(), 255) : { key: "nameRequired" }),
+  tagline: (value) => tooLong(value.trim(), 120),
+  about: (value) => tooLong(value.trim(), 4000),
+  discord_url: (value) => linkIssue("discord_url", value),
+  twitch_url: (value) => linkIssue("twitch_url", value),
+  boosty_url: (value) => linkIssue("boosty_url", value),
+  brand_primary: hexIssue,
+  brand_secondary: hexIssue,
+  brand_background: hexIssue,
+  brand_surface: hexIssue,
+  brand_accent: hexIssue,
+  brand_foreground: hexIssue,
+  brand_muted: hexIssue,
+  brand_border: hexIssue,
+  brand_ring: hexIssue,
+  brand_destructive: hexIssue,
+  subdomain: subdomainIssue
+};
+
+/** Every field of `form` the server would refuse, and why. */
+export function formIssues(
+  form: WorkspaceSettingsFormState
+): Partial<Record<WorkspaceFieldKey, FieldIssue>> {
+  const issues: Partial<Record<WorkspaceFieldKey, FieldIssue>> = {};
+  for (const key of FIELD_KEYS) {
+    const rule = RULES[key] as ((value: unknown) => FieldIssue | null) | undefined;
+    const issue = rule?.(form[key]);
+    if (issue) issues[key] = issue;
+  }
+  return issues;
 }

@@ -6,10 +6,10 @@ import { Markdown } from "@/components/Markdown";
 import {
   Column,
   ColumnHead,
-  EYEBROW_CLASS,
   Section,
   SectionHead
 } from "@/components/site/open-layout";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getFormatLocale } from "@/lib/datetime/server";
 import { getPlayerSlug } from "@/lib/player";
@@ -119,7 +119,7 @@ async function AboutFacts({ workspace }: Readonly<{ workspace: Workspace }>) {
   return (
     <dl className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(min(100%,180px),1fr))] gap-x-6 gap-y-3 border-y border-[color:var(--aqt-border)] py-3.5">
       <div>
-        <dt className={EYEBROW_CLASS}>{t("about.matchTime")}</dt>
+        <Eyebrow as="dt">{t("about.matchTime")}</Eyebrow>
         <dd className="mt-1 text-ui text-[color:var(--aqt-fg)]">
           {t("about.matchTimeValue", {
             zone,
@@ -129,7 +129,7 @@ async function AboutFacts({ workspace }: Readonly<{ workspace: Workspace }>) {
       </div>
       {tournament ? (
         <div>
-          <dt className={EYEBROW_CLASS}>{t("about.nextTournament")}</dt>
+          <Eyebrow as="dt">{t("about.nextTournament")}</Eyebrow>
           <dd className="mt-1 text-ui">
             <Link
               href={tournamentHref(tournament, "/rules")}

@@ -18,7 +18,8 @@ import {
   type SlotHint
 } from "@/lib/bracket/view";
 import { swissPools } from "@/lib/bracket/swiss";
-import { isEncounterCompleted } from "@/lib/encounter/status";
+import { duelSeats, type Duel, type DuelSlot } from "@/lib/encounter/seats";
+import { getEncounterWinner, isEncounterCompleted } from "@/lib/encounter/status";
 
 /** The match-number strip down a card's left edge; part of `CARD_WIDTH`. */
 export const GUTTER_WIDTH = 26;
@@ -30,38 +31,37 @@ export const MATCH_GAP_Y = 10;
 export const HEADER_HEIGHT = 24;
 // Breathing room between a round header and the first card under it.
 export const HEADER_GAP_Y = 14;
-export const SECTION_GAP_Y = 52;
+const SECTION_GAP_Y = 52;
 export const PADDING_X = 16;
 export const PADDING_Y = 14;
 // A Swiss pool's record chip ("1-0") above its cards, and the gap between pools.
 export const POOL_HEADER_HEIGHT = 30;
 export const POOL_GAP_Y = 18;
 
-export type Side = "home" | "away";
-
-export interface MatchNodeData {
-  matchNumber: number;
-  /** `M<matchNumber>`: the key a TBD slot's "W M3" hint points at. */
-  matchLabel: string;
-  homeName: string;
-  awayName: string;
-  homeSource: string | null;
-  awaySource: string | null;
-  homeTeamId: number | null;
-  awayTeamId: number | null;
+/** One row of a match card: a seat of the duel. */
+interface MatchNodeSeat {
+  name: string;
+  /** "W M3" while the seat is TBD and its source is known. */
+  source: string | null;
+  teamId: number | null;
   /**
    * This is the team's newest match in the tree — the one it is playing or
    * waiting to play. A result awaiting confirmation can leave the winner
    * standing in two open matches; "streaming now" belongs on the newer.
    */
-  homeIsLatest: boolean;
-  awayIsLatest: boolean;
-  homeScore: number;
-  awayScore: number;
-  winner: Side | null;
+  isLatest: boolean;
+  score: number;
+}
+
+interface MatchNodeData {
+  matchNumber: number;
+  /** `M<matchNumber>`: the key a TBD slot's "W M3" hint points at. */
+  matchLabel: string;
+  seats: Duel<MatchNodeSeat>;
+  winner: DuelSlot | null;
   isCompleted: boolean;
   /** Swiss: the team that floated into a better pool, and the record it brought. */
-  floatRecord: { side: Side; label: string } | null;
+  floatRecord: { slot: DuelSlot; label: string } | null;
 }
 
 export interface LayoutNode {
@@ -72,7 +72,7 @@ export interface LayoutNode {
   encounter: BracketMatch;
 }
 
-export interface LayoutEdge {
+interface LayoutEdge {
   id: string;
   path: string;
   isCompleted: boolean;
@@ -106,37 +106,32 @@ export interface BracketLayout {
 
 const NAME_SEPARATORS = [" vs. ", " vs ", " VS ", " - ", " v "];
 
-function splitEncounterName(name: string | null | undefined) {
+function splitEncounterName(name: string | null | undefined): Duel<string | null> {
   const value = name?.trim();
-  if (!value) return { homeName: null, awayName: null };
+  if (!value) return { one: null, two: null };
 
   for (const separator of NAME_SEPARATORS) {
     if (!value.includes(separator)) continue;
-    const [homeName, awayName] = value.split(separator, 2).map((part) => part.trim());
-    if (homeName && awayName) return { homeName, awayName };
+    const [one, two] = value.split(separator, 2).map((part) => part.trim());
+    if (one && two) return { one, two };
   }
 
-  return { homeName: null, awayName: null };
+  return { one: null, two: null };
 }
 
-function getMatchNames(match: BracketMatch) {
+function getMatchNames(match: BracketMatch): Duel<string> {
   const parsed = splitEncounterName(match.name);
+  const [seatOne, seatTwo] = duelSeats(match.teams);
   return {
-    homeName: match.home_team?.name?.trim() || parsed.homeName || "TBD",
-    awayName: match.away_team?.name?.trim() || parsed.awayName || "TBD"
+    one: seatOne?.name?.trim() || parsed.one || "TBD",
+    two: seatTwo?.name?.trim() || parsed.two || "TBD"
   };
 }
 
-export function getWinner(match: BracketMatch): Side | null {
-  if (!isEncounterCompleted(match)) return null;
-  if (match.score.home === match.score.away) return null;
-  return match.score.home > match.score.away ? "home" : "away";
-}
-
 function winnerTeamId(match: BracketMatch): number | null {
-  const side = getWinner(match);
-  if (side === null) return null;
-  const id = side === "home" ? match.home_team_id : match.away_team_id;
+  const winner = getEncounterWinner(match);
+  if (winner === null) return null;
+  const id = duelSeats(match.teams)[winner - 1]?.team_id ?? 0;
   return id > 0 ? id : null;
 }
 
@@ -199,6 +194,18 @@ function createNode(
   floatRecord: MatchNodeData["floatRecord"] = null
 ): LayoutNode {
   const names = getMatchNames(match);
+  const [seatOne, seatTwo] = duelSeats(match.teams);
+  const seatData = (
+    seat: (typeof match.teams)[number] | null,
+    name: string,
+    source: string | null
+  ): MatchNodeSeat => ({
+    name,
+    source: name === "TBD" ? source : null,
+    teamId: seat?.team_id != null && seat.team_id > 0 ? seat.team_id : null,
+    isLatest: seat?.team_id != null && latestMatchByTeam.get(seat.team_id) === match.id,
+    score: seat?.score ?? 0
+  });
   return {
     id: `match-${match.id}`,
     x,
@@ -206,17 +213,8 @@ function createNode(
     data: {
       matchNumber,
       matchLabel: `M${matchNumber}`,
-      homeName: names.homeName,
-      awayName: names.awayName,
-      homeSource: names.homeName === "TBD" ? hint.home : null,
-      awaySource: names.awayName === "TBD" ? hint.away : null,
-      homeTeamId: match.home_team_id > 0 ? match.home_team_id : null,
-      awayTeamId: match.away_team_id > 0 ? match.away_team_id : null,
-      homeIsLatest: latestMatchByTeam.get(match.home_team_id) === match.id,
-      awayIsLatest: latestMatchByTeam.get(match.away_team_id) === match.id,
-      homeScore: match.score.home,
-      awayScore: match.score.away,
-      winner: getWinner(match),
+      seats: { one: seatData(seatOne, names.one, hint.one), two: seatData(seatTwo, names.two, hint.two) },
+      winner: getEncounterWinner(match),
       isCompleted: isEncounterCompleted(match),
       floatRecord
     },
@@ -274,10 +272,12 @@ function addSourceEdges(
     const sources = node.encounter.sources ?? [];
     if (sources.length > 0) wired.add(node.encounter.id);
     for (const source of sources) {
-      if (source.role !== "winner" && !(includeLoserEdges && source.role === "loser")) continue;
+      // Place 1 is the winner's connector, place 2 the loser's drop.
+      const kind = source.source_position === 1 ? "winner" : "loser";
+      if (kind !== "winner" && !(includeLoserEdges && source.source_position === 2)) continue;
       const sourceNode = nodesById.get(`match-${source.encounter_id}`);
       if (!sourceNode) continue;
-      const edge = edgeBetween(sourceNode, node, source.role === "loser" ? "loser" : "winner");
+      const edge = edgeBetween(sourceNode, node, kind);
       if (seen.has(edge.id)) continue;
       seen.add(edge.id);
       edges.push(edge);
@@ -313,7 +313,7 @@ function layoutColumn(params: {
   params.headers.push({ id: headerId, x, y: headerY, label, section: headerSection, round: group.round });
 
   group.matches.forEach((match, matchIndex) => {
-    const hint = slotHints.get(match.id) ?? { home: null, away: null };
+    const hint = slotHints.get(match.id) ?? { one: null, two: null };
     const n = matchNumbers.get(match.id) ?? 0;
     params.nodes.push(
       createNode(match, x, startY + matchIndex * (CARD_HEIGHT + MATCH_GAP_Y), n, hint, latestMatchByTeam)
@@ -365,7 +365,8 @@ export function buildLayout(
   // play order across UB, LB and the finals, so "highest" is "newest".
   const latestMatchByTeam = new Map<number, number>();
   for (const match of encounters) {
-    for (const teamId of [match.home_team_id, match.away_team_id]) {
+    for (const seat of match.teams) {
+      const teamId = seat.team_id ?? 0;
       if (teamId <= 0) continue;
       const held = latestMatchByTeam.get(teamId);
       if (held === undefined || (matchNumbers.get(held) ?? 0) < (matchNumbers.get(match.id) ?? 0)) {
@@ -427,7 +428,7 @@ export function buildLayout(
               x,
               y,
               matchNumbers.get(match.id) ?? 0,
-              slotHints.get(match.id) ?? { home: null, away: null },
+              slotHints.get(match.id) ?? { one: null, two: null },
               latestMatchByTeam,
               swiss.floats.get(match.id) ?? null
             )

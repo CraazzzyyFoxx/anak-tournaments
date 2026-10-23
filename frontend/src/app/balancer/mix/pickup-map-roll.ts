@@ -1,12 +1,13 @@
-import type { MapRead } from "@/types/map.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 
 /**
  * Rolling the next map of a mix, kept pure so the panel stays presentational
  * and the odds are testable.
  *
- * The pool is the competitive catalogue (`in_competitive`): arcade-only maps
- * and modes the workspace never plays a mix on stay out unless a host picks
- * them by hand. Maps this mix has already played are skipped while any fresh
+ * The pool is the competitive catalogue: a map is in it unless `attrs.in_competitive` says `false`
+ * (a game that declares no such flag has only competitive maps), so arcade-only maps the workspace never
+ * plays a mix on stay out unless a host picks them by hand. A game without modes (League) rolls its maps
+ * directly; a map's mode, when it has one, is its `parent`. Maps this mix has already played are skipped while any fresh
  * one remains, so a night of mixes walks the pool instead of repeating.
  */
 
@@ -14,22 +15,19 @@ import type { MapRead } from "@/types/map.types";
 export type RollableMode = {
   id: number;
   name: string;
-  image_path: string;
+  image_path: string | null;
 };
 
-/** The competitive catalogue; `gamemode` is only present when the caller asked for the relation. */
-const IN_POOL = (map: MapRead) => map.in_competitive && map.gamemode != null;
+/** The competitive catalogue: absent `in_competitive` means competitive. */
+const IN_POOL = (map: CatalogEntityRead) => map.attrs.in_competitive !== false;
 
 /** Every mode with at least one competitive map, name-ordered for a stable chip row. */
-export function rollableModes(maps: readonly MapRead[]): RollableMode[] {
+export function rollableModes(maps: readonly CatalogEntityRead[]): RollableMode[] {
   const byId = new Map<number, RollableMode>();
-  for (const map of maps.filter(IN_POOL)) {
-    if (!byId.has(map.gamemode.id)) {
-      byId.set(map.gamemode.id, {
-        id: map.gamemode.id,
-        name: map.gamemode.name,
-        image_path: map.gamemode.image_path,
-      });
+  for (const { parent } of maps.filter(IN_POOL)) {
+    // A map without a mode adds no chip: there is nothing to roll within.
+    if (parent && !byId.has(parent.id)) {
+      byId.set(parent.id, { id: parent.id, name: parent.name, image_path: parent.image_path });
     }
   }
   return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -50,7 +48,7 @@ function pickOne<T>(items: readonly T[], random: () => number): T {
  * scope is fair game again. `null` when nothing qualifies.
  */
 export function rollNextMap(
-  maps: readonly MapRead[],
+  maps: readonly CatalogEntityRead[],
   {
     gamemodeId,
     playedMapIds,
@@ -60,10 +58,10 @@ export function rollNextMap(
     playedMapIds: Iterable<number>;
     random?: () => number;
   },
-): MapRead | null {
+): CatalogEntityRead | null {
   let pool = maps.filter(IN_POOL);
   if (gamemodeId != null) {
-    pool = pool.filter((map) => map.gamemode_id === gamemodeId);
+    pool = pool.filter((map) => map.parent_id === gamemodeId);
   }
   if (pool.length === 0) return null;
 
@@ -73,14 +71,15 @@ export function rollNextMap(
 
   if (gamemodeId != null) return pickOne(pool, random);
 
-  const byMode = new Map<number, MapRead[]>();
+  // Maps without a mode share one bucket (`null`), so a mode-less game is a single bucket and rolls its maps directly.
+  const byMode = new Map<number | null, CatalogEntityRead[]>();
   for (const map of pool) {
-    const bucket = byMode.get(map.gamemode_id);
+    const bucket = byMode.get(map.parent_id);
     if (bucket) bucket.push(map);
-    else byMode.set(map.gamemode_id, [map]);
+    else byMode.set(map.parent_id, [map]);
   }
   // Modes in catalogue order, so the same `random` value lands on the same
   // mode regardless of how the maps were sorted upstream.
-  const modes = [...byMode.keys()].sort((a, b) => a - b);
+  const modes = [...byMode.keys()].sort((a, b) => (a ?? -1) - (b ?? -1));
   return pickOne(byMode.get(pickOne(modes, random)) ?? [], random);
 }

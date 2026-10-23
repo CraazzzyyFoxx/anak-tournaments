@@ -20,7 +20,6 @@ total roster slots" — see ``RoleLayout::from_request`` in ``native/balancer_na
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -34,9 +33,11 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
-from shared.domain.roster_shape import DEFAULT_ROSTER_SLOTS, FLEX_SLOT_CODE, parse_roster_slots  # noqa: E402
+from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape  # noqa: E402
+from src.domain.balancer.config.defaults import AlgorithmConfig  # noqa: E402
+from src.domain.balancer.config.presets import ConfigPresets  # noqa: E402
+from src.domain.balancer.config.public_contract import PUBLIC_CONFIG_KEYS  # noqa: E402
 from src.domain.balancer.entities import Team  # noqa: E402
 from src.domain.balancer.moo_backend import _serialize_native_request  # noqa: E402
 from src.domain.balancer.player_loader import (  # noqa: E402
@@ -45,10 +46,7 @@ from src.domain.balancer.player_loader import (  # noqa: E402
 )
 from src.domain.balancer.result_serializer import teams_to_json  # noqa: E402
 from src.domain.balancer.runtime import _prepare_balance_context, balance_teams  # noqa: E402
-from src.services.balancer.config.defaults import AlgorithmConfig  # noqa: E402
-from src.services.balancer.config.presets import ConfigPresets  # noqa: E402
 from src.services.balancer.config.provider import EDITABLE_CONFIG_FIELD_KEYS  # noqa: E402
-from src.services.balancer.config.public_contract import PUBLIC_CONFIG_KEYS  # noqa: E402
 
 FLEX_ONLY_MASK = {FLEX_SLOT_CODE: 6}
 ROLE_MASK = {"tank": 1, "damage": 2, "support": 2}
@@ -280,9 +278,12 @@ def test_role_mask_is_not_an_editable_or_public_config_field() -> None:
     assert "role_mask" not in PUBLIC_CONFIG_KEYS
 
 
-def test_default_role_mask_is_the_canonical_roster_shape() -> None:
-    assert AlgorithmConfig().role_mask == DEFAULT_ROSTER_SLOTS
-    assert ConfigPresets.DEFAULT["role_mask"] == DEFAULT_ROSTER_SLOTS
+def test_no_game_shape_is_a_default_role_mask() -> None:
+    """Every run carries its owner's shape; with none there is nothing to fill, never another game's 1-2-2."""
+    assert AlgorithmConfig().role_mask == {}
+    assert ConfigPresets.DEFAULT["role_mask"] == {}
+    with pytest.raises(ValueError, match="role_mask is required"):
+        balance_teams({"players": {}})
 
 
 # ---------------------------------------------------------------------------
@@ -307,32 +308,30 @@ def test_legacy_capitalized_mask_still_resolves_player_roles() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 13. parse_roster_slots validates and canonicalizes through the roster canon
+# 13. RosterShape validates the resolved slot projection
 # ---------------------------------------------------------------------------
 
 
-def test_parse_roster_slots_normalizes_the_mask_through_the_roster_canon() -> None:
-    slots = parse_roster_slots({FLEX_SLOT_CODE: 5, "tank": 1}).slots
-
-    # Canonical order comes from ROSTER_SLOT_CODES, not from the caller.
+def test_roster_shape_preserves_the_module_role_order() -> None:
+    slots = RosterShape(entries=(("tank", 1), (FLEX_SLOT_CODE, 5))).slots
     assert list(slots.items()) == [("tank", 1), (FLEX_SLOT_CODE, 5)]
 
 
 @pytest.mark.parametrize(
     "garbage",
     [
-        {},
-        {"tank": 0},
-        {"Tank": 1, "Damage": 2, "Support": 2},
-        {"tank": "1"},
-        {"tank": 1, "healer": 2},
-        {"tank": 99},
-        [("tank", 1)],
+        (),
+        (("tank", 0),),
+        (("tank", -1),),
+        (("tank", "1"),),
+        (("tank", True),),
+        (("", 1),),
+        (("tank", 1), ("tank", 2)),
     ],
 )
-def test_parse_roster_slots_rejects_a_mask_the_canon_rejects(garbage: Any) -> None:
+def test_roster_shape_rejects_invalid_projection_entries(garbage: Any) -> None:
     with pytest.raises(ValueError):
-        parse_roster_slots(garbage)
+        RosterShape(entries=garbage)
 
 
 # ---------------------------------------------------------------------------
@@ -403,6 +402,28 @@ def test_too_many_must_play_players_raises_a_clear_error() -> None:
 
     with pytest.raises(ValueError, match="must play"):
         _prepare_balance_context(payload, None, None, role_mask={"tank": 2})
+
+
+def test_overflow_trim_benches_a_surplus_role_not_a_needed_one() -> None:
+    # A tournament pool keyed by registration id: 11 players for two 1/2/2 teams,
+    # roles tank/damage/damage/support/support by id. The loader reads them in
+    # string order ("1", "10", "11", "2", ...), so "9" -- the fourth support --
+    # sorts last; trimming it would leave 3 supports for 4 support seats. The
+    # last tank in that order ("6", the third tank) sits out instead.
+    roles = ("Tank", "Damage", "Damage", "Support", "Support")
+    payload = {
+        "players": {
+            str(index): _node(f"Player {index}", {roles[(index - 1) % 5]: _class(2000 + index, 0)})
+            for index in range(1, 12)
+        }
+    }
+
+    context = _prepare_balance_context(payload, None, None, role_mask=ROLE_MASK)
+
+    assert context.num_teams == 2
+    assert len(context.players) == 10
+    assert [player.uuid for player in context.overflow_benched] == ["6"]
+    assert sum(player.can_play("support") for player in context.players) == 4
 
 
 # ---------------------------------------------------------------------------

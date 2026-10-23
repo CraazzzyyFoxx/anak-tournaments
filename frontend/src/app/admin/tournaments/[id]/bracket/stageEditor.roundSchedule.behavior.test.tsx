@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 //
-// The stage editor's Round schedule section (P7, wireframes §7 DATA box).
+// The Round schedule block of the stage editor's Settings page (P7,
+// wireframes §7 DATA box).
 //
 // A match carried only a round number; organizers published times in Discord
 // and the public page could not group matches by day. The minimal model is one
@@ -11,11 +12,12 @@
 //  1. the rows are the rounds the stage's MATCHES carry, named the way the
 //     bracket names them (a lower-bracket round is "LB Round 1", not "-1"), and
 //     another stage's matches never leak in;
-//  2. Apply writes the chosen time to every match of that round — one PATCH per
-//     match — and refreshes the views that render it;
-//  3. a match moved on its own is not silently overwritten: applying its round
-//     asks first. Confirming overwrites it; cancelling keeps it and still
-//     schedules the rest, which is the whole point of the question.
+//  2. a round time is a draft of the editor's one SaveBar: Save writes it to
+//     every match of that round — one PATCH per match — together with the
+//     stage's own fields, and refreshes the views that render it;
+//  3. a match moved on its own is not silently overwritten: the save asks
+//     first. Confirming overwrites it; cancelling keeps it and still schedules
+//     the rest, which is the whole point of the question.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
@@ -41,6 +43,7 @@ const getStagesProgress = vi.fn();
 const getTeams = vi.fn();
 const getEncounters = vi.fn();
 const updateEncounter = vi.fn();
+const updateStage = vi.fn();
 const invalidateWorkspace = vi.fn();
 
 vi.mock("@/services/admin.service", () => ({
@@ -49,7 +52,7 @@ vi.mock("@/services/admin.service", () => ({
     getTournament: (...args: unknown[]) => getTournament(...args),
     getStagesProgress: (...args: unknown[]) => getStagesProgress(...args),
     updateEncounter: (...args: unknown[]) => updateEncounter(...args),
-    updateStage: vi.fn(),
+    updateStage: (...args: unknown[]) => updateStage(...args),
     getStagePlannedRounds: vi.fn().mockResolvedValue([])
   }
 }));
@@ -76,18 +79,27 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
   usePathname: () => "/admin/tournaments/84/bracket",
   useParams: () => ({ id: "84" }),
-  useSearchParams: () => new URLSearchParams("stage=10&section=schedule")
+  useSearchParams: () => new URLSearchParams("stage=10")
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ href, children, ...rest }: { href: string; children: unknown }) => (
+  default: ({
+    href,
+    children,
+    prefetch: _prefetch,
+    ...rest
+  }: {
+    href: string;
+    children: unknown;
+    prefetch?: boolean | null;
+  }) => (
     <a href={href} {...rest}>
       {children as never}
     </a>
   )
 }));
 
-// Partial: the section's query reads the real key factory from this module.
+// Partial: the schedule's query reads the real key factory from this module.
 vi.mock("@/lib/tournament/workspace-query-keys", async (importOriginal) => ({
   ...((await importOriginal()) as object),
   invalidateTournamentWorkspace: (...args: unknown[]) => invalidateWorkspace(...args)
@@ -110,16 +122,21 @@ function playoffStage(): Stage {
     is_completed: false,
     ranking_preset: null,
     tiebreak_order: null,
-    scoring: { win: null, draw: null, loss: null },
-    swiss_bye_points: null,
-    de_grand_final_type: "no_reset",
-    seed_ranking: "slot",
-    best_of: { default: 3, by_round: {}, final: null },
-    ffa_scoring: {
+    scoring: {
+      win: null,
+      draw: null,
+      loss: null,
+      preset: "points",
       columns: [{ key: "score", label: "Счёт", public: true, better: "higher" }],
       placement_points: [],
       formula: "score"
     },
+    swiss_bye_points: null,
+    swiss_qualify_wins: null,
+    swiss_eliminate_losses: null,
+    de_grand_final_type: "no_reset",
+    seed_ranking: "slot",
+    best_of: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
     challonge_id: null,
     challonge_slug: null,
     items: [
@@ -171,9 +188,13 @@ function encounter(
     scheduled_at: scheduledAt,
     started_at: null,
     ended_at: null,
+    played_at: null,
+    is_live: false,
+    is_final: false,
     current_map_index: null,
     confirmed_at: null,
     matches: [],
+    teams: [],
     home_team: { id: 1, name: "Alpha" } as Encounter["home_team"],
     away_team: { id: 2, name: "Bravo" } as Encounter["away_team"],
     tournament: { id: 84, name: "Cup" } as Encounter["tournament"],
@@ -285,13 +306,25 @@ function todayAt(time: string): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${time}`;
 }
 
-/** The row's Apply button — the picker owns the other buttons in the row. */
-function applyButton(label: string): HTMLButtonElement {
-  const button = [...row(label).querySelectorAll("button")].find(
-    (element) => (element.textContent ?? "").trim() === "Apply"
-  );
-  if (!button) throw new Error(`no apply button for "${label}"`);
+/** The SaveBar's primary button: the round times save with the rest of the stage. */
+function saveButton(): HTMLButtonElement {
+  const button = [
+    ...(container
+      .querySelector('[role="region"][aria-label="Unsaved changes"]')
+      ?.querySelectorAll("button") ?? [])
+  ].find((element) => (element.textContent ?? "").trim() === "Save changes");
+  if (!(button instanceof HTMLButtonElement)) throw new Error("the SaveBar is not showing");
   return button;
+}
+
+/** The input a visible `<label>` names. */
+function field(text: string): HTMLInputElement {
+  const label = [...container.querySelectorAll("label")].find(
+    (element) => (element.textContent ?? "").trim() === text
+  );
+  const input = label ? document.getElementById(label.htmlFor) : null;
+  if (!(input instanceof HTMLInputElement)) throw new Error(`no field labelled "${text}"`);
+  return input;
 }
 
 /** Types into a controlled input the way React hears it. */
@@ -346,12 +379,6 @@ describe("Stage editor round schedule", () => {
     expect(row("UB Round 1").textContent).toContain("4");
     // The moved match is called out where the count is.
     expect(row("UB Semifinal").textContent).toContain("1 moved");
-    // Reachable: the editor lists it beside the other stage sections.
-    expect(
-      [...container.querySelectorAll("nav a")].some(
-        (anchor) => (anchor.textContent ?? "").trim() === "Round schedule"
-      )
-    ).toBe(true);
   });
 
   it("prefills a round with the time its matches already share", async () => {
@@ -367,12 +394,16 @@ describe("Stage editor round schedule", () => {
     );
   });
 
-  it("writes the chosen time to every match of the round, one request each", async () => {
+  it("writes nothing until Save, then the chosen time to every match of the round", async () => {
     await mount();
 
     // An empty picker takes today's date, so the clock alone names an instant.
     await type(timeField("UB Round 1"), "18:00");
-    await click(applyButton("UB Round 1"));
+
+    expect(updateEncounter).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Unsaved changes: Round schedule");
+
+    await click(saveButton());
 
     const expected = zonedInputToUtc(todayAt("18:00"), VIEWER_ZONE);
     expect(patches()).toEqual([
@@ -381,14 +412,34 @@ describe("Stage editor round schedule", () => {
       [3, expected],
       [4, expected]
     ]);
+    // Nothing about the stage itself changed, so it is not sent.
+    expect(updateStage).not.toHaveBeenCalled();
     // The bracket and the matches views render these times.
     expect(invalidateWorkspace).toHaveBeenCalled();
+  });
+
+  it("saves the stage and its round times in one go, the stage first", async () => {
+    await mount();
+    updateStage.mockResolvedValue({ ...playoffStage(), name: "Finals" });
+
+    await type(field("Name"), "Finals");
+    await type(timeField("UB Round 1"), "18:00");
+    await click(saveButton());
+
+    expect(updateStage).toHaveBeenCalledTimes(1);
+    expect(updateStage.mock.calls[0][1]).toMatchObject({ name: "Finals" });
+    expect(patches().map(([id]) => id)).toEqual([1, 2, 3, 4]);
+    expect(updateStage.mock.invocationCallOrder[0]).toBeLessThan(
+      updateEncounter.mock.invocationCallOrder[0]
+    );
   });
 
   it("asks before overwriting a match that was moved on its own", async () => {
     await mount();
 
-    await click(applyButton("UB Semifinal"));
+    // Minutes no zone offset can turn into either saved whole-hour time.
+    await type(timeField("UB Semifinal"), "20:07");
+    await click(saveButton());
 
     // Nothing written yet — the question comes first.
     expect(updateEncounter).not.toHaveBeenCalled();
@@ -409,7 +460,8 @@ describe("Stage editor round schedule", () => {
   it("keeps the moved match and still schedules the rest when the question is declined", async () => {
     await mount();
 
-    await click(applyButton("UB Semifinal"));
+    await type(timeField("UB Semifinal"), "20:07");
+    await click(saveButton());
     await click(dialogButton("Cancel"));
 
     expect(patches().map(([id]) => id)).toEqual([5]);

@@ -5,21 +5,22 @@ import { Calendar, Clock, Network, Trophy } from "lucide-react";
 import {
   Column,
   ColumnHead,
-  EmptyNote,
   Facts,
   Fact,
   Feat,
   FEAT_META_CLASS,
   FEAT_NAME_CLASS,
   LiveDot,
-  LoadError,
   MoreLink,
-  PlainPill,
+  OpenEmptyRow,
+  OpenLoadError,
   Roster,
   Section,
   SectionHead
 } from "@/components/site/open-layout";
 import { owtButton } from "@/components/site/owt-button";
+import { Badge } from "@/components/ui/badge";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getFormatter } from "@/lib/datetime/server";
 import { getPlayerSlug } from "@/lib/player";
@@ -128,7 +129,7 @@ export async function NowInCommunity({ workspace }: Readonly<{ workspace: Worksp
   } catch {
     return (
       <Shell workspace={workspace}>
-        <LoadError what={t("now.what")} dashed />
+        <OpenLoadError what={t("now.what")} dashed />
       </Shell>
     );
   }
@@ -151,7 +152,7 @@ export async function NowInCommunity({ workspace }: Readonly<{ workspace: Worksp
         ) : finished[0] ? (
           <LeadFinished row={finished[0]} />
         ) : (
-          <EmptyNote>{t("now.noTournaments")}</EmptyNote>
+          <OpenEmptyRow>{t("now.noTournaments")}</OpenEmptyRow>
         )}
         <Column>
           <ColumnHead
@@ -159,7 +160,7 @@ export async function NowInCommunity({ workspace }: Readonly<{ workspace: Worksp
             sub={firstYear === null ? undefined : t("now.pastSince", { year: firstYear })}
           />
           {chronicle.length === 0 ? (
-            <EmptyNote>{t("now.noPast")}</EmptyNote>
+            <OpenEmptyRow>{t("now.noPast")}</OpenEmptyRow>
           ) : (
             <ol className="mt-4">
               {chronicle.map((row, index) => (
@@ -366,11 +367,11 @@ async function ChronicleRow({
 
   return (
     <li className="grid grid-cols-[96px_minmax(0,1fr)] gap-4 max-[639px]:grid-cols-1 max-[639px]:gap-1">
-      <div className="pt-[3px] font-[family-name:var(--aqt-data)] text-label font-semibold uppercase leading-[1.25] tracking-label text-[color:var(--aqt-fg-faint)] max-[639px]:pl-6">
+      <Eyebrow as="div" className="pt-[3px] leading-[1.25] max-[639px]:pl-6">
         <time dateTime={start.toISOString()} title={longDate(format, start)}>
           {monthYear(format, start)}
         </time>
-      </div>
+      </Eyebrow>
       <div
         className={`relative min-w-0 border-l border-[color:var(--aqt-border)] pl-6 ${last ? "pb-1" : "pb-[22px]"}`}
       >
@@ -386,7 +387,11 @@ async function ChronicleRow({
           >
             {tournament.name}
           </Link>
-          {tournament.is_league ? <PlainPill>{tSite("league")}</PlainPill> : null}
+          {tournament.is_league ? (
+            <Badge palette="aqt" tone="neutral" voice="label">
+              {tSite("league")}
+            </Badge>
+          ) : null}
         </div>
         {winner ? (
           <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3.5 gap-y-1 text-caption text-[color:var(--aqt-fg-muted)]">

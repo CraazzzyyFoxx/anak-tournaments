@@ -9,17 +9,19 @@ from __future__ import annotations
 
 import typing
 
-from src.services.balancer.config.defaults import (
+from src.domain.balancer.config.defaults import (
     MIX_ONLY_ROLE_FIELDS,
     AlgorithmConfig,
     RoleSettings,
+    declared_role_settings,
+    default_role_settings,
     field_control,
     field_limits,
     field_ui,
     tournament_role_settings,
 )
-from src.services.balancer.config.presets import ConfigPresets
-from src.services.balancer.config.public_contract import (
+from src.domain.balancer.config.presets import ConfigPresets
+from src.domain.balancer.config.public_contract import (
     RETIRED_CONFIG_KEYS,
     ConfigOverrides,
     normalize_config_payload,
@@ -85,6 +87,10 @@ def normalize_tournament_config_payload(config_payload: dict[str, typing.Any] | 
             for code, settings in role_settings.items()
             if (kept := {key: value for key, value in settings.items() if key not in MIX_ONLY_ROLE_FIELDS})
         }
+    if settings := config.get("open_slot_settings"):
+        config["open_slot_settings"] = {
+            key: value for key, value in settings.items() if key not in MIX_ONLY_ROLE_FIELDS
+        }
     return config
 
 
@@ -109,24 +115,35 @@ def build_config_fields(defaults: dict[str, typing.Any]) -> list[dict[str, typin
             "default": defaults.get(name),
             "limits": CONFIG_LIMITS.get(name),
         }
-        if control == "roles":
+        if control in {"roles", "open_slot"}:
             row["columns"] = ROLE_SETTING_COLUMNS
         rows.append(row)
     return rows
 
 
-def get_balancer_config_payload() -> dict[str, typing.Any]:
-    config = AlgorithmConfig()
+def get_balancer_config_payload(discipline: str | None) -> dict[str, typing.Any]:
+    """The drawer's defaults, limits, presets and fields for one game.
+
+    Role weights are the game's declaration (``DisciplineSpec.balancer_role_settings``): its ``default`` seeds the
+    defaults and the ``DEFAULT`` preset, each named preset adds its own role tweaks. No (or an unknown) game draws
+    every role neutral -- never another game's weights.
+    """
+    config = AlgorithmConfig(role_settings=default_role_settings(discipline))
     # The drawer edits the tournament projection, so the defaults it draws must be
     # that same projection -- not the mix engine's copy of the per-role weights.
-    defaults = serialize_algorithm_config(config) | {"role_settings": tournament_role_settings(config.role_settings)}
+    defaults = serialize_algorithm_config(config) | {
+        "role_settings": tournament_role_settings(config.role_settings),
+        "open_slot_settings": config.open_slot_settings.model_dump(exclude=MIX_ONLY_ROLE_FIELDS),
+    }
+    presets: dict[str, typing.Any] = {}
+    for name, value in ConfigPresets.__dict__.items():
+        if not (name.isupper() and isinstance(value, dict)):
+            continue
+        roles = declared_role_settings(discipline, "default" if name == "DEFAULT" else name)
+        presets[name] = normalize_config_payload({**value, "role_settings": roles} if roles else value)
     return {
         "defaults": defaults,
         "limits": CONFIG_LIMITS,
-        "presets": {
-            name: normalize_config_payload(value)
-            for name, value in ConfigPresets.__dict__.items()
-            if name.isupper() and isinstance(value, dict)
-        },
+        "presets": presets,
         "fields": build_config_fields(defaults),
     }

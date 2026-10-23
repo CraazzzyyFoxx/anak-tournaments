@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import { Settings2 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -61,13 +62,10 @@ export function CategorizedColumnPicker<
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button
-          type="button"
-          className="flex h-8 items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-3 text-xs text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]"
-        >
-          <Settings2 className="size-3.5" aria-hidden />
+        <Button type="button" variant="outline" size="sm">
+          <Settings2 aria-hidden />
           {triggerLabel}
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-56 p-3">
         <div className="space-y-3">
@@ -108,13 +106,9 @@ export function CategorizedColumnPicker<
             );
           })}
 
-          <button
-            type="button"
-            onClick={onReset}
-            className="w-full rounded px-2 py-1 text-label text-[color:var(--aqt-fg-dim)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg-muted)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
-          >
+          <Button type="button" variant="ghost" size="sm" className="w-full" onClick={onReset}>
             {resetLabel}
-          </button>
+          </Button>
         </div>
       </PopoverContent>
     </Popover>

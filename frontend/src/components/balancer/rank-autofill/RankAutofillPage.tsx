@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, ChevronUp, Search } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { adminQueryKeys } from "@/lib/admin/query-keys";
+import adminService from "@/services/admin.service";
 
 import {
   defaultRankAutofillStages,
@@ -19,7 +21,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
-import { EYEBROW_CLASS, TONE_TEXT } from "@/components/kit/tone";
+import { TONE_TEXT } from "@/components/ui/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import balancerAdminService from "@/services/balancer-admin.service";
 import type {
   RegistrationRankAutofillRequest,
@@ -42,9 +45,16 @@ function useDebouncedValue<T>(value: T, delay: number): T {
 
 // D25: rendered by both the hub sub-route (tournament from the path) and the
 // legacy balancer route (tournament from the ?tournament query) until T14.
-export default function RankAutofillPage({ tournamentId }: Readonly<{ tournamentId: number | null }>) {
+export default function RankAutofillPage({
+  tournamentId
+}: Readonly<{ tournamentId: number | null }>) {
   const t = useTranslations();
   const queryClient = useQueryClient();
+  const tournamentQuery = useQuery({
+    queryKey: adminQueryKeys.tournament(tournamentId),
+    queryFn: () => adminService.getTournament(tournamentId!),
+    enabled: tournamentId !== null
+  });
 
   const [stages, setStages] = useState(() => defaultRankAutofillStages());
   const [overwriteExisting, setOverwriteExisting] = useState(false);
@@ -292,7 +302,7 @@ export default function RankAutofillPage({ tournamentId }: Readonly<{ tournament
             <div className="flex shrink-0 items-center divide-x divide-[color:var(--aqt-border)] rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)]">
               {stats.map(({ label, value, color }) => (
                 <div key={label} className="px-3 py-2 text-center">
-                  <div className={EYEBROW_CLASS}>{label}</div>
+                  <div className={eyebrowClass("muted")}>{label}</div>
                   <div
                     className={cn(
                       "text-base font-semibold tabular-nums",
@@ -311,10 +321,11 @@ export default function RankAutofillPage({ tournamentId }: Readonly<{ tournament
             <div className="relative min-w-[180px] flex-1 sm:max-w-xs">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--aqt-fg-dim)]" />
               <Input
+                size="sm"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={t("rankAutofill.searchPlaceholder")}
-                className="h-8 pl-8 text-xs"
+                className="pl-8"
               />
             </div>
             <label className="flex cursor-pointer items-center gap-2">
@@ -340,8 +351,10 @@ export default function RankAutofillPage({ tournamentId }: Readonly<{ tournament
               </Alert>
             ) : (
               <RankAutofillPreviewTables
-                preview={previewQuery.data}
-                loading={previewQuery.isFetching}
+                discipline={tournamentQuery.data?.discipline}
+                workspaceId={tournamentQuery.data?.workspace_id}
+                preview={tournamentQuery.data ? previewQuery.data : undefined}
+                loading={previewQuery.isFetching || tournamentQuery.isPending}
                 search={search}
                 mismatchOnly={mismatchOnly}
                 selectedIds={selectedIds}

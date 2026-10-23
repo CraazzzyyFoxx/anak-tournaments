@@ -24,13 +24,10 @@ though the link was persisted.
 from __future__ import annotations
 
 import importlib
-import os
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
-
-os.environ.setdefault("DEBUG", "true")
 
 registry = importlib.import_module("src.services.admin.registry")
 team_flows = importlib.import_module("src.services.team.flows")
@@ -38,9 +35,12 @@ tournament_flows = importlib.import_module("src.services.tournament.flows")
 
 from sqlalchemy.orm import make_transient_to_detached  # noqa: E402
 
+from shared import models  # noqa: E402
+from shared.core import enums  # noqa: E402
 from shared.division_grid import DEFAULT_GRID  # noqa: E402
-from src import models  # noqa: E402
-from src.core import enums  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
+from shared.schemas.role import RoleRef  # noqa: E402
+from shared.schemas.roster_slots import RosterShapeRead  # noqa: E402
 
 
 def _player() -> SimpleNamespace:
@@ -50,9 +50,7 @@ def _player() -> SimpleNamespace:
             "created_at": None,
             "updated_at": None,
             "name": "Roster Player",
-            "sub_role": None,
             "rank": 1500,
-            "role": "damage",
             "tournament_id": 78,
             "team_id": 9,
             "is_newcomer": False,
@@ -62,6 +60,7 @@ def _player() -> SimpleNamespace:
             "workspace_member_id": 555,
         },
         rank=1500,
+        role_ref=RoleRef(dimension="player_role", role="damage"),
         tournament_id=78,
         # The nested `.player` is the real `User` row `player_to_read` serializes
         # through `user_to_read`, so it needs every column `UserRead` requires --
@@ -116,6 +115,7 @@ def _tournament(tournament_id: int = 91_001) -> models.Tournament:
         allow_late_registration=False,
         discord_broadcasts_enabled=True,
         discord_dms_enabled=True,
+        logs_official=False,
         win_points=1.0,
         draw_points=0.5,
         loss_points=0.0,
@@ -123,7 +123,7 @@ def _tournament(tournament_id: int = 91_001) -> models.Tournament:
         division_grid_version_id=5,
         # Plain columns the serializer reads: unset on a detached instance means
         # a refresh attempt, not NULL.
-        roster_slots_json=None,
+        discipline="overwatch",
         draft_format_json=None,
         rules=None,
         cover_image_url=None,
@@ -143,6 +143,16 @@ class _NullSession:
 
 
 class SerTournamentChallongeTests(IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        shape = RosterShapeRead.from_shape(RosterShape(entries=(("flex", 5),)), source="preset")
+        self.enterContext(
+            patch.object(
+                tournament_flows,
+                "tournament_shape_reads",
+                AsyncMock(side_effect=lambda _session, rows: {row.id: shape for row in rows}),
+            )
+        )
+
     async def test_ser_tournament_emits_the_derived_challonge_link(self) -> None:
         tournament = _tournament()
         resolve = AsyncMock(return_value={tournament.id: (12345, "owt-64")})

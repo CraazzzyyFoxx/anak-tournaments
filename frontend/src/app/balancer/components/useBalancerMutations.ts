@@ -2,6 +2,7 @@
 
 import type { QueryClient } from "@tanstack/react-query";
 import { useMutation } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import type React from "react";
 import type { JobAction } from "./useBalancerJob";
 import { parseImportedBalancePayload } from "./balance-import";
@@ -11,11 +12,15 @@ import {
   type BalanceVariant
 } from "@/components/balancer/workspace-helpers";
 import type { PlayerValidationState } from "@/components/balancer/balancer-page-helpers";
-import { buildRegistrationUpdateFromPlayerPayload } from "@/components/balancer/registration-update-payload";
+import {
+  buildRegistrationUpdateFromPlayerPayload,
+  RatedDimensionUnknownError
+} from "@/components/balancer/registration-update-payload";
 import balancerAdminService from "@/services/balancer-admin.service";
 import balancerService from "@/services/balancer.service";
 import type {
   AdminRegistration,
+  AdminRegistrationUpdateInput,
   BalanceExportResponse,
   BalancerPlayerRecord,
   BalancerPlayerUpdateInput,
@@ -47,6 +52,10 @@ type UseBalancerMutationsOptions = {
   isConfigDirty: boolean;
   onTournamentConfigSaved: (config: BalancerConfig) => void;
   activeVariant: BalanceVariant | null;
+  /** The owner game's slot codes (role codes and the open slot) a balance file may carry; `null` while its roles load. */
+  slotCodes: readonly string[] | null;
+  /** The owner game's rated role dimension a player-sheet save writes its role entries in; `null` while its roles load. */
+  ratedDimension: string | null;
   /**
    * Called once a balance job is created so the realtime layer can attach the
    * run-local context (skipped count, config) to the eventual `succeeded`
@@ -133,8 +142,12 @@ export function useBalancerMutations({
   isConfigDirty,
   onTournamentConfigSaved,
   activeVariant,
-  onJobCreated
+  onJobCreated,
+  slotCodes,
+  ratedDimension
 }: UseBalancerMutationsOptions) {
+  const t = useTranslations("balancerTool.page");
+  const tImport = useTranslations("balancerTool.page.importErrors");
   const invalidateRegistrations = () =>
     queryClient.invalidateQueries({ queryKey: balancerQueryKeys.registrations(tournamentId) });
 
@@ -168,10 +181,19 @@ export function useBalancerMutations({
         tournamentId
       ]);
       const existingReg = cachedRegistrations?.find((r) => r.id === playerId);
-      const registrationPatch = buildRegistrationUpdateFromPlayerPayload(
-        payload,
-        existingReg?.roles
-      );
+      let registrationPatch: AdminRegistrationUpdateInput;
+      try {
+        registrationPatch = buildRegistrationUpdateFromPlayerPayload(
+          payload,
+          existingReg?.roles,
+          ratedDimension
+        );
+      } catch (error) {
+        // The global mutation toast shows the message as is, so word it for the reader.
+        throw error instanceof RatedDimensionUnknownError
+          ? new Error(t("errors.ratedDimensionUnknown"))
+          : error;
+      }
       let updated: AdminRegistration | null = null;
       if (Object.keys(registrationPatch).length > 0) {
         updated = await balancerAdminService.updateRegistration(playerId, registrationPatch);
@@ -188,7 +210,7 @@ export function useBalancerMutations({
       } else {
         await invalidateRegistrations();
       }
-      notify.success("Registration updated");
+      notify.success(t("toasts.registrationUpdated"));
     }
   });
 
@@ -198,7 +220,7 @@ export function useBalancerMutations({
     onSuccess: (registration) => {
       patchRegistrationInCache(registration);
       setEditingPlayerId(null);
-      notify.success("Registration excluded from balancer");
+      notify.success(t("toasts.registrationExcluded"));
     }
   });
 
@@ -212,11 +234,11 @@ export function useBalancerMutations({
       if (variables.isInPool) {
         notify.success(
           registration.balancer_status === "ready"
-            ? "Registration moved to Ready"
-            : "Registration included in balancer, but marked Incomplete -- not every active role has a rank yet"
+            ? t("toasts.registrationReady")
+            : t("toasts.registrationIncomplete")
         );
       } else {
-        notify.success("Registration excluded from balancer");
+        notify.success(t("toasts.registrationExcluded"));
       }
     }
   });
@@ -226,13 +248,13 @@ export function useBalancerMutations({
       balancerAdminService.setBalancerStatus(playerId, balancerStatus),
     onSuccess: (registration) => {
       patchRegistrationInCache(registration);
-      notify.success("Balancer status updated");
+      notify.success(t("toasts.statusUpdated"));
     }
   });
 
   const bulkPoolMembershipMutation = useMutation({
     mutationFn: async ({ playerIds, isInPool }: { playerIds: number[]; isInPool: boolean }) => {
-      if (!tournamentId) throw new Error("Select a tournament first");
+      if (!tournamentId) throw new Error(t("errors.noTournament"));
       const result = isInPool
         ? await balancerAdminService.bulkAddToBalancer(tournamentId, playerIds)
         : await balancerAdminService.bulkSetBalancerStatus(tournamentId, {
@@ -247,7 +269,7 @@ export function useBalancerMutations({
       // impossible; refetch the registrations list in the background instead.
       void invalidateRegistrations();
       notify.success(
-        `${result.updated} registration${result.updated !== 1 ? "s" : ""} ${result.isInPool ? "included" : "excluded"}`
+        t(result.isInPool ? "toasts.bulkIncluded" : "toasts.bulkExcluded", { count: result.updated })
       );
     }
   });
@@ -269,9 +291,7 @@ export function useBalancerMutations({
     },
     onSuccess: (result) => {
       result.registrations.forEach(patchRegistrationInCache);
-      notify.success(
-        `${result.updated} balancer status${result.updated !== 1 ? "es" : ""} updated`
-      );
+      notify.success(t("toasts.bulkStatusUpdated", { count: result.updated }));
     }
   });
 
@@ -309,11 +329,11 @@ export function useBalancerMutations({
 
   const buildActiveBalanceSaveInput = (): BalanceSaveInput => {
     if (!tournamentId || !activeVariant) {
-      throw new Error("No balance selected");
+      throw new Error(t("errors.noBalance"));
     }
 
     if (activeVariant.payload.teams.length === 0) {
-      throw new Error("Selected balance does not contain teams");
+      throw new Error(t("errors.noTeams"));
     }
 
     const sanitizedDraftConfig = sanitizeBalancerConfig(draftConfig);
@@ -332,7 +352,7 @@ export function useBalancerMutations({
 
   const saveActiveBalance = async (): Promise<SavedBalance> => {
     if (!tournamentId) {
-      throw new Error("Select a tournament first");
+      throw new Error(t("errors.noTournament"));
     }
 
     return balancerAdminService.saveBalance(tournamentId, buildActiveBalanceSaveInput());
@@ -346,15 +366,15 @@ export function useBalancerMutations({
 
   const runBalanceMutation = useMutation({
     mutationFn: async () => {
-      if (!tournamentId) throw new Error("Select a tournament first");
+      if (!tournamentId) throw new Error(t("errors.noTournament"));
       if (!excludeInvalidPlayers && invalidPlayerStates.length > 0) {
-        throw new Error("Resolve all pool player validation issues before balancing");
+        throw new Error(t("errors.unresolvedIssues"));
       }
       // The pool the server balances is the tournament's own, resolved by the
       // roster engine. The client only decides whether the run is allowed and
       // which config to send.
       const playersForBalance = excludeInvalidPlayers ? readyPlayers : poolPlayers;
-      if (playersForBalance.length === 0) throw new Error("No players available to balance");
+      if (playersForBalance.length === 0) throw new Error(t("errors.noPlayers"));
       const sanitizedDraftConfig = sanitizeBalancerConfig(draftConfig);
       let config =
         Object.keys(sanitizedDraftConfig).length > 0
@@ -385,7 +405,7 @@ export function useBalancerMutations({
       dispatchJob({
         type: "update",
         status: job.status,
-        message: "Balance job created",
+        message: t("job.created"),
         progress: 0
       });
       onJobCreated(job.job_id, { skipped, config });
@@ -401,7 +421,7 @@ export function useBalancerMutations({
         queryKey: balancerQueryKeys.publicBalance(tournamentId)
       });
       applySavedBalanceVariant(savedBalance);
-      notify.success("Final balance saved");
+      notify.success(t("toasts.balanceSaved"));
     }
   });
 
@@ -424,8 +444,14 @@ export function useBalancerMutations({
     },
     onSuccess: ({ savedBalance, exportResult }) => {
       applySavedBalanceVariant(savedBalance);
-      notify.success("Teams exported to tournament", {
-        description: `${exportResult.imported_teams} teams created.`
+      const showResult = exportResult.advisories.length ? notify.warning : notify.success;
+      showResult(t("toasts.teamsExported"), {
+        description: [
+          t("toasts.teamsCreated", { count: exportResult.imported_teams }),
+          ...exportResult.advisories
+        ].join("\n"),
+        duration: exportResult.advisories.length ? Infinity : undefined,
+        classNames: { description: "whitespace-pre-line" }
       });
     }
   });
@@ -440,27 +466,29 @@ export function useBalancerMutations({
       return result;
     },
     onSuccess: (result) => {
-      notify.success("Ranks re-exported", {
-        description: `${result.updated_players} player ranks updated.`
+      notify.success(t("toasts.ranksExported"), {
+        description: t("toasts.ranksUpdated", { count: result.updated_players })
       });
     },
-    onError: (error) => notify.apiError(error, { title: "Rank re-export failed" })
+    onError: (error) => notify.apiError(error, { title: t("toasts.ranksExportFailed") })
   });
 
   // Import loads the file as another variant — creating tournament teams stays an
   // explicit Save / Export to Tournament step, same as for a generated balance.
   const importBalanceMutation = useMutation({
     mutationFn: async ({ file, onStageChange }: ImportBalanceVariables) => {
-      if (!tournamentId) throw new Error("Select a tournament first");
+      if (!tournamentId) throw new Error(t("errors.noTournament"));
+      if (!slotCodes) throw new Error(t("errors.rolesLoading"));
 
       const payload = await runReportedStage("read", onStageChange, async () =>
-        parseImportedBalancePayload(await file.text())
+        parseImportedBalancePayload(await file.text(), slotCodes, tImport)
       );
 
       return runReportedStage("load", onStageChange, async () => {
         const variant: BalanceVariant = {
           id: `imported-${Date.now()}`,
           label: `Imported ${file.name}`,
+          labelSource: { kind: "imported", fileName: file.name },
           payload,
           source: "imported"
         };
@@ -470,8 +498,8 @@ export function useBalancerMutations({
       });
     },
     onSuccess: ({ teamCount }) => {
-      notify.success("Balance loaded from JSON", {
-        description: `${teamCount} teams ready to review — save or export when it looks right.`
+      notify.success(t("toasts.balanceImported"), {
+        description: t("toasts.balanceImportedDescription", { count: teamCount })
       });
     }
   });

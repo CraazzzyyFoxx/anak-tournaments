@@ -3,8 +3,7 @@
 Resolves the configured chain of rank sources (OW weekly composite, balancer
 division history, tournament analytics history — see ``rank_sources``), builds
 the per-registration preview plan and, on ``apply``, writes the chosen ranks
-back and optionally adds ready registrations to the balancer. Everything here
-is re-exported by the ``admin`` facade.
+back and optionally adds ready registrations to the balancer.
 """
 
 from __future__ import annotations
@@ -17,12 +16,13 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.balancer_registration_statuses import is_balancer_status_excluded
+from shared import models
 from shared.core.social import SocialProvider
-from shared.division_grid import DivisionGrid
+from shared.disciplines import discipline
 from shared.domain.roster import PlayerRoster
+from shared.registration_statuses import is_balancer_status_excluded
+from shared.schemas.identity import PlayerIdentityRead
 from shared.services.roster import roster_engine
-from src import models
 from src.services.registration._common import (
     RegistrationCommonService,
     _common_service,
@@ -32,13 +32,11 @@ from src.services.registration._common import (
 )
 from src.services.registration.rank_sources import (
     OW_RANK_WEEK_WINDOW,
-    RANK_ROLE_BY_REGISTRATION_ROLE,
-    REGISTRATION_ROLE_LABELS,
     RankSourcesService,
     _build_priority_rank_data,
     _OwRankSignals,
     _RankData,
-    primary_battlenet_key,
+    primary_identity_key,
     rank_sources_service,
 )
 
@@ -56,6 +54,15 @@ class _ResolvedAutofillStage:
     lookback_tournaments: int | None = None
     lookback_days: int | None = None
     ow_value: str = "composite"
+
+
+def autofill_sources(enabled: set[str], discipline_code: str | None) -> set[str]:
+    """The enabled stages a tournament of ``discipline_code`` can draw on: the ``ow`` stage is the game's native layer
+    — OverFast for a Battle.net game, the module's ``native_ranks`` otherwise — so a game whose module declares none
+    never gets it."""
+    if discipline_code is None or discipline(discipline_code).native_ranks is None:
+        return enabled - {"ow"}
+    return enabled
 
 
 def _rank_snapshot_payload(snapshot: models.UserRankSnapshot | _RankData | Any | None) -> dict[str, Any]:
@@ -93,11 +100,12 @@ def _rank_snapshot_payload(snapshot: models.UserRankSnapshot | _RankData | Any |
 
 
 def build_registration_rank_autofill_plan(
-    registration: models.BalancerRegistration | Any,
+    registration: models.Registration | Any,
     rank_snapshots_by_role: dict[str, models.UserRankSnapshot | Any],
     *,
     roster: PlayerRoster | None,
-    battle_tag_linked: bool,
+    provider: str | None,
+    identity_linked: bool,
     overwrite_existing: bool,
     allow_partial: bool = False,
     applied: bool = False,
@@ -105,12 +113,12 @@ def build_registration_rank_autofill_plan(
     """Build the rank autofill preview row and pending role updates.
 
     The role set is the registration's resolved ``roster`` -- every role the
-    tournament has it declaring, in priority order, playable or not. Reading the
-    raw ``is_active`` column instead is what used to make autofill skip exactly
-    the rows it exists to fill: under a non-optional flex mode all three roles are
-    the player's, and a sheet row whose rank did not parse landed inactive.
+    tournament has it declaring, in priority order, playable or not -- not the raw
+    ``is_active`` column: under a non-optional flex mode all three roles are the
+    player's, and a sheet row whose rank did not parse lands inactive, so
+    ``is_active`` would skip exactly the rows autofill exists to fill.
 
-    Parsed ranks are expected to come from the registration's main battle tag
+    Parsed ranks are expected to come from the registration's main owner-provider handle
     only. With ``allow_partial`` the found role ranks are still applied when other
     roles have no parsed rank (instead of skipping the whole registration);
     unfilled roles are left untouched -- an existing rank is never cleared. A role
@@ -119,35 +127,34 @@ def build_registration_rank_autofill_plan(
     """
 
     display_name = getattr(registration, "display_name", None)
-    battle_tag = registration.primary_handle(SocialProvider.BATTLENET)
+    handle = registration.primary_handle(provider) if provider is not None else None
+    identity = PlayerIdentityRead.of(provider, handle)
     row = {
         "registration_id": registration.id,
         "display_name": display_name,
-        "battle_tag": battle_tag,
+        "identity": identity.model_dump() if identity is not None else None,
         "status": "skipped",
         "reason": None,
         "partial": False,
         "roles": [],
     }
 
-    if not battle_tag:
-        row["reason"] = "Registration has no main BattleTag."
+    if identity is None:
+        row["reason"] = "Registration has no primary game identity."
         return row, []
 
     # The plan WRITES ``registration_role.rank_value``, so a declared role with no
     # row of its own has nothing to write to and is skipped.
     rows_by_role = {getattr(entry, "role", None): entry for entry in getattr(registration, "roles", [])}
     declared_roles = [
-        rows_by_role[entry.role.slot_code]
-        for entry in (roster.roles if roster is not None else ())
-        if entry.role.slot_code in rows_by_role
+        rows_by_role[entry.role] for entry in (roster.roles if roster is not None else ()) if entry.role in rows_by_role
     ]
     if not declared_roles:
         row["reason"] = "Registration has no active roles."
         return row, []
 
-    if not battle_tag_linked:
-        row["reason"] = "Main BattleTag is not linked to an analytics player account."
+    if not identity_linked:
+        row["reason"] = "Primary game identity is not linked to a player account."
         return row, []
 
     updates: list[tuple[Any, Any]] = []
@@ -156,13 +163,12 @@ def build_registration_rank_autofill_plan(
 
     for role_entry in declared_roles:
         role_code = getattr(role_entry, "role", None)
-        rank_role = RANK_ROLE_BY_REGISTRATION_ROLE.get(role_code)
-        snapshot = rank_snapshots_by_role.get(rank_role or "")
+        snapshot = rank_snapshots_by_role.get(role_code)
         current_rank = getattr(role_entry, "rank_value", None)
         snapshot_payload = _rank_snapshot_payload(snapshot)
         parsed_rank = snapshot_payload["parsed_rank_value"]
         role_row = {
-            "role": role_code,
+            "role": role_entry.role_ref.model_dump(),
             "current_rank_value": current_rank,
             **snapshot_payload,
             "action": "missing_rank",
@@ -178,7 +184,7 @@ def build_registration_rank_autofill_plan(
                 role_row["action"] = "keep_existing"
                 role_row["reason"] = "Existing registration rank is kept. Enable overwrite to replace it."
         elif parsed_rank is None:
-            missing_roles.append(REGISTRATION_ROLE_LABELS.get(role_code, str(role_code)))
+            missing_roles.append(role_entry.catalog_role.name)
         elif current_rank == parsed_rank:
             kept_existing = True
             role_row["action"] = "keep_existing"
@@ -228,18 +234,17 @@ def _roles_ranked_after_updates(
     """Would every declared role carry a rank once ``updates`` land?
 
     ``is_playable`` already folds in the inherited layers, so a role whose number
-    only exists as the workspace canon counts as ranked here -- which is the point:
-    those registrations used to be told they were "missing active role ranks" and
-    kept out of the pool.
+    only exists as the workspace canon counts as ranked here: such a registration
+    must not be reported as missing role ranks and kept out of the pool.
     """
     if roster is None or not roster.roles:
         return False
     updated_roles = {getattr(role_entry, "role", None) for role_entry, _snapshot in updates}
-    return all(entry.is_playable or entry.role.slot_code in updated_roles for entry in roster.roles)
+    return all(entry.is_playable or entry.role in updated_roles for entry in roster.roles)
 
 
 def _rank_autofill_balancer_addition(
-    registration: models.BalancerRegistration | Any,
+    registration: models.Registration | Any,
     updates: list[tuple[Any, Any]],
     *,
     add_to_balancer: bool,
@@ -256,7 +261,7 @@ def _rank_autofill_balancer_addition(
     return True, None
 
 
-# Legacy ``mode`` presets, expressed as a default stage order. Used only when no explicit stage
+# ``mode`` presets, expressed as a default stage order. Used only when no explicit stage
 # chain is supplied on the request.
 _DEFAULT_STAGE_ORDER_BY_MODE: dict[str, tuple[str, ...]] = {
     "ow_first": ("ow", "division_history", "analytics"),
@@ -271,7 +276,7 @@ def resolve_autofill_stages(
     """Resolve the effective, ordered list of enabled autofill stages.
 
     When ``stages`` is non-empty it wins: disabled entries are dropped and duplicate sources are
-    de-duplicated (first occurrence kept), preserving order. Otherwise the legacy ``mode`` preset
+    de-duplicated (first occurrence kept), preserving order. Otherwise the ``mode`` preset
     order is used, with no lookback windows. ``stages`` items are duck-typed (``source``,
     ``enabled``, ``lookback_tournaments``, ``lookback_days``, ``ow_value``) so unit tests can pass
     simple objects.
@@ -351,7 +356,6 @@ class RankAutofillService:
         if registration_ids is not None:
             registration_ids = list(dict.fromkeys(int(registration_id) for registration_id in registration_ids))
 
-        # Resolve the effective, ordered chain of enabled sources (explicit ``stages`` win over ``mode``).
         resolved_stages = resolve_autofill_stages(mode, stages)
         order = tuple(stage.source for stage in resolved_stages)
         enabled_sources = set(order)
@@ -365,7 +369,9 @@ class RankAutofillService:
 
         now = datetime.now(UTC)
         tournament = await self.rank_sources._load_tournament_for_autofill(session, tournament_id)
-        grid = DivisionGrid.from_version(tournament.division_grid_version if tournament else None)
+        enabled_sources = autofill_sources(enabled_sources, getattr(tournament, "discipline", None))
+        provider = discipline(tournament.discipline).identity_provider if tournament is not None else None
+        grid = await self.common.get_tournament_grid(session, tournament_id)
         # Loop-invariant: one autofill run is scoped to one tournament, and every
         # inherited rank layer below is read through its workspace.
         workspace_id = getattr(tournament, "workspace_id", None)
@@ -373,7 +379,19 @@ class RankAutofillService:
         registrations = await self.rank_sources._load_rank_autofill_registrations(
             session, tournament_id, registration_ids
         )
-        battle_tags_by_key = await self.rank_sources._load_main_battle_tags_by_key(session, registrations)
+        accounts_by_key = await self.rank_sources._load_primary_accounts_by_key(
+            session, registrations, provider=provider
+        )
+        # A Battle.net game reads OverFast through the registration's primary account. Any other game's player is the
+        # registration's member, its stable identity: the handle the registration was submitted with may no longer
+        # name the account (the LoL collector follows a Riot ID rename onto it).
+        member_player_ids: dict[int, int] = (
+            {}
+            if provider == SocialProvider.BATTLENET
+            else {r.id: r.workspace_member.player_id for r in registrations if r.workspace_member is not None}
+        )
+        user_ids = [battle_tag.user_id for battle_tag in accounts_by_key.values() if battle_tag.user_id is not None]
+        user_ids += member_player_ids.values()
         # One resolve for the whole run: the role SET the plan fills, and the
         # "would this be complete" verdict, both come from these rosters.
         rosters = await roster_engine.resolve(
@@ -383,23 +401,26 @@ class RankAutofillService:
         # Only load a source when its stage is enabled (skips its DB query otherwise). A disabled
         # source contributes no candidate, so it can never win the priority chain.
         ow_signals_by_tag_id: dict[int, dict[str, _OwRankSignals]] = {}
+        native_signals_by_user_id: dict[int, dict[str, _OwRankSignals]] = {}
         if "ow" in enabled_sources:
-            ow_week_window = timedelta(days=ow_lookback_days) if ow_lookback_days else OW_RANK_WEEK_WINDOW
-            ow_signals_by_tag_id = await self.rank_sources._load_ow_rank_signals_by_social_account_id(
-                session,
-                [account.id for account in battle_tags_by_key.values()],
-                now,
-                ow_week_window,
-            )
+            if provider == SocialProvider.BATTLENET:
+                ow_week_window = timedelta(days=ow_lookback_days) if ow_lookback_days else OW_RANK_WEEK_WINDOW
+                ow_signals_by_tag_id = await self.rank_sources._load_ow_rank_signals_by_social_account_id(
+                    session,
+                    [account.id for account in accounts_by_key.values()],
+                    now,
+                    ow_week_window,
+                )
+            else:
+                native_signals_by_user_id = await self.rank_sources._load_native_rank_signals_by_user_id(
+                    session, tournament.discipline, user_ids
+                )
 
         # Balancer history (division_history) and tournament-participation history (analytics) are
         # both candidates in the priority chain, keyed by user_id then registration role code.
         balancer_history_by_user_id: dict[int, dict[str, int]] = {}
         analytics_history_by_user_id: dict[int, dict[str, int]] = {}
         if tournament is not None and ({"division_history", "analytics"} & enabled_sources):
-            user_ids = [
-                battle_tag.user_id for battle_tag in battle_tags_by_key.values() if battle_tag.user_id is not None
-            ]
             # Normalize historical ranks from each source tournament's grid version into this
             # tournament's grid. Best-effort: skip when the target version is unknown or the
             # normalizer cannot be built (loaders then fall back to raw ranks).
@@ -431,10 +452,14 @@ class RankAutofillService:
         balancer_additions = 0
 
         for registration in registrations:
-            tag_key = primary_battlenet_key(registration)
-            main_battle_tag = battle_tags_by_key.get(tag_key or "")
-            ow_signals_by_role = ow_signals_by_tag_id.get(main_battle_tag.id, {}) if main_battle_tag else {}
-            user_id = getattr(main_battle_tag, "user_id", None) if main_battle_tag else None
+            tag_key = primary_identity_key(registration, provider=provider)
+            primary_account = accounts_by_key.get(tag_key or "")
+            user_id = getattr(primary_account, "user_id", None) if primary_account else None
+            if provider == SocialProvider.BATTLENET:
+                ow_signals_by_role = ow_signals_by_tag_id.get(primary_account.id, {}) if primary_account else {}
+            else:
+                user_id = member_player_ids.get(registration.id, user_id)
+                ow_signals_by_role = native_signals_by_user_id.get(user_id or -1, {})
             balancer_by_role = balancer_history_by_user_id.get(user_id or -1, {})
             analytics_by_role = analytics_history_by_user_id.get(user_id or -1, {})
 
@@ -442,12 +467,13 @@ class RankAutofillService:
             # plan builder expects. Registration rows, balancer/analytics history and OW snapshots
             # all speak the same role vocabulary (tank/damage/support), so the keys line up.
             rank_data_by_role: dict[str, _RankData | Any] = {}
-            for registration_role, rank_role in RANK_ROLE_BY_REGISTRATION_ROLE.items():
+            for registration_role in registration.roles:
+                rank_role = registration_role.role
                 resolved = _build_priority_rank_data(
                     order,
                     ow_signals_by_role.get(rank_role),
-                    balancer_by_role.get(registration_role),
-                    analytics_by_role.get(registration_role),
+                    balancer_by_role.get(rank_role),
+                    analytics_by_role.get(rank_role),
                     grid,
                     ow_value or "composite",
                 )
@@ -459,7 +485,8 @@ class RankAutofillService:
                 registration,
                 rank_data_by_role,
                 roster=roster,
-                battle_tag_linked=main_battle_tag is not None,
+                provider=provider,
+                identity_linked=primary_account is not None or user_id is not None,
                 overwrite_existing=overwrite_existing,
                 allow_partial=allow_partial,
                 applied=apply,

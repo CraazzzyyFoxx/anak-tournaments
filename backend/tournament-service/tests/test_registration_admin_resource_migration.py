@@ -9,7 +9,7 @@ registration; a role granted ``team.create`` could delete one. This pins the
 resource each subject now authorizes against, so the RBAC grid the catalog
 describes matches what the handlers actually check.
 
-Only ``regteam_*`` (operates on ``BalancerRegistrationTeam``, a real team
+Only ``regteam_*`` (operates on ``RegistrationTeam``, a real team
 entity) keeps the ``team`` resource -- that mapping was already correct.
 """
 
@@ -97,7 +97,7 @@ class RegistrationStatusResourceTests(TestCase):
 
 class SubscriptionResourceTests(TestCase):
     def test_every_sub_subject_uses_the_subscription_resource(self) -> None:
-        """Matches ``parser-service``'s own ``subscription.read``/``update`` gate
+        """Matches ``stats-service``'s own ``subscription.read``/``update`` gate
         on the same Twitch-subscription-verification feature area."""
         subjects = [
             "rpc.tournament.sub_config_list",

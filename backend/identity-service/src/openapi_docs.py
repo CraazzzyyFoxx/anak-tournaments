@@ -11,8 +11,6 @@ DOCS: dict[str, dict] = {
         # 401, not 403: every not-authenticated path in validate_token raises
         # HTTP_401_UNAUTHORIZED (token_validation.py), and
         # the gateway pins that mapping in TestValidate_ErrorEnvelopeMapsStatus.
-        # This line said 403 and the committed manifest said 401, which is what
-        # had the OpenAPI drift gate — and so all of Lint Backend — red on master.
         "description": "Permission: public; no caller authentication — the submitted token is itself the credential being introspected. Validates a bearer access token or API key and returns the RBAC token payload (user, permissions); 401 if not authenticated.",
     },
     "rpc.identity.validate_service_token": {
@@ -319,9 +317,5 @@ DOCS: dict[str, dict] = {
     "rpc.identity.player.linked": {
         "summary": "List linked players",
         "description": "Permission: authenticated (active) user; self-service — only the caller's own link. Returns all game players linked to the active user.",
-    },
-    "rpc.identity.player.set_primary": {
-        "summary": "Set primary player",
-        "description": "Permission: authenticated (active) user; self-service — 404 unless the player is the caller's own link. Marks a linked player as the active user's primary player and returns the updated link.",
     },
 }

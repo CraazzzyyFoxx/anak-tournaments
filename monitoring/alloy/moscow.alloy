@@ -79,7 +79,8 @@ otelcol.exporter.otlphttp "sentry" {
 // app-network, job = instance = service name.
 prometheus.scrape "services" {
 	targets = [
-		{__address__ = "parser-svc:9100", job = "parser-svc", instance = "parser-svc"},
+		{__address__ = "stats-svc:9100", job = "stats-svc", instance = "stats-svc"},
+		{__address__ = "stats-worker:9100", job = "stats-worker", instance = "stats-worker"},
 		{__address__ = "tournament-svc:9103", job = "tournament-svc", instance = "tournament-svc"},
 		{__address__ = "balancer-svc:9100", job = "balancer-svc", instance = "balancer-svc"},
 		{__address__ = "discord-worker:9100", job = "discord-worker", instance = "discord-worker"},

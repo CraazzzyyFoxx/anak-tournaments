@@ -5,30 +5,34 @@ Cross-cutting building blocks used by more than one of the admin modules
 ``export``): tournament/form lookups, division-grid resolution, role
 replacement and the balancer-status verdict.
 
-Nothing here derives a role's rank or playability any more: that answer comes
-from :mod:`shared.services.roster`, and the ``ready``/``incomplete`` verdict is
-a straight read of :attr:`~shared.domain.roster.PlayerRoster.is_ranked_complete`.
-What stays local is the WRITE side (``apply_all_roles`` /
-``replace_registration_roles``), which the engine never touches.
+A role's rank and playability come from :mod:`shared.services.roster`, and the
+``ready``/``incomplete`` verdict is a straight read of
+:attr:`~shared.domain.roster.PlayerRoster.is_ranked_complete`. Only the WRITE
+side (``apply_all_roles`` / ``replace_registration_roles``) lives here; the
+engine never touches it.
 """
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
-import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from shared.balancer_registration_statuses import get_builtin_status_values, is_balancer_status_excluded
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.division_grid import DivisionGrid, load_runtime_grid
-from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES, normalize_sub_role
 from shared.domain.roster import FlexRoleMode, PlayerRoster
 from shared.hero_catalog import DEFAULT_MAX_TOP_HEROES, HeroCatalog, build_hero_entries
+from shared.registration_statuses import get_builtin_status_values, is_balancer_status_excluded
 from shared.repository import RegistrationFormRepository, TournamentRepository
+from shared.schemas.role import RoleRef
+from shared.services.division_grid.access import (
+    get_effective_division_grid_version,
+    runtime_fallback_grid,
+)
+from shared.services.ontology import resolve_form_role
 from shared.services.realtime import Resource, Scope, emit
 from shared.services.roster import roster_engine
-from src import models
 from src.domain.registration.utils import DEFAULT_SORT_PRIORITY_SENTINEL
 from src.services.registration.form_service import form_service
 from src.services.registration.roles_rules import role_value
@@ -45,24 +49,45 @@ NOT_ADDED_BALANCER_STATUS = "not_in_balancer"
 EXCLUDED_BALANCER_STATUS = "excluded"
 
 
-def get_tournament_grid_from_rows(
-    tournament_row: models.Tournament | None,
-    workspace_row: models.Workspace | None,
-    fallback_version: models.DivisionGridVersion | None = None,
-) -> DivisionGrid:
-    if tournament_row and tournament_row.division_grid_version is not None:
-        return load_runtime_grid(tournament_row.division_grid_version)
-    if workspace_row and workspace_row.default_division_grid_version is not None:
-        return load_runtime_grid(workspace_row.default_division_grid_version)
-    return load_runtime_grid(fallback_version)
+def _role_row(
+    catalog_roles: Mapping[str, models.CatalogRole], role: str | RoleRef | dict, subrole: str | None
+) -> models.RegistrationRole | None:
+    """Form pairs use the shared resolver; API refs identify a scoped leaf, never trust parent."""
+    if isinstance(role, (RoleRef, dict)):
+        ref = role if isinstance(role, RoleRef) else RoleRef.model_validate(role)
+        leaf = catalog_roles.get(ref.role)
+        dimension = next(iter(catalog_roles.values())).dimension.code if catalog_roles else None
+        if ref.dimension != dimension:
+            raise HTTPException(status_code=422, detail=f"role_dimension_mismatch: expected {dimension!r}")
+        if leaf is None:
+            raise HTTPException(status_code=422, detail=f"unknown_role: {ref.role!r}")
+    else:
+        try:
+            leaf = resolve_form_role(catalog_roles, role, subrole)
+        except HTTPException:
+            # The form validator reports bad suffixes. Import/build paths preserve the valid top-level role.
+            try:
+                leaf = resolve_form_role(catalog_roles, role, None)
+            except HTTPException:
+                return None
+    if leaf is None:
+        return None
+    return models.RegistrationRole(catalog_role=leaf, dimension_id=leaf.dimension_id)
+
+
+def root_role_codes(catalog_roles: Mapping[str, models.CatalogRole]) -> tuple[str, ...]:
+    """The discipline's own top-level roles: no parent role, no workspace (workspace sub-roles excluded)."""
+    return tuple(code for code, row in catalog_roles.items() if row.parent_role_id is None and row.workspace_id is None)
 
 
 def apply_all_roles(
-    entries: list[models.BalancerRegistrationRole],
+    entries: list[models.RegistrationRole],
     *,
+    catalog_roles: Mapping[str, models.CatalogRole],
+    role_codes: Sequence[str],
     force_primary: bool,
-) -> list[models.BalancerRegistrationRole]:
-    """Backfill the role set to all three, optionally forcing every role primary.
+) -> list[models.RegistrationRole]:
+    """Backfill the discipline's role set, optionally forcing every role primary.
 
     Both non-optional modes need the SET normalized, whichever path produced the
     entries — public form, admin panel, API key or Google Sheets sync.
@@ -85,8 +110,10 @@ def apply_all_roles(
     present = {entry.role for entry in entries}
     result = list(entries)
     result.extend(
-        models.BalancerRegistrationRole(role=role_code)
-        for role_code in REGISTRATION_ROLE_CODES
+        models.RegistrationRole(
+            catalog_role=catalog_roles[role_code], dimension_id=catalog_roles[role_code].dimension_id
+        )
+        for role_code in role_codes
         if role_code not in present
     )
     for priority, entry in enumerate(result):
@@ -96,38 +123,46 @@ def apply_all_roles(
     return result
 
 
+def only_role_answer(role_codes: Sequence[str]) -> list[dict[str, Any]] | None:
+    """The ``roles`` answer a game with ONE rated role implies -- that role, primary; ``None`` with several.
+
+    Such a game asks no role question (the single-role rule hides the step), yet the tournament balancer and the draft
+    read the registration's role rows: without one the registrant is ranked on no role at all.
+    """
+    return [{"role": role_codes[0], "is_primary": True}] if len(role_codes) == 1 else None
+
+
 def build_registration_roles(
     roles: list[Any] | None,
     *,
+    catalog_roles: Mapping[str, models.CatalogRole],
+    role_codes: Sequence[str],
     hero_catalog: HeroCatalog | None = None,
     max_heroes: int | None = None,
     mode: FlexRoleMode = "optional",
-) -> list[models.BalancerRegistrationRole]:
+) -> list[models.RegistrationRole]:
     """Build normalized role entries from a submitted ``roles`` answer.
 
-    Filters to valid registration role codes (tank/damage/support), de-duplicates,
-    normalizes the sub-role slug, and assigns sequential priority. Detached rows:
+    Filters to the discipline's top-level roles, de-duplicates, resolves form
+    sub-role slugs, and assigns sequential priority. Detached rows:
     the caller decides whether they are new or merged over existing ones
     (:meth:`RegistrationAnswerService.apply` does the latter, so an organizer's
     ``rank_value`` survives a player editing their roles).
 
-    When ``hero_catalog`` is provided (the top-heroes ask is enabled), the ordered
-    ``top_heroes`` slugs on each role are attached as ``registration_role_hero`` rows.
+    When ``hero_catalog`` is provided (the top-characters ask is enabled), the ordered
+    ``top_heroes`` slugs of each answer row -- the persisted form-answer spelling -- are attached
+    as ``registration_role_entity`` rows.
     """
     resolved_max = max_heroes if max_heroes and max_heroes > 0 else DEFAULT_MAX_TOP_HEROES
-    entries: list[models.BalancerRegistrationRole] = []
+    entries: list[models.RegistrationRole] = []
     seen: set[str] = set()
     for role in roles or []:
-        role_code = role_value(role, "role")
-        if role_code not in REGISTRATION_ROLE_CODES or role_code in seen:
+        entry = _role_row(catalog_roles, role_value(role, "role"), role_value(role, "subrole"))
+        if entry is None or entry.role not in role_codes or entry.role in seen:
             continue
-        seen.add(role_code)
-        entry = models.BalancerRegistrationRole(
-            role=role_code,
-            subrole=normalize_sub_role(role_value(role, "subrole")),
-            is_primary=bool(role_value(role, "is_primary", False)),
-            priority=len(entries),
-        )
+        seen.add(entry.role)
+        entry.is_primary = bool(role_value(role, "is_primary", False))
+        entry.priority = len(entries)
         if hero_catalog is not None:
             entry.hero_entries = build_hero_entries(
                 role_value(role, "top_heroes"),
@@ -135,62 +170,72 @@ def build_registration_roles(
                 max_heroes=resolved_max,
             )
         entries.append(entry)
-    if mode in ("all_roles", "forced"):
-        entries = apply_all_roles(entries, force_primary=mode == "forced")
+    # A one-role game plays that role whatever was answered: normalized like ``forced``.
+    single = len(role_codes) == 1
+    if mode in ("all_roles", "forced") or single:
+        entries = apply_all_roles(
+            entries, catalog_roles=catalog_roles, role_codes=role_codes, force_primary=mode == "forced" or single
+        )
     return entries
 
 
 def replace_registration_roles(
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
     roles: list[dict[str, Any]],
     *,
+    catalog_roles: Mapping[str, models.CatalogRole],
     hero_catalog: HeroCatalog | None = None,
     max_heroes: int | None = None,
     mode: FlexRoleMode = "optional",
 ) -> None:
+    role_codes = root_role_codes(catalog_roles)
     existing_by_role = {existing.role: existing for existing in registration.roles}
-    next_roles: list[models.BalancerRegistrationRole] = []
+    next_roles: list[models.RegistrationRole] = []
     seen_roles: set[str] = set()
 
     for index, role in enumerate(sorted(roles, key=lambda item: item.get("priority", DEFAULT_SORT_PRIORITY_SENTINEL))):
-        role_code = role.get("role")
-        if role_code not in {"tank", "damage", "support"} or role_code in seen_roles:
+        entry = _role_row(catalog_roles, role.get("role"), role.get("subrole"))
+        if entry is None or entry.role in seen_roles:
             continue
-        seen_roles.add(role_code)
-
-        registration_role = existing_by_role.pop(role_code, None)
+        seen_roles.add(entry.role)
+        registration_role = existing_by_role.pop(entry.role, None)
         if registration_role is None:
-            registration_role = models.BalancerRegistrationRole(role=role_code)
-
-        registration_role.role = role_code
-        registration_role.subrole = normalize_sub_role(role.get("subrole"))
+            registration_role = entry
+        else:
+            registration_role.catalog_role = entry.catalog_role
+            registration_role.dimension_id = entry.dimension_id
         registration_role.is_primary = bool(role.get("is_primary", index == 0))
         registration_role.priority = index
         registration_role.rank_value = role.get("rank_value")
         registration_role.is_active = bool(role.get("is_active", role.get("rank_value") is not None))
 
         if hero_catalog is not None:
-            top_heroes = role.get("top_heroes")
-            if top_heroes is not None:
-                from shared.hero_catalog import DEFAULT_MAX_TOP_HEROES, build_hero_entries
-
+            top_characters = role.get("top_characters")
+            if top_characters is not None:
                 registration_role.hero_entries = build_hero_entries(
-                    top_heroes,
+                    top_characters,
                     hero_catalog=hero_catalog,
                     max_heroes=max_heroes or DEFAULT_MAX_TOP_HEROES,
                 )
 
         next_roles.append(registration_role)
 
-    if mode in ("all_roles", "forced"):
-        next_roles = apply_all_roles(next_roles, force_primary=mode == "forced")
+    single = len(role_codes) == 1
+    if single and not next_roles:
+        # A one-role game keeps its only row -- and the rank the autofill or an organizer put on it -- when a write
+        # names no role (a sheet without role columns, an organizer's empty role list).
+        next_roles = list(registration.roles)
+    if mode in ("all_roles", "forced") or single:
+        next_roles = apply_all_roles(
+            next_roles, catalog_roles=catalog_roles, role_codes=role_codes, force_primary=mode == "forced" or single
+        )
 
     registration.roles[:] = next_roles
 
 
 async def resolve_roster(
     session: AsyncSession,
-    registration: models.BalancerRegistration | Any,
+    registration: models.Registration | Any,
 ) -> PlayerRoster | None:
     """The resolved roster of ONE registration, straight from the engine.
 
@@ -213,20 +258,20 @@ def included_balancer_status(roster: PlayerRoster | None) -> str:
     """The pool verdict: ``ready`` once every declared role carries a rank.
 
     No roster at all (a registration the engine did not resolve) reads as
-    ``incomplete`` -- the same answer the old role-less case gave.
+    ``incomplete``.
     """
     return "ready" if roster is not None and roster.is_ranked_complete else "incomplete"
 
 
 def sync_included_balancer_status(
-    registration: models.BalancerRegistration | Any,
+    registration: models.Registration | Any,
     roster: PlayerRoster | None,
 ) -> None:
     """Recompute `ready`/`incomplete` from the resolved roster -- the only two
     balancer statuses a role edit is allowed to change. `not_in_balancer`,
-    `excluded` and any custom status are exclusively admin-managed: they can
-    no longer be picked FOR ready/incomplete (see `set_balancer_status`), so
-    there is nothing left for a role-driven resync to fight over.
+    `excluded` and any custom status are exclusively admin-managed
+    (`set_balancer_status` rejects ready/incomplete), so a role-driven resync
+    never overrides them.
     """
     current_balancer_status = getattr(registration, "balancer_status", None)
     if (
@@ -237,7 +282,7 @@ def sync_included_balancer_status(
 
 
 def is_included_in_balancer(
-    registration: models.BalancerRegistration | Any,
+    registration: models.Registration | Any,
     status_meta_map: dict[str, dict[str, Any]] | None = None,
 ) -> bool:
     """Whether `registration` currently counts as part of the balancer pool.
@@ -274,7 +319,7 @@ class RegistrationCommonService:
     async def _register_registration_changed(
         self,
         session: AsyncSession,
-        registration: models.BalancerRegistration,
+        registration: models.Registration,
     ) -> None:
         await emit(
             session,
@@ -286,33 +331,14 @@ class RegistrationCommonService:
         )
 
     async def get_tournament_grid(self, session: AsyncSession, tournament_id: int) -> DivisionGrid:
-        # Analytical, not CRUD: the fallback is a join + order + limit across two
-        # tables, and the second read returns a (Tournament, Workspace) pair with
-        # nested eager loads. Neither fits behind a repository method.
-        fallback_version = await session.scalar(
-            sa.select(models.DivisionGridVersion)
-            .join(models.DivisionGrid, models.DivisionGrid.id == models.DivisionGridVersion.grid_id)
-            .options(selectinload(models.DivisionGridVersion.tiers))
-            .where(models.DivisionGrid.workspace_id.is_(None))
-            .order_by(models.DivisionGridVersion.id.asc())
-            .limit(1)
+        """Use the scoped full model so sheets and autofill retain native ranges."""
+        tournament = await self.ensure_tournament_exists(session, tournament_id)
+        version = await get_effective_division_grid_version(
+            session, tournament.workspace_id, tournament_id=tournament_id, discipline=tournament.discipline
         )
-        result = await session.execute(
-            sa.select(models.Tournament, models.Workspace)
-            .join(models.Workspace, models.Workspace.id == models.Tournament.workspace_id)
-            .options(
-                selectinload(models.Tournament.division_grid_version).selectinload(models.DivisionGridVersion.tiers),
-                selectinload(models.Workspace.default_division_grid_version).selectinload(
-                    models.DivisionGridVersion.tiers
-                ),
-            )
-            .where(models.Tournament.id == tournament_id)
-        )
-        row = result.first()
-        if row is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
-        tournament_row, workspace_row = row
-        return get_tournament_grid_from_rows(tournament_row, workspace_row, fallback_version)
+        if version is None or not version.tiers:
+            return runtime_fallback_grid(tournament.discipline)
+        return load_runtime_grid(version)
 
     async def ensure_tournament_exists(self, session: AsyncSession, tournament_id: int) -> models.Tournament:
         tournament = await self.tournament_repo.get(session, tournament_id)
@@ -320,11 +346,18 @@ class RegistrationCommonService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
         return tournament
 
+    async def get_tournament_discipline(self, session: AsyncSession, tournament_id: int) -> str:
+        """The tournament's discipline code without loading the row; 404 when it does not exist."""
+        owner = await self.tournament_repo.get_owner(session, tournament_id)
+        if owner is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+        return owner[1]
+
     async def get_registration_form(
         self,
         session: AsyncSession,
         tournament_id: int,
-    ) -> models.BalancerRegistrationForm | None:
+    ) -> models.RegistrationForm | None:
         """The form WITH its current schema version eager-loaded.
 
         Delegated so there is one definition of "a usable form": every reader

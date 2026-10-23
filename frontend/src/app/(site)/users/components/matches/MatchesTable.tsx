@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { useDebounce } from "use-debounce";
 import { EncounterWithUserStats } from "@/types/user.types";
 import { DataPagination } from "@/components/ui/data-pagination";
+import { eyebrowClass } from "@/components/ui/eyebrow";
+import { cn } from "@/lib/utils";
 import { useQueryParams } from "@/hooks/useQueryParams";
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface } from "@/components/profile/atoms";
 import MatchRow from "@/app/(site)/users/components/matches/MatchRow";
 import MatchesFilterBar, { type Filter } from "@/app/(site)/users/components/matches/MatchesFilterBar";
 import MatchesSidebars, {
@@ -23,6 +25,10 @@ interface Props {
   /** Aggregated server-side over ALL the user's encounters (Matches sidebars). */
   opponents: OpponentStat[];
   stages: StageStats;
+  /** "All games": rows mark their game and the game-bound MVP filter is not offered. */
+  allGames?: boolean;
+  /** Above the sidebars: the per-game tabs of the (game-bound) matches summary under "all games". */
+  sidebarTabs?: ReactNode;
 }
 
 /** Server-side Matches-tab filters (mirrors the encounters endpoint params). */
@@ -34,7 +40,17 @@ export interface MatchesFilters {
   opponent?: string;
 }
 
-const MatchesTable = ({ encounters, total, page, perPage, selfUserId, opponents, stages }: Props) => {
+const MatchesTable = ({
+  encounters,
+  total,
+  page,
+  perPage,
+  selfUserId,
+  opponents,
+  stages,
+  allGames = false,
+  sidebarTabs
+}: Props) => {
   const { searchParams, setParams } = useQueryParams({ mode: "replace", resetOnChange: ["page"] });
   const t = useTranslations();
   const headers = [
@@ -42,7 +58,7 @@ const MatchesTable = ({ encounters, total, page, perPage, selfUserId, opponents,
     t("users.matches.colStage"),
     t("users.matches.colMatch"),
     t("users.matches.colScore"),
-    t("common.heroes"),
+    t("common.characters"),
     t("users.matches.colMvp"),
     t("users.matches.colCloseness"),
     t("users.matches.colLogs")
@@ -99,6 +115,7 @@ const MatchesTable = ({ encounters, total, page, perPage, selfUserId, opponents,
         onApplyFilter={applyFilter}
         search={search}
         onSearchChange={setSearch}
+        allGames={allGames}
       />
 
       <div className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[1fr_320px]">
@@ -110,7 +127,10 @@ const MatchesTable = ({ encounters, total, page, perPage, selfUserId, opponents,
                   {headers.map((h) => (
                     <th
                       key={h}
-                      className="aqt-tnum border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-3.5 py-3 text-left text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
+                      className={cn(
+                        eyebrowClass(),
+                        "aqt-tnum border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-3.5 py-3 text-left"
+                      )}
                     >
                       {h}
                     </th>
@@ -119,7 +139,7 @@ const MatchesTable = ({ encounters, total, page, perPage, selfUserId, opponents,
               </thead>
               <tbody>
                 {encounters.map((enc) => (
-                  <MatchRow key={enc.id} enc={enc} selfUserId={selfUserId} />
+                  <MatchRow key={enc.id} enc={enc} selfUserId={selfUserId} showGame={allGames} />
                 ))}
                 {encounters.length === 0 ? (
                   <tr>
@@ -136,7 +156,7 @@ const MatchesTable = ({ encounters, total, page, perPage, selfUserId, opponents,
             totalPages={pages}
             onPageChange={handlePageChange}
             className="border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-[18px] py-3.5"
-            summary={
+            leading={
               <span className="aqt-tnum text-caption text-[color:var(--aqt-fg-dim)]">
                 {t("common.showingRange", {
                   start: String((page - 1) * perPage + 1),
@@ -148,7 +168,11 @@ const MatchesTable = ({ encounters, total, page, perPage, selfUserId, opponents,
           />
         </CardSurface>
 
-        <MatchesSidebars opponentStats={opponents} stageStats={stages} />
+        {/* Stretched to the row so the sidebars stay sticky inside it. */}
+        <div className="flex min-w-0 flex-col self-stretch">
+          {sidebarTabs}
+          <MatchesSidebars opponentStats={opponents} stageStats={stages} />
+        </div>
       </div>
     </div>
   );

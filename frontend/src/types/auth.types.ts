@@ -4,7 +4,7 @@ export interface TokenPair {
   token_type?: "bearer" | string;
 }
 
-export type AccountSessionStatus = "active" | "revoked" | "expired";
+type AccountSessionStatus = "active" | "revoked" | "expired";
 
 export interface AccountSession {
   session_id: string;
@@ -164,7 +164,7 @@ export interface LinkedPlayer {
   linked_at: string;
 }
 
-export type OAuthProviderName = "discord" | "twitch" | "battlenet";
+export type OAuthProviderName = "discord" | "twitch" | "battlenet" | "riot" | "steam";
 
 export interface OAuthProviderAvailability {
   provider: OAuthProviderName;

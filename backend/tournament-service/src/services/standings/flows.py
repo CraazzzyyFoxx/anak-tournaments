@@ -2,13 +2,17 @@ import typing
 from collections import defaultdict
 
 import sqlalchemy as sa
-from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
+from shared.core import utils
 from shared.domain.tournament_utils import sort_bracket_matches
-from src import models, schemas
-from src.core import config, utils
+from shared.services.cache_generations import versioned
+from src import schemas
+from src.core import config
+from src.services.encounter.flows import to_summary
 from src.services.team.flows import flows_service as team_flows_service
+from src.services.tournament.cache_resources import STANDINGS, tournament_generations
 from src.services.tournament.flows import flows_service as tournament_flows_service
 
 from . import service
@@ -18,7 +22,7 @@ from .service import StandingsService, standings_service
 def sort_matches(
     matches: typing.Sequence[schemas.EncounterSummaryRead],
 ) -> list[schemas.EncounterSummaryRead]:
-    """Phase E: delegate to shared utility (removes drift from parser-service)."""
+    """Sort bracket matches with the shared helper parser-service also uses."""
     return sort_bracket_matches(matches)
 
 
@@ -32,28 +36,35 @@ def _loaded_relationship(model: typing.Any, name: str) -> typing.Any | None:
     return getattr(model, name)
 
 
-def _history_by_team(encounters: typing.Sequence[models.Encounter]) -> dict[int, list[models.Encounter]]:
-    histories: defaultdict[int, list[models.Encounter]] = defaultdict(list)
-    for encounter in encounters:
-        if encounter.home_team_id is not None:
-            histories[encounter.home_team_id].append(encounter)
-        if encounter.away_team_id is not None:
-            histories[encounter.away_team_id].append(encounter)
+#: One completed encounter of the history, with the bracket position its scope
+#: and round come from.
+HistoryRow = tuple[models.Encounter, models.BracketEncounter]
+
+
+def _history_by_team(encounters: typing.Sequence[HistoryRow]) -> dict[int, list[HistoryRow]]:
+    """Index the history by the teams that actually sat in each encounter.
+
+    Off the participations, not two team columns: a lobby of four belongs in
+    four teams' histories, and a seat that changed hands belongs to whoever
+    holds it now.
+    """
+    histories: defaultdict[int, list[HistoryRow]] = defaultdict(list)
+    for encounter, position in encounters:
+        for seat in encounter.teams:
+            if seat.active and seat.team_id is not None:
+                histories[seat.team_id].append((encounter, position))
     return dict(histories)
 
 
 def _history_for_standing(
     standing: models.Standing,
-    encounters: typing.Sequence[models.Encounter],
+    encounters: typing.Sequence[HistoryRow],
 ) -> list[schemas.EncounterSummaryRead]:
     return [
-        schemas.EncounterSummaryRead(
-            **encounter.to_dict(),
-            score=schemas.Score(home=encounter.home_score, away=encounter.away_score),
-        )
-        for encounter in encounters
-        if encounter.stage_id == standing.stage_id
-        and (standing.stage_item_id is None or encounter.stage_item_id == standing.stage_item_id)
+        to_summary(encounter, position)
+        for encounter, position in encounters
+        if position.stage_id == standing.stage_id
+        and (standing.stage_item_id is None or position.stage_item_id == standing.stage_item_id)
     ]
 
 
@@ -67,21 +78,11 @@ class StandingsFlowsService:
         standing: models.Standing,
         entities: list[str],
         *,
-        histories_by_team: dict[int, list[models.Encounter]] | None = None,
+        histories_by_team: dict[int, list[HistoryRow]] | None = None,
         tournament_cache: schemas.TournamentRead | None = None,
         team_cache: dict[int, schemas.TeamRead] | None = None,
     ) -> schemas.StandingRead:
-        """
-        Converts a Standing model instance to a Pydantic schema (StandingRead), including related entities.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            standing (models.Standing): The Standing model instance to convert.
-            entities (list[str]): A list of related entities to include (e.g., ["team", "group", "tournament", "matches_history"]).
-
-        Returns:
-            schemas.StandingRead: The Pydantic schema representing the standing.
-        """
+        """Convert a Standing to ``StandingRead`` with the requested related ``entities``."""
         team: schemas.TeamRead | None = None
         stage: schemas.StageSummaryRead | None = None
         stage_item: schemas.StageItemSummaryRead | None = None
@@ -150,7 +151,8 @@ class StandingsFlowsService:
             matches_history=sort_matches(matches_history),
         )
 
-    @cache(
+    @versioned(
+        generations=tournament_generations("{tournament_id}", STANDINGS),
         ttl=config.settings.standings_cache_ttl,
         key="standings_by_tournament:{tournament_id}:{entities}",
         prefix="fastapi:",
@@ -163,25 +165,16 @@ class StandingsFlowsService:
         *,
         tournament: models.Tournament | None = None,
     ) -> list[schemas.StandingRead]:
-        """
-        Retrieves all standings for a specific tournament and converts them to Pydantic schemas.
+        """All standings of a tournament as ``StandingRead``, with the requested ``entities``.
 
         Standings rows change on a recalculation and on a stage restructure; the
         embedded ``matches_history`` also moves whenever an encounter does. Every
-        one of those publishes a resource whose ``cache_resources`` entry covers
-        this key, so a plain TTL cache here is safe.
+        one of those publishes a resource in ``STANDINGS``, whose generation is
+        part of this key, so a plain TTL cache here is safe.
 
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            tournament_id (int): The id of the tournament to retrieve standings for.
-            entities (list[str]): A list of related entities to include (e.g., ["team", "group", "tournament", "matches_history"]).
-            tournament (models.Tournament | None): Optional pre-fetched tournament
-                model (callers typically already loaded it for a visibility check).
-                Only read on a cache miss when "tournament" is a requested entity;
-                otherwise never queried.
-
-        Returns:
-            list[schemas.StandingRead]: A list of Pydantic schemas representing the standings.
+        ``tournament`` is an optional pre-fetched model (callers typically loaded
+        it for a visibility check), read only on a cache miss when "tournament"
+        is a requested entity.
         """
         standings = await self.standings.get_by_tournament(session, tournament_id, entities)
         histories_by_team = None

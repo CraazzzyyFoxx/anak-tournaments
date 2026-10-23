@@ -2,6 +2,8 @@ import typing
 
 from pydantic import BaseModel, Field
 
+from shared.schemas.role import RoleRef
+
 from .base import BaseRead, PlayerRead, TeamRead, UserReadMin
 
 __all__ = (
@@ -85,7 +87,7 @@ class TournamentAnalytics(BaseModel):
 
 class PlayerStreak(BaseModel):
     user: UserReadMin
-    role: str
+    role: RoleRef | None = None
     sum_position: int
     current_position: int
     previous_position: int | None

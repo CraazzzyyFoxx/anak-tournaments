@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
@@ -110,6 +111,9 @@ func TestTournamentFacetsRouteContract(t *testing.T) {
 	if facets.Method != "GET" || facets.Queue != "rpc.tournament.tournaments_facets" || facets.Auth != edge.AuthOptional {
 		t.Fatalf("unexpected facets contract: %#v", *facets)
 	}
+	if !slices.Contains(facets.Query, "discipline") {
+		t.Fatalf("facets must forward the discipline filter the list honours: %#v", facets.Query)
+	}
 }
 
 // TestTournamentFacetsRouting pins that the literal "facets" segment is not
@@ -194,7 +198,7 @@ func TestRoutesRegisterWithoutConflict(t *testing.T) {
 	dummy := func(http.ResponseWriter, *http.Request) {}
 
 	for _, set := range [][]edge.RouteSpec{
-		PublicReadRoutes, PublicWriteRoutes, AdminCrudRoutes, AdminMiscRoutes,
+		PublicReadRoutes, PublicWriteRoutes, AdminCrudRoutes, AdminMiscRoutes, DashboardRoutes,
 		RegistrationAdminRoutes, IntegrationsRoutes, ScrimRoutes,
 	} {
 		for _, s := range set {
@@ -245,5 +249,30 @@ func TestRegistrationTeamCrestRouting(t *testing.T) {
 		if hit != tc.want {
 			t.Errorf("%s %s routed to %q, want %q", tc.method, tc.path, hit, tc.want)
 		}
+	}
+}
+
+func TestPlayerSubRoleListForwardsExplicitDiscipline(t *testing.T) {
+	var spec edge.RouteSpec
+	for _, route := range AdminCrudRoutes {
+		if route.Method == "GET" && route.Pattern == "/api/v1/admin/player-sub-roles" {
+			spec = route
+		}
+	}
+	caller := &capturingCaller{}
+	identity := func(*http.Request) (map[string]any, bool, error) {
+		return map[string]any{"user_id": 1}, true, nil
+	}
+	mux := http.NewServeMux()
+	edge.New(caller, slog.New(slog.DiscardHandler), identity).Register(mux, []edge.RouteSpec{spec})
+	mux.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/v1/admin/player-sub-roles?workspace_id=7&discipline=lol&include_inactive=true", nil))
+	var sent struct {
+		Query map[string][]string `json:"query"`
+	}
+	if err := json.Unmarshal(caller.body, &sent); err != nil {
+		t.Fatalf("no RPC body captured: %v (%q)", err, caller.body)
+	}
+	if !slices.Equal(sent.Query["discipline"], []string{"lol"}) || !slices.Equal(sent.Query["workspace_id"], []string{"7"}) {
+		t.Fatalf("lost concrete sub-role scope: %#v", sent.Query)
 	}
 }

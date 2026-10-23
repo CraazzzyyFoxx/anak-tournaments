@@ -49,7 +49,7 @@ System overview (processes, RabbitMQ, gateway, deployment):
   the dependency direction and couples the kernel to one service's deployment. A shared module that
   needs one service's settings *is* that service's module; the second consumer calls it over RPC.
 - **A service's settings object, read implicitly.** Per-service inputs (a Redis URL, a feature flag,
-  a TTL) arrive as arguments or as plain constants. `balancer_registration_statuses.py` spells this
+  a TTL) arrive as arguments or as plain constants. `registration_statuses.py` spells this
   out: its cache TTL is a hardcoded constant precisely because `shared` may not read any single
   service's config.
 - **HTTP framework code.** Nothing here imports FastAPI. `shared.core.errors.BaseAPIException`
@@ -86,7 +86,7 @@ System overview (processes, RabbitMQ, gateway, deployment):
 Five flat modules sit at the package root and predate the subpackage split:
 `division_grid.py` and `hero_catalog.py` (runtime catalogs), `catalog_aliases.py` (alias
 normalization shared by three admin writers and the alias-attach RPC),
-`balancer_registration_statuses.py` (the workspace status-meta map, cached), and
+`registration_statuses.py` (the workspace status-meta map, cached), and
 `balancer_subrole_catalog.py` — which is explicitly a one-line facade over
 `PlayerSubRoleService.catalog_for_workspace`, kept so callers do not move. New code of this shape
 goes into `services/` or `domain/`, not the root.
@@ -133,9 +133,9 @@ The domain packages are exactly the sections of
 `.github/workflows/lint-backend.yml`:
 
 `identity` (`auth`, `players`), `tenancy` (`public`), `member_rank` (`balancer`), `catalog`
-(`overwatch`), `division_grid` (`public`), `ranks` (`overwatch_rank`), `tournament` (`tournament`,
-`casual`), `registration` (`balancer`), `balancer` (`balancer`), `custom_game` (`balancer`),
-`casual` (`casual`), `matches` (`matches`), `ingestion` (`log_processing`), `achievements`
+(`overwatch`), `division_grid` (`public`), `ranks` (`rank`), `tournament` (`tournament`),
+`registration` (`balancer`), `balancer` (`balancer`), `custom_game` (`balancer`),
+`achievements`
 (`achievements`), `analytics` (`analytics`), `subscriptions` (`subscriptions`), `preferences`
 (`players`, `tournament`), `platform` (`public`, `realtime`).
 
@@ -192,10 +192,11 @@ tournament = models.Tournament(name="Tournament #1", slug="tournament-1")
   and import no Pydantic schema, cache client, outbox publisher or service settings. The full rule
   set, the two ratcheted exemption lists and why they exist:
   [`../docs/repository-boundaries.md`](../docs/repository-boundaries.md).
-- `app-service` additionally enforces a five-layer hierarchy *inside* its own `services/` package
-  with import-linter (`backend/app-service/.importlinter`; `analytics-service` has three flatter
+- `app-service` (`user` and `workspace` independent) and stats-service's public read surface
+  (`achievement_reads` → `user` → `hero | map | statistics`) additionally enforce sub-domain contracts
+  *inside* their `services/` package with import-linter (`analytics-service` has three flatter
   contracts of the same kind). Run from `backend/`:
-  `uv run lint-imports --config app-service/.importlinter`. The layers, the grandfathered
+  `uv run lint-imports --config <service>/.importlinter`. The layers, the grandfathered
   violations and how to place a new domain:
   [`../docs/architecture/layering.md`](../docs/architecture/layering.md). Note that these contracts
   are run locally, not in CI.

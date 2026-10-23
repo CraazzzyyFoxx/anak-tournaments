@@ -1,7 +1,7 @@
 """Tests for the Challonge participant/team mapping preview+apply pair.
 
 Migrated from parser-service's ``teams.challonge_preview``/``teams.create_challonge``
-(see docs/plans/2026-08-21-parser-service-oop-repositories.md's follow-up: parser's
+(see docs/plans/2026-08-21-stats-service-oop-repositories.md's follow-up: parser's
 bootstrap Challonge flows were a narrower one-shot reimplementation of what
 tournament-service's own Challonge sync engine already does -- ``preview_team_mapping``/
 ``apply_team_mapping`` reuse ``discover_sources``/``_build_team_name_index`` via the
@@ -12,7 +12,6 @@ orchestration logic (suggestion resolution, ambiguity, validation, create/update
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,7 +22,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 challonge_sync = importlib.import_module("src.services.challonge.sync")
 schemas = importlib.import_module("src.schemas")

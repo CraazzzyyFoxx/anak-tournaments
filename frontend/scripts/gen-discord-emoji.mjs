@@ -3,12 +3,11 @@
  *
  *   node scripts/gen-discord-emoji.mjs
  *
- * Roles are the site's own pictures (public/roles), tinted with the role
- * colours of globals.css (--aqt-tank / --aqt-damage / --aqt-support / --aqt-flex):
- * the white originals vanish on Discord's light theme. Everything else is a
- * lucide icon -- the set the site already draws with -- stroked in the matching
- * --aqt-* hue, so one picture reads on both Discord themes without a backdrop.
- * Names are shared/domain/discord_ui.py's EMOJI keys; upload them with
+ * Role artwork is module-owned (public/disciplines/overwatch/roles); Flex is core.
+ * The standalone Discord palette below is intentionally distinct from ontology
+ * attrs colors: the white originals must read on both Discord themes. It does
+ * not depend on frontend role CSS tokens. Other glyphs use lucide silhouettes.
+ * Names are backend/discord-service/src/ui.py's EMOJI keys; upload them with
  * `python -m src.tools.emoji_sync` (backend/discord-service).
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -27,7 +26,7 @@ const SIZE = 128;
 // site's 2 keeps lucide's lines from thinning out at that size.
 const STROKE = 2.5;
 
-/** hsl(h s% l%) -> #rrggbb, so the palette is copied from globals.css as written. */
+/** Discord's fixed theme palette, expressed as HSL for readable tuning. */
 function hsl(h, s, l) {
   s /= 100;
   l /= 100;
@@ -37,7 +36,7 @@ function hsl(h, s, l) {
   return `#${[f(0), f(8), f(4)].map((x) => Math.round(x * 255).toString(16).padStart(2, "0")).join("")}`;
 }
 
-// globals.css :root --aqt-* tokens.
+// Discord presentation, not role ontology and not a globals.css dependency.
 const C = {
   tank: hsl(209, 82, 65),
   damage: hsl(337, 81, 66),
@@ -91,11 +90,12 @@ const LETTERS = {
   lobby_f: ["M15 7H9.5v10M9.5 12H14", C.emerald],
 };
 
+// Paths are relative to public/: Overwatch's role artwork is module-owned, Flex is core.
 const ROLES = {
-  tank: ["Tank.png", C.tank],
-  damage: ["Damage.png", C.damage],
-  support: ["Support.png", C.support],
-  flex: ["Flex.svg", C.violet],
+  tank: ["disciplines/overwatch/roles/tank.png", C.tank],
+  damage: ["disciplines/overwatch/roles/damage.png", C.damage],
+  support: ["disciplines/overwatch/roles/support.png", C.support],
+  flex: ["roles/Flex.svg", C.violet],
 };
 
 function png(svg) {
@@ -114,7 +114,7 @@ function letterSvg(path, color) {
 
 /** The role picture's own silhouette, filled with the role colour and centred on a square. */
 async function role(file, color) {
-  const source = await readFile(join(FRONTEND, "public", "roles", file));
+  const source = await readFile(join(FRONTEND, "public", file));
   const inner = Math.round(SIZE * 0.84);
   // The originals sit in wide transparent margins; trimmed first, the role
   // fills the same square a lucide icon does.

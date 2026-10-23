@@ -18,6 +18,7 @@ declare global {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const listRegistrations = vi.fn();
+const metadata = vi.fn();
 const getRegistrationForm = vi.fn();
 const listStatusCatalog = vi.fn();
 const bulkApproveRegistrations = vi.fn();
@@ -33,7 +34,9 @@ const MESSAGES = {
   kit: en.kit,
   kitAudit: en.kitAudit,
   kitTable: en.kitTable,
-  registrationsAdmin: en.registrationsAdmin
+  registrationsAdmin: en.registrationsAdmin,
+  registrationOrganizer: en.registrationOrganizer,
+  rosterShape: en.rosterShape
 };
 
 vi.mock("@/services/balancer-admin.service", () => ({
@@ -55,6 +58,21 @@ vi.mock("@/services/balancer-admin.service", () => ({
     bulkAddToBalancer: vi.fn()
   }
 }));
+vi.mock("@/services/admin.service", () => ({
+  default: { getTournament: async () => ({ id: 80, workspace_id: 1, discipline: "lol" }) }
+}));
+vi.mock("@/services/discipline.service", async () => {
+  const { disciplineServiceMock } = await import("@/test/discipline-metadata");
+  return {
+    default: {
+      ...disciplineServiceMock.default,
+      metadata: (axis: unknown, code: string) => {
+        metadata(axis, code);
+        return disciplineServiceMock.default.metadata(axis, code);
+      }
+    }
+  };
+});
 vi.mock("@/services/registration.service", () => ({
   default: { getForm: vi.fn().mockResolvedValue(null) }
 }));
@@ -329,6 +347,24 @@ describe("RegistrationsTable toolbar", () => {
 
     // Both buckets: the pool has no checked-in rows, so one section holds all 25.
     expect(scope.textContent).toContain("25 registrations");
+  });
+});
+
+describe("RegistrationsTable without a questionnaire", () => {
+  it("opens the manual-create form in the tournament's own game, never an invented one", async () => {
+    const scope = await mount();
+    const create = [...scope.querySelectorAll("button")].find((node) => node.textContent?.includes("Create"));
+    await click(create);
+    for (let turn = 0; turn < 4; turn += 1) {
+      await act(async () => {
+        await tick();
+      });
+    }
+
+    // The form's owner scope is the opened tournament's workspace and game (League here), not `0`/`""`.
+    expect(metadata).toHaveBeenCalledWith(1, "lol");
+    expect(metadata).not.toHaveBeenCalledWith(0, "");
+    expect(document.body.textContent).not.toContain(en.common.roleOntology.loadError);
   });
 });
 

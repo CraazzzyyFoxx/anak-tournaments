@@ -1,6 +1,6 @@
 import type { ElementType, ReactNode } from "react";
 
-import { TONE_TEXT, type Tone } from "@/components/kit/tone";
+import { TONE_TEXT, type Tone } from "@/components/ui/tone";
 import { cn } from "@/lib/utils";
 
 export interface EmptyNoteProps {
@@ -19,8 +19,8 @@ export interface EmptyNoteProps {
 
 const BORDER: Record<NonNullable<EmptyNoteProps["tone"]>, string> = {
   neutral: "border-border/70",
-  warning: "border-warning/40 bg-warning/5",
-  danger: "border-danger/40 bg-danger/5"
+  warning: "border-warning/40",
+  danger: "border-danger/40"
 };
 
 /**

@@ -16,7 +16,6 @@ structured 409 rather than letting an IntegrityError surface as a 500.
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 import uuid
 from contextlib import ExitStack
@@ -34,16 +33,14 @@ from tests._rpc_fakes import CapturingBroker, FakeSessionMaker, make_identity
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-os.environ["DEBUG"] = "true"
-
 import pytest  # noqa: E402
 
 from shared.core import enums  # noqa: E402
-from shared.core.errors import ApiHTTPException  # noqa: E402
+from shared.core.errors import ApiHTTPException, BaseAPIException  # noqa: E402
 from shared.domain.forms import FormField, FormSchema, default_schema  # noqa: E402
 from shared.models.registration.registration import (  # noqa: E402
-    BalancerRegistrationForm,
-    BalancerRegistrationFormTemplate,
+    RegistrationForm,
+    RegistrationFormTemplate,
 )
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
@@ -58,8 +55,8 @@ from src.services.registration.templates import template_service  # noqa: E402
 
 
 def _schema_with(key: str) -> FormSchema:
-    """``default_schema()`` plus one custom question in the ``details`` section."""
-    changed = default_schema()
+    """The Overwatch default plus one custom question in the ``details`` section."""
+    changed = default_schema("battlenet")
     changed.sections[2].fields.append(FormField(key=key, kind="text", label=key.upper()))
     return changed
 
@@ -79,7 +76,7 @@ _FORM_IDENTITY_COLUMNS = frozenset(
 def _toggles(form: Any) -> dict[str, Any]:
     return {
         attr.key: getattr(form, attr.key)
-        for attr in sa.inspect(BalancerRegistrationForm).mapper.column_attrs
+        for attr in sa.inspect(RegistrationForm).mapper.column_attrs
         if attr.key not in _FORM_IDENTITY_COLUMNS
     }
 
@@ -106,6 +103,13 @@ async def _drop(session: Any, workspace_id: int) -> None:
     await session.commit()
 
 
+async def _run_both_games(session: Any, workspace_id: int) -> None:
+    await session.execute(
+        sa.update(Workspace).where(Workspace.id == workspace_id).values(disciplines_enabled=["overwatch", "lol"])
+    )
+    await session.commit()
+
+
 def test_create_list_update_delete_round_trip(db_session) -> None:
     async def _run() -> tuple[list[str], set[str], str, set[str], int]:
         workspace_id, _ = await _seed(db_session)
@@ -113,7 +117,9 @@ def test_create_list_update_delete_round_trip(db_session) -> None:
             created = await template_service.create(
                 db_session,
                 workspace_id=workspace_id,
-                body=RegistrationFormTemplateUpsert(name="Open Cup", form_schema=default_schema()),
+                body=RegistrationFormTemplateUpsert(
+                    name="Open Cup", discipline="overwatch", form_schema=default_schema("battlenet")
+                ),
                 actor_user_id=None,
             )
             listed = await template_service.list(db_session, workspace_id=workspace_id)
@@ -157,14 +163,18 @@ def test_a_name_differing_only_in_case_is_refused(db_session) -> None:
             first = await template_service.create(
                 db_session,
                 workspace_id=workspace_id,
-                body=RegistrationFormTemplateUpsert(name="Open Cup", form_schema=default_schema()),
+                body=RegistrationFormTemplateUpsert(
+                    name="Open Cup", discipline="overwatch", form_schema=default_schema("battlenet")
+                ),
                 actor_user_id=None,
             )
             with pytest.raises(ApiHTTPException) as caught:
                 await template_service.create(
                     db_session,
                     workspace_id=workspace_id,
-                    body=RegistrationFormTemplateUpsert(name="open CUP", form_schema=default_schema()),
+                    body=RegistrationFormTemplateUpsert(
+                        name="open CUP", discipline="overwatch", form_schema=default_schema("battlenet")
+                    ),
                     actor_user_id=None,
                 )
             create_detail = list(caught.value.detail)
@@ -174,7 +184,9 @@ def test_a_name_differing_only_in_case_is_refused(db_session) -> None:
             second = await template_service.create(
                 db_session,
                 workspace_id=workspace_id,
-                body=RegistrationFormTemplateUpsert(name="Closed Cup", form_schema=default_schema()),
+                body=RegistrationFormTemplateUpsert(
+                    name="Closed Cup", discipline="overwatch", form_schema=default_schema("battlenet")
+                ),
                 actor_user_id=None,
             )
             with pytest.raises(ApiHTTPException) as renamed:
@@ -182,7 +194,7 @@ def test_a_name_differing_only_in_case_is_refused(db_session) -> None:
                     db_session,
                     workspace_id=workspace_id,
                     template_id=second.id,
-                    body=RegistrationFormTemplateUpsert(name="OPEN cup", form_schema=default_schema()),
+                    body=RegistrationFormTemplateUpsert(name="OPEN cup", form_schema=default_schema("battlenet")),
                     actor_user_id=None,
                 )
             assert first.id != second.id
@@ -208,7 +220,7 @@ def test_apply_bumps_the_form_version_and_leaves_the_template_untouched(db_sessi
             form = await form_service.upsert(
                 db_session,
                 tournament_id,
-                RegistrationFormUpsert(form_schema=default_schema()),
+                RegistrationFormUpsert(form_schema=default_schema("battlenet")),
                 workspace_id=workspace_id,
                 actor_user_id=None,
             )
@@ -217,7 +229,9 @@ def test_apply_bumps_the_form_version_and_leaves_the_template_untouched(db_sessi
             template = await template_service.create(
                 db_session,
                 workspace_id=workspace_id,
-                body=RegistrationFormTemplateUpsert(name="With VK", form_schema=_schema_with("vk")),
+                body=RegistrationFormTemplateUpsert(
+                    name="With VK", discipline="overwatch", form_schema=_schema_with("vk")
+                ),
                 actor_user_id=None,
             )
             template_before = dict(template.schema_json)
@@ -235,9 +249,7 @@ def test_apply_bumps_the_form_version_and_leaves_the_template_untouched(db_sessi
             # Re-read the template from the database rather than trusting the
             # identity-mapped instance: the assertion is that the row did not move.
             template_after = await db_session.scalar(
-                sa.select(BalancerRegistrationFormTemplate.schema_json).where(
-                    BalancerRegistrationFormTemplate.id == template.id
-                )
+                sa.select(RegistrationFormTemplate.schema_json).where(RegistrationFormTemplate.id == template.id)
             )
             assert template_after == template_before
 
@@ -296,9 +308,7 @@ def test_save_from_form_snapshots_the_current_schema(db_session) -> None:
             assert "telegram" in _keys(edited.current_version.schema_json)
 
             after_edit = await db_session.scalar(
-                sa.select(BalancerRegistrationFormTemplate.schema_json).where(
-                    BalancerRegistrationFormTemplate.id == template.id
-                )
+                sa.select(RegistrationFormTemplate.schema_json).where(RegistrationFormTemplate.id == template.id)
             )
             return snapshot_keys, _keys(after_edit), edited.current_version.number
         finally:
@@ -325,7 +335,9 @@ def test_apply_to_a_tournament_with_no_form_creates_one(db_session) -> None:
             template = await template_service.create(
                 db_session,
                 workspace_id=workspace_id,
-                body=RegistrationFormTemplateUpsert(name="Fresh", form_schema=_schema_with("vk")),
+                body=RegistrationFormTemplateUpsert(
+                    name="Fresh", discipline="overwatch", form_schema=_schema_with("vk")
+                ),
                 actor_user_id=None,
             )
             created = await template_service.apply(
@@ -350,7 +362,7 @@ def test_apply_to_a_tournament_with_no_form_creates_one(db_session) -> None:
             baseline = await form_service.upsert(
                 db_session,
                 baseline_tournament.id,
-                RegistrationFormUpsert(form_schema=default_schema()),
+                RegistrationFormUpsert(form_schema=default_schema("battlenet")),
                 workspace_id=workspace_id,
                 actor_user_id=None,
             )
@@ -408,7 +420,9 @@ def test_another_workspaces_template_is_invisible(db_session) -> None:
             template = await template_service.create(
                 db_session,
                 workspace_id=owner_ws,
-                body=RegistrationFormTemplateUpsert(name="Owned", form_schema=_schema_with("vk")),
+                body=RegistrationFormTemplateUpsert(
+                    name="Owned", discipline="overwatch", form_schema=_schema_with("vk")
+                ),
                 actor_user_id=None,
             )
             refusals: list[tuple[int, str]] = []
@@ -423,7 +437,7 @@ def test_another_workspaces_template_is_invisible(db_session) -> None:
                     db_session,
                     workspace_id=other_ws,
                     template_id=template.id,
-                    body=RegistrationFormTemplateUpsert(name="Stolen", form_schema=default_schema()),
+                    body=RegistrationFormTemplateUpsert(name="Stolen", form_schema=default_schema("battlenet")),
                     actor_user_id=None,
                 )
             )
@@ -442,8 +456,8 @@ def test_another_workspaces_template_is_invisible(db_session) -> None:
             assert [row.id for row in await template_service.list(db_session, workspace_id=other_ws)] == []
 
             survivor = await db_session.execute(
-                sa.select(BalancerRegistrationFormTemplate.name, BalancerRegistrationFormTemplate.schema_json).where(
-                    BalancerRegistrationFormTemplate.id == template.id
+                sa.select(RegistrationFormTemplate.name, RegistrationFormTemplate.schema_json).where(
+                    RegistrationFormTemplate.id == template.id
                 )
             )
             name, schema_json = survivor.one()
@@ -462,6 +476,181 @@ def test_another_workspaces_template_is_invisible(db_session) -> None:
     assert name == "Owned"
     assert "vk" in keys
     assert leaked is None
+
+
+def test_create_needs_a_game_the_workspace_runs(db_session) -> None:
+    async def _run() -> tuple[list[tuple[int, str]], int]:
+        workspace_id, _ = await _seed(db_session)
+        try:
+            refusals: list[tuple[int, str]] = []
+            for discipline in (None, "lol"):
+                with pytest.raises(BaseAPIException) as caught:
+                    await template_service.create(
+                        db_session,
+                        workspace_id=workspace_id,
+                        body=RegistrationFormTemplateUpsert(
+                            name=f"Cup {discipline}", discipline=discipline, form_schema=default_schema("riot")
+                        ),
+                        actor_user_id=None,
+                    )
+                refusals.append((caught.value.status_code, str(caught.value.detail)))
+            return refusals, len(await template_service.list(db_session, workspace_id=workspace_id))
+        finally:
+            await _drop(db_session, workspace_id)
+
+    refusals, remaining = asyncio.run(_run())
+
+    assert refusals[0][0] == 422 and "discipline_required" in refusals[0][1]
+    # The workspace runs Overwatch only.
+    assert refusals[1][0] == 422 and "discipline_not_enabled" in refusals[1][1]
+    assert remaining == 0
+
+
+def test_a_templates_game_never_changes(db_session) -> None:
+    async def _run() -> tuple[str, str, int, list[dict[str, Any]], str]:
+        workspace_id, _ = await _seed(db_session)
+        try:
+            template = await template_service.create(
+                db_session,
+                workspace_id=workspace_id,
+                body=RegistrationFormTemplateUpsert(
+                    name="Open Cup", discipline="overwatch", form_schema=default_schema("battlenet")
+                ),
+                actor_user_id=None,
+            )
+            # Omitted or equal: an ordinary edit.
+            omitted = await template_service.update(
+                db_session,
+                workspace_id=workspace_id,
+                template_id=template.id,
+                body=RegistrationFormTemplateUpsert(name="Open Cup 2", form_schema=default_schema("battlenet")),
+                actor_user_id=None,
+            )
+            same = await template_service.update(
+                db_session,
+                workspace_id=workspace_id,
+                template_id=template.id,
+                body=RegistrationFormTemplateUpsert(
+                    name="Open Cup 3", discipline="overwatch", form_schema=default_schema("battlenet")
+                ),
+                actor_user_id=None,
+            )
+            with pytest.raises(ApiHTTPException) as caught:
+                await template_service.update(
+                    db_session,
+                    workspace_id=workspace_id,
+                    template_id=template.id,
+                    body=RegistrationFormTemplateUpsert(
+                        name="Rift", discipline="lol", form_schema=default_schema("riot")
+                    ),
+                    actor_user_id=None,
+                )
+            stored = await db_session.scalar(
+                sa.select(RegistrationFormTemplate.discipline).where(RegistrationFormTemplate.id == template.id)
+            )
+            return omitted.discipline, same.name, caught.value.status_code, list(caught.value.detail), stored
+        finally:
+            await _drop(db_session, workspace_id)
+
+    omitted, same_name, status_code, detail, stored = asyncio.run(_run())
+
+    assert omitted == "overwatch"
+    assert same_name == "Open Cup 3"
+    assert status_code == 409
+    assert detail[0]["code"] == "template_discipline_immutable"
+    assert stored == "overwatch"
+
+
+def test_the_list_narrows_to_one_game(db_session) -> None:
+    async def _run() -> dict[str | None, list[str]]:
+        workspace_id, _ = await _seed(db_session)
+        try:
+            await _run_both_games(db_session, workspace_id)
+            for name, discipline, provider in (("Open Cup", "overwatch", "battlenet"), ("Rift Cup", "lol", "riot")):
+                await template_service.create(
+                    db_session,
+                    workspace_id=workspace_id,
+                    body=RegistrationFormTemplateUpsert(
+                        name=name, discipline=discipline, form_schema=default_schema(provider)
+                    ),
+                    actor_user_id=None,
+                )
+            return {
+                discipline: [
+                    row.name
+                    for row in await template_service.list(db_session, workspace_id=workspace_id, discipline=discipline)
+                ]
+                for discipline in (None, "overwatch", "lol")
+            }
+        finally:
+            await _drop(db_session, workspace_id)
+
+    assert asyncio.run(_run()) == {None: ["Open Cup", "Rift Cup"], "overwatch": ["Open Cup"], "lol": ["Rift Cup"]}
+
+
+def test_apply_refuses_another_games_template(db_session) -> None:
+    """An Overwatch tournament never receives a template asking for a Riot ID (spec §8.4)."""
+
+    async def _run() -> tuple[int, list[dict[str, Any]], bool]:
+        workspace_id, tournament_id = await _seed(db_session)
+        try:
+            await _run_both_games(db_session, workspace_id)
+            template = await template_service.create(
+                db_session,
+                workspace_id=workspace_id,
+                body=RegistrationFormTemplateUpsert(
+                    name="Rift Cup", discipline="lol", form_schema=default_schema("riot")
+                ),
+                actor_user_id=None,
+            )
+            with pytest.raises(ApiHTTPException) as caught:
+                await template_service.apply(
+                    db_session,
+                    workspace_id=workspace_id,
+                    tournament_id=tournament_id,
+                    template_id=template.id,
+                    actor_user_id=None,
+                )
+            form = await form_service.get_form(db_session, tournament_id)
+            return caught.value.status_code, list(caught.value.detail), form is None
+        finally:
+            await _drop(db_session, workspace_id)
+
+    status_code, detail, no_form = asyncio.run(_run())
+
+    assert status_code == 409
+    assert detail[0]["code"] == "template_discipline_mismatch"
+    assert no_form
+
+
+def test_save_from_form_files_the_template_under_the_tournaments_game(db_session) -> None:
+    async def _run() -> str:
+        workspace_id, tournament_id = await _seed(db_session)
+        try:
+            await _run_both_games(db_session, workspace_id)
+            await db_session.execute(
+                sa.update(Tournament).where(Tournament.id == tournament_id).values(discipline="lol")
+            )
+            await db_session.commit()
+            await form_service.upsert(
+                db_session,
+                tournament_id,
+                RegistrationFormUpsert(form_schema=default_schema("riot")),
+                workspace_id=workspace_id,
+                actor_user_id=None,
+            )
+            template = await template_service.save_from_form(
+                db_session,
+                workspace_id=workspace_id,
+                tournament_id=tournament_id,
+                name="Rift snapshot",
+                actor_user_id=None,
+            )
+            return template.discipline
+        finally:
+            await _drop(db_session, workspace_id)
+
+    assert asyncio.run(_run()) == "lol"
 
 
 # ── RPC wiring: the path params and body keys the handlers read ─────────────
@@ -490,8 +679,9 @@ def _template_row(**overrides: Any) -> SimpleNamespace:
     base = {
         "id": 42,
         "workspace_id": 1,
+        "discipline": "overwatch",
         "name": "Open Cup",
-        "schema_json": default_schema().model_dump(mode="json"),
+        "schema_json": default_schema("battlenet").model_dump(mode="json"),
         # A fresh row: ``updated_at`` stays NULL until the first edit (``onupdate``).
         "created_at": datetime(2026, 5, 1, 12, 30, tzinfo=UTC),
         "updated_at": None,
@@ -537,9 +727,10 @@ class TemplateHandlersReadTheRequest(IsolatedAsyncioTestCase):
         )
 
         self.assertTrue(envelope.get("ok"), envelope)
-        self.assertEqual([{"workspace_id": 1}], calls)
+        self.assertEqual([{"workspace_id": 1, "discipline": None}], calls)
         self.assertEqual("Open Cup", envelope["data"][0]["name"])
         self.assertIn("sections", envelope["data"][0]["form_schema"])
+        self.assertEqual("overwatch", envelope["data"][0]["discipline"])
 
     async def test_update_reads_the_template_id_from_the_path(self):
         envelope, calls = await self._invoke(
@@ -611,6 +802,9 @@ class TemplateHandlersReadTheRequest(IsolatedAsyncioTestCase):
         async def _stale(_session, _form):
             return 0
 
+        async def _discipline(_session, _tournament_id):
+            return "overwatch"
+
         envelope, calls = await self._invoke(
             "rpc.tournament.regform_template_apply",
             {"identity": _IDENTITY, "id": 9, "payload": {"template_id": 42}},
@@ -625,6 +819,7 @@ class TemplateHandlersReadTheRequest(IsolatedAsyncioTestCase):
                 ),
                 patch.object(registration_admin.windows_service, "load_registration_open", _open),
                 patch.object(registration_admin.form_service, "stale_count", _stale),
+                patch.object(registration_admin.reg_common._common_service, "get_tournament_discipline", _discipline),
             ),
         )
 
@@ -653,3 +848,27 @@ class TemplateHandlersReadTheRequest(IsolatedAsyncioTestCase):
             calls[0],
         )
         self.assertEqual("Snapshot", envelope["data"]["name"])
+
+    async def test_list_reads_the_game_filter(self):
+        envelope, calls = await self._invoke(
+            "rpc.tournament.regform_template_list",
+            {"identity": _IDENTITY, "workspace_id": 1, "query": {"discipline": ["lol"]}},
+            service_fn="list",
+            service_result=[_template_row(discipline="lol")],
+        )
+
+        self.assertTrue(envelope.get("ok"), envelope)
+        self.assertEqual([{"workspace_id": 1, "discipline": "lol"}], calls)
+        self.assertEqual("lol", envelope["data"][0]["discipline"])
+
+    async def test_list_refuses_a_game_that_is_not_installed(self):
+        envelope, calls = await self._invoke(
+            "rpc.tournament.regform_template_list",
+            {"identity": _IDENTITY, "workspace_id": 1, "query": {"discipline": ["chess"]}},
+            service_fn="list",
+            service_result=[],
+        )
+
+        self.assertFalse(envelope.get("ok"), envelope)
+        self.assertEqual("unprocessable", envelope["error"]["code"])
+        self.assertEqual([], calls)

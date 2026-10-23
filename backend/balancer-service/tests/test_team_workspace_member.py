@@ -1,16 +1,12 @@
-"""The shared team writer's Player-creation site must populate
-``workspace_member_id`` (``Player.user_id`` was dropped in the contract step,
-iwrefac07) so workspace-scoped analytics readers that INNER-JOIN on it don't
-silently drop newly created roster rows.
+"""The team writer's Player-creation site must populate ``workspace_member_id`` so workspace-scoped analytics
+readers that INNER-JOIN on it don't silently drop newly created roster rows.
 
-Exercised through balancer-service's adapter (``to_materialization_teams``) so
-both the payload mapping and the writer stay covered after the writer moved to
-``shared.services.team_export``.
+Exercised through balancer-service's adapter (``to_materialization_teams``) so both the payload mapping and the
+writer stay covered.
 """
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -25,12 +21,15 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
+from shared.domain.team_format import FormatDimension, TeamFormat  # noqa: E402
+from shared.models.catalog.role import CatalogRole, RoleDimension  # noqa: E402
 from shared.models.tournament.team import Player, Team  # noqa: E402
-from shared.services.team_export import materialization as materialization_module  # noqa: E402
+from shared.schemas.role import RoleRef  # noqa: E402
+from shared.tests.test_team_format import _module_ontology  # noqa: E402
 from src.schemas.team import BalancerTeam, BalancerTeamMember  # noqa: E402
 from src.services.team import to_materialization_teams  # noqa: E402
+from src.services.team_export import materialization as materialization_module  # noqa: E402
 
 
 def _scalar_result(value):
@@ -55,7 +54,7 @@ def _rows_result(rows):
 
 class MaterializeTeamsWorkspaceMemberTests(IsolatedAsyncioTestCase):
     async def test_new_player_gets_workspace_member_id(self) -> None:
-        tournament = SimpleNamespace(id=88, workspace_id=55, start_date=None)
+        tournament = SimpleNamespace(id=88, workspace_id=55, start_date=None, discipline="overwatch")
         member_user = SimpleNamespace(id=42)
         created_team = SimpleNamespace(id=3, name="Roster", tournament_id=88)
         created_member = SimpleNamespace(id=9001)
@@ -100,7 +99,7 @@ class MaterializeTeamsWorkspaceMemberTests(IsolatedAsyncioTestCase):
                     BalancerTeamMember(
                         uuid=uuid4(),
                         name="Roster#0000",
-                        role="tank",
+                        role=RoleRef(dimension="player_role", role="tank"),
                         rank=3000,
                     )
                 ],
@@ -110,7 +109,22 @@ class MaterializeTeamsWorkspaceMemberTests(IsolatedAsyncioTestCase):
         with (
             patch.object(
                 materialization_module,
-                "find_users_by_battle_tags",
+                "tournament_format",
+                AsyncMock(
+                    return_value=(
+                        TeamFormat("overwatch", "Solo", 1, 1, dimensions=(FormatDimension("player_role", "enforced"),)),
+                        "preset",
+                    )
+                ),
+            ),
+            patch.object(
+                materialization_module.CatalogRoleRepository,
+                "ontology",
+                AsyncMock(return_value=_module_ontology("overwatch")),
+            ),
+            patch.object(
+                materialization_module,
+                "find_users_by_handles",
                 AsyncMock(return_value={"Roster#0000": member_user}),
             ),
             patch.object(
@@ -118,6 +132,18 @@ class MaterializeTeamsWorkspaceMemberTests(IsolatedAsyncioTestCase):
                 "get_or_create_workspace_member",
                 AsyncMock(return_value=created_member),
             ) as get_or_create,
+            patch.object(
+                materialization_module,
+                "resolve_role_ref",
+                AsyncMock(
+                    return_value=CatalogRole(
+                        id=101,
+                        dimension_id=1,
+                        code="tank",
+                        dimension=RoleDimension(id=1, discipline="overwatch", code="player_role", rated=True),
+                    )
+                ),
+            ),
         ):
             await materialization_module.materialize_teams(session, 88, to_materialization_teams(payload))
 

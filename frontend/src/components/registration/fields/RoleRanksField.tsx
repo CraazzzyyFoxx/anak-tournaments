@@ -1,16 +1,16 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useMemo } from "react";
 
-import DivisionIcon from "@/components/DivisionIcon";
+import FieldLabel from "@/components/forms/FieldLabel";
+import FieldShell from "@/components/forms/FieldShell";
 import type { FieldRendererProps } from "@/components/forms/types";
+import { RankCrest } from "@/components/RankCrest";
 import { NumberInput } from "@/components/ui/number-input";
-import { getDivisionLabel, OW_REFERENCE_GRID, resolveDivisionFromRank } from "@/lib/divisions/grid";
-import { ROLES } from "@/lib/roster/roles";
-import { cn } from "@/lib/utils";
-
-import FieldLabel from "../FieldLabel";
-import { fieldControlClass, fieldInvalidClass } from "../FormField";
+import { useRoleName } from "@/hooks/useRoleName";
+import { resolveDivisionFromRank } from "@/lib/divisions/grid";
+import { registrationRoles, showsRoles } from "@/lib/roster/ontology";
+import type { DivisionGrid } from "@/types/workspace.types";
 
 /** The answer this control edits: `{ [roleCode]: rank }`, blanks absent. */
 function ranksOf(value: unknown): Record<string, unknown> {
@@ -45,10 +45,12 @@ function storedRank(stored: unknown): number | null {
  * range, so a picker over the ladder would round every answer to its tier and
  * the crest beside the field already says which tier that is.
  *
- * The crest is read off the PLATFORM's grid (`OW_REFERENCE_GRID`), never the
- * workspace's: what the registrant types is their Overwatch SR, and 3200 is
- * Diamond 3 on the ladder no matter what a workspace calls its 14th division.
- * A workspace grid here would rename the number under the registrant.
+ * The crest is read off the owner game's NATIVE ladder (its scoped metadata),
+ * never the workspace's grid: what the registrant types is a rank of THAT game,
+ * and it lands on the same native tier no matter what a workspace calls its own
+ * divisions. A workspace grid here would rename the number under the registrant.
+ * A game with no native ladder shows no crest, and no other game's ladder is
+ * ever borrowed.
  */
 export default function RoleRanksField({
   field,
@@ -58,8 +60,15 @@ export default function RoleRanksField({
   context,
 }: Readonly<FieldRendererProps>) {
   const id = useId();
-  const errorId = `${id}-error`;
+  const nameOf = useRoleName();
   const ranks = ranksOf(value);
+  const roles = registrationRoles(context.metadata);
+  // One role: the block's own label names its one field, and the block is that role's whatever was declared.
+  const named = showsRoles(context.metadata);
+  const nativeLadder = useMemo<DivisionGrid>(
+    () => ({ tiers: [...(context.metadata?.native_ladder ?? [])] }),
+    [context.metadata],
+  );
   // Required per ROLE, not per block: the registrant must rate the roles they
   // signed up for, and may still rate the ones they did not.
   const declared = context.declaredRoles ?? [];
@@ -72,19 +81,19 @@ export default function RoleRanksField({
   };
 
   return (
-    <fieldset
-      className="m-0 min-w-0 space-y-2 border-0 p-0"
-      aria-invalid={Boolean(error)}
-      aria-describedby={error ? errorId : undefined}
+    <FieldShell
+      id={id}
+      label={field.label || field.key}
+      required={field.required}
+      help={field.help}
+      error={error}
+      layout="group"
     >
-      <legend className="contents">
-        <FieldLabel label={field.label || field.key} required={field.required} />
-      </legend>
       <div className="grid gap-3 sm:grid-cols-3">
-        {ROLES.map((role) => {
+        {roles.map((role) => {
           const controlId = `${id}-${role.code}`;
           const rank = storedRank(ranks[role.code]);
-          const division = resolveDivisionFromRank(OW_REFERENCE_GRID, rank);
+          const division = resolveDivisionFromRank(nativeLadder, rank);
           // Only the blank cells the objection is ABOUT go red: a rank that is
           // filled in is not why the block was refused, and painting all three
           // made the answered roles look wrong too. With nothing declared the
@@ -92,42 +101,32 @@ export default function RoleRanksField({
           const atFault =
             error !== null &&
             rank === null &&
-            (declared.length === 0 || declared.includes(role.code));
+            (!named || declared.length === 0 || declared.includes(role.code));
           return (
             <div key={role.code} className="space-y-2">
-              <FieldLabel
-                label={role.display}
-                htmlFor={controlId}
-                required={field.required && declared.includes(role.code)}
-              />
+              {named ? (
+                <FieldLabel
+                  label={nameOf(role)}
+                  htmlFor={controlId}
+                  required={field.required && declared.includes(role.code)}
+                />
+              ) : null}
               <div className="relative">
                 <NumberInput
                   id={controlId}
+                  aria-label={named ? undefined : field.label || field.key}
                   integer
                   min={0}
                   placeholder={field.placeholder || "—"}
                   value={rank}
                   onValueChange={(next) => setRank(role.code, next)}
                   aria-invalid={atFault}
-                  className={cn(
-                    fieldControlClass,
-                    "h-9",
-                    division != null && "pr-11",
-                    atFault && fieldInvalidClass,
-                  )}
+                  variant="surface"
+                  className={division != null ? "pr-11" : undefined}
                 />
                 {division != null ? (
-                  <span
-                    className="pointer-events-none absolute inset-y-0 right-2 flex items-center"
-                    title={getDivisionLabel(OW_REFERENCE_GRID, division) ?? undefined}
-                  >
-                    <DivisionIcon
-                      division={division}
-                      tournamentGrid={OW_REFERENCE_GRID}
-                      width={22}
-                      height={22}
-                      className="size-[22px] object-contain"
-                    />
+                  <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center">
+                    <RankCrest division={division} grid={nativeLadder} tooltip={false} />
                   </span>
                 ) : null}
               </div>
@@ -135,14 +134,6 @@ export default function RoleRanksField({
           );
         })}
       </div>
-      {field.help ? (
-        <p className="text-xs leading-5 text-[color:var(--aqt-fg-muted)]">{field.help}</p>
-      ) : null}
-      {error ? (
-        <p id={errorId} className="text-xs text-destructive">
-          {error}
-        </p>
-      ) : null}
-    </fieldset>
+    </FieldShell>
   );
 }

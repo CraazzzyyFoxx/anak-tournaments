@@ -1,13 +1,8 @@
 import { useTranslations } from "next-intl";
-import type { HTMLAttributes, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import styles from "@/components/draft/DraftRoom.module.css";
-
-type SkeletonBlockProps = HTMLAttributes<HTMLSpanElement>;
-
-function SkeletonBlock({ className = "", ...props }: SkeletonBlockProps) {
-  return <span aria-hidden="true" className={`${styles.skeletonBlock} ${className}`} {...props} />;
-}
+import { Skeleton } from "@/components/ui/skeleton";
 
 function LoadingRegion({ className, children }: Readonly<{ className: string; children: ReactNode }>) {
   const t = useTranslations("draftRedesign");
@@ -40,30 +35,30 @@ function RoomSkeleton() {
       <div className={styles.skeletonHeader} data-draft-skeleton="header">
         <div className={styles.skeletonHeaderRow}>
           <div className={styles.skeletonBackAction} data-draft-skeleton="back-action">
-            <SkeletonBlock className={styles.skeletonBackArrow} />
-            <SkeletonBlock className={styles.skeletonBackLabel} />
+            <Skeleton className={styles.skeletonBackArrow} />
+            <Skeleton className={styles.skeletonBackLabel} />
           </div>
           <span className={styles.skeletonDivider} />
-          <SkeletonBlock className={styles.skeletonTitle} />
-          <SkeletonBlock className={styles.skeletonStatusPill} data-draft-skeleton="status-pill" />
+          <Skeleton className={styles.skeletonTitle} />
+          <Skeleton className={styles.skeletonStatusPill} data-draft-skeleton="status-pill" />
           <div className={styles.skeletonHeaderMeta}>
-            <SkeletonBlock className={styles.skeletonFormat} />
-            <SkeletonBlock className={styles.skeletonViewers} />
-            <SkeletonBlock className={styles.skeletonSeat} />
+            <Skeleton className={styles.skeletonFormat} />
+            <Skeleton className={styles.skeletonViewers} />
+            <Skeleton className={styles.skeletonSeat} />
           </div>
         </div>
         <div className={styles.skeletonStripBand}>
           <div className={styles.skeletonStrip} data-draft-skeleton="clock-strip">
-            <SkeletonBlock className={styles.skeletonTimer} data-draft-skeleton="timer" />
+            <Skeleton className={styles.skeletonTimer} data-draft-skeleton="timer" />
             <div className={styles.skeletonWho}>
-              <SkeletonBlock className={styles.skeletonEyebrow} />
-              <SkeletonBlock className={styles.skeletonWhoName} />
+              <Skeleton className={styles.skeletonEyebrow} />
+              <Skeleton className={styles.skeletonWhoName} />
             </div>
             <div className={styles.skeletonProgress}>
-              <SkeletonBlock className={styles.skeletonProgressLine} />
+              <Skeleton className={styles.skeletonProgressLine} />
               <div className={styles.skeletonTrack} data-draft-skeleton="tick-track">
                 {Array.from({ length: TICKS }, (_, index) => (
-                  <SkeletonBlock className={styles.skeletonTick} key={index} />
+                  <Skeleton className={styles.skeletonTick} key={index} />
                 ))}
               </div>
             </div>
@@ -73,8 +68,8 @@ function RoomSkeleton() {
 
       <div className={styles.skeletonBody}>
         <div className={styles.skeletonTabBar} data-draft-skeleton="tab-bar">
-          <SkeletonBlock className={styles.skeletonTabBarItem} />
-          <SkeletonBlock className={styles.skeletonTabBarItem} />
+          <Skeleton className={styles.skeletonTabBarItem} />
+          <Skeleton className={styles.skeletonTabBarItem} />
         </div>
         <div className={styles.skeletonPanels}>
           <section
@@ -83,32 +78,32 @@ function RoomSkeleton() {
           >
             <div className={styles.skeletonPanelHead}>
               <div className={styles.skeletonHeadRow}>
-                <SkeletonBlock className={styles.skeletonPanelTitle} />
-                <SkeletonBlock className={styles.skeletonSearch} />
+                <Skeleton className={styles.skeletonPanelTitle} />
+                <Skeleton className={styles.skeletonSearch} />
               </div>
               <div className={styles.skeletonTabStrip}>
-                <SkeletonBlock className={styles.skeletonTab} />
-                <SkeletonBlock className={styles.skeletonTab} />
-                <SkeletonBlock className={styles.skeletonTab} />
+                <Skeleton className={styles.skeletonTab} />
+                <Skeleton className={styles.skeletonTab} />
+                <Skeleton className={styles.skeletonTab} />
               </div>
               <div className={styles.skeletonChips}>
-                <SkeletonBlock className={styles.skeletonChip} />
-                <SkeletonBlock className={styles.skeletonChip} />
-                <SkeletonBlock className={styles.skeletonChip} />
+                <Skeleton className={styles.skeletonChip} />
+                <Skeleton className={styles.skeletonChip} />
+                <Skeleton className={styles.skeletonChip} />
               </div>
               <div className={styles.skeletonMeters}>
                 {Array.from({ length: METERS }, (_, index) => (
-                  <SkeletonBlock className={styles.skeletonMeter} key={index} />
+                  <Skeleton className={styles.skeletonMeter} key={index} />
                 ))}
               </div>
             </div>
             <div className={styles.skeletonRows}>
               {Array.from({ length: POOL_ROWS }, (_, index) => (
                 <div className={styles.skeletonRow} data-draft-skeleton="pool-row" key={index}>
-                  <SkeletonBlock className={styles.skeletonRowName} />
-                  <SkeletonBlock className={styles.skeletonRowCell} />
-                  <SkeletonBlock className={styles.skeletonRowCell} />
-                  <SkeletonBlock className={styles.skeletonRowCell} />
+                  <Skeleton className={styles.skeletonRowName} />
+                  <Skeleton className={styles.skeletonRowCell} />
+                  <Skeleton className={styles.skeletonRowCell} />
+                  <Skeleton className={styles.skeletonRowCell} />
                 </div>
               ))}
             </div>
@@ -119,21 +114,21 @@ function RoomSkeleton() {
           >
             <div className={styles.skeletonPanelHead}>
               <div className={styles.skeletonTabStrip}>
-                <SkeletonBlock className={styles.skeletonTab} />
-                <SkeletonBlock className={styles.skeletonTab} />
+                <Skeleton className={styles.skeletonTab} />
+                <Skeleton className={styles.skeletonTab} />
               </div>
               <div className={styles.skeletonColHead}>
                 {Array.from({ length: TEAM_CELLS }, (_, index) => (
-                  <SkeletonBlock className={styles.skeletonColLabel} key={index} />
+                  <Skeleton className={styles.skeletonColLabel} key={index} />
                 ))}
               </div>
             </div>
             <div className={styles.skeletonRows}>
               {Array.from({ length: TEAM_ROWS }, (_, index) => (
                 <div className={styles.skeletonRow} data-draft-skeleton="team-row" key={index}>
-                  <SkeletonBlock className={styles.skeletonRowName} />
+                  <Skeleton className={styles.skeletonRowName} />
                   {Array.from({ length: TEAM_CELLS }, (_, cell) => (
-                    <SkeletonBlock className={styles.skeletonRowCell} key={cell} />
+                    <Skeleton className={styles.skeletonRowCell} key={cell} />
                   ))}
                 </div>
               ))}

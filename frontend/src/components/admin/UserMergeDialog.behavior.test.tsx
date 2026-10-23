@@ -38,7 +38,7 @@ vi.mock("@/services/admin.service", () => ({
 vi.mock("@/stores/auth-profile.store", () => ({
   useAuthProfileStore: { getState: () => ({ fetchMe }) }
 }));
-vi.mock("@/components/admin/UserSearchCombobox", () => ({
+vi.mock("@/components/kit/ServerSearchCombobox", () => ({
   UserSearchCombobox: ({ id, value, onSelect }: {
     id: string;
     value?: number;
@@ -218,9 +218,9 @@ describe("profile/auth merge review boundaries", () => {
     await acknowledge("I understand that Source");
     await pick("Other account:", "Delete account and transfer its resources");
     expect(labelledControl<HTMLButtonElement>("I reviewed the OAuth destinations").getAttribute("aria-checked")).toBe("false");
-    expect(labelledControl("discord: incoming-login").textContent).toBe("Choose a retained sign-in account");
-    await openSelect("discord: incoming-login");
-    expect(option("incoming-auth (#11) — selected for deletion").getAttribute("aria-disabled")).toBe("true");
+    expect(labelledControl("Discord: incoming-login").textContent).toBe("Choose a retained sign-in account");
+    await openSelect("Discord: incoming-login");
+    expect(option("incoming-auth (#11) (selected for deletion)").getAttribute("aria-disabled")).toBe("true");
     await selectOption("existing-auth (#22)");
     await click(button("Merge and delete source"));
     expect(executeMerge).not.toHaveBeenCalled();
@@ -312,10 +312,10 @@ describe("profile/auth merge review boundaries", () => {
     previewMerge.mockResolvedValue(preview(2, null));
     await prepare();
     await acknowledge("I understand that Source");
-    const nameGroup = Array.from(document.body.querySelectorAll('[role="group"]')).find((group) =>
+    const nameGroup = Array.from(document.body.querySelectorAll('[role="radiogroup"]')).find((group) =>
       group.getAttribute("aria-labelledby") === Array.from(document.body.querySelectorAll("p")).find((item) => item.textContent === "Keep name from")?.id
     );
-    await click(nameGroup!.querySelector<HTMLButtonElement>("button")!);
+    await click(nameGroup!.querySelector<HTMLButtonElement>('[role="radio"]')!);
     expect(labelledControl<HTMLButtonElement>("I understand that Source").getAttribute("aria-checked")).toBe("false");
     await click(button("Merge and delete source"));
     expect(executeMerge).not.toHaveBeenCalled();

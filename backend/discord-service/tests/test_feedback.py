@@ -7,116 +7,47 @@ from src.feedback import (
     AttachmentFeedbackResult,
     AttachmentFeedbackState,
     build_message_feedback,
+    upload_reactions,
 )
 
 
-def test_build_message_feedback_replies_for_live_multi_log_results() -> None:
-    summary = build_message_feedback(
-        [
-            AttachmentFeedbackResult(
-                filename="match-1.log",
-                state=AttachmentFeedbackState.PROCESSED_OK,
-            ),
-            AttachmentFeedbackResult(
-                filename="match-2.log",
-                state=AttachmentFeedbackState.PROCESSED_FAILED,
-                error_message="missing MatchEnd",
-            ),
-        ],
-        wait_for_result=True,
-    )
+def _result(state: AttachmentFeedbackState, error: str | None = None) -> AttachmentFeedbackResult:
+    return AttachmentFeedbackResult(filename="match-1.log", state=state, error_message=error)
 
+
+def test_upload_reactions_say_how_much_of_the_message_went_out() -> None:
+    queued, failed = _result(AttachmentFeedbackState.UPLOADED_QUEUED), _result(AttachmentFeedbackState.UPLOAD_FAILED)
+    assert upload_reactions([queued, queued]) == ("ok",)
+    assert upload_reactions([queued, failed]) == ("ok", "warn")
+    assert upload_reactions([failed]) == ("error",)
+
+
+def test_a_processed_log_is_a_reaction_without_a_reply() -> None:
+    summary = build_message_feedback(_result(AttachmentFeedbackState.PROCESSED_OK), "ru")
+    assert summary.reactions == ("ok",)
+    assert summary.reply_text is None
+
+
+def test_single_awaiting_link_result_is_truthful_and_actionable() -> None:
+    summary = build_message_feedback(_result(AttachmentFeedbackState.AWAITING_LINK), "ru")
     assert summary.reactions == ("ok", "warn")
-    assert summary.reply_text is not None
-    assert "match-1.log" in summary.reply_text
-    assert "match-2.log" in summary.reply_text
-    assert "missing MatchEnd" in summary.reply_text
-    # Shortcodes, not characters: the bot swaps them for its own emoji when it sends.
-    assert ":owt_ok: match-1.log" in summary.reply_text
-    assert ":owt_warn: match-2.log" in summary.reply_text
+    assert "администратору" in summary.reply_text and "привязать" in summary.reply_text
+    assert "обработан" not in summary.reply_text
 
 
-def test_build_message_feedback_skips_reply_for_already_processed_logs() -> None:
-    summary = build_message_feedback(
-        [
-            AttachmentFeedbackResult(
-                filename="match-1.log",
-                state=AttachmentFeedbackState.ALREADY_PROCESSED,
-            ),
-            AttachmentFeedbackResult(
-                filename="match-2.log",
-                state=AttachmentFeedbackState.ALREADY_PROCESSED,
-            ),
-        ],
-        wait_for_result=True,
-    )
-
-    assert summary.reactions == ("ok",)
-    assert summary.reply_text is None
-
-
-def test_build_message_feedback_is_noop_for_already_processed_history_rescan() -> None:
-    summary = build_message_feedback(
-        [
-            AttachmentFeedbackResult(
-                filename="match-1.log",
-                state=AttachmentFeedbackState.ALREADY_PROCESSED,
-            ),
-            AttachmentFeedbackResult(
-                filename="match-2.log",
-                state=AttachmentFeedbackState.ALREADY_PROCESSED,
-            ),
-        ],
-        wait_for_result=False,
-    )
-
-    assert summary.reactions is None
-    assert summary.reply_text is None
-
-
-def test_build_message_feedback_reacts_on_history_rescan_when_mixed() -> None:
-    summary = build_message_feedback(
-        [
-            AttachmentFeedbackResult(
-                filename="match-1.log",
-                state=AttachmentFeedbackState.ALREADY_PROCESSED,
-            ),
-            AttachmentFeedbackResult(
-                filename="match-2.log",
-                state=AttachmentFeedbackState.UPLOAD_FAILED,
-                error_message="boom",
-            ),
-        ],
-        wait_for_result=False,
-    )
-
+def test_single_failed_result_includes_its_own_error() -> None:
+    summary = build_message_feedback(_result(AttachmentFeedbackState.PROCESSED_FAILED, "job-specific"), "ru")
     assert summary.reactions == ("ok", "warn")
+    assert ":owt_warn: match-1.log" in summary.reply_text and "job-specific" in summary.reply_text
 
 
-def test_build_message_feedback_reacts_on_history_rescan_for_new_queued_log() -> None:
-    summary = build_message_feedback(
-        [
-            AttachmentFeedbackResult(
-                filename="match-1.log",
-                state=AttachmentFeedbackState.UPLOADED_QUEUED,
-            ),
-        ],
-        wait_for_result=False,
-    )
-
-    assert summary.reactions == ("ok",)
+def test_a_failure_before_the_job_existed_keeps_ok_and_says_so() -> None:
+    summary = build_message_feedback(_result(AttachmentFeedbackState.UPLOAD_FAILED, "Object storage unavailable"), "ru")
+    assert summary.reactions == ("ok", "warn")
+    assert "не удалось загрузить" in summary.reply_text and "Object storage unavailable" in summary.reply_text
 
 
-def test_build_message_feedback_skips_reply_for_single_live_result() -> None:
-    summary = build_message_feedback(
-        [
-            AttachmentFeedbackResult(
-                filename="match-1.log",
-                state=AttachmentFeedbackState.PROCESSED_OK,
-            ),
-        ],
-        wait_for_result=True,
-    )
-
-    assert summary.reactions == ("ok",)
-    assert summary.reply_text is None
+def test_an_english_guild_reads_english_around_the_same_emoji() -> None:
+    summary = build_message_feedback(_result(AttachmentFeedbackState.AWAITING_LINK), "en")
+    assert summary.reply_text.startswith(":owt_warn: match-1.log")
+    assert "link the log" in summary.reply_text

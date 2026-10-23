@@ -27,7 +27,16 @@ from src.schemas.ranks import CURRENT_LAYERS, LAYERS, SORTS
 
 OPERATIONS: dict[str, Op] = {
     # ── config (public) ────────────────────────────────────────────────────
-    "rpc.balancer.config": Op(response=schemas.BalancerConfigResponse),
+    "rpc.balancer.config": Op(
+        response=schemas.BalancerConfigResponse,
+        query_params=(
+            QueryParam(
+                "discipline",
+                description="Whose role weights the defaults and presets carry; absent: every role neutral. "
+                "404 `discipline_not_installed` for an unknown code.",
+            ),
+        ),
+    ),
     # ── admin: configs + balance ───────────────────────────────────────────
     "rpc.balancer.admin.tournament_config_upsert": Op(
         request=schemas.BalancerTournamentConfigUpsert, response=schemas.BalancerTournamentConfigRead
@@ -47,7 +56,17 @@ OPERATIONS: dict[str, Op] = {
     # ── jobs (public, Redis-backed) ────────────────────────────────────────
     "rpc.balancer.jobs.status": Op(response=schemas.JobStatusResponse),
     "rpc.balancer.jobs.result": Op(response=schemas.BalanceJobResult),
-    "rpc.balancer.jobs.create": Op(response=schemas.CreateJobResponse),
+    "rpc.balancer.jobs.create": Op(
+        response=schemas.CreateJobResponse,
+        query_params=(
+            QueryParam("workspace_id", "integer", required=True),
+            QueryParam(
+                "discipline",
+                description="The game the upload is balanced for (enabled in the workspace); required without "
+                "tournament_id, and must equal the tournament's game with one.",
+            ),
+        ),
+    ),
     # No player payload: the xv-1 input is built server-side from the one roster
     # engine, so a tournament balance and its draft cannot read different ranks.
     "rpc.balancer.jobs.create_for_tournament": Op(
@@ -55,7 +74,14 @@ OPERATIONS: dict[str, Op] = {
     ),
     # Synchronous, stateless twin: the pool and the roster shape ride in the
     # request, the teams come back in the response (same shape as jobs.result).
-    "rpc.balancer.balance": Op(request=schemas.BalanceRequest, response=schemas.BalanceJobResult),
+    "rpc.balancer.balance": Op(
+        request=schemas.BalanceRequest,
+        response=schemas.BalanceJobResult,
+        query_params=(
+            QueryParam("workspace_id", "integer", required=True),
+            QueryParam("discipline", required=True, description="The installed game the pool is balanced for."),
+        ),
+    ),
     # ── draft: public reads ────────────────────────────────────────────────
     "rpc.balancer.draft.tournament_board": Op(response=schemas.DraftBoardSnapshot),
     "rpc.balancer.draft.session_get": Op(response=schemas.DraftSessionRead),
@@ -110,7 +136,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.balancer.draft.resume": Op(response=schemas.DraftSessionRead),
     "rpc.balancer.draft.cancel": Op(response=schemas.DraftSessionRead),
     "rpc.balancer.draft.rollback": Op(response=schemas.DraftSessionRead),
-    "rpc.balancer.draft.export": Op(response=schemas.DraftSessionRead),
+    "rpc.balancer.draft.export": Op(response=schemas.DraftExportResponse),
     "rpc.balancer.draft.export_ranks": Op(response=schemas.RanksExportResponse),
     # ── draft: pick actions (all -> DraftSessionRead) ──────────────────────
     "rpc.balancer.draft.pick_select": Op(request=schemas.DraftPickSelectRequest, response=schemas.DraftSessionRead),
@@ -125,12 +151,19 @@ OPERATIONS: dict[str, Op] = {
             ),
         ),
     ),
+    "rpc.balancer.custom.list": Op(query=custom_game.CustomGameListQuery),
     # ── pickup mixes: writes (responses are hand-built dicts, see DOCS) ─────
     "rpc.balancer.custom.create": Op(request=custom_game.CustomGameCreate),
     "rpc.balancer.custom.update_roster": Op(request=custom_game.CustomGameRosterUpdate),
     "rpc.balancer.custom.update_player": Op(request=custom_game.CustomGamePlayerPatch),
     "rpc.balancer.custom.self_update": Op(request=custom_game.CustomGameSelfUpdate),
+    "rpc.balancer.custom.self_away": Op(request=custom_game.CustomGameSelfAway),
     "rpc.balancer.custom.set_self_service": Op(request=custom_game.CustomGameSelfServicePatch),
+    "rpc.balancer.custom.set_ban_preset": Op(request=custom_game.CustomGameBanPresetPatch),
+    "rpc.balancer.custom.set_draft_settings": Op(request=custom_game.CustomGameDraftSettingsPatch),
+    "rpc.balancer.custom.draft_seed": Op(request=custom_game.CustomGameDraftSeed),
+    "rpc.balancer.custom.draft_captain": Op(request=custom_game.CustomGameDraftCaptainPatch),
+    "rpc.balancer.custom.draft_add_player": Op(request=custom_game.CustomGameDraftPlayerAdd),
     "rpc.balancer.custom.set_participation": Op(request=custom_game.CustomGamePlayersParticipationPatch),
     "rpc.balancer.custom.balance": Op(request=custom_game.CustomGameBalanceRequest),
     "rpc.balancer.custom.set_lobby_count": Op(request=custom_game.CustomGameLobbyCountPatch),
@@ -146,7 +179,19 @@ OPERATIONS: dict[str, Op] = {
     "rpc.balancer.custom.transfer_host": Op(request=custom_game.CustomGameHostTransfer),
     "rpc.balancer.custom.add_co_host": Op(request=custom_game.CustomGameCoHostPatch),
     "rpc.balancer.custom.swap_seats": Op(request=custom_game.CustomGameSeatSwap),
+    "rpc.balancer.custom.set_captain": Op(request=custom_game.CustomGameCaptainPatch),
     "rpc.balancer.custom.record_outcome": Op(request=custom_game.CustomGameRecordOutcome),
+    "rpc.balancer.custom.start_match": Op(request=custom_game.CustomGameMatchStart),
+    "rpc.balancer.custom.cancel_match": Op(request=custom_game.CustomGameMatchRun),
+    "rpc.balancer.custom.stats": Op(
+        query_params=(
+            QueryParam(
+                "discipline",
+                description="One enabled discipline; omitted or `all` = every game (by_role is then null).",
+            ),
+            QueryParam("since", description="ISO 8601 instant; only matches recorded on or after it."),
+        )
+    ),
     "rpc.balancer.custom.rotation": Op(
         query_params=(
             QueryParam(
@@ -160,10 +205,12 @@ OPERATIONS: dict[str, Op] = {
     # Ad-hoc query keys read by ``src/rpc/players.py`` (``_list_params``,
     # ``_author_to_read``, ``_author_only``) rather than a query model.
     "rpc.balancer.players.list": Op(
+        response=Paginated[schemas.WorkspacePlayerRead],
         query_params=(
+            QueryParam("discipline", description="Enabled discipline; defaults to the workspace's first."),
             QueryParam("page", "integer", description="1-based page, default 1."),
             QueryParam("per_page", "integer", description="Page size, clamped to 1..100, default 30."),
-            QueryParam("query", description="Needle matched against battle_tag, display_name and name."),
+            QueryParam("query", description="Needle matched against the identity handle, display_name and name."),
             QueryParam(
                 "author_user_id",
                 "integer",
@@ -174,8 +221,10 @@ OPERATIONS: dict[str, Op] = {
                 "boolean",
                 description="Keep only members that read author has personally ranked.",
             ),
-        )
+        ),
     ),
+    "rpc.balancer.players.upsert": Op(request=schemas.WorkspacePlayerUpsert, response=schemas.WorkspacePlayerRead),
+    "rpc.balancer.players.set_ranks": Op(request=schemas.WorkspacePlayerRanksWrite),
     "rpc.balancer.players.summary": Op(
         query_params=(
             QueryParam(
@@ -189,19 +238,30 @@ OPERATIONS: dict[str, Op] = {
     "rpc.balancer.ranks.list": Op(
         response=Paginated[schemas.RankOverviewRow],
         query_params=(
+            QueryParam("discipline", description="One enabled discipline; omitted = every enabled discipline."),
             QueryParam("page", "integer", description="1-based page, default 1."),
             QueryParam("per_page", "integer", description="Page size, clamped to 1..200, default 50."),
             QueryParam("player_id", "integer", description="Only this players.user id."),
-            QueryParam("q", description="Needle matched against battle_tag, display_name and name."),
+            QueryParam("q", description="Needle matched against the identity handle, display_name and name."),
             QueryParam(
                 "layer",
                 array=True,
                 description=f"Repeatable. One of {list(LAYERS)}; defaults to the current layers {list(CURRENT_LAYERS)}.",
             ),
             QueryParam("author_user_id", "integer", array=True, description="Repeatable. Only these authors/hosts."),
-            QueryParam("role", array=True, description="Repeatable. tank/damage/support."),
-            QueryParam("rank_min", "integer", description="Lowest rank_value kept."),
-            QueryParam("rank_max", "integer", description="Highest rank_value kept."),
+            QueryParam("role", array=True, description="Repeatable rated module role code; requires discipline."),
+            QueryParam(
+                "div_min",
+                "integer",
+                description="Best division kept: a tier number on the workspace grid of the game, 1 = top, "
+                "inclusive; requires discipline.",
+            ),
+            QueryParam(
+                "div_max",
+                "integer",
+                description="Worst division kept: a tier number on the workspace grid of the game, 1 = top, "
+                "inclusive (ranks below the floor tier count in it); requires discipline. div_min > div_max is a 400.",
+            ),
             QueryParam(
                 "differs_from_canon",
                 "boolean",

@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { LogStatsName } from "@/types/stats.types";
-
 import {
   buildHeroCompareQueryOptions,
   buildOverallCompareQueryOptions,
@@ -11,11 +9,12 @@ import {
 } from "./compare-query-options";
 
 describe("compare query options", () => {
-  it("forwards TanStack Query's abort signal to the overall request", async () => {
+  it("forwards TanStack Query's abort signal and the browsed game to the overall request", async () => {
     const fetchCompare = vi.fn().mockResolvedValue({ metrics: [] });
     const options = buildOverallCompareQueryOptions({
       isHeroScope: false,
       subjectUserId: 42,
+      discipline: "overwatch",
       baseline: "global",
       fetchCompare
     });
@@ -23,19 +22,21 @@ describe("compare query options", () => {
 
     await options.queryFn({ signal: controller.signal });
 
+    expect(options.queryKey[3]).toBe("overwatch");
     expect(fetchCompare).toHaveBeenCalledWith(
       42,
-      expect.objectContaining({ baseline: "global", signal: controller.signal })
+      expect.objectContaining({ discipline: "overwatch", baseline: "global", signal: controller.signal })
     );
   });
 
-  it("forwards the abort signal and stable stat set to a hero request", async () => {
+  it("forwards the abort signal and stable stat set to a character request", async () => {
     const fetchCompare = vi.fn().mockResolvedValue({ metrics: [] });
     const options = buildHeroCompareQueryOptions({
       isHeroScope: true,
       subjectUserId: 42,
+      discipline: "overwatch",
       baseline: "cohort",
-      stats: [LogStatsName.Eliminations, LogStatsName.Deaths],
+      stats: ["eliminations", "deaths"],
       fetchCompare
     });
     const controller = new AbortController();
@@ -45,17 +46,32 @@ describe("compare query options", () => {
     expect(fetchCompare).toHaveBeenCalledWith(
       42,
       expect.objectContaining({
+        discipline: "overwatch",
         baseline: "cohort",
-        stats: [LogStatsName.Eliminations, LogStatsName.Deaths],
+        stats: ["eliminations", "deaths"],
         signal: controller.signal
       })
     );
   });
 
-  it("keeps previous compare data while a new filter combination is fetched", () => {
-    const previous = { metrics: [{ key: "maps_total" }] };
+  it("reads nothing while no game is resolved", () => {
+    const options = buildOverallCompareQueryOptions({
+      isHeroScope: false,
+      subjectUserId: 42,
+      discipline: null,
+      baseline: "global",
+      fetchCompare: vi.fn()
+    });
 
-    expect(keepPreviousCompareData(previous)).toBe(previous);
+    expect(options.enabled).toBe(false);
+  });
+
+  it("keeps previous compare data of the same game only while a new filter combination is fetched", () => {
+    const previous = { metrics: [{ key: "maps_total" }] };
+    const keep = keepPreviousCompareData<typeof previous>("overwatch");
+
+    expect(keep(previous, { queryKey: ["user-stats", 42, "all", "overwatch", "compare", {}] })).toBe(previous);
+    expect(keep(previous, { queryKey: ["user-stats", 42, "all", "lol", "compare", {}] })).toBeUndefined();
   });
 
   it("loads hero and map catalogs only in Hero / Map scope", () => {

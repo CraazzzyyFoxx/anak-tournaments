@@ -3,30 +3,43 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CheckCircle, Copy } from "lucide-react";
+import { Copy } from "lucide-react";
 
-import { StatusPill } from "@/components/kit/StatusPill";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText
+} from "@/components/ui/input-group";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { PhaseStrip, type PhaseState } from "@/components/kit/PhaseStrip";
 import { SaveBar } from "@/components/kit/SaveBar";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { useInSettingsPreview } from "@/components/kit/SettingsContinuation";
+import { SettingGroup, SettingRow, invalidProps } from "@/components/kit/SettingRow";
+import { getApiErrorMessage } from "@/lib/api/error";
 import { PLATFORM_ZONE } from "@/lib/site/host";
 import { notify } from "@/lib/notify";
 import workspaceService from "@/services/workspace.service";
 import type { Workspace } from "@/types/workspace.types";
-import { Spinner } from "@/components/ui/spinner";
+import { customDomainIssue } from "./fields";
 import { WorkspaceSettingsFrame } from "./WorkspaceSettingsFrame";
-import { useWorkspaceSettingsForm } from "./useWorkspaceSettingsForm";
+import { useFieldIssueText, useWorkspaceSettingsForm } from "./useWorkspaceSettingsForm";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 
 /** DNS propagation is minutes, not seconds; re-checking faster only burns
  * requests on a resolver that has not refreshed yet. */
 const VERIFY_POLL_MS = 15000;
+
+/**
+ * Lengths search engines show before they cut a snippet. Advice, not limits:
+ * the server stores longer text, so the counters warn and never block.
+ */
+const SEO_TITLE_SHOWN = 60;
+const SEO_DESCRIPTION_SHOWN = 160;
 
 type DomainState = { domain: string | null; verifiedAt: string | null; token: string | null };
 
@@ -42,15 +55,23 @@ const domainStateOf = (ws: Workspace): DomainState => ({
  * The custom domain is a three-step stepper rather than a field with a Save
  * button, because it is not a value the form owns: adding it mints a DNS token
  * server-side, and the domain only starts serving once a resolver can see that
- * token. A `SaveBar` cannot express "now go edit your DNS", so the stepper
- * says which of the three states the domain is in and what closes it.
+ * token. A `SaveBar` cannot express "now go edit your DNS", so the `PhaseStrip`
+ * says which of the three states the domain is in, and nothing else repeats it.
  */
 export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | null }>) {
   const t = useTranslations("adminWorkspace.workspaceSettings.domain");
   const settings = useWorkspaceSettingsForm(workspaceId, "domain");
-  const { patch, invalidate, workspace } = settings;
+  const { patch, invalidate, workspace, errors, reveal } = settings;
+  const issueText = useFieldIssueText();
+  // As the next page's ghost this section only shows; it must not poll DNS
+  // and toast a verification on a page that is about something else.
+  const inPreview = useInSettingsPreview();
 
   const [draftDomain, setDraftDomain] = useState("");
+  // The draft is judged once the reader leaves it or tries to save it, and a
+  // refusal from the server replaces that judgement until the draft changes.
+  const [draftJudged, setDraftJudged] = useState(false);
+  const [domainRefusal, setDomainRefusal] = useState<string | null>(null);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [domain, setDomain] = useState<DomainState>({
     domain: null,
@@ -72,6 +93,8 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
   const applyDomain = (updated: Workspace) => {
     setDomain(domainStateOf(updated));
     setDraftDomain(updated.custom_domain ?? "");
+    setDraftJudged(false);
+    setDomainRefusal(null);
     invalidate();
   };
 
@@ -81,8 +104,16 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
       applyDomain(updated);
       notify.success(t("saved"));
     },
-    onError: (error) => notify.apiError(error, { title: t("saveError") })
+    onError: (error) => setDomainRefusal(getApiErrorMessage(error, t("saveError")))
   });
+
+  const draftIssue = customDomainIssue(draftDomain);
+  const draftError =
+    domainRefusal ?? (draftJudged && draftIssue ? issueText(draftIssue) : undefined);
+  const saveDraft = () => {
+    setDraftJudged(true);
+    if (!draftIssue) setDomainMutation.mutate(draftDomain);
+  };
 
   const verifyMutation = useMutation({
     mutationFn: () => workspaceService.verifyCustomDomain(workspaceId as number),
@@ -117,7 +148,7 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
   const poll = useQuery({
     queryKey: adminQueryKeys.workspaceDomainVerify(workspaceId, domain.domain),
     queryFn: () => workspaceService.verifyCustomDomain(workspaceId as number),
-    enabled: pending,
+    enabled: pending && !inPreview,
     refetchInterval: pending ? VERIFY_POLL_MS : false,
     refetchOnWindowFocus: false,
     retry: false,
@@ -152,67 +183,49 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
     <WorkspaceSettingsFrame workspaceId={workspaceId} settings={settings}>
       {({ form: values, workspace: ws }) => (
         <>
-          <Card>
-            <CardContent className="flex flex-col gap-4 pt-6">
-              <div>
-                <Label htmlFor="workspace-subdomain">{t("subdomain")}</Label>
-                <Input
+          <SettingGroup
+            id="address"
+            title={t("groups.address.title")}
+            description={t("groups.address.description")}
+          >
+            <SettingRow
+              htmlFor="workspace-subdomain"
+              label={t("subdomain")}
+              hint={
+                values.subdomain
+                  ? `https://${values.subdomain}.${PLATFORM_ZONE}`
+                  : t("platformUrlOnly")
+              }
+              error={errors.subdomain}
+              stacked
+            >
+              <InputGroup>
+                <InputGroupInput
                   id="workspace-subdomain"
-                  className="mt-1.5"
                   value={values.subdomain ?? ""}
-                  placeholder="my-team"
+                  spellCheck={false}
                   onChange={(event) =>
                     patch({
                       subdomain: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "")
                     })
                   }
+                  onBlur={() => reveal("subdomain")}
+                  {...invalidProps("workspace-subdomain", errors.subdomain)}
                 />
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {values.subdomain
-                    ? `${values.subdomain}.${PLATFORM_ZONE}`
-                    : t("platformUrlOnly")}
-                </p>
-              </div>
+                <InputGroupAddon align="inline-end">
+                  <InputGroupText>.{PLATFORM_ZONE}</InputGroupText>
+                </InputGroupAddon>
+              </InputGroup>
+            </SettingRow>
+          </SettingGroup>
 
-              <div>
-                <Label htmlFor="workspace-seo-title">{t("seoTitle")}</Label>
-                <Input
-                  id="workspace-seo-title"
-                  className="mt-1.5"
-                  value={values.seo_title ?? ""}
-                  placeholder={t("seoTitlePlaceholder")}
-                  onChange={(event) => patch({ seo_title: event.target.value })}
-                />
-              </div>
-              <div>
-                <Label htmlFor="workspace-seo-description">{t("seoDescription")}</Label>
-                <Textarea
-                  id="workspace-seo-description"
-                  className="mt-1.5"
-                  value={values.seo_description ?? ""}
-                  placeholder={t("seoDescriptionPlaceholder")}
-                  onChange={(event) => patch({ seo_description: event.target.value })}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="flex flex-col gap-3 pt-6">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className={EYEBROW_CLASS}>{t("customDomain")}</h2>
-                {domain.verifiedAt ? (
-                  <StatusPill tone="success">
-                    <CheckCircle aria-hidden className="size-3" /> {t("verifiedLive")}
-                  </StatusPill>
-                ) : domain.domain ? (
-                  <StatusPill tone="warning">
-                    <Spinner className="size-3" />{" "}
-                    {t("pending")}
-                  </StatusPill>
-                ) : null}
-              </div>
-
+          <SettingGroup
+            id="custom-domain"
+            title={t("customDomain")}
+            description={t("groups.customDomain.description")}
+            immediate
+          >
+            <div className="pb-4">
               <PhaseStrip
                 phases={[
                   { key: "add", label: t("addDomain"), state: phaseState(0) },
@@ -220,16 +233,34 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
                   { key: "verified", label: t("verifyLabel"), state: phaseState(2) }
                 ]}
               />
+            </div>
 
-              <div className="flex flex-wrap gap-2">
+            <SettingRow
+              htmlFor="workspace-custom-domain"
+              label={t("domainLabel")}
+              error={draftError}
+              stacked
+            >
+              <div className="flex w-full flex-wrap gap-2">
                 <Input
                   id="workspace-custom-domain"
-                  aria-label={t("domainLabel")}
                   className="min-w-[16rem] flex-1"
                   value={draftDomain}
-                  placeholder="tourney.example.com"
+                  placeholder={t("domainPlaceholder")}
+                  inputMode="url"
+                  spellCheck={false}
                   disabled={!!domain.verifiedAt}
-                  onChange={(event) => setDraftDomain(event.target.value.toLowerCase().trim())}
+                  onChange={(event) => {
+                    setDraftDomain(event.target.value.toLowerCase().trim());
+                    setDomainRefusal(null);
+                  }}
+                  onBlur={() => {
+                    if (draftDomain) setDraftJudged(true);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !domain.verifiedAt) saveDraft();
+                  }}
+                  {...invalidProps("workspace-custom-domain", draftError)}
                 />
                 {domain.verifiedAt ? (
                   <Button
@@ -246,87 +277,83 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
                     type="button"
                     variant="outline"
                     disabled={setDomainMutation.isPending}
-                    onClick={() => {
-                      if (!draftDomain) {
-                        notify.error(t("enterDomain"));
-                        return;
-                      }
-                      setDomainMutation.mutate(draftDomain);
-                    }}
+                    onClick={saveDraft}
                   >
                     {setDomainMutation.isPending ? t("saving") : t("saveDomain")}
                   </Button>
                 )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {t.rich("liveHelp", { strong: (chunks) => <strong>{chunks}</strong> })}
-              </p>
-
-              {pending ? (
-                <div className="flex flex-col gap-3 rounded-md border border-border bg-muted/30 p-3">
-                  <div>
-                    <h3 className="text-xs font-semibold text-foreground">
-                      {t("howToConnect")}
-                    </h3>
-                    <ol className="mt-1 list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
-                      <li>{t("openProvider")}</li>
-                      <li>{t("addRecords")}</li>
-                      <li>
-                        {t.rich("propagationHelp", {
-                          seconds: VERIFY_POLL_MS / 1000,
-                          num: (chunks) => <span className="tabular-nums">{chunks}</span>,
-                          strong: (chunks) => <strong>{chunks}</strong>,
-                        })}
-                      </li>
-                    </ol>
-                  </div>
-                  <div className="flex flex-col gap-1.5 text-xs">
-                    <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 font-mono">
-                      <span className="text-muted-foreground">TXT</span>
-                      <span className="break-all">{`_owt-verify.${domain.domain}`}</span>
-                      <span className="break-all text-muted-foreground">{t("ownership")}</span>
-                      <span className="text-muted-foreground">{t("value")}</span>
-                      <span className="break-all">{domain.token}</span>
-                      {domain.token ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-5"
-                          aria-label={t("copyTxt")}
-                          onClick={() => domain.token && copy(domain.token)}
-                        >
-                          <Copy aria-hidden className="size-3" />
-                        </Button>
-                      ) : (
-                        <span />
-                      )}
-                    </div>
-                    <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 font-mono">
-                      <span className="text-muted-foreground">CNAME</span>
-                      <span className="break-all">{domain.domain}</span>
-                      <span className="break-all text-muted-foreground">
-                        {t("pointsToZone", { zone: PLATFORM_ZONE })}
-                      </span>
-                    </div>
-                  </div>
+                {pending ? (
                   <Button
                     type="button"
-                    size="sm"
-                    className="self-start"
                     disabled={verifyMutation.isPending}
                     onClick={() => verifyMutation.mutate()}
                   >
                     {verifyMutation.isPending ? t("saving") : t("verifyNow")}
                   </Button>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
+                ) : null}
+              </div>
+            </SettingRow>
+
+            {pending ? (
+              <SettingRow
+                label={t("dnsRecords")}
+                hint={t("addRecords", { seconds: VERIFY_POLL_MS / 1000 })}
+                stacked
+              >
+                <DnsRecords
+                  records={[
+                    { type: "TXT", host: `_owt-verify.${domain.domain}`, value: domain.token ?? "" },
+                    { type: "CNAME", host: domain.domain ?? "", value: PLATFORM_ZONE }
+                  ]}
+                  onCopy={copy}
+                />
+              </SettingRow>
+            ) : null}
+          </SettingGroup>
+
+          {/* Each placeholder is what a blank field falls back to, so the
+              reader sees what search engines get without filling anything. */}
+          <SettingGroup
+            id="search"
+            title={t("groups.search.title")}
+            description={t("groups.search.description")}
+          >
+            <SettingRow
+              htmlFor="workspace-seo-title"
+              label={t("seoTitle")}
+              count={{ value: (values.seo_title ?? "").length, max: SEO_TITLE_SHOWN, soft: true }}
+              stacked
+            >
+              <Input
+                id="workspace-seo-title"
+                value={values.seo_title ?? ""}
+                placeholder={ws.name}
+                onChange={(event) => patch({ seo_title: event.target.value })}
+              />
+            </SettingRow>
+            <SettingRow
+              htmlFor="workspace-seo-description"
+              label={t("seoDescription")}
+              count={{
+                value: (values.seo_description ?? "").length,
+                max: SEO_DESCRIPTION_SHOWN,
+                soft: true
+              }}
+              stacked
+            >
+              <Textarea
+                id="workspace-seo-description"
+                value={values.seo_description ?? ""}
+                placeholder={ws.description ?? undefined}
+                onChange={(event) => patch({ seo_description: event.target.value })}
+              />
+            </SettingRow>
+          </SettingGroup>
 
           <SaveBar
             dirty={settings.dirty}
             summary={settings.summary}
+            error={settings.error}
             saving={settings.saving}
             onDiscard={settings.discard}
             onSave={settings.save}
@@ -338,7 +365,10 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
             pending={clearMutation.isPending}
             intent={{
               title: t("removeTitle"),
-                description: t("removeDescription", { domain: domain.domain ?? t("thisDomain"), workspace: ws.name }),
+              description: t("removeDescription", {
+                domain: domain.domain ?? t("thisDomain"),
+                workspace: ws.name
+              }),
               confirmLabel: t("removeDomain"),
               tone: "danger"
             }}
@@ -347,5 +377,86 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
         </>
       )}
     </WorkspaceSettingsFrame>
+  );
+}
+
+interface DnsRecord {
+  type: "TXT" | "CNAME";
+  host: string;
+  value: string;
+}
+
+/**
+ * The records to add at the DNS provider, each part copyable on its own: a
+ * provider's form asks for the host and the value in separate fields, so a
+ * copy of only the token left the reader retyping the rest.
+ */
+function DnsRecords({
+  records,
+  onCopy
+}: Readonly<{ records: readonly DnsRecord[]; onCopy: (value: string) => void }>) {
+  const t = useTranslations("adminWorkspace.workspaceSettings.domain");
+  return (
+    <table className="w-full table-fixed text-left text-xs">
+      <thead className={eyebrowClass("muted")}>
+        <tr>
+          <th scope="col" className="w-16 pb-1.5 font-semibold">
+            {t("dnsType")}
+          </th>
+          <th scope="col" className="pb-1.5 pr-3 font-semibold">
+            {t("dnsHost")}
+          </th>
+          <th scope="col" className="pb-1.5 font-semibold">
+            {t("dnsValue")}
+          </th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-border/60 border-t border-border/60 font-mono">
+        {records.map((record) => (
+          <tr key={record.type}>
+            <td className="py-2 align-top text-muted-foreground">{record.type}</td>
+            <td className="py-2 pr-3 align-top">
+              <CopyableValue
+                value={record.host}
+                label={t("copyHost", { type: record.type })}
+                onCopy={onCopy}
+              />
+            </td>
+            <td className="py-2 align-top">
+              <CopyableValue
+                value={record.value}
+                label={t("copyValue", { type: record.type })}
+                onCopy={onCopy}
+              />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function CopyableValue({
+  value,
+  label,
+  onCopy
+}: Readonly<{ value: string; label: string; onCopy: (value: string) => void }>) {
+  return (
+    <div className="flex items-start gap-1">
+      <span className="min-w-0 flex-1 break-all py-0.5">{value}</span>
+      {value ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-6 shrink-0"
+          aria-label={label}
+          title={label}
+          onClick={() => onCopy(value)}
+        >
+          <Copy aria-hidden className="size-3.5" />
+        </Button>
+      ) : null}
+    </div>
   );
 }

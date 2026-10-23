@@ -13,14 +13,13 @@ disagree about the rank a flex draft shows.
 
 from __future__ import annotations
 
-from shared.core.enums import HeroClass
 from shared.domain.roster import PlayerRoster
 from shared.domain.roster_shape import RosterShape
 
-__all__ = ("captain_rank", "seat_role", "slot_rank")
+__all__ = ("captain_rank", "drafted_rank", "seat_role", "slot_rank")
 
 
-def slot_rank(roster: PlayerRoster | None, role: HeroClass | str | None, shape: RosterShape) -> int | None:
+def slot_rank(roster: PlayerRoster | None, role: str | None, shape: RosterShape) -> int | None:
     """The rank ``roster`` is worth on its slot under ``shape``.
 
     ``role=None`` is the honest input for a player holding no role yet -- a pool
@@ -32,7 +31,7 @@ def slot_rank(roster: PlayerRoster | None, role: HeroClass | str | None, shape: 
     return roster.rank_on(role if shape.has_role_slots else None)
 
 
-def seat_role(roster: PlayerRoster | None, pinned: str | None = None) -> HeroClass | None:
+def seat_role(roster: PlayerRoster | None, pinned: str | None = None) -> str | None:
     """The role a rostered player holds when no pick froze one.
 
     ``pinned`` is ``DraftPlayer.captain_role``: the role the organizer seated a
@@ -43,10 +42,8 @@ def seat_role(roster: PlayerRoster | None, pinned: str | None = None) -> HeroCla
     """
     if roster is None:
         return None
-    if pinned is not None:
-        role = HeroClass.from_slot_code(pinned)
-        if role in roster.playable_roles:
-            return role
+    if pinned in roster.playable_roles:
+        return pinned
     lead = roster.primary
     return lead.role if lead is not None else None
 
@@ -61,3 +58,19 @@ def captain_rank(roster: PlayerRoster | None, pinned: str | None, shape: RosterS
     so they sort as the weakest.
     """
     return slot_rank(roster, seat_role(roster, pinned), shape) or -1
+
+
+def drafted_rank(
+    roster: PlayerRoster | None, role: str | None, shape: RosterShape, *, frozen: int | None
+) -> int | None:
+    """What a rostered player is worth on their drafted slot; ``None`` when unranked.
+
+    ``frozen`` is the pick's ``target_rank_value`` -- the one derivation the draft
+    stores, because it is a fact about a pick that happened. A captain has no
+    pick, so ``role`` is their seat role and the rank is live. A role-less shape
+    ignores the frozen value: it was frozen against a role the shape gives no
+    meaning to, so ``slot_rank`` re-derives the maximum every other reader shows.
+    """
+    if frozen is not None and shape.has_role_slots:
+        return frozen
+    return slot_rank(roster, role, shape)

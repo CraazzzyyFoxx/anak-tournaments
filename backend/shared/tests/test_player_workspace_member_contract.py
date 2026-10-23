@@ -45,7 +45,7 @@ def test_player_new_workspace_member_indexes_present():
     assert "ix_player_workspace_member_tournament" in index_names
     assert "ix_player_team_workspace_member" in index_names
     assert "ix_player_member_not_sub" in index_names
-    assert "ix_player_tournament_role_sub_role" in index_names
+    assert "ix_player_tournament_role_sub_role" not in index_names  # Legacy columns are no longer mapped.
 
 
 def test_player_member_not_sub_index_is_partial_on_is_substitution_false():

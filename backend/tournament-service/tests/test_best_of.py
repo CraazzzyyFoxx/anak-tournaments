@@ -72,6 +72,11 @@ class _FakeScalarResult:
     def scalars(self) -> _FakeScalarResult:
         return self
 
+    def tuples(self) -> _FakeScalarResult:
+        """``apply_best_of_to_existing`` reads ``(Encounter, round)`` pairs now:
+        the round lives on ``tournament.bracket_encounter`` (D22)."""
+        return self
+
     def all(self) -> list:
         return self._rows
 
@@ -120,15 +125,14 @@ class ApplyBestOfToExistingTests(TestCase):
             best_of_final=5,
             by_round={1: 1},
         )
-        duel = enums.EncounterFormat.DUEL
         encounters = [
-            SimpleNamespace(round=1, best_of=3, format=duel),  # by_round -> 1
-            SimpleNamespace(round=2, best_of=3, format=duel),  # default (not max round)
-            SimpleNamespace(round=3, best_of=3, format=duel),  # max round + elimination -> final 5
+            (SimpleNamespace(id=1, best_of=3, slot_count=2, scoring_preset="wins"), 1),  # by_round -> 1
+            (SimpleNamespace(id=2, best_of=3, slot_count=2, scoring_preset="wins"), 2),  # default (not max round)
+            (SimpleNamespace(id=3, best_of=3, slot_count=2, scoring_preset="wins"), 3),  # max round + elim -> final 5
         ]
         changed, session, published = self._run_backfill(stage, encounters)
 
-        self.assertEqual([e.best_of for e in encounters], [1, 3, 5])
+        self.assertEqual([e.best_of for e, _round in encounters], [1, 3, 5])
         self.assertEqual(changed, 2)  # rounds 1 and 3 changed; round 2 unchanged
         self.assertTrue(session.committed)
         self.assertEqual(published, [1])
@@ -142,19 +146,19 @@ class ApplyBestOfToExistingTests(TestCase):
             best_of_final=5,
         )
         encounters = [
-            SimpleNamespace(round=1, best_of=3, format=enums.EncounterFormat.DUEL),
+            (SimpleNamespace(id=1, best_of=3, slot_count=2, scoring_preset="wins"), 1),
             # Highest round, but not elimination.
-            SimpleNamespace(round=2, best_of=3, format=enums.EncounterFormat.DUEL),
+            (SimpleNamespace(id=2, best_of=3, slot_count=2, scoring_preset="wins"), 2),
         ]
         changed, session, _ = self._run_backfill(stage, encounters)
 
-        self.assertEqual([e.best_of for e in encounters], [2, 2])
+        self.assertEqual([e.best_of for e, _round in encounters], [2, 2])
         self.assertEqual(changed, 2)
 
     def test_no_changes_leaves_commit_but_no_publish(self) -> None:
         # Nothing configured -> everything resolves to the default 3.
         stage = _stage(id=12, tournament_id=3, stage_type=enums.StageType.SINGLE_ELIMINATION)
-        encounters = [SimpleNamespace(round=1, best_of=3, format=enums.EncounterFormat.DUEL)]
+        encounters = [(SimpleNamespace(id=1, best_of=3, slot_count=2, scoring_preset="wins"), 1)]
         changed, session, published = self._run_backfill(stage, encounters)
 
         self.assertEqual(changed, 0)

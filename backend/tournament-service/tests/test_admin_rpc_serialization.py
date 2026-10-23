@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import importlib
 import json
-import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -31,13 +30,11 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 
 from tests._rpc_fakes import CapturingBroker, FakeSessionMaker, make_identity
 
-os.environ["DEBUG"] = "true"
-
 admin_misc = importlib.import_module("src.rpc.admin_misc")
 helpers = importlib.import_module("src.rpc._helpers")
 pagination = importlib.import_module("shared.core.pagination")
 schemas = importlib.import_module("src.schemas")
-log_processing = importlib.import_module("shared.models.ingestion.log_processing")
+native_ingest = importlib.import_module("shared.models.stats.ingest")
 
 CREATED_AT = datetime(2026, 5, 1, 12, 30, tzinfo=UTC)
 
@@ -62,20 +59,56 @@ def _match_row(**kw) -> schemas.AdminMatchRow:
         "tournament_id": 3,
         "tournament_name": "Cup",
         "map_id": 8,
-        "map_name": "Ilios",
-        "home_team": {"id": 1, "name": "A"},
-        "away_team": {"id": 2, "name": "B"},
-        "home_score": 2,
-        "away_score": 1,
-        "time": 612.5,
+        "map": {
+            "id": 8,
+            "created_at": CREATED_AT,
+            "updated_at": None,
+            "discipline": "overwatch",
+            "kind": "map",
+            "slug": "ilios",
+            "name": "Ilios",
+            "image_path": None,
+            "parent_id": None,
+            "attrs": {},
+            "aliases": [],
+            "active": True,
+        },
+        "workspace_id": 1,
+        "discipline": "overwatch",
+        "encounter_game_id": None,
+        "map_index": None,
+        "updated_at": None,
+        "played_at": None,
+        "raw_status": None,
+        "raw_available": False,
+        "participants": [
+            {
+                "encounter_team_id": 21,
+                "slot": 1,
+                "source_position": 1,
+                "tournament_team_id": 1,
+                "name": "A",
+                "result": None,
+                "team_facts": {"score": 2.0},
+            },
+            {
+                "encounter_team_id": 22,
+                "slot": 2,
+                "source_position": 2,
+                "tournament_team_id": None,
+                "name": "B",
+                "result": None,
+                "team_facts": {},
+            },
+        ],
+        "duration_s": 612.5,
         "log_name": "match.txt",
-        "code": "ABC123",
         "created_at": CREATED_AT,
         "log_record": {
             "id": 77,
             "filename": "match.txt",
-            "status": log_processing.LogProcessingStatus.done,
-            "source": log_processing.LogProcessingSource.upload,
+            "status": native_ingest.IngestJobStatus.DONE,
+            "source": "upload",
             "uploader_id": 5,
             "attempts": 1,
             "error_message": None,

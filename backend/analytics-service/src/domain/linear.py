@@ -16,10 +16,9 @@ TREND_SHIFT_CLAMP = 3.5
 # this tournament. On balancer-formed rosters (≈equal by rank) a team that wins
 # more than expected means its players were under-rated → they deserve to move
 # up; W/L deviation is therefore a direct, low-variance mis-rating signal, not
-# "luck of the draw". Prod analysis confirms team W/L is by far the strongest
-# predictor of realised division moves (Spearman ≈0.38), and individual impact
-# adds ~0 on top of it. ``fit_raw_signal_weights`` can recalibrate; kept summing
-# to 1 so ``STABLE_SHIFT_SCALE`` keeps its meaning.
+# "luck of the draw". Team W/L is by far the strongest predictor of realised
+# division moves, and individual impact adds ~0 on top of it.
+# Kept summing to 1 so ``STABLE_SHIFT_SCALE`` keeps its meaning.
 RAW_SIGNAL_WEIGHTS: Mapping[str, float] = {
     "map_diff": 0.6,
     "placement_score": 0.4,
@@ -76,42 +75,6 @@ def _apply_low_evidence_cap(value: float, *, sample_tournaments: int, effective_
     if sample_tournaments <= 1 or effective_evidence < 1.0:
         return clamp(value, -LOW_EVIDENCE_SHIFT_CAP, LOW_EVIDENCE_SHIFT_CAP)
     return value
-
-
-def fit_raw_signal_weights(
-    components: Sequence[Sequence[float]],
-    realised: Sequence[float],
-    *,
-    component_names: Sequence[str] = tuple(RAW_SIGNAL_WEIGHTS),
-    min_samples: int = 30,
-) -> dict[str, float]:
-    """Refit the raw-signal weights against realised division moves.
-
-    ``components`` is an ``(n, k)`` matrix whose columns align with
-    ``component_names`` (defaults to :data:`RAW_SIGNAL_WEIGHTS`'s keys) and
-    ``realised`` the per-row realised stable shift. Uses non-negative least
-    squares and normalises the coefficients to sum to 1 so the fitted weights
-    drop into :data:`RAW_SIGNAL_WEIGHTS` without rescaling ``STABLE_SHIFT_SCALE``.
-    Falls back to the current defaults when there is too little data or the fit
-    is degenerate. Offline helper — callers persist the result to config rather
-    than hardcoding new literals.
-    """
-    import numpy as np
-    from scipy.optimize import nnls
-
-    names = tuple(component_names)
-    matrix = np.asarray(components, dtype=float)
-    target = np.asarray(realised, dtype=float)
-    if matrix.ndim != 2 or matrix.shape[1] != len(names) or len(target) < min_samples:
-        return dict(RAW_SIGNAL_WEIGHTS)
-
-    coef, _ = nnls(matrix, target)
-    total = float(coef.sum())
-    if not np.isfinite(total) or total <= 1e-9:
-        return dict(RAW_SIGNAL_WEIGHTS)
-
-    weights = coef / total
-    return {name: float(w) for name, w in zip(names, weights, strict=True)}
 
 
 def score_history(

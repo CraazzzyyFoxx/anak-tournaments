@@ -7,20 +7,19 @@ pick removes both the chosen slot and player before matching, which prevents a
 locally legal pick from starving another team's future roster slot.
 
 No database access, no event loop — every function here is synchronous and
-deterministic over ``entities``. ``services/draft/feasibility.py`` is the only
-file that loads rows and offloads these functions to a thread.
+deterministic over ``entities``; ``services/draft/`` loads the rows and runs
+them off the event loop.
 """
 
 from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Collection, Mapping
-from typing import Any
 
-from shared.core.enums import HERO_TYPE_CLASSES, DraftPickStatus, DraftPlayerStatus, HeroClass
+from shared.core.enums import DraftPickStatus, DraftPlayerStatus
 from shared.domain.roster import PlayerRoster
-from shared.domain.roster_shape import FLEX_SLOT_CODE, ROSTER_SLOT_CODES, RosterShape
-from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam
+from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
+from shared.models.draft import DraftPick, DraftPlayer, DraftTeam
 from src.domain.draft.entities import (
     DraftAssignment,
     DraftFeasibilityReport,
@@ -51,12 +50,6 @@ __all__ = (
 )
 
 
-def _as_role(value: Any) -> HeroClass | None:
-    """Parse a role slot code; ``flex`` is a roster slot, never a rated role."""
-    role = HeroClass.parse(value)
-    return role if role is not HeroClass.flex else None
-
-
 def build_feasibility_state(
     *,
     shape: RosterShape,
@@ -76,7 +69,7 @@ def build_feasibility_state(
 
     team_ids = tuple(team.id for team in sorted(teams, key=lambda team: (team.draft_position, team.id)))
     picked_role_by_player = {
-        pick.picked_player_id: role
+        pick.picked_player_id: pick.target_role or FLEX_SLOT_CODE
         for pick in picks
         if pick.picked_player_id is not None
         and pick.status
@@ -84,7 +77,6 @@ def build_feasibility_state(
             DraftPickStatus.COMPLETED.value,
             DraftPickStatus.AUTOPICKED.value,
         }
-        and (role := _as_role(pick.target_role)) is not None
     }
     eligible_players: list[EligiblePlayer] = []
     assignments: list[DraftAssignment] = []
@@ -98,11 +90,9 @@ def build_feasibility_state(
         if player.status != DraftPlayerStatus.PICKED.value or player.drafted_by_team_id is None:
             continue
         # Which slot a picked player occupies: on a role-less roster there is only
-        # flex, so every pick lands there and a missing role is no longer a reason
-        # to skip the player. Otherwise the drafted role names the slot, and the
-        # "role slot already full -> spill into flex" rule lives in
-        # _remaining_capacity, where the per-team counters already exist, instead
-        # of being recomputed here and again for every hypothetical pick.
+        # flex, so every pick lands there. Otherwise the drafted role names the
+        # slot; the "role slot already full -> spill into flex" rule lives in
+        # _remaining_capacity, which applies it to hypothetical picks as well.
         if not shape.has_role_slots:
             assignments.append(
                 DraftAssignment(
@@ -112,15 +102,15 @@ def build_feasibility_state(
                 )
             )
             continue
-        # A pick's frozen role, else the seat's own: a captain's pinned role or
-        # the lead one (``ranks.seat_role``).
+        # A frozen null role stays flex; only a seat without a resolved pick
+        # falls back to its captain pin or lead role.
         assigned_role = picked_role_by_player.get(player.id) or seat_role(roster, player.captain_role)
         if assigned_role is not None:
             assignments.append(
                 DraftAssignment(
                     player_id=player.id,
                     team_id=player.drafted_by_team_id,
-                    slot_code=assigned_role.slot_code,
+                    slot_code=assigned_role,
                 )
             )
     return DraftFeasibilityState(
@@ -132,15 +122,12 @@ def build_feasibility_state(
 
 
 def _ordered_slot_codes(slot_targets: Mapping[str, int]) -> tuple[str, ...]:
-    return tuple(code for code in ROSTER_SLOT_CODES if slot_targets.get(code, 0) > 0)
+    return tuple(code for code, count in slot_targets.items() if count > 0)
 
 
 def _slot_fits(player: EligiblePlayer, slot_code: str) -> bool:
-    """The one new rule of the slot vocabulary: flex takes anybody."""
-    if slot_code == FLEX_SLOT_CODE:
-        return True
-    role = _as_role(slot_code)
-    return role is not None and role in player.playable_roles
+    """Flex takes anybody; a role slot takes a player who plays that role."""
+    return slot_code == FLEX_SLOT_CODE or slot_code in player.playable_roles
 
 
 def describe_role_deficits(report: DraftFeasibilityReport) -> str:
@@ -270,16 +257,13 @@ def evaluate_pick_options(
     options: list[DraftPickOption] = []
     # Players with the same declared role set are interchangeable for the
     # feasibility question. Cache one forced-pick matching per role-set/role
-    # pair; at the supported scale this reduces hundreds of equivalent graph
-    # runs to at most 21 (seven non-empty subsets of three canonical roles).
-    report_cache: dict[tuple[frozenset[HeroClass], HeroClass], tuple[int, DraftFeasibilityReport]] = {}
+    # pair, rather than rerunning matching for every equivalent player.
+    report_cache: dict[tuple[frozenset[str], str], tuple[int, DraftFeasibilityReport]] = {}
     for player in players:
-        for role in HERO_TYPE_CLASSES:
-            if role not in player.playable_roles:
-                continue
+        for role in sorted(player.playable_roles):
             # A role a team can still take: its own role slot, or any free flex
             # slot. Only when both are gone is the option genuinely unavailable.
-            if remaining.get((team_id, role.slot_code), 0) + remaining.get((team_id, FLEX_SLOT_CODE), 0) <= 0:
+            if remaining.get((team_id, role), 0) + remaining.get((team_id, FLEX_SLOT_CODE), 0) <= 0:
                 options.append(
                     DraftPickOption(
                         player_id=player.player_id,
@@ -297,7 +281,7 @@ def evaluate_pick_options(
                     slot_targets=slot_targets,
                     players=players,
                     assignments=assignments,
-                    hypothetical=DraftAssignment(player_id=player.player_id, team_id=team_id, slot_code=role.slot_code),
+                    hypothetical=DraftAssignment(player_id=player.player_id, team_id=team_id, slot_code=role),
                 )
                 representative_id = player.player_id
                 report_cache[cache_key] = (representative_id, report)

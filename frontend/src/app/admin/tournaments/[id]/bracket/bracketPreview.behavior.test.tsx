@@ -77,12 +77,21 @@ function stage(): Stage {
     is_completed: false,
     ranking_preset: null,
     tiebreak_order: null,
-    scoring: { win: null, draw: null, loss: null },
+    scoring: {
+      win: null,
+      draw: null,
+      loss: null,
+      preset: null,
+      columns: null,
+      placement_points: null,
+      formula: null
+    },
     swiss_bye_points: null,
+    swiss_qualify_wins: null,
+    swiss_eliminate_losses: null,
     de_grand_final_type: "no_reset",
     seed_ranking: "slot",
-    best_of: { default: 3, by_round: {}, final: null },
-    ffa_scoring: { placement_points: [], score_points: 1, score_label: null },
+    best_of: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
     challonge_id: null,
     challonge_slug: null,
     items: [
@@ -118,8 +127,8 @@ function skeleton(): StageBracketPreviewMatch[] {
       round: 1,
       name: "Team 1 vs Team 4",
       best_of: 3,
-      home_team_id: 1,
-      away_team_id: 4,
+      slot_count: 2,
+      team_ids: [1, 4],
       sources: []
     },
     {
@@ -127,8 +136,8 @@ function skeleton(): StageBracketPreviewMatch[] {
       round: 1,
       name: "Team 2 vs Team 3",
       best_of: 3,
-      home_team_id: 2,
-      away_team_id: 3,
+      slot_count: 2,
+      team_ids: [2, 3],
       sources: []
     },
     {
@@ -136,11 +145,11 @@ function skeleton(): StageBracketPreviewMatch[] {
       round: 2,
       name: "TBD vs TBD",
       best_of: 5,
-      home_team_id: null,
-      away_team_id: null,
+      slot_count: 2,
+      team_ids: [null, null],
       sources: [
-        { local_id: 1, role: "winner", slot: "home" },
-        { local_id: 2, role: "winner", slot: "away" }
+        { local_id: 1, source_position: 1, slot: 1 },
+        { local_id: 2, source_position: 1, slot: 2 }
       ]
     }
   ];
@@ -152,9 +161,6 @@ function generatedEncounter(): Encounter {
     created_at: new Date(0),
     updated_at: null,
     name: "Team 1 vs Team 4",
-    home_team_id: 1,
-    away_team_id: 4,
-    score: { home: 2, away: 1 },
     round: 1,
     best_of: 3,
     tournament_id: 84,
@@ -168,11 +174,20 @@ function generatedEncounter(): Encounter {
     scheduled_at: null,
     started_at: null,
     ended_at: null,
+    played_at: null,
+    is_live: false,
+    is_final: false,
     current_map_index: null,
     confirmed_at: null,
     matches: [],
-    home_team: null as never,
-    away_team: null as never,
+    slot_count: 2,
+    result_source: "games",
+    result_version: 1,
+    games: [],
+    teams: [
+      { id: 91, slot: 1, team_id: 1, name: "Team 1", seed: 1, score: 2, placement: 1, active: true },
+      { id: 92, slot: 2, team_id: 4, name: "Team 4", seed: 4, score: 1, placement: 2, active: true }
+    ],
     tournament: null as never,
     stage: null,
     stage_item: null
@@ -302,8 +317,8 @@ describe("Bracket preview", () => {
 
     await mount(groups);
 
-    // "top 2 of each" would be a lie about group A, and 4 onward a lie about both.
-    expect(container.textContent).toContain("top 3 / 2 of each advance, 5 teams onward");
+    // "Top 2 of each" would be a lie about group A, and 4 teams a lie about both.
+    expect(container.textContent).toContain("Top 3 / 2 of each advance (5 teams).");
   });
 
   it("offers drag-to-reseed on a Draft skeleton only while seeds go in slot order", async () => {

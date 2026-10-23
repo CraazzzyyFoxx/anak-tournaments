@@ -1,18 +1,13 @@
 """Stage WORKFLOW admin methods over typed RPC.
 
-Each handler mirrors a workflow route in ``src/routes/admin/stage.py`` exactly:
-it rehydrates the gateway-injected identity, runs the SAME imperative permission
-check the route's dependency performed, validates the SAME body schema, calls the
-SAME service function with the SAME args, and serializes the SAME way the route
-returned (admin routes do NOT use ``response_model_exclude_none`` -> plain
-``model_dump(mode="json")``; the custom dict/list-returning progress route and the
-job-returning routes return their payloads as the route did).
-
 Scope: ONLY the stage workflow endpoints (progress, merge-group-stages, activate,
 generate, activate-and-generate, auto-wire, wire-from-groups, seed-teams,
 bracket-template read/save/reset). Stage /
 stage_item / stage_item_input CRUD create/update/delete go through the generic CRUD
 engine and are handled separately.
+
+Responses are plain ``model_dump(mode="json")``; the progress read and the
+job-returning subjects return their payloads as-is.
 
 The gateway passes path params as ``data["<name>"]`` (and the primary id as
 ``data["id"]`` when the RouteSpec sets IDParam), query params as
@@ -22,11 +17,10 @@ Commit semantics:
 - ``get_stage_progress`` is read-only.
 - ``merge_group_stages``, ``seed_teams``, ``wire_from_groups``,
   ``set_bracket_template``, ``clear_bracket_template`` commit internally.
-- ``activate_stage`` commits internally (``commit=True`` default; route calls it
-  plainly).
+- ``activate_stage`` commits internally (``commit=True`` default).
 - ``request_bracket_job`` (generate / activate-and-generate) does NOT commit —
-  ``create_job`` only flushes and enqueues an outbox event, so the route adds an
-  explicit ``await session.commit()``; these handlers replicate that.
+  ``create_job`` only flushes and enqueues an outbox event, so these handlers
+  ``await session.commit()`` explicitly.
 """
 
 from __future__ import annotations
@@ -37,15 +31,13 @@ from faststream.rabbit.annotations import RabbitMessage
 
 from shared.rpc.identity import ensure_workspace_permission
 from shared.services.audit import record_admin_audit
-from shared.services.bracket.template import BracketTemplate
 from shared.services.tournament.computation import request_bracket_job
 from src import schemas
 from src.core import auth
+from src.domain.bracket import BracketTemplate
 from src.rpc._helpers import _dump, _identity, _path_int, _payload, _run
 from src.services.admin.stage import stage_service
 from src.services.tournament.flows import flows_service as tournament_flows
-
-# --- helpers -----------------------------------------------------------------
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -56,7 +48,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             tournament_id = _path_int(data, "tournament_id")
-            # Route: require_tournament_permission("stage", "read").
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
             ensure_workspace_permission(user, ws_id, "stage", "read")
             # get_stage_progress is read-only; returns a custom list[dict].
@@ -69,7 +60,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             stage_id = _path_int(data, "stage_id")
-            # Route: require_stage_permission("stage", "read").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "read")
             rounds = await stage_service.get_planned_rounds(session, stage_id)
@@ -82,7 +72,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             stage_id = _path_int(data, "stage_id")
-            # Route: require_stage_permission("stage", "read").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "read")
             return await stage_service.get_bracket_preview(session, stage_id)
@@ -96,7 +85,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             stage_id = _path_int(data, "stage_id")
-            # Route: require_stage_permission("stage", "read").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "read")
             return await stage_service.get_bracket_template(session, stage_id)
@@ -108,7 +96,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             stage_id = _path_int(data, "stage_id")
-            # Route: require_stage_permission("stage", "update").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "update")
             body = BracketTemplate.model_validate(_payload(data))
@@ -137,7 +124,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             stage_id = _path_int(data, "stage_id")
-            # Route: require_stage_permission("stage", "update").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "update")
             await record_admin_audit(
@@ -162,7 +148,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             stage_id = _path_int(data, "stage_id")
-            # Route: require_stage_permission("stage", "update").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "update")
             body = schemas.MergeGroupStagesRequest.model_validate(_payload(data))
@@ -198,7 +183,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             stage_id = _path_int(data, "stage_id")
-            # Route: require_stage_permission("stage", "update").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "update")
             await record_admin_audit(
@@ -223,7 +207,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             stage_id = _path_int(data, "stage_id")
-            # Route: require_stage_permission("stage", "update").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "update")
             await record_admin_audit(
@@ -249,7 +232,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             stage_id = _path_int(data, "stage_id")
-            # Route: require_stage_permission("stage", "update").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "update")
             await record_admin_audit(
@@ -281,7 +263,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             stage_id = _path_int(data, "stage_id")
-            # Route: require_stage_permission("stage", "update").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "update")
             # Rewrites best_of on the stage's encounters from its best-of config;
@@ -310,10 +291,9 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             stage_id = _path_int(data, "stage_id")
-            # Route: require_stage_permission("stage", "update").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "update")
-            # Route reads ``force`` from the query string (bool, default False).
+            # ``force`` comes from the query string (bool, default False).
             force_vals = (data.get("query") or {}).get("force")
             if isinstance(force_vals, list):
                 force_raw = force_vals[0] if force_vals else None
@@ -353,12 +333,11 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             stage_id = _path_int(data, "stage_id")
-            # Route: require_stage_permission("stage", "update").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "update")
-            # Route reads the optional ``source_stage_id`` from the query string:
-            # which group stage feeds this bracket, when the earlier phase runs
-            # several divisions and no single one is "the" preceding stage.
+            # The optional ``source_stage_id`` query param names which group stage
+            # feeds this bracket, when the earlier phase runs several divisions and
+            # no single one is "the" preceding stage.
             source_vals = (data.get("query") or {}).get("source_stage_id")
             if isinstance(source_vals, list):
                 source_raw = source_vals[0] if source_vals else None
@@ -388,7 +367,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             stage_id = _path_int(data, "stage_id")
-            # Route: require_stage_permission("stage", "update").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "update")
             body = schemas.WireFromGroupsRequest.model_validate(_payload(data))
@@ -427,7 +405,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             stage_id = _path_int(data, "stage_id")
-            # Route: require_stage_permission("stage", "update").
             ws_id = await auth.get_stage_workspace_id(session, stage_id)
             ensure_workspace_permission(user, ws_id, "stage", "update")
             body = schemas.SeedTeamsRequest.model_validate(_payload(data))

@@ -1,62 +1,35 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
+import sys
+import uuid
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, Mock, patch
+
+import sqlalchemy as sa
+from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from shared import models
+from shared.disciplines import discipline
+from shared.repository.workspace import WorkspaceRepository
+from shared.testing import create_test_async_engine
+from src.schemas.workspace import WorkspaceCreate, WorkspaceListItem, WorkspaceRead, WorkspaceUpdate
 
 workspace_service = importlib.import_module("src.services.workspace.service")
 workspaces = workspace_service.workspaces
 
 
 class WorkspaceServiceTests(IsolatedAsyncioTestCase):
-    async def test_create_uses_system_default_division_grid_version_when_none_is_provided(self) -> None:
-        session = SimpleNamespace(add=Mock(), flush=AsyncMock())
-
-        with patch.object(
-            workspace_service,
-            "get_default_division_grid_version_id",
-            AsyncMock(return_value=77),
-        ) as get_default_version_id:
-            workspace = await workspaces.create(
-                session,
-                slug="homies-family",
-                name="Homies Family",
-                description=None,
-                icon_url=None,
-                default_division_grid_version_id=None,
-            )
-
-        self.assertEqual(77, workspace.default_division_grid_version_id)
-        get_default_version_id.assert_awaited_once_with(session)
-        session.add.assert_called_once_with(workspace)
-        session.flush.assert_awaited_once()
-
-    async def test_update_rejects_default_version_changes_outside_activation_flow(self) -> None:
-        session = SimpleNamespace(flush=AsyncMock())
-        workspace = SimpleNamespace(id=4, default_division_grid_version_id=12)
-
-        with self.assertRaises(Exception) as caught:
-            await workspaces.update(
-                session,
-                workspace,
-                {"default_division_grid_version_id": 77},
-            )
-
-        self.assertEqual(400, getattr(caught.exception, "status_code", None))
-        session.flush.assert_not_awaited()
-
-    async def test_update_rejects_default_version_owned_by_another_workspace(self) -> None:
-        session = SimpleNamespace(scalar=AsyncMock(return_value=9))
-
-        with self.assertRaises(Exception) as caught:
-            await workspaces.validate_default_division_grid_version(
-                session,
-                workspace_id=4,
-                version_id=55,
-            )
-
-        self.assertEqual(400, getattr(caught.exception, "status_code", None))
+    def test_workspace_write_contract_refuses_grid_assignment_fields(self) -> None:
+        for field in ("default_division_grid_version_id", "default_division_grid_versions"):
+            with self.subTest(field=field):
+                with self.assertRaises(ValidationError):
+                    WorkspaceCreate.model_validate({"slug": "acme", "name": "Acme", field: 77})
+                with self.assertRaises(ValidationError):
+                    WorkspaceUpdate.model_validate({field: {"lol": 77}})
 
     async def test_update_member_roles_refreshes_member_after_flush(self) -> None:
         # Regression: ``updated_at`` (onupdate=func.now()) is server-computed and
@@ -245,21 +218,102 @@ class WorkspaceGetAllVisibilityTests(IsolatedAsyncioTestCase):
     ``is_hidden`` and ``unverified`` are dropped for EVERY caller, membership
     and ``is_superuser`` included. ``admin`` is the management list (superuser:
     everything, else own memberships only) and ``all`` unions that with the
-    directory for the workspace switcher."""
+    directory for the workspace switcher.
 
-    def _workspaces(self) -> list[SimpleNamespace]:
-        return [
-            SimpleNamespace(id=1, is_hidden=False, verification_status="trusted"),
-            SimpleNamespace(id=2, is_hidden=True, verification_status="trusted"),
-            SimpleNamespace(id=3, is_hidden=False, verification_status="verified"),
-            SimpleNamespace(id=4, is_hidden=False, verification_status="unverified"),
-        ]
+    Against a real database: the filter runs in SQL, and the workspaces below
+    are known to the tests by their labels 1-4."""
+
+    if sys.platform == "win32":
+        loop_factory = asyncio.SelectorEventLoop
+
+    async def asyncSetUp(self) -> None:
+        self.engine = create_test_async_engine()
+        self.session = AsyncSession(self.engine, expire_on_commit=False)
+        tag = uuid.uuid4().hex
+        rows = {
+            1: models.Workspace(slug=f"{tag}-1", name="1", is_hidden=False, verification_status="trusted"),
+            2: models.Workspace(slug=f"{tag}-2", name="2", is_hidden=True, verification_status="trusted"),
+            3: models.Workspace(slug=f"{tag}-3", name="3", is_hidden=False, verification_status="verified"),
+            4: models.Workspace(slug=f"{tag}-4", name="4", is_hidden=False, verification_status="unverified"),
+        }
+        self.session.add_all(rows.values())
+        await self.session.flush()
+        self.ids = {label: row.id for label, row in rows.items()}
+        self.slugs = {label: row.slug for label, row in rows.items()}
+        self.session.expunge_all()
+
+    async def asyncTearDown(self) -> None:
+        await self.session.rollback()
+        await self.session.close()
+        await self.engine.dispose()
+
+    def _viewer(self, user):
+        """``user`` with its label memberships turned into the test's workspace ids."""
+        if user is None:
+            return None
+        ids = [self.ids.get(label, -label) for label in user.get_workspace_ids()]
+        return SimpleNamespace(is_superuser=user.is_superuser, get_workspace_ids=Mock(return_value=ids))
 
     async def _get_all(self, user, scope: str = "public") -> list[int]:
-        session = SimpleNamespace()
-        with patch.object(workspaces.workspace_repo, "list_ordered", AsyncMock(return_value=self._workspaces())):
-            result = await workspaces.get_all(session, user=user, scope=scope)
-        return [w.id for w in result]
+        """The labels of the test's workspaces ``get_all`` returns; ``user`` names its memberships by label too."""
+        result = await workspaces.get_all(self.session, user=self._viewer(user), scope=scope)
+        label_of = {id_: label for label, id_ in self.ids.items()}
+        return [label_of[w.id] for w in result if w.id in label_of]
+
+    async def _by_slug(self, user) -> list[int]:
+        """The labels whose slug resolves for ``user`` -- must be exactly what ``scope=all`` lists."""
+        viewer = self._viewer(user)
+        return [
+            label
+            for label, slug in self.slugs.items()
+            if await workspaces.get_visible_by_slug(self.session, slug, user=viewer) is not None
+        ]
+
+    async def test_a_slug_resolves_exactly_where_the_switcher_lists_it(self) -> None:
+        """The community page by slug: a hidden or ``unverified`` workspace opens to its members and
+        superusers only, never to a visitor or a non-member."""
+        viewers = {
+            "anonymous": None,
+            "non-member": SimpleNamespace(is_superuser=False, get_workspace_ids=Mock(return_value=[99])),
+            "member of 2 and 4": SimpleNamespace(is_superuser=False, get_workspace_ids=Mock(return_value=[2, 4])),
+            "superuser": SimpleNamespace(is_superuser=True, get_workspace_ids=Mock(return_value=[])),
+        }
+        expected = {
+            "anonymous": [1, 3],
+            "non-member": [1, 3],
+            "member of 2 and 4": [1, 2, 3, 4],
+            "superuser": [1, 2, 3, 4],
+        }
+        for name, user in viewers.items():
+            with self.subTest(viewer=name):
+                self.assertEqual(expected[name], await self._by_slug(user))
+                self.assertEqual(expected[name], await self._get_all(user, "all"))
+
+    async def test_a_slug_lookup_is_the_full_read_a_list_row_is_not(self) -> None:
+        """The community page renders grids, so by slug answers what by id does, effective grids included."""
+        by_slug = await workspaces.get_visible_by_slug(self.session, self.slugs[1], user=None)
+        by_id = await workspaces.get_by_id(self.session, self.ids[1])
+
+        self.assertEqual(
+            WorkspaceRead.model_validate(by_id, from_attributes=True).model_dump(),
+            WorkspaceRead.model_validate(by_slug, from_attributes=True).model_dump(),
+        )
+
+    async def test_the_directory_never_loads_a_workspace_it_leaves_out(self) -> None:
+        """Every workspace loaded drags in its grid versions and all their tiers: filtering the loaded rows
+        instead of the query made each home-page read hold every workspace's grids at once."""
+        loaded: list[int] = []
+
+        def on_load(workspace, _context) -> None:
+            loaded.append(workspace.id)
+
+        sa.event.listen(models.Workspace, "load", on_load)
+        try:
+            await workspaces.get_all(self.session)
+        finally:
+            sa.event.remove(models.Workspace, "load", on_load)
+
+        self.assertEqual({self.ids[1], self.ids[3]}, set(loaded) & set(self.ids.values()))
 
     async def test_anonymous_sees_non_hidden_verified_and_trusted_workspaces(self) -> None:
         self.assertEqual([1, 3], await self._get_all(None))
@@ -318,3 +372,151 @@ class WorkspaceGetAllVisibilityTests(IsolatedAsyncioTestCase):
 
     async def test_admin_scope_is_empty_for_an_anonymous_caller(self) -> None:
         self.assertEqual([], await self._get_all(None, "admin"))
+
+
+class WorkspacePublicGridTests(IsolatedAsyncioTestCase):
+    if sys.platform == "win32":
+        loop_factory = asyncio.SelectorEventLoop
+
+    async def test_service_read_serializes_two_explicit_defaults_and_batched_system_fallbacks(self):
+        engine = create_test_async_engine()
+        async with AsyncSession(engine, expire_on_commit=False) as session:
+            tag = uuid.uuid4().hex
+            try:
+                system = models.DivisionGridVersion(
+                    grid=models.DivisionGrid(slug=tag + "-system", name="System OW", discipline="overwatch"),
+                    version=1,
+                    label="System OW",
+                    status="published",
+                    tiers=[
+                        models.DivisionGridTier(
+                            slug="system",
+                            number=45,
+                            name="System tier",
+                            sort_order=0,
+                            rank_min=0,
+                            rank_max=None,
+                            icon_url="/system.png",
+                        )
+                    ],
+                )
+                session.add(system)
+                await session.flush()
+                workspace = await workspaces.create(
+                    session, slug=tag, name=tag, disciplines_enabled=["overwatch", "lol"]
+                )
+                # Each game gets its own native-ladder grid, in force: a new workspace has played nothing yet.
+                self.assertEqual(set(workspace.default_division_grid_versions), {"overwatch", "lol"})
+                initial = WorkspaceRead.model_validate(workspace, from_attributes=True).model_dump()
+                self.assertNotIn("default_division_grid_version_id", initial)
+                self.assertNotIn("default_division_grid_version", initial)
+                self.assertEqual(
+                    {
+                        code: data["tiers"][0]["slug"]
+                        for code, data in initial["effective_division_grid_versions"].items()
+                    },
+                    {"overwatch": "champion-1", "lol": "challenger"},
+                )
+                expected = {}
+                for code, number in (("overwatch", 4), ("lol", 9)):
+                    grid = models.DivisionGrid(workspace_id=workspace.id, slug=code, name=code, discipline=code)
+                    version = models.DivisionGridVersion(
+                        grid=grid,
+                        version=1,
+                        label=code,
+                        status="published",
+                        tiers=[
+                            models.DivisionGridTier(
+                                slug=code,
+                                number=number,
+                                name=code,
+                                sort_order=0,
+                                rank_min=0,
+                                rank_max=None,
+                                icon_url="/tier.png",
+                            )
+                        ],
+                    )
+                    session.add(version)
+                    await session.flush()
+                    await WorkspaceRepository().set_default_grid_version(
+                        session, workspace, discipline=code, version_id=version.id
+                    )
+                    expected[code] = version.id
+                loaded = await workspaces.get_by_id(session, workspace.id)
+                payload = WorkspaceRead.model_validate(loaded, from_attributes=True).model_dump()
+                self.assertEqual(payload["default_division_grid_versions"], expected)
+                self.assertEqual(
+                    {
+                        code: data["tiers"][0]["number"]
+                        for code, data in payload["effective_division_grid_versions"].items()
+                    },
+                    {"overwatch": 4, "lol": 9},
+                )
+                counts = []
+                for index in range(2):
+                    session.add(models.Workspace(slug=f"{tag}-{index}", name="Public", verification_status="trusted"))
+                    await session.flush()
+                    session.expunge_all()
+                    statements = []
+
+                    def count_sql(*args, statements=statements):
+                        statements.append(args[2])
+
+                    sa.event.listen(engine.sync_engine, "before_cursor_execute", count_sql)
+                    try:
+                        public = await workspaces.get_all(session)
+                        serialized = [WorkspaceListItem.model_validate(row, from_attributes=True) for row in public]
+                    finally:
+                        sa.event.remove(engine.sync_engine, "before_cursor_execute", count_sql)
+                    counts.append(len(statements))
+                    self.assertTrue(any(item.slug == f"{tag}-{index}" for item in serialized))
+                    # A list row carries no grids: neither its queries nor its payload reach a version or a tier.
+                    self.assertEqual(
+                        [], [sql for sql in statements if "division_grid_version" in sql or "division_grid_tier" in sql]
+                    )
+                    self.assertNotIn("effective_division_grid_versions", serialized[0].model_dump())
+                self.assertEqual(counts[0], counts[1])
+                print(
+                    f"WorkspaceRead: explicit OW+LoL, scoped effective payloads, no legacy fields; list queries {counts}"
+                )
+            finally:
+                await session.rollback()
+        await engine.dispose()
+
+    async def test_enabling_a_game_provisions_and_activates_its_own_grid_once(self):
+        engine = create_test_async_engine()
+        async with AsyncSession(engine, expire_on_commit=False) as session:
+            tag = uuid.uuid4().hex
+            try:
+                workspace = await workspaces.create(session, slug=tag, name=tag, disciplines_enabled=["overwatch"])
+                self.assertEqual(set(workspace.default_division_grid_versions), {"overwatch"})
+                await workspaces.update(session, workspace, {"disciplines_enabled": ["overwatch", "lol"]})
+                lol = await session.scalar(
+                    sa.select(models.DivisionGrid).where(
+                        models.DivisionGrid.workspace_id == workspace.id, models.DivisionGrid.discipline == "lol"
+                    )
+                )
+                self.assertEqual(
+                    (lol.slug, lol.name, lol.versions[0].status), ("lol-default", "League of Legends", "published")
+                )
+                payload = WorkspaceRead.model_validate(workspace, from_attributes=True).model_dump()
+                self.assertEqual(payload["default_division_grid_versions"]["lol"], lol.versions[0].id)
+                self.assertEqual(
+                    len(payload["effective_division_grid_versions"]["lol"]["tiers"]),
+                    len(discipline("lol").native_ladder),
+                )
+                # Off and on again: the game already has its own grid, so nothing more is created.
+                await workspaces.update(session, workspace, {"disciplines_enabled": ["lol"]})
+                await workspaces.update(session, workspace, {"disciplines_enabled": ["lol", "overwatch"]})
+                self.assertEqual(
+                    await session.scalar(
+                        sa.select(sa.func.count())
+                        .select_from(models.DivisionGrid)
+                        .where(models.DivisionGrid.workspace_id == workspace.id)
+                    ),
+                    2,
+                )
+            finally:
+                await session.rollback()
+        await engine.dispose()

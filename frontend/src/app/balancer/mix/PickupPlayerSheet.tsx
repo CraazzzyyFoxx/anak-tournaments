@@ -4,12 +4,13 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Pin, Save, UserMinus } from "lucide-react";
 
-import { BattleTagCopyButton } from "@/app/balancer/components/BattleTagCopyControls";
+import { HandleCopyButton } from "@/app/balancer/components/HandleCopyControls";
 import { PickupRoleOrderEditor } from "@/app/balancer/mix/PickupRoleOrderEditor";
-import { splitBattleTag } from "@/components/balancer/balancer-page-helpers";
-import { CAPTION_CLASS, EYEBROW_CLASS, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
+import { HandleLabel } from "@/components/HandleLabel";
+import { CAPTION_CLASS, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
 import RankHistory from "@/components/RankHistory";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { Label } from "@/components/ui/label";
 import {
@@ -20,27 +21,30 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { type RoleCode } from "@/lib/roster/roles";
+import { Switch } from "@/components/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import {
-  RANK_SOURCE_LABELS,
   type CustomGamePlayer,
   type CustomGamePlayerPatch,
   type MixParticipation,
   type MixMemberStats,
+  type RankSource,
 } from "@/services/custom-game.service";
 
 import {
-  LINEUP_ISSUE_MESSAGES,
   getLineupIssue,
   playerLabel,
+  rankSourceLabel,
   resolveRoleOrder,
+  roleRefsOf,
   toggleRole,
+  type MixOwner,
 } from "./pickup-lineup";
 import { formatRecord, formatStreak } from "./pickup-stats";
 
 /** What Save writes into the host's own rank book: `clear` falls the role back to the workspace. */
-export type PickupRankChange = { ranks: Record<string, number>; clear: string[] };
+type PickupRankChange = { ranks: Record<string, number>; clear: string[] };
 
 type PickupPlayerSheetProps = {
   row: CustomGamePlayer | null;
@@ -49,6 +53,10 @@ type PickupPlayerSheetProps = {
   onOpenChange: (open: boolean) => void;
   onSave: (patch: CustomGamePlayerPatch, rankChange: PickupRankChange | null) => void;
   onRemove: () => void;
+  /** The mix's game: rank history is resolved for it. */
+  discipline: string;
+  /** The mix owner's game: the roles on offer, their names/tints, the rank labels and the grid. */
+  owner: MixOwner;
   /** This player's all-time mix record, or `null` where the page does not read one. */
   mixStats?: MixMemberStats | null;
   /** How many lobbies the mix runs. The pin only exists, and is only sent, past 1. */
@@ -59,36 +67,31 @@ type PickupPlayerSheetProps = {
 type RoleDraft = {
   participation: MixParticipation;
   /** Priority order of the roles that are on — position is what the balancer reads. */
-  order: RoleCode[];
+  order: string[];
   /** Staged writes to the host's own book. A `null` value is a staged Clear. */
-  rankEdits: Partial<Record<RoleCode, number | null>>;
+  rankEdits: Partial<Record<string, number | null>>;
   /** Every role this row has a rank for is treated as equally preferred, so
    * `order`'s position stops mattering as a priority hint. */
   isFlex: boolean;
   /** Which lobby the host tied this player to, or `null` for "wherever the balance puts them". */
   lobbyPin: number | null;
+  /** Stepped away (spec §7.4): in no lineup until back; the must-play mark waits. */
+  away: boolean;
 };
 
-function buildDraft(row: CustomGamePlayer | null): RoleDraft {
+function buildDraft(row: CustomGamePlayer | null, roles: readonly string[]): RoleDraft {
   return {
     participation: row?.participation ?? "pool",
-    order: row ? resolveRoleOrder(row) : [],
+    order: row ? resolveRoleOrder(row, roles) : [],
     rankEdits: {},
     isFlex: row?.is_flex ?? false,
     lobbyPin: row?.lobby_pin ?? null,
+    away: row?.away ?? false,
   };
 }
 
 /** The three-way status picker, in the same order the lineup columns read left to right. */
-const STATUS_OPTIONS: readonly {
-  participation: MixParticipation;
-  label: string;
-  description: string;
-}[] = [
-  { participation: "must_play", label: "Must play", description: "Guaranteed a seat" },
-  { participation: "pool", label: "In the pool", description: "In the balance" },
-  { participation: "benched", label: "Benched", description: "Sitting out" },
-];
+const STATUS_OPTIONS: readonly MixParticipation[] = ["must_play", "pool", "benched"];
 
 /**
  * Per-player mix settings: who plays, which roles, in what priority, at what
@@ -125,20 +128,26 @@ export function PickupPlayerSheet({
   onOpenChange,
   onSave,
   onRemove,
+  discipline,
+  owner,
   mixStats = null,
   lobbyCount = 1,
 }: Readonly<PickupPlayerSheetProps>) {
   const label = row ? playerLabel(row) : "";
   const t = useTranslations("mixes.lobbies");
-  const { name, suffix } = splitBattleTag(label);
+  const tRoom = useTranslations("mixes.room");
+  const tSheet = useTranslations("mixes.sheet");
+  const tLineup = useTranslations("mixes.lineup");
+  const tCommon = useTranslations("common");
+  const layerLabel = (source: RankSource) => tSheet(`source.${source}`);
   // The record across every mix, not this one: a caption, because it is
   // context for the settings below it and nothing here edits it.
   const mixStreak = mixStats ? formatStreak(mixStats.streak) : null;
   const mixRecord =
     mixStats != null && mixStats.games > 0
-      ? `Mixes: ${formatRecord(mixStats)} · ${Math.round(mixStats.win_rate * 100)}%${mixStreak ? ` · ${mixStreak}` : ""}`
+      ? `${tSheet("record", { record: formatRecord(mixStats), rate: Math.round(mixStats.win_rate * 100) })}${mixStreak ? ` · ${mixStreak}` : ""}`
       : null;
-  const [draft, setDraft] = useState<RoleDraft>(() => buildDraft(row));
+  const [draft, setDraft] = useState<RoleDraft>(() => buildDraft(row, owner.roles));
   // Keyed on the member id rather than the whole row: a background refetch of
   // this same player (another host's edit landing mid-session) must not wipe
   // out an edit still in progress. Resetting during render (not an effect) on
@@ -147,26 +156,27 @@ export function PickupPlayerSheet({
   const [draftedMemberId, setDraftedMemberId] = useState(row?.workspace_member_id);
   if (row?.workspace_member_id !== draftedMemberId) {
     setDraftedMemberId(row?.workspace_member_id);
-    setDraft(buildDraft(row));
+    setDraft(buildDraft(row, owner.roles));
   }
 
   // Reads the draft, not the server row: a role turned on (or a rank typed
   // for one) must clear this warning immediately, not once Save round-trips.
-  const issue = row ? getLineupIssue(draftRow(row, draft)) : null;
+  const issue = row ? getLineupIssue(draftRow(row, draft, owner.showsRoles), owner.roles) : null;
   const disabled = !canEdit || saving;
 
-  const toggle = (role: RoleCode) =>
+  const toggle = (role: string) =>
     setDraft((current) => ({ ...current, order: toggleRole(current.order, role) }));
 
   const handleOpenChange = (open: boolean) => {
     if (!open) {
-      setDraft(buildDraft(row));
+      setDraft(buildDraft(row, owner.roles));
     }
     onOpenChange(open);
   };
 
   const handleSave = () => {
-    if (!row) return;
+    // Role references are written in the owner's rated dimension; without it nothing is written.
+    if (!row || owner.dimension == null) return;
     const ranks: Record<string, number> = {};
     const clear: string[] = [];
     for (const [role, value] of Object.entries(draft.rankEdits)) {
@@ -179,8 +189,12 @@ export function PickupPlayerSheet({
     onSave(
       {
         participation: draft.participation,
-        roles: draft.order,
-        is_flex: draft.isFlex,
+        // A one-role game has nothing to order: `null` is every ranked role, and repairs a stored `[]` that
+        // would refuse the balance once the first rank lands.
+        roles: owner.showsRoles ? roleRefsOf(draft.order, owner.dimension) : null,
+        // A game without Full flex never sends one, which also clears a flag stored before it lost it.
+        is_flex: owner.flex && draft.isFlex,
+        away: draft.away,
         // A one-lobby mix 422s this field, and there is no control to set it.
         ...(lobbyCount > 1 ? { lobby_pin: draft.lobbyPin } : {}),
       },
@@ -199,74 +213,70 @@ export function PickupPlayerSheet({
         className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-[640px]"
       >
         <SheetHeader className="space-y-0 border-b border-[color:var(--aqt-border)] px-5 pb-4 pt-5 text-left">
-          <span className={EYEBROW_CLASS}>Advanced settings</span>
+          <Eyebrow>{tLineup("advanced")}</Eyebrow>
           <SheetTitle className="flex items-baseline gap-1.5 pt-1.5 font-display text-xl">
-            <span className="truncate">{name}</span>
-            {suffix ? (
-              <span className="text-caption font-normal text-[color:var(--aqt-fg-faint)]">
-                {suffix}
-              </span>
-            ) : null}
-            {row?.battle_tag ? (
-              <BattleTagCopyButton battleTag={row.battle_tag} className="ml-0.5 shrink-0" />
+            <HandleLabel handle={label} tagClassName="text-caption" />
+            {row?.identity?.handle ? (
+              <HandleCopyButton handle={row.identity.handle} className="ml-0.5 shrink-0" />
             ) : null}
           </SheetTitle>
           {mixRecord ? <span className={cn(CAPTION_CLASS, "pt-1")}>{mixRecord}</span> : null}
           <SheetDescription className="pt-1 text-caption text-[color:var(--aqt-fg-dim)]">
-            {canEdit
-              ? "Nothing here writes until you press Save."
-              : "Read-only — only this mix's host can edit it."}
+            {canEdit ? tSheet("draftHint") : tSheet("readOnly")}
           </SheetDescription>
         </SheetHeader>
 
         {row == null ? null : (
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             <section className="space-y-2.5 border-b border-[color:var(--aqt-border)] px-5 py-4">
-              <h3 className="text-caption font-medium text-[color:var(--aqt-fg)]">Status</h3>
-              <div
-                role="radiogroup"
-                aria-label={`Lineup status for ${label}`}
-                className="grid grid-cols-3 gap-1.5"
+              <h3 className="text-caption font-medium text-[color:var(--aqt-fg)]">{tCommon("status")}</h3>
+              <ToggleGroup
+                type="single"
+                variant="card"
+                size="sm"
+                aria-label={tSheet("statusFor", { name: label })}
+                value={draft.participation}
+                onValueChange={(participation) =>
+                  setDraft((current) => ({ ...current, participation: participation as MixParticipation }))
+                }
+                className="grid-cols-3 gap-1.5"
               >
-                {STATUS_OPTIONS.map((option) => {
-                  const selected = draft.participation === option.participation;
+                {STATUS_OPTIONS.map((participation) => {
+                  const optionLabel = tLineup(`columns.${participation}.title`);
                   return (
-                    <button
-                      key={option.participation}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      aria-label={`${option.label} for ${label}`}
+                    <ToggleGroupItem
+                      key={participation}
+                      value={participation}
+                      aria-label={tSheet("optionFor", { option: optionLabel, name: label })}
                       disabled={disabled}
-                      onClick={() =>
-                        setDraft((current) => ({ ...current, participation: option.participation }))
-                      }
-                      className={cn(
-                        "flex flex-col items-center gap-0.5 rounded-lg border px-2 py-2 text-center transition-colors",
-                        selected
-                          ? option.participation === "must_play"
-                            ? "border-[color:var(--aqt-amber)] bg-[color:color-mix(in_srgb,var(--aqt-amber)_12%,transparent)] text-[color:var(--aqt-amber)]"
-                            : "border-[color:var(--aqt-teal)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_10%,transparent)] text-[color:var(--aqt-teal)]"
-                          : "border-[color:var(--aqt-border-2)] text-[color:var(--aqt-fg-muted)] hover:border-[color:var(--aqt-border-3)]",
-                        "disabled:cursor-default disabled:opacity-60",
-                      )}
+                      accent={participation === "must_play" ? "var(--aqt-amber)" : undefined}
+                      className="items-center text-center"
                     >
-                      <span className="flex items-center gap-1">
-                        {option.participation === "must_play" ? (
+                      <span className="flex items-center gap-1 font-semibold">
+                        {participation === "must_play" ? (
                           <Pin
                             className="size-3"
                             aria-hidden="true"
-                            fill={selected ? "currentColor" : "none"}
+                            fill={draft.participation === "must_play" ? "currentColor" : "none"}
                           />
                         ) : null}
-                        <span className="text-caption font-semibold">{option.label}</span>
+                        {optionLabel}
                       </span>
                       <span className="text-label text-[color:var(--aqt-fg-dim)]">
-                        {option.description}
+                        {tSheet(`statusHint.${participation}`)}
                       </span>
-                    </button>
+                    </ToggleGroupItem>
                   );
                 })}
+              </ToggleGroup>
+              <div className="flex items-center gap-2 pt-1">
+                <Switch
+                  checked={draft.away}
+                  disabled={disabled}
+                  aria-label={tRoom("away")}
+                  onCheckedChange={(away) => setDraft((current) => ({ ...current, away }))}
+                />
+                <span className="text-caption text-[color:var(--aqt-fg-muted)]">{tRoom("awayHint")}</span>
               </div>
             </section>
 
@@ -275,52 +285,46 @@ export function PickupPlayerSheet({
                 <h3 className="text-caption font-medium text-[color:var(--aqt-fg)]">
                   {t("pinHeading")}
                 </h3>
-                <div
-                  role="radiogroup"
+                <ToggleGroup
+                  type="single"
+                  variant="card"
+                  size="sm"
                   aria-label={t("pinGroup", { name: label })}
-                  className="grid grid-cols-4 gap-1.5"
+                  value={draft.lobbyPin == null ? "auto" : String(draft.lobbyPin)}
+                  onValueChange={(pin) =>
+                    setDraft((current) => ({ ...current, lobbyPin: pin === "auto" ? null : Number(pin) }))
+                  }
+                  className="grid-cols-4 gap-1.5"
                 >
                   {/* No tie, then one option per lobby the mix actually runs.
                       "Auto" is a word of its own rather than an interpolated
                       letter, so a locale phrases it apart from the tab label. */}
-                  {[null, ...Array.from({ length: lobbyCount }, (_, index) => index)].map(
-                    (value) => {
-                      const selected = draft.lobbyPin === value;
-                      const optionLabel =
-                        value == null ? t("pinAuto") : t("tab", { letter: lobbyLetter(value) });
-                      return (
-                        <button
-                          key={value ?? "auto"}
-                          type="button"
-                          role="radio"
-                          aria-checked={selected}
-                          aria-label={t("pinOption", { option: optionLabel, name: label })}
-                          disabled={disabled}
-                          onClick={() => setDraft((current) => ({ ...current, lobbyPin: value }))}
-                          className={cn(
-                            "rounded-lg border px-2 py-2 text-center text-caption font-semibold transition-colors",
-                            selected
-                              ? "border-[color:var(--aqt-teal)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_10%,transparent)] text-[color:var(--aqt-teal)]"
-                              : "border-[color:var(--aqt-border-2)] text-[color:var(--aqt-fg-muted)] hover:border-[color:var(--aqt-border-3)]",
-                            "disabled:cursor-default disabled:opacity-60",
-                          )}
-                        >
-                          {optionLabel}
-                        </button>
-                      );
-                    },
-                  )}
-                </div>
+                  {[null, ...Array.from({ length: lobbyCount }, (_, index) => index)].map((value) => {
+                    const optionLabel = value == null ? t("pinAuto") : t("tab", { letter: lobbyLetter(value) });
+                    return (
+                      <ToggleGroupItem
+                        key={value ?? "auto"}
+                        value={value == null ? "auto" : String(value)}
+                        aria-label={t("pinOption", { option: optionLabel, name: label })}
+                        disabled={disabled}
+                        className="items-center text-center"
+                      >
+                        {optionLabel}
+                      </ToggleGroupItem>
+                    );
+                  })}
+                </ToggleGroup>
                 <p className="text-label text-[color:var(--aqt-fg-dim)]">{t("pinHint")}</p>
               </section>
             ) : null}
 
             <section className="space-y-2.5 border-b border-[color:var(--aqt-border)] px-5 py-4">
               <h3 className="text-caption font-medium text-[color:var(--aqt-fg)]">
-                Roles and ranks
+                {owner.showsRoles ? tSheet("rolesAndRanks") : t("rankHeading")}
               </h3>
 
               <PickupRoleOrderEditor
+                owner={owner}
                 order={draft.order}
                 isFlex={draft.isFlex}
                 disabled={disabled}
@@ -329,7 +333,7 @@ export function PickupPlayerSheet({
                 onToggle={toggle}
                 onFlexChange={(checked) => setDraft((current) => ({ ...current, isFlex: checked }))}
                 rankFor={(role) => {
-                  const field = stagedRankFor(row, draft, role);
+                  const field = stagedRankFor(row, draft, role, owner.gameName, layerLabel);
                   return {
                     rankValue: field.rankValue,
                     sourceLabel: field.sourceLabel,
@@ -350,27 +354,30 @@ export function PickupPlayerSheet({
               />
 
               {issue ? (
-                <p className="text-xs text-rose-200">{LINEUP_ISSUE_MESSAGES[issue]}</p>
+                <p className="text-xs text-rose-200">{tLineup(`issue.${issue}`)}</p>
               ) : null}
             </section>
 
             {/* The one thing the mix cannot tell the host: what this player is
-                actually ranked in Overwatch right now. Read-only, and the same
-                component the tournament sheet uses. */}
-            <section className="space-y-2 px-5 py-4">
-              <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
-                Live rank (OverFast)
-              </Label>
-              <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-2.5">
-                <RankHistory battleTag={row.battle_tag} />
-              </div>
-            </section>
+                actually ranked in the game right now — only for a game that
+                collects a native rank. Read-only, and the same component the
+                tournament sheet uses. */}
+            {owner.nativeRankName !== null && row.identity?.handle ? (
+              <section className="space-y-2 px-5 py-4">
+                <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
+                  {tSheet("liveRank", { game: owner.nativeRankName })}
+                </Label>
+                <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-2.5">
+                  <RankHistory battleTag={row.identity.handle} discipline={discipline} />
+                </div>
+              </section>
+            ) : null}
           </div>
         )}
 
         {row != null && canEdit ? (
           <SheetFooter className="shrink-0 border-t border-[color:var(--aqt-border)] px-5 py-2.5 sm:justify-between sm:space-x-0">
-            <IconTooltip control label="Remove from this mix" className="shrink-0">
+            <IconTooltip control label={tLineup("remove")} className="shrink-0">
               <Button
                 type="button"
                 variant="ghost"
@@ -380,24 +387,26 @@ export function PickupPlayerSheet({
                 className="h-8 w-8 rounded-lg border border-[color:color-mix(in_srgb,var(--aqt-rose)_35%,transparent)] bg-rose-500/10 text-rose-200 hover:bg-rose-500/20 hover:text-rose-100"
               >
                 <UserMinus className="h-3.5 w-3.5" aria-hidden="true" />
-                <span className="sr-only">{`Remove ${label} from this mix`}</span>
+                <span className="sr-only">{tLineup("removeNamed", { name: label })}</span>
               </Button>
             </IconTooltip>
             <div className="flex gap-2">
               <Button
                 variant="outline"
-                className="h-8 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-3 text-xs text-[color:var(--aqt-fg)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+                size="sm"
+                className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-3 text-[color:var(--aqt-fg)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
                 onClick={() => handleOpenChange(false)}
               >
-                Cancel
+                {tCommon("cancel")}
               </Button>
               <Button
                 onClick={handleSave}
-                disabled={saving}
-                className="h-8 bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90"
+                disabled={saving || owner.dimension == null}
+                size="sm"
+                className="bg-primary px-3 text-primary-foreground hover:bg-primary/90"
               >
                 <Save className="mr-1 h-3.5 w-3.5" />
-                Save
+                {tCommon("save")}
               </Button>
             </div>
           </SheetFooter>
@@ -407,8 +416,8 @@ export function PickupPlayerSheet({
   );
 }
 
-/** The server row with every staged edit folded in, for `getLineupIssue`. */
-function draftRow(row: CustomGamePlayer, draft: RoleDraft): CustomGamePlayer {
+/** The server row with every staged edit folded in, for `getLineupIssue`: its roles are the ones Save writes. */
+function draftRow(row: CustomGamePlayer, draft: RoleDraft, showsRoles: boolean): CustomGamePlayer {
   const ranks = { ...row.ranks };
   for (const [role, value] of Object.entries(draft.rankEdits)) {
     if (value == null) {
@@ -417,27 +426,35 @@ function draftRow(row: CustomGamePlayer, draft: RoleDraft): CustomGamePlayer {
       ranks[role] = value;
     }
   }
-  return { ...row, participation: draft.participation, roles: draft.order, ranks };
+  return {
+    ...row,
+    participation: draft.participation,
+    // Only the codes are read back (`resolveRoleOrder`), so the dimension is irrelevant here.
+    roles: showsRoles ? roleRefsOf(draft.order, "") : null,
+    ranks,
+  };
 }
 
 /** The rank field's value, source badge and clearability, from the server row plus any staged edit. */
 function stagedRankFor(
   row: CustomGamePlayer,
   draft: RoleDraft,
-  role: RoleCode,
+  role: string,
+  gameName: string | null,
+  layerLabel: (source: RankSource) => string,
 ): { rankValue: number | null; sourceLabel: string | null; hasOwnEntry: boolean } {
   const staged = draft.rankEdits[role];
   if (staged !== undefined) {
     return {
       rankValue: staged,
-      sourceLabel: staged == null ? null : RANK_SOURCE_LABELS.author,
+      sourceLabel: staged == null ? null : rankSourceLabel("author", gameName, layerLabel),
       hasOwnEntry: staged != null,
     };
   }
   const source = row.rank_sources[role] ?? null;
   return {
     rankValue: row.ranks[role] ?? null,
-    sourceLabel: source ? RANK_SOURCE_LABELS[source] : null,
+    sourceLabel: source ? rankSourceLabel(source, gameName, layerLabel) : null,
     hasOwnEntry: row.author_ranks[role] != null,
   };
 }

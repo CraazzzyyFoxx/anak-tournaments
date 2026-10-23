@@ -29,12 +29,22 @@ function stage(overrides: Partial<StageSummary> = {}): StageSummary {
     is_completed: false,
     ranking_preset: null,
     tiebreak_order: null,
-    scoring: { win: null, draw: null, loss: null },
+    scoring: {
+      win: null,
+      draw: null,
+      loss: null,
+      preset: null,
+      columns: null,
+      placement_points: null,
+      formula: null
+    },
     swiss_bye_points: null,
+    swiss_qualify_wins: null,
+    swiss_eliminate_losses: null,
     de_grand_final_type: "no_reset",
     seed_ranking: "slot",
-    best_of: { default: 3, by_round: {}, final: null },
-    ffa_scoring: { placement_points: [], score_points: 1, score_label: null },
+    best_of: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
+    has_custom_bracket: false,
     challonge_id: null,
     challonge_slug: null,
     ...overrides
@@ -51,6 +61,7 @@ function model(
     status,
     stages,
     hasTeams: true,
+    hasMapPool: true,
     pathname
   });
 }
@@ -180,8 +191,24 @@ describe("buildTournamentSectionNav", () => {
     const ids = model("registration", `/tournaments/${tournamentId}`).map((item) => item.id);
 
     expect(ids.indexOf("maps")).toBeLessThan(ids.indexOf("bracket"));
-    // Reference data, never gated: the pool is published before play.
+    // Reference data, never locked: the pool is published before play.
     expect(model("registration").find((item) => item.id === "maps")?.available).toBe(true);
+  });
+
+  it("shows Maps only when a map pool is configured", () => {
+    // Absent, not locked — an empty Maps tab would promise a pool nobody
+    // configured, in either phase order.
+    for (const status of ["registration", "live"] as const) {
+      const ids = buildTournamentSectionNav({
+        tournamentId,
+        status,
+        stages: [stage()],
+        hasTeams: true,
+        pathname: `/tournaments/${tournamentId}`
+      }).map((item) => item.id);
+
+      expect(ids).not.toContain("maps");
+    }
   });
 
   it("shows Stream only when there is something to watch", () => {

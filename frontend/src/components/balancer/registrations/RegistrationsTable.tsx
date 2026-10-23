@@ -19,11 +19,7 @@ import {
 } from "@/components/balancer/registrations/_components/registrationGrouping";
 import { useRegistrationFilters } from "@/components/balancer/registrations/_hooks/useRegistrationFilters";
 import { useRegistrationMutations } from "@/components/balancer/registrations/_hooks/useRegistrationMutations";
-import {
-  DataTable,
-  type DataTableGroup,
-  createKebabColumn
-} from "@/components/data-table";
+import { DataTable, type DataTableGroup, createKebabColumn } from "@/components/data-table";
 import { useAuditTrail } from "@/components/kit/AuditTrailSheet";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { Inspector } from "@/components/kit/Inspector";
@@ -46,10 +42,13 @@ import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { RegistrationForm } from "@/types/registration.types";
 import { cn } from "@/lib/utils";
 import { useCurrentWorkspaceId } from "@/hooks/useCurrentWorkspace";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { balancerQueryKeys } from "@/lib/balancer/query-keys";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
+import { adminQueryKeys } from "@/lib/admin/query-keys";
+import adminService from "@/services/admin.service";
 
-import { ADMIN_ROLE_FORM, ADMISSION_LABELS } from "./registrationsTable.model";
+import { ADMISSION_LABELS, adminRoleForm } from "./registrationsTable.model";
 
 export default function RegistrationsTable({
   tournamentId
@@ -63,11 +62,16 @@ export default function RegistrationsTable({
   const tRegistrations = useTranslations("registrationsAdmin");
   // `id` (the inspector) is navigation, not narrowing: it must not drop the
   // filters the way a narrowing change does.
-  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
   const { canAccessPermission } = usePermissions();
   const { open: openAuditTrail } = useAuditTrail();
   // Catalogs follow the opened tournament, not the public viewing filter.
   const workspaceId = useCurrentWorkspaceId();
+  const tournamentQuery = useQuery({
+    queryKey: adminQueryKeys.tournament(tournamentId),
+    queryFn: () => adminService.getTournament(tournamentId!),
+    enabled: tournamentId !== null
+  });
 
   const [groupBy, setGroupBy] = useState<RegistrationGroupingMode>(
     normalizeRegistrationGroupingMode(searchParams?.get("group") ?? null)
@@ -103,8 +107,17 @@ export default function RegistrationsTable({
 
   // Adapt the admin form into the public RegistrationForm shape used by the
   // shared RoleStep / sub-role catalog, so admin role editing is data-driven.
-  const roleForm: RegistrationForm = publicFormQuery.data ?? ADMIN_ROLE_FORM;
-  const subroleCatalog = roleForm.subrole_catalog;
+  // Without a questionnaire the organizer still edits against the opened tournament's own owner scope; with
+  // neither loaded there is no form to offer (the dialogs wait rather than ask for another game's roles).
+  const tournament = tournamentQuery.data;
+  const roleForm = useMemo<RegistrationForm | null>(
+    () => publicFormQuery.data ?? (tournament ? adminRoleForm(tournament) : null),
+    [publicFormQuery.data, tournament]
+  );
+  const subroleCatalog = roleForm?.subrole_catalog;
+  // The opened tournament's own game: role names, glyphs and the role filter come from its dictionary.
+  const ontology =
+    useDisciplineMetadata(tournament?.workspace_id ?? "all", tournament?.discipline ?? null).data ?? null;
 
   // `require_open_profile` is deliberately NOT read here any more: admission is
   // resolved server-side and travels on each row. This flag survives only
@@ -115,7 +128,7 @@ export default function RegistrationsTable({
   // keyed, not positional. What the current schema no longer asks has no column
   // — the inspector shows those beside the row's stale-version notice.
   const schemaFields = useMemo(
-    () => roleForm.form_schema.sections.flatMap((section) => section.fields),
+    () => roleForm?.form_schema.sections.flatMap((section) => section.fields) ?? [],
     [roleForm]
   );
 
@@ -146,8 +159,13 @@ export default function RegistrationsTable({
 
   const registrations = useMemo(() => registrationsQuery.data ?? [], [registrationsQuery.data]);
 
-  const { defs: filterDefs, filters, tableFilters, onTableFiltersChange, visibleRegistrations } =
-    useRegistrationFilters({ registrations, requireSubscription, statusFilterOptions });
+  const {
+    defs: filterDefs,
+    filters,
+    tableFilters,
+    onTableFiltersChange,
+    visibleRegistrations
+  } = useRegistrationFilters({ registrations, requireSubscription, statusFilterOptions, ontology });
 
   const {
     patchRegistrationInCache,
@@ -208,22 +226,27 @@ export default function RegistrationsTable({
         requireSubscription,
         schemaFields,
         statusFilterOptions,
-        adminNotesEdit
+        adminNotesEdit,
+        ontology
       ),
       createKebabColumn<AdminRegistration>(
         (registration) =>
-          buildRegistrationRowActions(registration, {
-            canAccessPermission,
-            openAuditTrail,
-            approve,
-            reject,
-            withdraw,
-            restore,
-            setBalancerInclusion,
-            setCheckIn,
-            onEdit: setEditingRegistration,
-            onDelete: setPendingDelete
-          }, tRegistrations),
+          buildRegistrationRowActions(
+            registration,
+            {
+              canAccessPermission,
+              openAuditTrail,
+              approve,
+              reject,
+              withdraw,
+              restore,
+              setBalancerInclusion,
+              setCheckIn,
+              onEdit: setEditingRegistration,
+              onDelete: setPendingDelete
+            },
+            tRegistrations
+          ),
         {
           rowLabel: (registration) =>
             registration.primary_handle ??
@@ -234,6 +257,7 @@ export default function RegistrationsTable({
     ],
     [
       subroleCatalog,
+      ontology,
       requireSubscription,
       schemaFields,
       statusFilterOptions,
@@ -332,7 +356,9 @@ export default function RegistrationsTable({
             <>
               <span
                 className="shrink-0 text-xs tabular-nums text-muted-foreground"
-                title={t("registrationsAdmin.table.registrationCount", { count: registrations.length })}
+                title={t("registrationsAdmin.table.registrationCount", {
+                  count: registrations.length
+                })}
               >
                 {registrations.length}
               </span>
@@ -357,14 +383,24 @@ export default function RegistrationsTable({
                 value={groupBy}
                 onValueChange={(value) => setGroupBy(value as RegistrationGroupingMode)}
               >
-                <SelectTrigger className="h-8 w-[160px]" aria-label={t("registrationsAdmin.table.groupAria")}>
+                <SelectTrigger
+                  size="sm"
+                  className="w-[160px]"
+                  aria-label={t("registrationsAdmin.table.groupAria")}
+                >
                   <SelectValue placeholder={t("registrationsAdmin.table.groupBy")} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">{t("registrationsAdmin.table.noGrouping")}</SelectItem>
-                  <SelectItem value="check_in">{t("registrationsAdmin.table.groupCheckIn")}</SelectItem>
-                  <SelectItem value="balancer_status">{t("registrationsAdmin.table.groupBalancer")}</SelectItem>
-                  <SelectItem value="admission">{t("registrationsAdmin.table.groupAdmission")}</SelectItem>
+                  <SelectItem value="check_in">
+                    {t("registrationsAdmin.table.groupCheckIn")}
+                  </SelectItem>
+                  <SelectItem value="balancer_status">
+                    {t("registrationsAdmin.table.groupBalancer")}
+                  </SelectItem>
+                  <SelectItem value="admission">
+                    {t("registrationsAdmin.table.groupAdmission")}
+                  </SelectItem>
                 </SelectContent>
               </Select>
               {canAccessPermission("registration.create", workspaceId) && (
@@ -381,16 +417,22 @@ export default function RegistrationsTable({
       <Inspector
         openId={inspected ? openId : null}
         onClose={() => setParams({ id: null })}
-        title={inspected?.primary_handle ?? inspected?.display_name ?? t("registrationsAdmin.table.registration")}
+        title={
+          inspected?.primary_handle ??
+          inspected?.display_name ??
+          t("registrationsAdmin.table.registration")
+        }
         subtitle={
           inspected
             ? `${inspected.status} · ${ADMISSION_LABELS[inspected.admission.decision]}`
             : undefined
         }
       >
-        {inspected ? (
+        {inspected && tournamentQuery.data ? (
           <RegistrationInspectorBody
             registration={inspected}
+            discipline={tournamentQuery.data.discipline}
+            ontology={ontology}
             catalog={subroleCatalog}
             schemaFields={schemaFields}
             schemaKnown={schemaLoaded}

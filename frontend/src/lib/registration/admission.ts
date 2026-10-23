@@ -1,3 +1,4 @@
+import { ApiError } from "@/lib/api/error";
 import type {
   Admission,
   AdmissionDecision,
@@ -78,7 +79,7 @@ export const ADMISSION_REASON_CODES = [
   "unknown"
 ] as const;
 
-export type AdmissionReasonCode = (typeof ADMISSION_REASON_CODES)[number];
+type AdmissionReasonCode = (typeof ADMISSION_REASON_CODES)[number];
 
 /** Membership test for translators without `t.has`. A `Record` rather than a
  *  `Set` per project convention for static string-keyed tables; built from the
@@ -122,6 +123,25 @@ export function formatAdmissionReason(t: AdmissionTranslator, reason: AdmissionR
     typeof t.has === "function" ? t.has(key) : KNOWN_REASON_CODES[reason.code] === true;
   const label = known ? t(key) : reason.code;
   return reason.subject ? `${label} (${reason.subject})` : label;
+}
+
+/**
+ * The admission gate's refusal (`gates.assert_admitted`: a 400 whose entries
+ * carry reason codes) as translated lines, or `null` when `error` holds no
+ * reason code this build knows — the caller then falls back to its own text.
+ *
+ * The server's `msg` is an English default and is never shown from here: the
+ * same code reads in the reader's locale wherever the gate fires (sign-up,
+ * check-in). `unknown` is skipped on purpose — it is also what a body nobody
+ * could parse becomes (`parseApiError`), and "reason unknown" would then hide a
+ * plain network failure behind an admission sentence.
+ */
+export function formatAdmissionRefusal(t: AdmissionTranslator, error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null;
+  const lines = error.details
+    .filter((detail) => detail.code !== "unknown" && KNOWN_REASON_CODES[detail.code] === true)
+    .map((detail) => t(`admission.reason.${detail.code as AdmissionReasonCode}`));
+  return lines.length > 0 ? lines.join("\n") : null;
 }
 
 /** Human name for a requirement, for the step whose state needs no explaining.

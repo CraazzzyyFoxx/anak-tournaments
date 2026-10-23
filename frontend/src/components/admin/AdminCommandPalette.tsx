@@ -33,14 +33,13 @@ interface AdminCommandPaletteProps {
  * hears nothing when the visible list shrinks to two entries.
  */
 function ResultCountAnnouncer() {
+  const t = useTranslations("adminShell.commandPalette");
   const count = useCommandState((state) => state.filtered.count);
   const search = useCommandState((state) => state.search);
 
   return (
     <div role="status" aria-live="polite" className="sr-only">
-      {search
-        ? `${count} ${count === 1 ? "page matches" : "pages match"} "${search}"`
-        : `${count} pages available`}
+      {search ? t("resultCount", { count, search }) : t("available", { count })}
     </div>
   );
 }
@@ -86,14 +85,11 @@ export function AdminCommandPalette({ groups, open, onOpenChange }: Readonly<Adm
             {group.items.map((item) => (
               <CommandItem
                 key={item.href}
-                value={adminNavItemSearchValue(item)}
+                value={adminNavItemSearchValue(t(item.title as never), item)}
                 onSelect={() => handleSelect(item.href)}
               >
                 <item.icon aria-hidden className="size-4 text-muted-foreground" />
-                <div className="flex flex-col gap-0.5">
-                  <span>{t(item.title as never)}</span>
-                  <span className="text-xs text-muted-foreground">{t(item.description as never)}</span>
-                </div>
+                <span>{t(item.title as never)}</span>
               </CommandItem>
             ))}
           </CommandGroup>
@@ -112,7 +108,7 @@ export function AdminCommandPalette({ groups, open, onOpenChange }: Readonly<Adm
                 <item.icon aria-hidden className="size-4 text-muted-foreground" />
                 <span>
                   {t(item.title as never)}
-                  <span aria-hidden> › </span>
+                  <span aria-hidden className="text-muted-foreground"> · </span>
                   {t(view.label as never)}
                 </span>
               </CommandItem>

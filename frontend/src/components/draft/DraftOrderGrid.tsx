@@ -4,9 +4,13 @@ import { ArrowRight, Hourglass, Shuffle, Star } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useMemo, useRef } from "react";
 
-import { splitBattleTag } from "@/components/balancer/balancer-page-helpers";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { useDraftLayerPad } from "@/hooks/useDraftLayerPad";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { currentRound, orderGrid, pickState, picksAway, type RoundDirection } from "@/lib/draft/room-model";
+import { showsRoles, type RoleOntology } from "@/lib/roster/ontology";
+import { roleOf } from "@/lib/roster/role-ref";
+import { splitHandle } from "@/lib/player";
 import { cn } from "@/lib/utils";
 import type { DraftBoard } from "@/types/draft.types";
 
@@ -22,6 +26,7 @@ interface DraftOrderGridProps {
   myTeamId: number | null;
   followed: ReadonlySet<number>;
   clockColor: string;
+  ontology: RoleOntology | null;
 }
 
 export function DraftOrderGrid({
@@ -31,9 +36,11 @@ export function DraftOrderGrid({
   kind,
   myTeamId,
   followed,
-  clockColor
+  clockColor,
+  ontology
 }: Readonly<DraftOrderGridProps>) {
   const t = useTranslations("draftRedesign");
+  const slotLabel = useSlotLabel(ontology);
   const rows = useMemo(() => orderGrid(board), [board]);
   const playerById = useMemo(() => new Map(board.players.map((player) => [player.id, player])), [board.players]);
   const liveRound = board.current_pick != null ? currentRound(board) : null;
@@ -53,8 +60,10 @@ export function DraftOrderGrid({
       <p className="border-b border-[color:var(--aqt-border)] px-4 py-2.5 text-caption text-[color:var(--aqt-fg-muted)] [text-wrap:pretty]">
         {t(`teams.order.note.${kind}`)}
       </p>
-      <div
-        className="sticky top-0 z-[1] grid gap-1 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-4 py-2 text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]"
+      <Eyebrow
+        as="div"
+        tone="muted"
+        className="sticky top-0 z-[1] grid gap-1 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-4 py-2"
         style={{ gridTemplateColumns }}
       >
         <span>#</span>
@@ -83,7 +92,7 @@ export function DraftOrderGrid({
             </span>
           );
         })}
-      </div>
+      </Eyebrow>
       {rows.map(({ team, cells }) => {
         const isMe = team.id === myTeamId;
         const isFollowed = followed.has(team.id);
@@ -135,12 +144,12 @@ export function DraftOrderGrid({
               const state = pickState(pick);
               const player =
                 state === "done" && pick.picked_player_id != null ? playerById.get(pick.picked_player_id) : null;
-              const tag = player ? (player.battle_tag ?? `#${player.id}`) : null;
+              const tag = player ? (player.identity?.handle ?? `#${player.id}`) : null;
               const away = picksAway(board, pick);
               const sub =
                 state === "done"
                   ? tag != null
-                    ? splitBattleTag(tag).name
+                    ? splitHandle(tag).name
                     : "—"
                   : state === "current"
                     ? t("teams.order.now")
@@ -157,7 +166,7 @@ export function DraftOrderGrid({
                   title={[
                     t("teams.order.cellTitle", { round: pick.round_no, n: pick.overall_no }),
                     tag,
-                    done && pick.target_role ? t(`roles.${pick.target_role}`) : null
+                    done && pick.target_role && showsRoles(ontology) ? slotLabel(roleOf(pick.target_role)) : null
                   ]
                     .filter(Boolean)
                     .join(" · ")}

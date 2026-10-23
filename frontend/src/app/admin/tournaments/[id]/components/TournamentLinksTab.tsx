@@ -1,42 +1,19 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ColumnDef } from "@tanstack/react-table";
-import {
-  Archive,
-  ArrowUpToLine,
-  CircleDot,
-  ExternalLink,
-  Pencil,
-  Plus,
-  RefreshCw,
-  RotateCcw,
-  Trash2
-} from "lucide-react";
 
-import { DataTable, columnMeta, createKebabColumn } from "@/components/data-table";
-import { StatusIcon } from "@/components/admin/StatusIcon";
+import { DataTable } from "@/components/data-table";
 import {
   entityFormError,
   onEntityDialogClose
 } from "@/components/admin/CatalogToolbarActions";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
-import { ApiError } from "@/lib/api/error";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { Spinner } from "@/components/ui/spinner";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
@@ -44,85 +21,12 @@ import streamService from "@/services/stream.service";
 import type {
   TournamentLink,
   TournamentLinkCreateInput,
-  TournamentLinkKind,
   TournamentLinkUpdateInput
 } from "@/types/stream.types";
-import { primaryStreamLinkSortOrder } from "./tournamentLinks.helpers";
-import { EmptyNote } from "@/components/kit/EmptyNote";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
-
-/** Mirrors `TOURNAMENT_LINK_KINDS` in `backend/shared/models/tournament/link.py`. */
-const LINK_KINDS: ReadonlyArray<{ value: TournamentLinkKind }> = [
-  { value: "discord" },
-  { value: "stream" },
-  { value: "vod" },
-  { value: "bracket" },
-  { value: "rules" },
-  { value: "other" }
-];
-
-interface LinkForm {
-  kind: TournamentLinkKind;
-  label: string;
-  url: string;
-  sort_order: number;
-}
-
-// Key order matters: `hasUnsavedChanges` compares JSON, so `getLinkForm` below
-// must list the same fields in the same order or every edit dialog opens dirty.
-const EMPTY_LINK_FORM: LinkForm = { kind: "discord", label: "", url: "", sort_order: 0 };
-
-function getLinkForm(link: TournamentLink | null): LinkForm {
-  if (!link) {
-    return { ...EMPTY_LINK_FORM };
-  }
-  return {
-    kind: link.kind,
-    label: link.label ?? "",
-    url: link.url,
-    sort_order: link.sort_order
-  };
-}
-
-const LINK_FORM_FIELDS = ["kind", "label", "url", "sort_order"] as const;
-
-/**
- * The two rejections this form actually produces are 409 (a link of the same
- * kind and URL already exists on the tournament) and 422 (bad `url`/`kind`).
- * A single "request failed" hides which field to fix, so name them.
- *
- * `parseApiError` already folds pydantic's `loc` into the message as
- * `"url: Input should be a valid URL"` (see `normalizeDetailItem`), so the
- * field name is the prefix. Anything unrecognised is still surfaced verbatim
- * under a synthetic key — `EntityFormDialog` lists every entry.
- */
-function linkFieldErrors(error: unknown, duplicateMessage: string): Record<string, string> {
-  if (!(error instanceof ApiError)) {
-    return {};
-  }
-
-  if (error.status === 409) {
-    return {
-      url: duplicateMessage
-    };
-  }
-
-  if (error.status !== 422) {
-    return {};
-  }
-
-  const fields: Record<string, string> = {};
-  error.details.forEach((detail, index) => {
-    const [, prefix, message] = /^([a-z_]+)(?:\.[^:]*)?:\s*(.+)$/i.exec(detail.msg) ?? [];
-    const known = LINK_FORM_FIELDS.find((field) => field === prefix);
-    if (known && message) {
-      fields[known] = message;
-    } else {
-      fields[`detail-${index}`] = detail.msg;
-    }
-  });
-  return fields;
-}
+import { LinkFormFields } from "./links-tab/LinkFormFields";
+import { EMPTY_LINK_FORM, getLinkForm, linkFieldErrors, type LinkForm } from "./links-tab/model";
+import { useLinkColumns } from "./links-tab/useLinkColumns";
 
 export interface TournamentLinksTabProps {
   tournamentId: number;
@@ -153,11 +57,6 @@ export function TournamentLinksTab({
   const t = useTranslations("adminTournament.links");
   const workspaceT = useTranslations("adminWorkspace.content");
   const queryClient = useQueryClient();
-  const formId = useId();
-  const kindFieldId = `${formId}-kind`;
-  const labelFieldId = `${formId}-label`;
-  const urlFieldId = `${formId}-url`;
-  const sortFieldId = `${formId}-sort-order`;
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingLink, setEditingLink] = useState<TournamentLink | null>(null);
@@ -274,99 +173,29 @@ export function TournamentLinksTab({
 
   const hasActiveStreamLink = links.some((link) => link.kind === "stream" && link.is_active);
 
-  const columns: ColumnDef<TournamentLink>[] = [
-    {
-      accessorKey: "kind",
-      header: t("kind"),
-      size: 112,
-      cell: ({ row }) => (
-        <Badge variant="secondary">{t(`kinds.${row.original.kind}`)}</Badge>
-      ),
-      meta: columnMeta<TournamentLink>({
-        searchValue: (link) => t(`kinds.${link.kind}`)
-      })
+  // The mutation containers are rebuilt on every state transition; `reset` is
+  // not, so the memoised `openEdit` hangs on the callbacks instead.
+  const { reset: resetCreateMutation } = createMutation;
+  const { reset: resetUpdateMutation } = updateMutation;
+  const openEdit = useCallback(
+    (link: TournamentLink) => {
+      resetCreateMutation();
+      resetUpdateMutation();
+      setEditingLink(link);
+      setFormData(getLinkForm(link));
     },
-    {
-      accessorKey: "label",
-      header: t("label"),
-      cell: ({ row }) => row.original.label ?? <span className="text-muted-foreground">—</span>,
-      meta: columnMeta<TournamentLink>({ className: "max-w-[16rem] truncate" })
-    },
-    {
-      accessorKey: "url",
-      header: "URL",
-      cell: ({ row }) => (
-        <a
-          href={row.original.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex max-w-full items-center gap-1 truncate text-primary underline-offset-4 hover:underline"
-        >
-          <span className="truncate">{row.original.url}</span>
-          <ExternalLink aria-hidden className="size-3.5 shrink-0" />
-        </a>
-      ),
-      meta: columnMeta<TournamentLink>({ className: "max-w-[22rem]" })
-    },
-    {
-      // ponytail: sort order is a plain number field in the edit dialog, not
-      // per-row up/down arrows — no other admin list in this project reorders
-      // inline, and a handful of links does not justify inventing the pattern.
-      // If these lists ever grow past a screenful, lift the arrow + reindex
-      // handling from `StageManager`.
-      accessorKey: "sort_order",
-      header: t("order"),
-      size: 80,
-      meta: columnMeta<TournamentLink>({ align: "right", numeric: true })
-    },
-    {
-      id: "state",
-      header: t("state"),
-      size: 96,
-      enableSorting: false,
-      meta: columnMeta<TournamentLink>({ align: "center" }),
-      cell: ({ row }) =>
-        row.original.is_active ? (
-          <StatusIcon icon={CircleDot} label={t("active")} variant="success" />
-        ) : (
-          <StatusIcon icon={Archive} label={t("archived")} variant="muted" />
-        )
-    },
-    createKebabColumn<TournamentLink>(
-      (link) => {
-        // Absent, not disabled, on rows that cannot be promoted — the same
-        // choice the archive/restore pair makes. `primaryStreamLinkSortOrder`
-        // is null for non-broadcasts, archived rows and the link that already
-        // leads the order, and otherwise IS the number to send.
-        const primarySortOrder = primaryStreamLinkSortOrder(link, links);
-        return [
-          {
-            label: t("makePrimary"),
-            icon: ArrowUpToLine,
-            hidden: !canUpdate || primarySortOrder === null,
-            onSelect: () =>
-              primarySortOrder !== null &&
-              makePrimaryMutation.mutate({ id: link.id, sortOrder: primarySortOrder })
-          },
-          { label: t("edit"), icon: Pencil, hidden: !canUpdate, onSelect: () => openEdit(link) },
-          {
-            label: t("archive"),
-            icon: Trash2,
-            destructive: true,
-            hidden: !canDelete || !link.is_active,
-            onSelect: () => setDeletingLink(link)
-          },
-          {
-            label: t("restore"),
-            icon: RotateCcw,
-            hidden: !canUpdate || link.is_active,
-            onSelect: () => restoreMutation.mutate(link.id)
-          }
-        ];
-      },
-      { rowLabel: (link) => link.label ?? link.url }
-    )
-  ];
+    [resetCreateMutation, resetUpdateMutation]
+  );
+
+  const columns = useLinkColumns({
+    links,
+    canUpdate,
+    canDelete,
+    onMakePrimary: makePrimaryMutation.mutate,
+    onEdit: openEdit,
+    onArchive: setDeletingLink,
+    onRestore: restoreMutation.mutate
+  });
 
   const isDialogOpen = createDialogOpen || !!editingLink;
   const activeError = editingLink ? updateMutation.error : createMutation.error;
@@ -392,13 +221,6 @@ export function TournamentLinksTab({
     setCreateDialogOpen(true);
   };
 
-  const openEdit = (link: TournamentLink) => {
-    createMutation.reset();
-    updateMutation.reset();
-    setEditingLink(link);
-    setFormData(getLinkForm(link));
-  };
-
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     const label = formData.label.trim();
@@ -422,54 +244,46 @@ export function TournamentLinksTab({
   };
 
   return (
-    <Card>
-      {/* No title here: the settings section heading above already names this
-          page. The header keeps only what acts on the table. */}
-      <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
-        <p className="text-sm text-muted-foreground">{t("lowerFirst")}</p>
-        <div className="flex shrink-0 gap-2">
-          {/* Nothing to poll without an official stream link, so the button is
-              absent rather than disabled — a disabled control invites a guess
-              at what would enable it. */}
-          {canRepollStreams && hasActiveStreamLink && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => repollMutation.mutate()}
-              disabled={repollMutation.isPending}
-              aria-busy={repollMutation.isPending}
-            >
-              <RefreshCw
-                aria-hidden
-                className={`mr-2 h-4 w-4 ${repollMutation.isPending ? "animate-spin" : ""}`}
-              />
-              {t("refresh")}
-            </Button>
-          )}
-          {canCreate && (
-            <Button type="button" onClick={openCreate}>
-              <Plus aria-hidden className="mr-2 h-4 w-4" />
-              {t("add")}
-            </Button>
-          )}
-        </div>
-      </CardHeader>
-
-      <CardContent>
-        {linksQuery.isError ? (
-          <EmptyNote>
-            {t("loadError")}
-          </EmptyNote>
-        ) : (
-          <DataTable
-            rows={links}
-            isLoading={linksQuery.isLoading}
-            columns={columns}
-            getRowId={(link) => String(link.id)}
-            emptyMessage={canCreate ? t("emptyWithAction") : t("empty")}
-          />
-        )}
-      </CardContent>
+    <>
+      {linksQuery.isError ? (
+        <PageStateCard
+          state="error"
+          description={t("loadError")}
+          onAction={() => void linksQuery.refetch()}
+        />
+      ) : (
+        <DataTable
+          rows={links}
+          isLoading={linksQuery.isLoading}
+          columns={columns}
+          getRowId={(link) => String(link.id)}
+          emptyMessage={t("empty")}
+          actions={
+            <>
+              {/* Nothing to poll without an official stream link, so the button is
+                  absent rather than disabled — a disabled control invites a guess
+                  at what would enable it. */}
+              {canRepollStreams && hasActiveStreamLink && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => repollMutation.mutate()}
+                  disabled={repollMutation.isPending}
+                >
+                  {repollMutation.isPending ? <Spinner /> : null}
+                  {t("refresh")}
+                </Button>
+              )}
+              {canCreate && (
+                <Button type="button" size="sm" onClick={openCreate}>
+                  {t("add")}
+                </Button>
+              )}
+            </>
+          }
+        />
+      )}
 
       <EntityFormDialog
         open={isDialogOpen}
@@ -487,104 +301,7 @@ export function TournamentLinksTab({
         fieldErrors={fieldErrors}
         isDirty={isFormDirty}
       >
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor={kindFieldId}>{t("kindRequired")}</Label>
-            <Select
-              value={formData.kind}
-              onValueChange={(kind) =>
-                setFormData({ ...formData, kind: kind as TournamentLinkKind })
-              }
-            >
-              <SelectTrigger
-                id={kindFieldId}
-                aria-invalid={fieldErrors.kind ? true : undefined}
-                aria-describedby={fieldErrors.kind ? `${kindFieldId}-error` : undefined}
-              >
-                <SelectValue placeholder={t("pickKind")} />
-              </SelectTrigger>
-              <SelectContent>
-                {LINK_KINDS.map((kind) => (
-                  <SelectItem key={kind.value} value={kind.value}>
-                    {t(`kinds.${kind.value}`)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {fieldErrors.kind && (
-              <p id={`${kindFieldId}-error`} className="text-xs text-destructive">
-                {fieldErrors.kind}
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground">
-              {t("streamHint")}
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor={urlFieldId}>{t("urlRequired")}</Label>
-            <Input
-              id={urlFieldId}
-              type="url"
-              value={formData.url}
-              onChange={(event) => setFormData({ ...formData, url: event.target.value })}
-              placeholder="https://twitch.tv/example"
-              aria-invalid={fieldErrors.url ? true : undefined}
-              aria-describedby={fieldErrors.url ? `${urlFieldId}-error` : undefined}
-              required
-            />
-            {fieldErrors.url && (
-              <p id={`${urlFieldId}-error`} className="text-xs text-destructive">
-                {fieldErrors.url}
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor={labelFieldId}>{t("label")}</Label>
-            <Input
-              id={labelFieldId}
-              value={formData.label}
-              onChange={(event) => setFormData({ ...formData, label: event.target.value })}
-              placeholder={t("mainBroadcast")}
-              aria-invalid={fieldErrors.label ? true : undefined}
-              aria-describedby={fieldErrors.label ? `${labelFieldId}-error` : undefined}
-            />
-            {fieldErrors.label && (
-              <p id={`${labelFieldId}-error`} className="text-xs text-destructive">
-                {fieldErrors.label}
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground">
-              {t("labelHint")}
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor={sortFieldId}>{t("orderLabel")}</Label>
-            <Input
-              id={sortFieldId}
-              type="number"
-              inputMode="numeric"
-              step={1}
-              className="w-32"
-              value={formData.sort_order}
-              onChange={(event) =>
-                setFormData({ ...formData, sort_order: Number(event.target.value) || 0 })
-              }
-              aria-invalid={fieldErrors.sort_order ? true : undefined}
-              aria-describedby={fieldErrors.sort_order ? `${sortFieldId}-error` : undefined}
-            />
-            {fieldErrors.sort_order && (
-              <p id={`${sortFieldId}-error`} className="text-xs text-destructive">
-                {fieldErrors.sort_order}
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground">
-              {t("orderHint")}
-            </p>
-          </div>
-        </div>
+        <LinkFormFields formData={formData} onChange={setFormData} fieldErrors={fieldErrors} />
       </EntityFormDialog>
 
       {deletingLink && (
@@ -605,6 +322,6 @@ export function TournamentLinksTab({
           }}
         />
       )}
-    </Card>
+    </>
   );
 }

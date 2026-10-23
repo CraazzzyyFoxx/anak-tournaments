@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, Globe, LogIn, Menu, Plus, Search, X } from "lucide-react";
@@ -12,31 +12,34 @@ import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { PlayerSearchCombobox } from "@/components/PlayerSearchCombobox";
-import { NAV_GROUPS, NAV_LINKS, currentNavHref } from "@/components/site/site-nav-groups";
+import { NAV_GROUPS, NAV_LINKS, currentNavHref, navItemAvailable } from "@/components/site/site-nav-groups";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import UserMenu from "@/components/UserMenu";
 import { WorkspaceAvatar, type WorkspaceAvatarSource } from "@/components/workspace/WorkspaceAvatar";
-import WorkspaceSwitcher from "@/components/workspace/WorkspaceSwitcher";
+import { ScopePill } from "@/components/workspace/ScopePill";
 import { BRAND_NAME } from "@/config/site";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
+import { useDisciplines } from "@/hooks/useDisciplineMetadata";
 import { getCurrentPathForAuthRedirect } from "@/lib/auth/redirect";
 import { cn } from "@/lib/utils";
 import { PLATFORM_ZONE } from "@/lib/site/host";
+import { resolveWorkspaceAxis } from "@/lib/site/discipline-scope";
 import { useAuthModalStore } from "@/stores/auth-modal.store";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
-/** Mock `.btn.btn--outline.btn--icon`: the plate's square 36px controls. */
-const ICON_BUTTON_CLASS =
-  "inline-flex size-9 shrink-0 items-center justify-center rounded-[var(--aqt-radius-sm)] " +
-  "border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] " +
-  "text-[color:var(--aqt-fg-muted)] outline-none transition-colors " +
-  "hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] " +
-  "focus-visible:ring-2 focus-visible:ring-ring";
+/** A nav-row item (group trigger or link): muted until hovered or open; the current page's entry is underlined teal. */
+const NAV_ITEM_CLASS =
+  "px-2.5 text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-2)] hover:text-[color:var(--aqt-fg)] " +
+  "data-[state=open]:bg-[color:var(--aqt-overlay-2)] data-[state=open]:text-[color:var(--aqt-fg)] " +
+  "data-[current]:rounded-b-none data-[current]:text-[color:var(--aqt-fg)] data-[current]:shadow-[inset_0_-2px_0_var(--aqt-teal)]";
 
 /** Mock `.menu-item`: one row of a popover, dropdown or the mobile sheet. */
 const MENU_ITEM_CLASS =
@@ -48,9 +51,6 @@ const MENU_ITEM_CLASS =
 const POP_CLASS =
   "min-w-[240px] max-w-[min(360px,calc(100vw-24px))] rounded-xl border-[color:var(--aqt-border-2)] " +
   "bg-[color:var(--aqt-card-2)] p-1.5 shadow-[0_18px_50px_rgb(0_0_0/0.5)]";
-
-const EYEBROW_CLASS =
-  "px-2.5 pb-1.5 text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 
 interface HeaderProps {
   /**
@@ -71,6 +71,17 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
   // Below `md` the inline combobox has no room; the search is a toggle that
   // drops a full-width row under the plate (mock `openMobileSearch`).
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  // The viewed scope's games decide which capability-bound entries (analytics) have anything to show.
+  const hostLockedWorkspaceId = useWorkspaceStore((state) => state.hostLockedWorkspaceId);
+  const statsScope = useWorkspaceStore((state) => state.statsScope);
+  const currentWorkspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
+  const { data: games } = useDisciplines(
+    resolveWorkspaceAxis({ hostLockedWorkspaceId, ownerWorkspaceId: null, statsScope, currentWorkspaceId })
+  );
+  const navGroups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => navItemAvailable(item, games))
+  }));
 
   const tenant = tenantMode ? tenantWorkspace : undefined;
 
@@ -91,9 +102,9 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
         <div className="flex h-[var(--aqt-header-h)] items-center gap-3 rounded-[var(--aqt-radius)] border border-[color:var(--aqt-border-2)] bg-[color:color-mix(in_srgb,var(--aqt-card)_86%,transparent)] pl-3 pr-2 shadow-[0_10px_30px_-18px_rgb(0_0_0/0.7)] backdrop-blur-[20px] backdrop-saturate-[1.4]">
           <Sheet>
             <SheetTrigger asChild>
-              <button type="button" aria-label={t("nav.toggleMenu")} className={cn(ICON_BUTTON_CLASS, "lg:hidden")}>
-                <Menu className="size-4" aria-hidden />
-              </button>
+              <Button variant="outline" size="icon" aria-label={t("nav.toggleMenu")} className="shrink-0 lg:hidden">
+                <Menu aria-hidden />
+              </Button>
             </SheetTrigger>
             {/* The sheet is a dialog: it needs a name, and Radix warns unless
               the absent description is declared absent on purpose. */}
@@ -134,19 +145,15 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
                   </Link>
                 </SheetClose>
                 <SheetClose asChild>
-                  <button
-                    type="button"
-                    aria-label={t("nav.closeMenu")}
-                    className="inline-flex size-9 shrink-0 items-center justify-center rounded-[var(--aqt-radius-sm)] text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <X className="size-4" aria-hidden />
-                  </button>
+                  <Button variant="ghost" size="icon" aria-label={t("nav.closeMenu")} className="shrink-0">
+                    <X aria-hidden />
+                  </Button>
                 </SheetClose>
               </div>
 
-              {NAV_GROUPS.map((group) => (
+              {navGroups.map((group) => (
                 <div key={group.key} className="mt-[18px]">
-                  <p className={EYEBROW_CLASS}>{t(`nav.groups.${group.key}`)}</p>
+                  <Eyebrow as="p" className="px-2.5 pb-1.5">{t(`nav.groups.${group.key}`)}</Eyebrow>
                   {group.items.map((item) => (
                     <SheetClose asChild key={item.key}>
                       <HoverPrefetchLink
@@ -165,7 +172,7 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
               ))}
 
               <div className="mt-[18px]">
-                <p className={EYEBROW_CLASS}>{t("nav.groups.play")}</p>
+                <Eyebrow as="p" className="px-2.5 pb-1.5">{t("nav.groups.play")}</Eyebrow>
                 {NAV_LINKS.map((item) => (
                   <SheetClose asChild key={item.key}>
                     <HoverPrefetchLink
@@ -191,7 +198,7 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
                 </SheetClose>
               ) : (
                 <div className="mt-[18px]">
-                  <p className={EYEBROW_CLASS}>{t("nav.groups.organizers")}</p>
+                  <Eyebrow as="p" className="px-2.5 pb-1.5">{t("nav.groups.organizers")}</Eyebrow>
                   <SheetClose asChild>
                     <Link href="/get-workspace" className={MENU_ITEM_CLASS}>
                       <Plus className="size-4 shrink-0" aria-hidden />
@@ -212,7 +219,7 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
 
           {tenant ? (
             // prefetch={false}: the header is on every page, so this link sits
-            // in every viewport, and `/` is force-dynamic — Next's default
+            // in every viewport, and `/` is request-time — Next's default
             // would server-render the home page for every visitor who never
             // clicks it. Measured 463 such renders in 23 minutes on 2026-08-15.
             <>
@@ -227,14 +234,16 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
                 {tenant.name}
               </span>
             </Link>
-              <a
-                href={`https://${PLATFORM_ZONE}`}
-                className={cn(ICON_BUTTON_CLASS, "hidden sm:inline-flex")}
-                aria-label={t("nav.platformCommunities")}
-                title={t("nav.platformCommunities")}
-              >
-                <Globe className="size-4" aria-hidden />
-              </a>
+              <Button asChild variant="outline" size="icon" className="hidden shrink-0 sm:inline-flex">
+                <a
+                  href={`https://${PLATFORM_ZONE}`}
+                  aria-label={t("nav.platformCommunities")}
+                  title={t("nav.platformCommunities")}
+                >
+                  <Globe aria-hidden />
+                </a>
+              </Button>
+              <ScopePill />
             </>
           ) : (
             <>
@@ -254,27 +263,27 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
                 aria-hidden
                 className="hidden h-[22px] w-px shrink-0 bg-[color:var(--aqt-border-2)] sm:block"
               />
-              <WorkspaceSwitcher />
+              <ScopePill />
             </>
           )}
 
           <nav aria-label={t("nav.label")} className="hidden min-w-0 items-center gap-0.5 lg:flex">
-            {NAV_GROUPS.map((group) => {
+            {navGroups.map((group) => {
               const isCurrent = group.items.some((item) => item.href === current);
               return (
                 <DropdownMenu key={group.key}>
                   <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
                       data-current={isCurrent || undefined}
-                      className="group inline-flex h-9 items-center gap-1 rounded-lg px-2.5 text-body font-medium text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-2)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-[color:var(--aqt-overlay-2)] data-[state=open]:text-[color:var(--aqt-fg)] data-[current]:rounded-b-none data-[current]:text-[color:var(--aqt-fg)] data-[current]:shadow-[inset_0_-2px_0_var(--aqt-teal)]"
+                      className={cn("group [&_svg]:size-3.5", NAV_ITEM_CLASS)}
                     >
                       {t(`nav.groups.${group.key}`)}
                       <ChevronDown
                         aria-hidden
-                        className="size-3.5 text-[color:var(--aqt-fg-faint)] transition-transform group-data-[state=open]:rotate-180"
+                        className="text-[color:var(--aqt-fg-faint)] transition-transform group-data-[state=open]:rotate-180"
                       />
-                    </button>
+                    </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" sideOffset={8} className={POP_CLASS}>
                     {group.items.map((item) => (
@@ -300,15 +309,15 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
               );
             })}
             {NAV_LINKS.map((item) => (
-              <HoverPrefetchLink
-                key={item.key}
-                href={item.href}
-                data-current={item.href === current || undefined}
-                aria-current={item.href === current ? "page" : undefined}
-                className="inline-flex h-9 items-center rounded-lg px-2.5 text-body font-medium text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-2)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-ring data-[current]:rounded-b-none data-[current]:text-[color:var(--aqt-fg)] data-[current]:shadow-[inset_0_-2px_0_var(--aqt-teal)]"
-              >
-                {t(`nav.items.${item.key}.title` as Parameters<typeof t>[0])}
-              </HoverPrefetchLink>
+              <Button key={item.key} asChild variant="ghost" className={NAV_ITEM_CLASS}>
+                <HoverPrefetchLink
+                  href={item.href}
+                  data-current={item.href === current || undefined}
+                  aria-current={item.href === current ? "page" : undefined}
+                >
+                  {t(`nav.items.${item.key}.title` as Parameters<typeof t>[0])}
+                </HoverPrefetchLink>
+              </Button>
             ))}
           </nav>
 
@@ -319,15 +328,16 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
               placeholder={t("nav.search.placeholder")}
               className="hidden w-[clamp(160px,16vw,280px)] md:block"
             />
-            <button
-              type="button"
+            <Button
+              variant="outline"
+              size="icon"
               aria-label={t("nav.search.mobileTrigger")}
               aria-expanded={mobileSearchOpen}
               onClick={() => setMobileSearchOpen((open) => !open)}
-              className={cn(ICON_BUTTON_CLASS, "md:hidden")}
+              className="shrink-0 md:hidden"
             >
-              <Search className="size-4" aria-hidden />
-            </button>
+              <Search aria-hidden />
+            </Button>
             {user ? (
               <>
                 <NotificationBell />
@@ -336,8 +346,8 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
             ) : (
               <>
                 <LanguageSwitcher className="hidden lg:inline-flex" />
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
                   aria-label={t("nav.login")}
                   onClick={() =>
                     openAuthModal(
@@ -346,11 +356,11 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
                         : getCurrentPathForAuthRedirect(window.location)
                     )
                   }
-                  className="inline-flex h-9 min-w-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2.5 text-body font-semibold text-[color:var(--aqt-fg)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:ring-2 focus-visible:ring-ring"
+                  className="min-w-9 shrink-0 px-2.5"
                 >
-                  <LogIn className="size-4 sm:hidden" aria-hidden />
+                  <LogIn className="sm:hidden" aria-hidden />
                   <span className="hidden sm:inline">{t("nav.login")}</span>
-                </button>
+                </Button>
               </>
             )}
           </div>

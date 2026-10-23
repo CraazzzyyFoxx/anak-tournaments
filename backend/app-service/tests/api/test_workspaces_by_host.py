@@ -1,9 +1,12 @@
 import asyncio
+import sys
 import uuid
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from shared.testing import create_test_async_engine
 from src.rpc import workspaces as workspaces_rpc
 
 
@@ -66,35 +69,31 @@ def custom_domain_workspace():
     transaction. Both rows are deleted in teardown so nothing lingers in the
     dev DB.
 
-    Skips cleanly when the DB is unreachable or has no default division grid
-    version configured (mirrors the ``rpc`` fixture / ``test_workspace_member_helpers``
-    DB-skip pattern).
+    A separate NullPool engine keeps fixture writes off the RPC harness's
+    event-loop-bound pool.
     """
     from shared.models.tenancy.workspace import Workspace
-    from shared.services.division_grid.access import get_default_division_grid_version_id
-    from src.core import db as db_module
+
+    engine = create_test_async_engine()
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None
 
     suffix = uuid.uuid4().hex[:12]
     verified_domain = f"verified-{suffix}.example.com"
     unverified_domain = f"unverified-{suffix}.example.com"
     verified_slug = f"cdom-verified-{suffix}"
 
-    async def _create() -> tuple[int, int] | None:
-        async with db_module.async_session_maker() as session:
-            grid_version_id = await get_default_division_grid_version_id(session)
-            if grid_version_id is None:
-                return None
+    async def _create() -> tuple[int, int]:
+        async with session_factory() as session:
             verified = Workspace(
                 slug=verified_slug,
                 name=f"Custom Domain Verified {suffix}",
-                default_division_grid_version_id=grid_version_id,
                 custom_domain=verified_domain,
                 custom_domain_verified_at=datetime.now(UTC),
             )
             unverified = Workspace(
                 slug=f"cdom-unverified-{suffix}",
                 name=f"Custom Domain Unverified {suffix}",
-                default_division_grid_version_id=grid_version_id,
                 custom_domain=unverified_domain,
                 custom_domain_verified_at=None,
             )
@@ -103,21 +102,15 @@ def custom_domain_workspace():
             return verified.id, unverified.id
 
     async def _delete(ids: tuple[int, int]) -> None:
-        async with db_module.async_session_maker() as session:
+        async with session_factory() as session:
             for workspace_id in ids:
                 workspace = await session.get(Workspace, workspace_id)
                 if workspace is not None:
                     await session.delete(workspace)
             await session.commit()
+        await engine.dispose()
 
-    try:
-        created = asyncio.run(_create())
-    except Exception as exc:  # noqa: BLE001 -- any connect failure => skip, not fail
-        pytest.skip(f"database unreachable: {exc}")
-        return
-    if created is None:
-        pytest.skip("no default division grid version configured in dev DB")
-        return
+    created = asyncio.run(_create(), loop_factory=loop_factory)
 
     verified_id, unverified_id = created
     try:
@@ -128,7 +121,7 @@ def custom_domain_workspace():
             "unverified_domain": unverified_domain,
         }
     finally:
-        asyncio.run(_delete((verified_id, unverified_id)))
+        asyncio.run(_delete((verified_id, unverified_id)), loop_factory=loop_factory)
 
 
 @pytest.mark.integration

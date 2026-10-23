@@ -3,9 +3,8 @@
 import { BadgeInfo } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import FormField from "@/components/forms/FormField";
 import type { FieldRendererProps } from "@/components/forms/types";
-
-import FormField from "../FormField";
 
 /**
  * `public_notes` and `organizer_notes` — the same control, told apart by the

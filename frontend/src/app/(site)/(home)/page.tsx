@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
 import { SectionStack } from "@/components/site/open-layout";
+import { resolveSiteMetadata } from "@/lib/site/metadata";
 import workspaceService from "@/services/workspace.service";
 
 import { CommunityPage } from "../workspace/_components/CommunityPage";
@@ -14,11 +15,12 @@ import { NowOnPlatform, NowSkeleton } from "./_components/NowOnPlatform";
 import { OrganizerBanner } from "./_components/OrganizerBanner";
 import { PlatformLeaders, PlatformLeadersSkeleton } from "./_components/PlatformLeaders";
 
-export const dynamic = "force-dynamic";
-
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getTranslations("home.meta");
-  return { title: t("title"), description: t("description") };
+  // A tenant host's landing is its community page: the root layout already
+  // carries that tenant's own title and description.
+  if ((await headers()).get("x-owt-host-mode") === "tenant") return {};
+  const [t, { name }] = await Promise.all([getTranslations("home.meta"), resolveSiteMetadata()]);
+  return { title: t("title", { siteName: name }) };
 }
 
 /**
@@ -43,9 +45,14 @@ async function tenantWorkspace() {
  * platform landing: every section fetches its own data behind its own Suspense
  * boundary, so a slow statistics read holds back one block, never the page.
  */
-export default async function Home() {
+export default async function Home({
+  searchParams
+}: Readonly<{ searchParams: Promise<{ discipline?: string | string[] }> }>) {
+  const { discipline } = await searchParams;
   const workspace = await tenantWorkspace();
-  if (workspace) return <CommunityPage workspace={workspace} ownHost />;
+  if (workspace) {
+    return <CommunityPage workspace={workspace} ownHost discipline={discipline} />;
+  }
 
   return (
     <SectionStack className="mx-auto w-full max-w-7xl gap-[clamp(56px,7vw,96px)] pt-5">
@@ -57,7 +64,7 @@ export default async function Home() {
         <Directory />
       </Suspense>
       <Suspense fallback={<PlatformLeadersSkeleton />}>
-        <PlatformLeaders />
+        <PlatformLeaders discipline={discipline} />
       </Suspense>
       <HomeShowcase />
       <OrganizerBanner />

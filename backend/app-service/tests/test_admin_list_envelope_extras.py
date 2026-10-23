@@ -60,14 +60,15 @@ def test_alias_miss_list_keeps_a_key_the_service_added(monkeypatch: pytest.Monke
 
 
 def test_metadata_admin_list_keeps_a_key_the_service_added(monkeypatch: pytest.MonkeyPatch, no_db: None) -> None:
-    # One closure factory serves hero/map/gamemode, so fixing it once fixes all three.
-    async def _list(_session: Any, params: Any) -> dict:
+    # One handler serves every kind.
+    async def _list(_session: Any, _discipline: str, _kind: str, params: Any) -> dict:
         return {"results": [], "total": 0, "page": params.page, "per_page": params.per_page, "counts": {"active": 2}}
 
-    # ``list_fn`` is bound into the closure at registration, so patch first.
-    monkeypatch.setattr(metadata_admin_rpc.hero_service, "get_heroes", _list)
+    monkeypatch.setattr(metadata_admin_rpc.catalog_service, "list", _list)
 
-    reply = _harness(metadata_admin_rpc).call_sync("rpc.app.heroes.admin_list", dict(_SUPERUSER))
+    reply = _harness(metadata_admin_rpc).call_sync(
+        "rpc.app.catalog.admin_list", {**_SUPERUSER, "discipline": "overwatch", "kind": "character"}
+    )
 
     assert reply["ok"], reply
     assert reply["data"]["counts"] == {"active": 2}

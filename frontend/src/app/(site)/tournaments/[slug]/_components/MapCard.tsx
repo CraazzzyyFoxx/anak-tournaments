@@ -1,13 +1,13 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { ImageOff } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import type { MapRead } from "@/types/map.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 
 export type MapCardProps = {
-  map: MapRead;
+  map: CatalogEntityRead;
   /** `md` — the pool grid; `sm` — the per-round strips: a wider 2:1 crop, so a Bo5's five rows stay short. */
   size?: "sm" | "md";
   className?: string;
@@ -56,10 +56,10 @@ export function MapCard({ map, size = "md", className }: Readonly<MapCardProps>)
               "linear-gradient(to top, color-mix(in srgb, #000 82%, transparent), transparent)"
           }}
         />
-        {map.gamemode?.image_path ? (
+        {map.parent?.image_path ? (
           <span className="absolute left-1.5 top-1.5 grid size-5 place-items-center rounded bg-black/55 backdrop-blur-sm">
             <Image
-              src={map.gamemode.image_path}
+              src={map.parent.image_path}
               alt=""
               width={small ? 11 : 13}
               height={small ? 11 : 13}
@@ -81,5 +81,3 @@ export function MapCard({ map, size = "md", className }: Readonly<MapCardProps>)
     </figure>
   );
 }
-
-export default MapCard;

@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { ArrowLeftRight, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
 
 import { DataTable, columnMeta, createKebabColumn } from "@/components/data-table";
@@ -21,40 +21,88 @@ import {
   type PlayerFormMode,
   type PlayerFormState
 } from "@/components/admin/people/PlayerForm";
+import { PersonSection } from "@/components/admin/people/PersonSection";
 import DivisionIcon from "@/components/DivisionIcon";
-import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useDisciplineMetadata, useDisciplines } from "@/hooks/useDisciplineMetadata";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { notify } from "@/lib/notify";
-import { normalizePlayerRole } from "@/lib/roster/player-role";
+import { ratedDimension } from "@/lib/roster/ontology";
+import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
 import adminService from "@/services/admin.service";
 import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
 import userService from "@/services/user.service";
 import type { DivisionGridVersion } from "@/types/workspace.types";
+import type { UserTournamentList } from "@/types/user.types";
 import { formatSubRoleLabel } from "@/lib/player";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { userQueryKeys } from "@/lib/users/query-keys";
+import { roleOf, subRoleOf, type RoleRef } from "@/lib/roster/role-ref";
 
 /** One tournament this person played, flattened to the roster row that is them. */
 interface ParticipationRow {
   /** `players.id` — the roster row, and this table's identity. */
   id: number;
   name: string;
-  role: string | null;
-  sub_role: string | null;
-  rank: number;
-  division: number;
+  role: RoleRef | null;
+  rank: number | null;
+  division: number | null;
   is_newcomer: boolean;
   is_substitution: boolean;
   tournament_id: number;
   tournament_name: string;
+  workspace_id: number;
+  discipline: string;
   team_id: number;
   team_name: string;
   division_grid_version: DivisionGridVersion | null;
+}
+
+/** Every installed game's career read as one list (module level: a stable `combine` keeps the merged identity). */
+function mergeCareers(results: UseQueryResult<UserTournamentList>[]) {
+  return {
+    data: results.flatMap((result) => result.data?.results ?? []),
+    gridVersions: results.flatMap((result) => result.data?.division_grid_versions ?? []),
+    isError: results.some((result) => result.isError),
+    isLoading: results.some((result) => result.isLoading),
+    refetchFailed: () => {
+      for (const result of results) if (result.isError) void result.refetch();
+    }
+  };
+}
+
+/**
+ * A participation's role, named and drawn in the game of ITS tournament: a person's career spans games, so every row
+ * reads its own owner's metadata (one cached read per game and workspace).
+ */
+function ParticipationRole({ row, named = false }: Readonly<{ row: ParticipationRow; named?: boolean }>) {
+  const ontology = useDisciplineMetadata(row.workspace_id, row.discipline).data ?? null;
+  const slotLabel = useSlotLabel(ontology);
+  const code = row.role ? roleOf(row.role) : OPEN_SLOT_CODE;
+  return named ? (
+    <>{slotLabel(code)}</>
+  ) : (
+    <div className="flex items-center" title={slotLabel(code)}>
+      <RosterSlotGlyph code={code} ontology={ontology} size={18} />
+    </div>
+  );
+}
+
+/** Newcomer and substitute are a roster row's exceptions, so each shows only when it holds. */
+function ParticipationFlags({ row }: Readonly<{ row: ParticipationRow }>) {
+  const t = useTranslations("adminPeople.participations");
+  return (
+    <>
+      {row.is_newcomer ? <StatusIcon icon={Sparkles} label={t("newcomer")} variant="warning" /> : null}
+      {row.is_substitution ? <StatusIcon icon={ArrowLeftRight} label={t("substitute")} variant="info" /> : null}
+    </>
+  );
 }
 
 /**
@@ -71,6 +119,7 @@ export function PersonParticipationsTab({
 }: Readonly<{ personId: number; personName: string; workspaceId: number | null }>) {
   const t = useTranslations("adminPeople.participations");
   const formT = useTranslations("adminPeople.form");
+  const roleT = useTranslations("common.roleOntology");
   const queryClient = useQueryClient();
   const { canAccessPermission } = usePermissions();
   const canCreate = canAccessPermission("player.create", workspaceId);
@@ -84,23 +133,47 @@ export function PersonParticipationsTab({
   const [saveError, setSaveError] = useState<string | undefined>();
   const [pendingDelete, setPendingDelete] = useState<ParticipationRow | null>(null);
 
-  const participationsQuery = useQuery({
-    queryKey: userQueryKeys.tournaments(personId, workspaceId),
-    queryFn: () => userService.getUserTournaments(personId, workspaceId)
+  // The server reads one game's career per call: every installed game's (history of a game the workspace no
+  // longer runs included), merged.
+  const installedQuery = useDisciplines("all");
+  const careers = useQueries({
+    queries: (installedQuery.data ?? []).map((game) => ({
+      queryKey: userQueryKeys.tournaments(personId, workspaceId, game.code),
+      queryFn: () => userService.getUserTournaments(personId, game.code, workspaceId)
+    })),
+    combine: mergeCareers
   });
-
-  // Sub-roles are a workspace catalog, and the participation list is already
-  // scoped to the active workspace, so one fetch covers every row.
-  const subRolesQuery = useQuery({
-    queryKey: adminQueryKeys.playerSubRolesPublic(workspaceId),
-    queryFn: () => adminService.getPlayerSubRoles({ workspace_id: workspaceId! }),
-    enabled: workspaceId != null
-  });
+  const participations = careers.data;
+  const participationsQuery = {
+    isError: installedQuery.isError || careers.isError,
+    isLoading: installedQuery.isLoading || careers.isLoading,
+    refetch: () => {
+      void installedQuery.refetch();
+      careers.refetchFailed();
+    }
+  };
 
   const tournamentsQuery = useQuery({
     queryKey: tournamentQueryKeys.list(),
     queryFn: () => tournamentService.getAll(null),
     enabled: canCreate
+  });
+
+  // Editing never moves a participation, so its owner is the participation's own tournament; a new one is owned
+  // by the tournament picked in the form.
+  const selectedOwner = editing ?? tournamentsQuery.data?.results.find(tournament => tournament.id === form.tournament_id);
+  const discipline = selectedOwner?.discipline;
+  const ownerWorkspaceId = selectedOwner?.workspace_id;
+  const ownerScopeMissing = (editing != null || form.tournament_id > 0) && (!discipline || ownerWorkspaceId == null);
+  // The form's role choices are the owner game's: the selected participation's (edit) or tournament's (create).
+  const ownerMetadata = useDisciplineMetadata(ownerWorkspaceId ?? "all", ownerWorkspaceId != null ? discipline ?? null : null);
+  const ontology = ownerMetadata.data ?? null;
+  const ratedCode = ontology ? ratedDimension(ontology)?.code : undefined;
+  const metadataFailed = ownerMetadata.isError || (ontology !== null && !ratedCode);
+  const subRolesQuery = useQuery({
+    queryKey: adminQueryKeys.playerSubRolesPublic(ownerWorkspaceId, discipline),
+    queryFn: ({ signal }) => adminService.getPlayerSubRoles({ workspace_id: ownerWorkspaceId!, discipline: discipline! }, signal),
+    enabled: formMode !== null && ownerWorkspaceId != null && Boolean(discipline)
   });
 
   const teamsQuery = useQuery({
@@ -111,7 +184,7 @@ export function PersonParticipationsTab({
 
   const rows = useMemo<ParticipationRow[]>(
     () =>
-      (participationsQuery.data ?? []).flatMap((entry) => {
+      participations.flatMap((entry) => {
         const player = entry.players.find((candidate) => candidate.user_id === personId);
         if (!player) return [];
         return [
@@ -119,24 +192,26 @@ export function PersonParticipationsTab({
             id: player.id,
             name: player.name,
             role: player.role,
-            sub_role: player.sub_role,
             rank: player.rank,
             division: player.division,
             is_newcomer: player.is_newcomer,
             is_substitution: player.is_substitution,
             tournament_id: entry.id,
             tournament_name: entry.name,
+            workspace_id: entry.workspace_id,
+            discipline: entry.discipline,
             team_id: entry.team_id,
             team_name: entry.team,
-            division_grid_version: entry.division_grid_version
+            division_grid_version:
+              careers.gridVersions.find((version) => version.id === entry.division_grid_version_id) ?? null
           }
         ];
       }),
-    [participationsQuery.data, personId]
+    [participations, careers.gridVersions, personId]
   );
 
   const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: userQueryKeys.tournamentsAll(personId) });
+    void queryClient.invalidateQueries({ queryKey: userQueryKeys.statsAll(personId) });
     void queryClient.invalidateQueries({ queryKey: tournamentQueryKeys.teamsAll() });
   };
 
@@ -148,10 +223,10 @@ export function PersonParticipationsTab({
 
   const saveMutation = useMutation({
     meta: { suppressErrorToast: true },
-    mutationFn: (payload: PlayerFormState) =>
+    mutationFn: ({ state, dimension }: { state: PlayerFormState; dimension: string }) =>
       editing
-        ? adminService.updatePlayer(editing.id, playerUpdatePayload(payload))
-        : adminService.createPlayer(playerCreatePayload(payload)),
+        ? adminService.updatePlayer(editing.id, playerUpdatePayload(state, dimension))
+        : adminService.createPlayer(playerCreatePayload(state, dimension)),
     onSuccess: () => {
       const created = editing == null;
       invalidate();
@@ -201,40 +276,22 @@ export function PersonParticipationsTab({
     [personId, resetSaveMutation]
   );
 
+  // The roster row is usually the person's own name; it earns a line only when they played under another one.
+  const aliasOf = useCallback((row: ParticipationRow) => (row.name === personName ? null : row.name), [personName]);
+
   const columns = useMemo<ColumnDef<ParticipationRow>[]>(
     () => [
       {
-        accessorKey: "name",
-        header: t("name"),
-        size: 200,
-        meta: columnMeta<ParticipationRow>({
-          sticky: true,
-          searchValue: (row) => row.name
-        }),
-        cell: ({ row }) => <div className="font-medium">{row.original.name}</div>
-      },
-      {
-        accessorKey: "team_name",
-        header: t("team"),
-        enableSorting: false,
-        meta: columnMeta<ParticipationRow>({ searchValue: (row) => row.team_name }),
-        cell: ({ row }) => (
-          <Link
-            className="text-sm underline-offset-4 hover:underline"
-            href={`/admin/teams/${row.original.team_id}`}
-          >
-            {row.original.team_name}
-          </Link>
-        )
-      },
-      {
         accessorKey: "tournament_name",
         header: t("tournament"),
-        enableSorting: false,
-        meta: columnMeta<ParticipationRow>({ searchValue: (row) => row.tournament_name }),
+        size: 220,
+        meta: columnMeta<ParticipationRow>({
+          sticky: true,
+          searchValue: (row) => row.tournament_name
+        }),
         cell: ({ row }) => (
           <Link
-            className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+            className="font-medium underline-offset-4 hover:underline"
             href={`/admin/tournaments/${row.original.tournament_id}/overview`}
           >
             {row.original.tournament_name}
@@ -242,18 +299,46 @@ export function PersonParticipationsTab({
         )
       },
       {
+        accessorKey: "team_name",
+        header: t("team"),
+        enableSorting: false,
+        meta: columnMeta<ParticipationRow>({ searchValue: (row) => `${row.team_name} ${row.name}` }),
+        cell: ({ row }) => {
+          const alias = aliasOf(row.original);
+          return (
+            <div className="min-w-0">
+              <Link className="underline-offset-4 hover:underline" href={`/admin/teams/${row.original.team_id}`}>
+                {row.original.team_name}
+              </Link>
+              {alias ? (
+                <p className="truncate text-caption text-muted-foreground" title={alias}>
+                  {alias}
+                </p>
+              ) : null}
+            </div>
+          );
+        }
+      },
+      {
         accessorKey: "role",
         header: t("role"),
-        cell: ({ row }) => (
-          <div className="flex items-center" title={normalizePlayerRole(row.original.role)}>
-            <PlayerRoleIcon role={normalizePlayerRole(row.original.role)} size={18} />
-          </div>
-        )
+        cell: ({ row }) => {
+          const subRole = formatSubRoleLabel(subRoleOf(row.original.role));
+          return (
+            <div className="flex items-center gap-2">
+              <ParticipationRole row={row.original} />
+              {subRole ? <span className="truncate text-caption text-muted-foreground">{subRole}</span> : null}
+              <ParticipationFlags row={row.original} />
+            </div>
+          );
+        }
       },
       {
         // Division is derived from rank, so the two ride in one column and sort
-        // by the finer of the pair.
-        accessorKey: "rank",
+        // by the finer of the pair; an unranked row sorts last either way.
+        id: "rank",
+        accessorFn: (row) => row.rank ?? undefined,
+        sortUndefined: "last",
         header: t("divRank"),
         cell: ({ row }) => (
           <div className="flex items-center gap-2">
@@ -263,28 +348,7 @@ export function PersonParticipationsTab({
               width={28}
               height={28}
             />
-            <span className="tabular-nums">{row.original.rank}</span>
-          </div>
-        )
-      },
-      {
-        accessorKey: "sub_role",
-        header: t("subRole"),
-        cell: ({ row }) => <div>{formatSubRoleLabel(row.original.sub_role) ?? "—"}</div>
-      },
-      {
-        id: "flags",
-        header: t("flags"),
-        enableSorting: false,
-        meta: columnMeta({ align: "center" }),
-        cell: ({ row }) => (
-          <div className="flex justify-center gap-1">
-            {row.original.is_newcomer && (
-              <StatusIcon icon={Sparkles} label={t("newcomer")} variant="warning" />
-            )}
-            {row.original.is_substitution && (
-              <StatusIcon icon={ArrowLeftRight} label={t("substitute")} variant="info" />
-            )}
+            <span className="tabular-nums">{row.original.rank ?? "—"}</span>
           </div>
         )
       },
@@ -304,59 +368,72 @@ export function PersonParticipationsTab({
             onSelect: () => setPendingDelete(row)
           }
         ],
-        { rowLabel: (row) => `${row.name} in ${row.tournament_name}` }
+        // The hub already names the person; the tournament is what tells one row's menu from the next.
+        { rowLabel: (row) => row.tournament_name }
       )
     ],
     // `openEdit` was missing here: the kebab's "Edit participation" called
     // whichever closure the first render happened to build. It carries
     // `personId` itself, so the column list no longer needs it separately.
-    [t, canUpdate, canDelete, openEdit]
+    [t, canUpdate, canDelete, openEdit, aliasOf]
   );
 
-  if (participationsQuery.isError) {
-    return (
-      <PageStateCard
-        state="error"
-        title={t("loadError")}
-        onAction={() => void participationsQuery.refetch()}
-        actionLabel={t("retry")}
-      />
-    );
-  }
-
   return (
-    <div className="space-y-4">
-      <DataTable<ParticipationRow>
-        rows={rows}
-        isLoading={participationsQuery.isLoading}
-        columns={columns}
-        initialPageSize={20}
-        getRowId={(row) => String(row.id)}
-        searchPlaceholder={t("search")}
-        emptyMessage={t("empty")}
-        actions={
-          canCreate ? (
-            <Button size="sm" onClick={openCreate}>
-              <Plus aria-hidden className="size-4" />
-              {t("add")}
-            </Button>
-          ) : null
-        }
-        onRowDoubleClick={canUpdate ? (row) => openEdit(row.original) : undefined}
-        renderMobileCard={(row) => (
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{row.original.name}</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {row.original.team_name} · {row.original.tournament_name}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {normalizePlayerRole(row.original.role)} ·{" "}
-              <span className="tabular-nums">{row.original.rank}</span>
-              {row.original.sub_role ? ` · ${formatSubRoleLabel(row.original.sub_role)}` : ""}
-            </p>
-          </div>
-        )}
-      />
+    <PersonSection
+      title={t("title")}
+      actions={
+        canCreate ? (
+          <Button size="sm" onClick={openCreate}>
+            <Plus aria-hidden className="size-4" />
+            {t("add")}
+          </Button>
+        ) : null
+      }
+    >
+      {participationsQuery.isError ? (
+        <PageStateCard
+          state="error"
+          title={t("loadError")}
+          onAction={() => void participationsQuery.refetch()}
+          actionLabel={t("retry")}
+        />
+      ) : (
+        <DataTable<ParticipationRow>
+          rows={rows}
+          isLoading={participationsQuery.isLoading}
+          columns={columns}
+          initialPageSize={20}
+          getRowId={(row) => String(row.id)}
+          searchPlaceholder={t("search")}
+          emptyMessage={t("empty")}
+          onRowDoubleClick={canUpdate ? (row) => openEdit(row.original) : undefined}
+          renderMobileCard={(row) => {
+            const alias = aliasOf(row.original);
+            const subRole = formatSubRoleLabel(subRoleOf(row.original.role));
+            return (
+              <div className="min-w-0 flex-1">
+                <Link
+                  className="block truncate text-body font-medium underline-offset-4 hover:underline"
+                  href={`/admin/tournaments/${row.original.tournament_id}/overview`}
+                >
+                  {row.original.tournament_name}
+                </Link>
+                <p className="truncate text-caption text-muted-foreground">
+                  {row.original.team_name}
+                  {alias ? ` · ${alias}` : ""}
+                </p>
+                <div className="flex items-center gap-2 text-caption text-muted-foreground">
+                  <span>
+                    <ParticipationRole row={row.original} named />
+                    {subRole ? ` · ${subRole}` : ""} · <span className="tabular-nums">{row.original.rank ?? "—"}</span>
+                  </span>
+                  <ParticipationFlags row={row.original} />
+                </div>
+              </div>
+            );
+          }}
+        />
+      )}
 
       <EntityFormDialog
         open={formMode != null}
@@ -366,21 +443,30 @@ export function PersonParticipationsTab({
         title={formMode === "edit" ? t("edit") : t("add")}
         description={
           formMode === "edit"
-            ? t("editDescription", { name: personName })
-            : t("addDescription", { name: personName })
+            ? t("editDescription", { tournament: editing?.tournament_name ?? "" })
+            : t("addDescription")
         }
         isSubmitting={saveMutation.isPending}
         submittingLabel={formMode === "edit" ? t("updating") : t("adding")}
-        errorMessage={saveError}
+        errorMessage={saveError ?? (formMode !== null && ownerScopeMissing ? roleT("ownerScopeError") : subRolesQuery.isError ? roleT("roleLoadError") : metadataFailed ? roleT("metadataError") : undefined)}
         isDirty={formMode != null && hasUnsavedChanges(form, formInitial)}
         onSubmit={(event) => {
           event.preventDefault();
+          if (ownerScopeMissing || subRolesQuery.isError) {
+            setSaveError(roleT(ownerScopeMissing ? "ownerScopeError" : "roleLoadError"));
+            return;
+          }
           const invalid = playerFormError(form, formMode ?? "edit");
           if (invalid) {
             setSaveError(formT(invalid));
             return;
           }
-          saveMutation.mutate(form);
+          // Past this point the owner game is known; its metadata names the dimension the role is written in.
+          if (!ratedCode) {
+            setSaveError(roleT("metadataError"));
+            return;
+          }
+          saveMutation.mutate({ state: form, dimension: ratedCode });
         }}
       >
         <PlayerForm
@@ -388,6 +474,7 @@ export function PersonParticipationsTab({
           value={form}
           onChange={setForm}
           subRoles={subRolesQuery.data}
+          ontology={ontology}
           divisionGrid={
             editing?.division_grid_version ??
             (tournamentsQuery.data?.results.find(
@@ -408,7 +495,7 @@ export function PersonParticipationsTab({
         pending={deleteMutation.isPending}
         intent={{
           title: t("remove"),
-          description: t("removeDescription", { name: pendingDelete?.name ?? t("player"), tournament: pendingDelete?.tournament_name ?? t("tournament") }),
+          description: t("removeDescription", { tournament: pendingDelete?.tournament_name ?? t("tournament") }),
           confirmLabel: t("remove"),
           tone: "danger"
         }}
@@ -416,6 +503,6 @@ export function PersonParticipationsTab({
           if (pendingDelete) deleteMutation.mutate(pendingDelete.id);
         }}
       />
-    </div>
+    </PersonSection>
   );
 }

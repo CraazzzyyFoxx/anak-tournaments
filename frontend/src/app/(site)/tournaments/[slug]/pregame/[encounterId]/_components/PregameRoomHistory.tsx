@@ -6,11 +6,13 @@ import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { useFormatter } from "@/lib/datetime/client";
 import adminService from "@/services/admin.service";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
-import type { PickBanSide } from "@/components/pick-ban/pick-ban-model";
+import { PregameAdminBox } from "@/components/pick-ban/PregameAdminBox";
+import { seatName, type PickBanSeat } from "@/components/pick-ban/pick-ban-model";
 import type { PregameRoomHistoryEntry } from "@/types/admin.types";
 import type { PickBanKind } from "@/types/tournament.types";
 
@@ -49,10 +51,12 @@ const ACTIONS = {
   timer_extended: "warning",
   session_cancelled: "warning",
   technical_loss: "warning",
+  match_ingested: "plain",
   result_confirm: "plain",
   result_reopen: "warning",
   result_auto_confirm: "plain",
   result_auto_dispute: "warning",
+  result_auto_pending: "plain",
   result_import: "plain",
   result_cascade_reset: "warning",
   result_game_confirm: "plain",
@@ -63,10 +67,45 @@ const ACTIONS = {
 /** Only these have a `history.action.*` message; anything else is unknown. */
 type RoomHistoryAction = keyof typeof ACTIONS;
 
-const VERBS = { ban: true, pick: true, protect: true } as const;
+const VERBS = { ban: true, pick: true, protect: true, side_pick: true } as const;
+
+/** The outcomes a stats-service receipt records; anything else renders as its raw code. */
+const INGEST_OUTCOMES = {
+  accepted: true,
+  logs_disabled: true,
+  owner_policy_refused: true,
+  result_locked: true,
+  stale_basis: true,
+  result_incomplete: true,
+  applied_roster_only: true
+} as const;
 
 const asText = (value: unknown) => (typeof value === "string" ? value : null);
 const asNumber = (value: unknown) => (typeof value === "number" ? value : null);
+
+/**
+ * The scoreline a journal row carries, in slot order: a technical loss logs
+ * `scores` (participation id -> score), a game correction logs `results`
+ * (one line per participation). `null` when the row has neither.
+ */
+function scoreLabel(data: Record<string, unknown>, seats: PickBanSeat[]): string | null {
+  const byTeam: Record<number, number> = {};
+  if (data.scores != null && typeof data.scores === "object" && !Array.isArray(data.scores)) {
+    for (const [teamId, score] of Object.entries(data.scores)) {
+      if (typeof score === "number") byTeam[Number(teamId)] = score;
+    }
+  }
+  if (Array.isArray(data.results)) {
+    for (const line of data.results) {
+      const row = line as Record<string, unknown>;
+      const teamId = asNumber(row.encounter_team_id);
+      const score = asNumber(row.score);
+      if (teamId != null && score != null) byTeam[teamId] = score;
+    }
+  }
+  const scores = seats.map((seat) => byTeam[seat.id]);
+  return scores.length > 0 && scores.every((score) => score != null) ? scores.join("–") : null;
+}
 
 /** The item ids an entry talks about, however the recorder packed them. */
 function itemIds(data: Record<string, unknown>): number[] {
@@ -98,12 +137,16 @@ function itemIds(data: Record<string, unknown>): number[] {
  */
 export function PregameRoomHistory({
   encounterId,
-  sideNameOf,
-  itemsByKind
+  seats,
+  itemsByKind,
+  sideLabels
 }: Readonly<{
   encounterId: number;
-  sideNameOf: (side: PickBanSide) => string;
+  /** The room's participations: the journal names a team by its participation id. */
+  seats: PickBanSeat[];
   itemsByKind: Record<PickBanKind, Record<number, PickBanItemLike | undefined>>;
+  /** The game's side labels in `state.sides` order: a side pick journals the side's index, not an item. */
+  sideLabels: string[];
 }>) {
   const t = useTranslations("pickBan.room");
   const format = useFormatter();
@@ -129,18 +172,20 @@ export function PregameRoomHistory({
     if (ACTIONS[key] == null) return t("history.action.unknown", { action: entry.action });
 
     const data = entry.data ?? {};
-    const loser = data.loser_side === "home" || data.loser_side === "away" ? data.loser_side : null;
-    const first = data.first_side === "home" || data.first_side === "away" ? data.first_side : null;
-    const side = entry.side ?? loser;
-    const home = asNumber(data.home_score);
-    const away = asNumber(data.away_score);
+    const loser = asNumber(data.loser_team_id);
+    const first = asNumber(data.first_team_id);
+    const teamId = entry.encounter_team_id ?? loser;
+    const score = scoreLabel(data, seats);
     const verb = asText(data.action);
     const names = itemIds(data).map(
-      (id) => itemsByKind[entry.kind === "hero" ? "hero" : "map"][id]?.name ?? `#${id}`
+      verb === "side_pick"
+        ? (id) => sideLabels[id] ?? `#${id}`
+        : (id) => itemsByKind[entry.kind === "hero" ? "hero" : "map"][id]?.name ?? `#${id}`
     );
+    const outcome = asText(data.outcome);
     return t(`history.action.${key}`, {
-      team: side != null ? sideNameOf(side) : t("history.unknownTeam"),
-      first: first != null ? sideNameOf(first) : t("history.unknownTeam"),
+      team: teamId != null ? seatName(seats, teamId) : t("history.unknownTeam"),
+      first: first != null ? seatName(seats, first) : t("history.unknownTeam"),
       kind: entry.kind != null ? t(`phase.${entry.kind}`) : t("title"),
       verb:
         verb != null && verb in VERBS
@@ -151,15 +196,20 @@ export function PregameRoomHistory({
       round: asNumber(data.round) ?? "—",
       step: asNumber(data.step_index) ?? "—",
       position: asNumber(data.position) ?? "—",
-      score: home != null && away != null ? `${home}–${away}` : "—",
+      score: score ?? "—",
       seconds: asNumber(data.seconds) ?? asNumber(data.paused_seconds) ?? 0,
       attempt: asNumber(data.attempt) ?? "—",
-      policy: asText(data.policy) ?? "—"
+      policy: asText(data.policy) ?? "—",
+      revision: asNumber(data.revision) ?? "—",
+      outcome:
+        outcome != null && outcome in INGEST_OUTCOMES
+          ? t(`history.outcome.${outcome as keyof typeof INGEST_OUTCOMES}`)
+          : (outcome ?? "—")
     });
   };
 
   return (
-    <section className="rounded-xl border border-dashed border-[color:var(--aqt-amber)]/45 bg-[color:var(--aqt-card-2)]/40 p-3">
+    <PregameAdminBox className="p-3">
       <Button
         type="button"
         size="sm"
@@ -184,9 +234,19 @@ export function PregameRoomHistory({
           className="mt-2 max-h-[280px] overflow-y-auto rounded-[10px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)]"
         >
           {history.isPending ? (
-            <p className="px-3.5 py-2 text-sm text-[color:var(--aqt-fg-muted)]">
-              {t("history.loading")}
-            </p>
+            <div role="status">
+              <span className="sr-only">{t("history.loading")}</span>
+              {[0, 1, 2].map((row) => (
+                <div
+                  key={row}
+                  aria-hidden
+                  className="flex items-center gap-3 border-b border-[color:var(--aqt-border)] px-3.5 py-2.5 last:border-b-0"
+                >
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-4 flex-1" />
+                </div>
+              ))}
+            </div>
           ) : history.isError ? (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-2">
               <p className="text-sm text-[color:var(--aqt-rose-text)]">{t("history.error")}</p>
@@ -240,6 +300,6 @@ export function PregameRoomHistory({
           )}
         </div>
       ) : null}
-    </section>
+    </PregameAdminBox>
   );
 }

@@ -4,8 +4,6 @@ __all__ = ("StandingUpdate", "StandingPinInput", "StandingPinsUpdate")
 
 
 class StandingUpdate(BaseModel):
-    """Schema for updating a standing"""
-
     position: int | None = None
     overall_position: int | None = None
     matches: int | None = None

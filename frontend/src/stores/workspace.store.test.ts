@@ -1,11 +1,12 @@
 /** @vitest-environment happy-dom */
+import Cookies from "js-cookie";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthProfile } from "@/stores/auth-profile.store";
 import {
   filterAccessibleWorkspaces,
   resolveCurrentWorkspaceId,
-  useWorkspaceStore,
+  useWorkspaceStore
 } from "@/stores/workspace.store";
 import type { Workspace } from "@/types/workspace.types";
 
@@ -17,8 +18,9 @@ function createWorkspace(id: number, name = `Workspace ${id}`): Workspace {
     description: null,
     icon_url: null,
     is_active: true,
-    default_division_grid_version_id: null,
-    default_division_grid_version: null,
+    disciplines_enabled: ["overwatch"],
+    default_division_grid_versions: {},
+    effective_division_grid_versions: {}
   };
 }
 
@@ -34,15 +36,19 @@ function createProfile(workspaceIds: number[]): AuthProfile {
       workspace_id: workspaceId,
       slug: `workspace-${workspaceId}`,
       roles: [],
-      permissions: [],
-    })),
+      permissions: []
+    }))
   };
 }
 
 describe("workspace store helpers", () => {
   it("filters workspaces to memberships for authenticated non-superusers", () => {
     const allWorkspaces = [createWorkspace(1), createWorkspace(2), createWorkspace(3)];
-    const filtered = filterAccessibleWorkspaces(allWorkspaces, "authenticated", createProfile([1, 3]));
+    const filtered = filterAccessibleWorkspaces(
+      allWorkspaces,
+      "authenticated",
+      createProfile([1, 3])
+    );
 
     expect(filtered.map((workspace) => workspace.id)).toEqual([1, 3]);
   });
@@ -116,9 +122,11 @@ describe("viewing scope and opened entity", () => {
 // after the aqt->owt rename, which would make the client scope disagree with
 // the server's (`getServerWorkspaceId` reads the same two names).
 describe("workspace store cookie hydration", () => {
+  // `Cookies.remove` writes an already-expired cookie; happy-dom keeps a `Max-Age=0` write as an
+  // empty cookie until the clock ticks, which would leak into the next test's cookie string.
   afterEach(() => {
-    document.cookie = "owt-workspace-id=; Max-Age=0; path=/";
-    document.cookie = "aqt-workspace-id=; Max-Age=0; path=/";
+    Cookies.remove("owt-workspace-id");
+    Cookies.remove("aqt-workspace-id");
   });
 
   // Dynamic on purpose: hydration happens at module evaluation, so each case
@@ -148,5 +156,97 @@ describe("workspace store cookie hydration", () => {
     const store = await freshStore();
 
     expect(store.getState().currentWorkspaceId).toBeNull();
+  });
+});
+
+describe("game scope", () => {
+  const withWorkspaces = (disciplines: string[][]) =>
+    disciplines.map((enabled, index) => ({ ...createWorkspace(index + 1), disciplines_enabled: enabled }));
+
+  afterEach(() => {
+    for (const name of ["owt-discipline", "owt-last-game", "owt-workspace-id", "owt-stats-scope"]) {
+      Cookies.remove(name);
+    }
+    useWorkspaceStore.setState({
+      workspaces: [],
+      currentWorkspaceId: null,
+      statsScope: "all",
+      gameScope: "all",
+      lastGame: null,
+      entityWorkspaceId: null,
+      entityDiscipline: null,
+      hostLockedWorkspaceId: null
+    });
+  });
+
+  it("saves a game in its own cookie and forgets it for all games", () => {
+    useWorkspaceStore.getState().setGameScope("lol");
+    expect(document.cookie).toContain("owt-discipline=lol");
+    expect(useWorkspaceStore.getState().gameScope).toBe("lol");
+
+    useWorkspaceStore.getState().setGameScope("all");
+    expect(document.cookie).not.toContain("owt-discipline=");
+    expect(useWorkspaceStore.getState().gameScope).toBe("all");
+    expect(document.cookie).not.toContain("owt-workspace-id");
+  });
+
+  it("remembers the last picked game in its own cookie, apart from the scope", () => {
+    useWorkspaceStore.getState().setLastGame("lol");
+    expect(document.cookie).toContain("owt-last-game=lol");
+    expect(useWorkspaceStore.getState()).toMatchObject({ lastGame: "lol", gameScope: "all" });
+    expect(document.cookie).not.toContain("owt-discipline=");
+  });
+
+  it("never drops the saved game on a community pick, a scope change or a host lock", () => {
+    useWorkspaceStore.setState({
+      workspaces: withWorkspaces([["overwatch", "lol"], ["overwatch"]]),
+      currentWorkspaceId: 1,
+      statsScope: "workspace"
+    });
+    useWorkspaceStore.getState().setGameScope("lol");
+
+    useWorkspaceStore.getState().setCurrentWorkspace(2);
+    useWorkspaceStore.getState().setStatsScope("all");
+    useWorkspaceStore.getState().setStatsScope("workspace");
+    expect(useWorkspaceStore.getState().gameScope).toBe("lol");
+    expect(document.cookie).toContain("owt-discipline=lol");
+
+    useWorkspaceStore.getState().setHostLock(2);
+    expect(useWorkspaceStore.getState().gameScope).toBe("lol");
+    expect(document.cookie).toContain("owt-discipline=lol");
+  });
+
+  it("holds an opened owner's game at runtime only, never in the scope or a cookie", () => {
+    useWorkspaceStore.getState().setEntityDiscipline("lol");
+    expect(useWorkspaceStore.getState()).toMatchObject({ entityDiscipline: "lol", gameScope: "all", lastGame: null });
+    expect(document.cookie).not.toContain("owt-discipline=");
+    expect(document.cookie).not.toContain("owt-last-game=");
+
+    useWorkspaceStore.getState().setEntityDiscipline(null);
+    expect(useWorkspaceStore.getState().entityDiscipline).toBeNull();
+  });
+});
+
+describe("game scope hydration", () => {
+  afterEach(() => {
+    Cookies.remove("owt-discipline");
+    Cookies.remove("owt-last-game");
+  });
+
+  it("hydrates the scope and the last game from their cookies; without them, all games and no last game", async () => {
+    vi.resetModules();
+    expect((await import("@/stores/workspace.store")).useWorkspaceStore.getState()).toMatchObject({
+      gameScope: "all",
+      lastGame: null,
+      entityDiscipline: null
+    });
+
+    document.cookie = "owt-discipline=lol; path=/";
+    document.cookie = "owt-last-game=overwatch; path=/";
+    vi.resetModules();
+    expect((await import("@/stores/workspace.store")).useWorkspaceStore.getState()).toMatchObject({
+      gameScope: "lol",
+      lastGame: "overwatch"
+    });
   });
 });

@@ -2,11 +2,35 @@ import dynamic from "next/dynamic";
 
 import { User } from "@/types/user.types";
 import type { StatsScope } from "@/lib/site/stats-scope";
+import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 
 const MapsView = dynamic(() => import("@/app/(site)/users/components/maps/MapsView"));
 
-const UserMapsPage = ({ user, scope }: { user: User; scope: StatsScope }) => {
-  return <MapsView userId={user.id} scope={scope} />;
+const UserMapsPage = ({
+  user,
+  tournaments,
+  scope,
+  discipline,
+  axis
+}: {
+  user: User;
+  /** The game's profile tournaments: the tournament filter's options. */
+  tournaments: { id: number; name: string }[];
+  scope: StatsScope;
+  discipline: string;
+  axis: WorkspaceAxis;
+}) => {
+  // Keyed by game: the filters (a tournament included) are one game's, never carried into another's.
+  return (
+    <MapsView
+      key={discipline}
+      userId={user.id}
+      tournaments={tournaments}
+      scope={scope}
+      discipline={discipline}
+      axis={axis}
+    />
+  );
 };
 
 export default UserMapsPage;

@@ -1,6 +1,5 @@
-import type { EncounterWithUserStats, UserTournament } from "@/types/user.types";
-import type { ScoreKind } from "@/components/match/cells";
-import { playerRoleTint } from "@/lib/roster/player-role";
+import type { EncounterWithUserStats, UserTournament, UserTournamentEntry } from "@/types/user.types";
+import { encounterPerspective } from "@/app/(site)/users/components/shared/encounter-perspective";
 
 /** League grouping key: the prefix before " | " in the tournament name. */
 export const leagueKey = (t: UserTournament): string => t.name.split(" | ")[0];
@@ -12,36 +11,33 @@ export const divisionLabel = (t: UserTournament): string => {
   return parts.length > 1 ? parts.slice(1).join(" | ") : t.name;
 };
 
-export type TournamentGroup = UserTournament | UserTournament[];
+/** A standalone event, or a league's divisions; `T` is what an entry carries (the dossier's: its grid and run). */
+export type TournamentGroup<T extends UserTournament = UserTournament> = T | T[];
 
 /**
  * Group consecutive league tournaments (those with `is_league` sharing the same
- * league-name prefix) into arrays; non-league tournaments remain standalone
- * entries. Input order is preserved, so a league's divisions stay contiguous
- * exactly as the API returns them.
+ * game and league-name prefix) into arrays; non-league tournaments remain
+ * standalone entries. Input order is preserved, so a league's divisions stay
+ * contiguous exactly as the API returns them. A cross-game history can put two
+ * games' same-named leagues side by side: they stay apart.
  */
-export const groupTournamentsByLeague = (tournaments: UserTournament[]): TournamentGroup[] => {
-  const result: TournamentGroup[] = [];
-  let currentLeague: UserTournament[] = [];
-  let flag = "";
+export const groupTournamentsByLeague = <T extends UserTournament>(tournaments: T[]): TournamentGroup<T>[] => {
+  const result: TournamentGroup<T>[] = [];
+  let currentLeague: T[] = [];
 
   tournaments.forEach((t) => {
-    if (t.is_league) {
-      const key = leagueKey(t);
-      if (flag && flag !== key) {
-        result.push(currentLeague);
-        currentLeague = [];
-      }
-      flag = key;
-      currentLeague.push(t);
-    } else {
-      if (currentLeague.length > 0) {
-        result.push(currentLeague);
-        currentLeague = [];
-        flag = "";
-      }
-      result.push(t);
+    const previous = currentLeague.at(-1);
+    const sameLeague =
+      t.is_league &&
+      previous !== undefined &&
+      previous.discipline === t.discipline &&
+      leagueKey(previous) === leagueKey(t);
+    if (currentLeague.length > 0 && !sameLeague) {
+      result.push(currentLeague);
+      currentLeague = [];
     }
+    if (t.is_league) currentLeague.push(t);
+    else result.push(t);
   });
 
   if (currentLeague.length > 0) result.push(currentLeague);
@@ -54,10 +50,11 @@ export const groupTournamentsByLeague = (tournaments: UserTournament[]): Tournam
 // dossier. Kept here (not in a component) so it stays unit-testable.
 
 /** Entries covered by a list group as a flat array. */
-export const groupEntries = (group: TournamentGroup): UserTournament[] =>
+export const groupEntries = <T extends UserTournament>(group: TournamentGroup<T>): T[] =>
   Array.isArray(group) ? group : [group];
 
-export const isLeagueGroup = (group: TournamentGroup): group is UserTournament[] => Array.isArray(group);
+export const isLeagueGroup = <T extends UserTournament>(group: TournamentGroup<T>): group is T[] =>
+  Array.isArray(group);
 
 /** Stable selection/URL key for a group: the first entry's tournament id. */
 export const groupRepId = (group: TournamentGroup): number => groupEntries(group)[0].id;
@@ -106,10 +103,6 @@ export const placementMedal = (placement: number | null | undefined): PlacementM
   return "none";
 };
 
-/** Role → the `--aqt-*` colour token used for role icons/accents. Flex is a
- *  real roster role, so it gets its own token rather than the damage default. */
-export const roleColorVar = (role: string | null): string => `var(--aqt-${playerRoleTint(role) ?? "damage"})`;
-
 /** Map winrate as a 0–100 percentage; null when the player played no maps. */
 export const mapsWinratePct = (mapsWon: number, mapsLost: number): number | null => {
   const total = mapsWon + mapsLost;
@@ -124,20 +117,6 @@ export const winrateColor = (pct: number | null): string => {
   return "var(--aqt-rose)";
 };
 
-/** Was the profile user on the home side of this encounter? */
-const isUserHomeInEncounter = (
-  enc: EncounterWithUserStats,
-  teamId: number,
-  selfUserId: number
-): boolean => enc.home_team_id === teamId || (enc.home_team?.players ?? []).some((p) => p.user_id === selfUserId);
-
-/** Series (encounter-level) result from the user's perspective. */
-const encounterResult = (enc: EncounterWithUserStats, userHome: boolean): ScoreKind => {
-  const us = userHome ? enc.score.home : enc.score.away;
-  const them = userHome ? enc.score.away : enc.score.home;
-  return us > them ? "win" : us < them ? "loss" : "draw";
-};
-
 export interface StageGroup {
   key: string;
   name: string;
@@ -149,10 +128,13 @@ export interface StageGroup {
 
 /** Group a tournament's encounters by stage (first-seen order) with a per-stage
  *  W-D-L series record from the user's perspective. */
-export const groupEncountersByStage = (t: UserTournament, selfUserId: number): StageGroup[] => {
+export const groupEncountersByStage = (
+  t: Pick<UserTournamentEntry, "team_id" | "encounters">,
+  selfUserId: number
+): StageGroup[] => {
   const order: string[] = [];
   const byKey = new Map<string, StageGroup>();
-  for (const enc of t.encounters ?? []) {
+  for (const enc of t.encounters) {
     const name = enc.stage?.name ?? enc.stage_item?.name ?? enc.name ?? "—";
     const key = String(enc.stage?.id ?? name);
     let group = byKey.get(key);
@@ -162,29 +144,10 @@ export const groupEncountersByStage = (t: UserTournament, selfUserId: number): S
       order.push(key);
     }
     group.encounters.push(enc);
-    const result = encounterResult(enc, isUserHomeInEncounter(enc, t.team_id, selfUserId));
+    const result = encounterPerspective(enc, selfUserId, t.team_id).kind;
     if (result === "win") group.won += 1;
     else if (result === "loss") group.lost += 1;
     else group.drawn += 1;
   }
   return order.map((key) => byKey.get(key) as StageGroup);
-};
-
-/** Mean MVP placement across the user's matches in a tournament (impact rank →
- *  legacy performance), or null when nothing is recorded. */
-export const avgMvpPlacement = (entries: UserTournament[]): number | null => {
-  let sum = 0;
-  let count = 0;
-  for (const t of entries) {
-    for (const enc of t.encounters ?? []) {
-      for (const match of enc.matches ?? []) {
-        const placement = match.impact_rank ?? match.performance ?? null;
-        if (placement != null) {
-          sum += placement;
-          count += 1;
-        }
-      }
-    }
-  }
-  return count > 0 ? sum / count : null;
 };

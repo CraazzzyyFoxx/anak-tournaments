@@ -33,7 +33,7 @@ export function getTournamentWorkspaceQueryKeys(tournamentId: number) {
     publicTournament: tournamentQueryKeys.detail(tournamentId),
     publicStages: tournamentQueryKeys.stages(tournamentId),
     publicTeams: tournamentQueryKeys.teams(tournamentId),
-    publicHeroPlaytime: tournamentQueryKeys.heroPlaytime(tournamentId),
+    publicCharacterPlaytime: tournamentQueryKeys.characterPlaytime(tournamentId),
     publicStandings: tournamentQueryKeys.standings(tournamentId),
     publicEncounters: tournamentQueryKeys.encounters(tournamentId)
   };
@@ -65,7 +65,7 @@ export function invalidateTournamentWorkspace(
     queryClient.invalidateQueries({ queryKey: keys.publicTournament }),
     queryClient.invalidateQueries({ queryKey: keys.publicStages }),
     queryClient.invalidateQueries({ queryKey: keys.publicTeams }),
-    queryClient.invalidateQueries({ queryKey: keys.publicHeroPlaytime }),
+    queryClient.invalidateQueries({ queryKey: keys.publicCharacterPlaytime }),
     queryClient.invalidateQueries({ queryKey: keys.publicStandings }),
     queryClient.invalidateQueries({ queryKey: keys.publicEncounters })
   ];

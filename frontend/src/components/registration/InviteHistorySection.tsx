@@ -17,12 +17,15 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { translateRegistrationTeamError } from "@/lib/registration/team-errors";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import registrationTeamService from "@/services/registration-team.service";
 
 interface InviteHistorySectionProps {
   workspaceId: number;
   teamId: number;
+  /** The tournament's own game: names and glyphs the slot of every offer. */
+  ontology: RoleOntology | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -62,6 +65,7 @@ const CAP_WARNING_MARGIN = 5;
 export default function InviteHistorySection({
   workspaceId,
   teamId,
+  ontology,
   open,
   onOpenChange
 }: Readonly<InviteHistorySectionProps>) {
@@ -155,7 +159,7 @@ export default function InviteHistorySection({
                 return (
                   <li key={entry.id} className="grid gap-1 py-3 first:pt-0 last:pb-0">
                     <div className="flex flex-wrap items-center gap-2 text-sm">
-                      <RosterSlotGlyph code={entry.slot_code} />
+                      <RosterSlotGlyph code={entry.slot_code} ontology={ontology} />
                       <span className="font-medium">
                         {known ? t(`history.state.${known}`) : entry.state}
                       </span>

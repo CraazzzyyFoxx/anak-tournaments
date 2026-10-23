@@ -25,21 +25,23 @@ import {
   type BracketMatch
 } from "@/lib/bracket/view";
 import { isEncounterCompleted } from "@/lib/encounter/status";
+import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import { cn } from "@/lib/utils";
+import type { DuelSlot } from "@/lib/encounter/seats";
 import type { StreamEntry } from "@/types/stream.types";
 import type { StageType } from "@/types/tournament.types";
 
 import { BracketCanvas } from "./BracketCanvas";
-import { FOOTER_BUTTON, type SlotDragData } from "./MatchCard";
-import { buildLayout, type Side } from "./layout";
+import type { SlotDragData } from "./MatchCard";
+import { buildLayout } from "./layout";
 import { MAX_SCALE, MIN_SCALE, useBracketViewport } from "./useBracketViewport";
 
 /** One team slot of one match, as the rearrange callback names it. */
 export interface BracketSlotRef<M extends BracketMatch = BracketMatch> {
   encounter: M;
-  slot: Side;
+  slot: DuelSlot;
 }
 
 /**
@@ -66,7 +68,7 @@ export interface BracketViewProps<M extends BracketMatch> {
   onSwapSlots?: (source: BracketSlotRef<M>, target: BracketSlotRef<M>) => Promise<unknown> | void;
   /**
    * Team id → the stream of whoever from that team is on air, keyed by the same
-   * id `Encounter.home_team_id`/`away_team_id` carry.
+   * id `EncounterTeam.team_id` carries.
    *
    * Optional on purpose: this component is shared with the admin bracket, which
    * has no stream query behind it.
@@ -84,9 +86,6 @@ export interface BracketViewProps<M extends BracketMatch> {
    */
   highlightMatchId?: number | null;
 }
-
-const TOOL_BUTTON =
-  "inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_0%/0.6)] text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] disabled:cursor-not-allowed disabled:opacity-40";
 
 /**
  * Keyboard drags jump slot to slot: an arrow lands the picked-up team on the
@@ -209,8 +208,8 @@ export function BracketView<M extends BracketMatch>({
       setIsSwapping(true);
       try {
         await onSwapSlots(
-          { encounter: sourceMatch, slot: source.side },
-          { encounter: targetMatch, slot: target.side }
+          { encounter: sourceMatch, slot: source.slot },
+          { encounter: targetMatch, slot: target.slot }
         );
       } finally {
         setIsSwapping(false);
@@ -230,30 +229,33 @@ export function BracketView<M extends BracketMatch>({
       return (
         <>
           {editable && (
-            <button
+            <Button
               type="button"
-              className={FOOTER_BUTTON}
+              variant="ghost"
+              size="icon-xs"
+              className="text-[color:var(--aqt-fg-muted)]"
               aria-label={t("bracket.editMatch")}
               onClick={(e) => {
                 e.stopPropagation();
                 onEdit?.(match);
               }}
             >
-              <Pencil className="size-3.5" aria-hidden />
-            </button>
+              <Pencil aria-hidden />
+            </Button>
           )}
           {reportable && (
-            <button
+            <Button
               type="button"
-              className="flex items-center justify-center rounded-[5px] border border-[color:color-mix(in_srgb,var(--aqt-teal)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_16%,transparent)] p-0.5 text-[color:var(--aqt-teal)] transition-colors hover:bg-[color:color-mix(in_srgb,var(--aqt-teal)_24%,transparent)]"
+              variant="accent"
+              size="icon-xs"
               aria-label={t("bracket.reportMatch")}
               onClick={(e) => {
                 e.stopPropagation();
                 onReport?.(match);
               }}
             >
-              <FileEdit className="size-3" aria-hidden />
-            </button>
+              <FileEdit aria-hidden />
+            </Button>
           )}
         </>
       );
@@ -274,43 +276,51 @@ export function BracketView<M extends BracketMatch>({
 
   const toolbar = (fullscreen: boolean) => (
     <div className="flex items-center gap-1.5" role="toolbar" aria-label={t("bracket.toolbar")}>
-      <button
+      <Button
         type="button"
-        className={TOOL_BUTTON}
+        variant="outline"
+        size="icon"
+        className="bg-[hsl(0_0%_0%/0.6)]"
         onClick={viewport.zoomOut}
         disabled={viewport.scale <= MIN_SCALE}
         aria-label={t("bracket.zoomOut")}
         title={t("bracket.zoomOut")}
       >
-        <Minus className="h-4 w-4" aria-hidden />
-      </button>
+        <Minus aria-hidden />
+      </Button>
       <span className="min-w-10 text-center text-label tabular-nums text-[color:var(--aqt-fg-muted)]" aria-live="polite">
         {Math.round(viewport.scale * 100)}%
       </span>
-      <button
+      <Button
         type="button"
-        className={TOOL_BUTTON}
+        variant="outline"
+        size="icon"
+        className="bg-[hsl(0_0%_0%/0.6)]"
         onClick={viewport.zoomIn}
         disabled={viewport.scale >= MAX_SCALE}
         aria-label={t("bracket.zoomIn")}
         title={t("bracket.zoomIn")}
       >
-        <Plus className="h-4 w-4" aria-hidden />
-      </button>
-      <button
+        <Plus aria-hidden />
+      </Button>
+      <Button
         type="button"
-        className={TOOL_BUTTON}
+        variant="outline"
+        size="icon"
+        className="bg-[hsl(0_0%_0%/0.6)]"
         onClick={viewport.fit}
         aria-label={t("bracket.zoomFit")}
         title={t("bracket.zoomFit")}
       >
-        <Scan className="h-4 w-4" aria-hidden />
-      </button>
+        <Scan aria-hidden />
+      </Button>
       {onSwapSlots ? (
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="icon"
           className={cn(
-            TOOL_BUTTON,
+            "bg-[hsl(0_0%_0%/0.6)]",
             isRearranging && "border-[color:var(--aqt-teal)] text-[color:var(--aqt-teal)]"
           )}
           onClick={() => setIsRearranging((value) => !value)}
@@ -319,19 +329,21 @@ export function BracketView<M extends BracketMatch>({
           title={t("bracket.rearrange")}
           data-bracket-rearrange
         >
-          <Move className="h-4 w-4" aria-hidden />
-        </button>
+          <Move aria-hidden />
+        </Button>
       ) : null}
       {fullscreen ? null : (
-        <button
+        <Button
           type="button"
-          className={TOOL_BUTTON}
+          variant="outline"
+          size="icon"
+          className="bg-[hsl(0_0%_0%/0.6)] [&_svg]:size-4.5"
           onClick={() => setIsFullscreen(true)}
           aria-label={t("common.bracketFullscreen")}
           title={t("common.bracketFullscreen")}
         >
-          <Maximize2 className="h-4.5 w-4.5" aria-hidden />
-        </button>
+          <Maximize2 aria-hidden />
+        </Button>
       )}
     </div>
   );

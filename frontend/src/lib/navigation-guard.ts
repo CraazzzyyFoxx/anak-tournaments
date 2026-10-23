@@ -41,17 +41,26 @@ export function getInternalNavigationTarget(
   }
 }
 
+/**
+ * Whether following `nextHref` from `currentHref` leaves the current document.
+ *
+ * `nextHref` resolves against the current URL, not the origin, so `#group`
+ * means this page's group rather than the site root's. A fragment-only change
+ * scrolls and unmounts nothing, so it is not a navigation the unsaved guard has
+ * to stop: the settings outline links to its groups that way.
+ */
 export function isChangedInternalNavigation(
   currentHref: string,
   nextHref: string | null | undefined,
   currentOrigin: string
 ): boolean {
-  const currentTarget = getInternalNavigationTarget(currentHref, currentOrigin);
-  const nextTarget = getInternalNavigationTarget(nextHref, currentOrigin);
-
-  if (!currentTarget || !nextTarget) {
+  if (!getInternalNavigationTarget(currentHref, currentOrigin) || !nextHref) return false;
+  try {
+    const current = new URL(currentHref, currentOrigin);
+    const next = new URL(nextHref, current);
+    if (next.origin !== currentOrigin) return false;
+    return `${current.pathname}${current.search}` !== `${next.pathname}${next.search}`;
+  } catch {
     return false;
   }
-
-  return currentTarget !== nextTarget;
 }

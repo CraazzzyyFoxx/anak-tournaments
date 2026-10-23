@@ -28,27 +28,32 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 import sqlalchemy as sa  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
 
+from shared import models  # noqa: E402
 from shared.core.enums import (  # noqa: E402
     DraftPickStatus,
     DraftPlayerStatus,
     DraftStatus,
-    HeroClass,
     TournamentStatus,
 )
 from shared.core.errors import ApiHTTPException  # noqa: E402
-from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
-from shared.models.balancer.draft import DraftPick  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
+from shared.domain.team_format import FormatDimension, FormatRule, TeamFormat  # noqa: E402
+from shared.models.catalog import CatalogRole  # noqa: E402
+from shared.models.draft import DraftPick  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
 from shared.models.platform.realtime import WorkspaceEvent  # noqa: E402
 from shared.models.registration.registration import (  # noqa: E402
-    BalancerRegistration,
-    BalancerRegistrationIdentity,
-    BalancerRegistrationRole,
+    Registration,
+    RegistrationIdentity,
+    RegistrationRole,
 )
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
+from shared.repository import CatalogRoleRepository  # noqa: E402
+from shared.schemas.role import RoleRef  # noqa: E402
+from shared.services.team_format import save_tournament_format  # noqa: E402
 from shared.testing import create_test_async_engine  # noqa: E402
-from src import models  # noqa: E402
+from src import schemas  # noqa: E402
 from src.domain.draft.entities import PoolSeat  # noqa: E402
 from src.rpc import draft as draft_rpc  # noqa: E402
 from src.services.draft import board as draft_board  # noqa: E402
@@ -103,7 +108,7 @@ def _identity(user_id: int, workspace_id: int, team_actions: list[str]) -> dict:
 # `rounds=2, team_size=3` pair: `role_targets_for_team_size(3)` resolved to
 # 1 tank / 2 damage / 0 support, which is exactly this shape, and `draft_rounds`
 # derives the same 2 rounds the calls used to pass explicitly.
-_SHAPE = parse_roster_slots({"tank": 1, "damage": 2})
+_SHAPE = RosterShape(entries=tuple({"tank": 1, "damage": 2}.items()))
 
 
 _UNIQUE = 0
@@ -141,15 +146,24 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 name=f"T {self._suffix}",
                 slug=f"t-{self._suffix}",
                 status=DraftStatus.SETUP.value,
+                team_formation="draft",
             )
             # Tournament.status is TournamentStatus; reuse "draft" value via enum string.
             tourn.status = "draft"
-            # The draft resolves its shape from the tournament/workspace override,
-            # not from the shape stored on the session, so the override has to
-            # match `_SHAPE` or every start preflight sees the default 5-stack.
-            tourn.roster_slots_json = {"tank": 1, "damage": 2}
             s.add(tourn)
             await s.flush()
+            await save_tournament_format(
+                s,
+                tourn,
+                TeamFormat(
+                    discipline="overwatch",
+                    name="Three seats",
+                    starter_min=3,
+                    starter_max=3,
+                    dimensions=(FormatDimension("player_role", "enforced"),),
+                    rules=(FormatRule("player_role", "tank", 1, 1), FormatRule("player_role", "damage", 2, 2)),
+                ),
+            )
             users = []
             for i in range(3):
                 u = User(name=f"cap-{self._suffix}-{i}")
@@ -179,6 +193,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             self.captain_user_ids = [u.id for u in users]
             self.captain_auth_user_ids = [u.id for u in auth_users]
             self.captain_member_ids = [m.id for m in members]
+            self.export_user_ids = []
             await s.commit()
 
     async def asyncTearDown(self) -> None:
@@ -186,21 +201,28 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await self.engine.dispose()
             return
         async with self.Session() as s:
-            from shared.models.balancer.draft import DraftSession
+            from shared.models.draft import DraftSession
 
             ids = (
                 await s.scalars(sa.select(DraftSession.id).where(DraftSession.tournament_id == self.tournament_id))
             ).all()
+            # Rows created by export() + realtime publisher.
+            await s.execute(
+                sa.delete(WorkspaceEvent).where(
+                    sa.or_(
+                        WorkspaceEvent.tournament_id == self.tournament_id,
+                        WorkspaceEvent.topic.in_([f"draft:{sid}:board" for sid in ids]),
+                    )
+                )
+            )
             for sid in ids:
                 await s.execute(sa.delete(DraftSession).where(DraftSession.id == sid))
-            # Rows created by export() + realtime publisher.
-            await s.execute(sa.delete(WorkspaceEvent).where(WorkspaceEvent.tournament_id == self.tournament_id))
             await s.execute(sa.delete(models.Player).where(models.Player.tournament_id == self.tournament_id))
             await s.execute(sa.delete(models.Team).where(models.Team.tournament_id == self.tournament_id))
             await s.execute(sa.delete(Tournament).where(Tournament.id == self.tournament_id))
             # players.user.auth_user_id is a plain column on User (no separate
             # link-table row to clean up); deleting the User rows below is enough.
-            await s.execute(sa.delete(User).where(User.id.in_(self.captain_user_ids)))
+            await s.execute(sa.delete(User).where(User.id.in_(self.captain_user_ids + self.export_user_ids)))
             await s.execute(sa.delete(models.AuthUser).where(models.AuthUser.id.in_(self.captain_auth_user_ids)))
             await s.execute(sa.delete(Workspace).where(Workspace.id == self.workspace_id))
             await s.commit()
@@ -215,13 +237,13 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
         primary: str | None = None,
         workspace_member_id: int | None = None,
     ) -> int:
-        """One approved, in-pool ``balancer.registration`` with its role rows.
+        """One approved, in-pool ``registration.registration`` with its role rows.
 
         ``ranks`` is ``{slot_code: rank}`` in priority order; a ``None`` rank
         leaves the role DECLARED but unranked, which is what makes it unplayable
         and the registration unseatable.
         """
-        reg = BalancerRegistration(
+        reg = Registration(
             tournament_id=self.tournament_id,
             display_name=tag,
             status="approved",
@@ -231,7 +253,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
         s.add(reg)
         await s.flush()
         s.add(
-            BalancerRegistrationIdentity(
+            RegistrationIdentity(
                 registration_id=reg.id,
                 provider="battlenet",
                 position=0,
@@ -240,11 +262,13 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             )
         )
         lead = primary or next(iter(ranks))
+        catalog_roles = await CatalogRoleRepository().rated_rows(s, discipline="overwatch", workspace_id=None)
         for priority, (role, rank) in enumerate(ranks.items()):
             s.add(
-                BalancerRegistrationRole(
+                RegistrationRole(
                     registration_id=reg.id,
-                    role=role,
+                    catalog_role=catalog_roles[role],
+                    dimension_id=catalog_roles[role].dimension_id,
                     is_primary=role == lead,
                     priority=priority,
                     rank_value=rank,
@@ -290,6 +314,29 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
         await lifecycle.lifecycle_service.seed(s, draft, seats=await self._seats(s))
         await s.commit()
         return draft
+
+    async def _provision_export_identities(self, session) -> None:
+        rows = (
+            await session.execute(
+                sa.select(Registration.workspace_member_id, RegistrationIdentity.handle)
+                .join(
+                    RegistrationIdentity,
+                    RegistrationIdentity.registration_id == Registration.id,
+                )
+                .where(Registration.tournament_id == self.tournament_id)
+            )
+        ).all()
+        for member_id, tag in rows:
+            if member_id is not None:
+                member = await session.get(WorkspaceMember, member_id)
+                user = await session.get(User, member.player_id)
+                user.name = tag
+            else:
+                user = User(name=tag)
+                session.add(user)
+                await session.flush()
+                self.export_user_ids.append(user.id)
+        await session.commit()
 
     async def test_seed_creates_snake_picks_and_ready(self) -> None:
         async with self.Session() as s:
@@ -356,6 +403,71 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await s.commit()
             self.assertEqual(draft.status, DraftStatus.LIVE.value)
 
+    async def test_session_create_needs_a_draft_formed_tournament(self) -> None:
+        async def _create(s):
+            return await lifecycle.lifecycle_service.create_for_tournament(
+                s,
+                schemas.DraftSessionCreateRequest(),
+                tournament_id=self.tournament_id,
+                workspace_id=self.workspace_id,
+                actor_user_id=self.captain_auth_user_ids[0],
+            )
+
+        async with self.Session() as s:
+            await s.execute(
+                sa.update(Tournament).values(team_formation="balancer").where(Tournament.id == self.tournament_id)
+            )
+            with self.assertRaises(ApiHTTPException) as ctx:
+                await _create(s)
+            self.assertEqual(ctx.exception.status_code, 409)
+            self.assertEqual(ctx.exception.detail[0]["code"], "tournament_not_draft_formation")
+
+            await s.execute(
+                sa.update(Tournament).values(team_formation="draft").where(Tournament.id == self.tournament_id)
+            )
+            draft = await _create(s)
+            await s.commit()
+            self.assertEqual(draft.status, DraftStatus.SETUP.value)
+
+    async def test_a_session_older_than_the_formation_rule_cannot_seed_or_start(self) -> None:
+        async with self.Session() as s:
+            # Seeded while the tournament ran a draft; it forms its teams by the
+            # balancer now -- as a session created before the create guard can.
+            draft = await self._new_session(s)
+            await s.execute(
+                sa.update(Tournament).values(team_formation="balancer").where(Tournament.id == self.tournament_id)
+            )
+            await s.commit()
+
+            with self.assertRaises(ApiHTTPException) as ctx:
+                await lifecycle.lifecycle_service.seed(s, draft, seats=[])
+            self.assertEqual(ctx.exception.status_code, 409)
+            self.assertEqual(ctx.exception.detail[0]["code"], "tournament_not_draft_formation")
+            for force in (False, True):
+                with self.assertRaises(ApiHTTPException) as ctx:
+                    await lifecycle.lifecycle_service.start(s, draft, force=force)
+                self.assertEqual(ctx.exception.status_code, 409)
+                self.assertEqual(ctx.exception.detail[0]["code"], "tournament_not_draft_formation")
+            self.assertEqual(draft.status, DraftStatus.READY.value)
+
+    async def test_session_settings_lock_once_the_draft_starts(self) -> None:
+        patch = schemas.DraftSessionPatchRequest(pick_time_seconds=90)
+        async with self.Session() as s:
+            draft = await self._new_session(s)
+            await lifecycle.lifecycle_service.patch_session(s, draft.id, patch, actor_user_id=1)
+            await s.commit()
+            self.assertEqual(draft.pick_time_seconds, 90)
+
+            await lifecycle.lifecycle_service.start(s, draft)
+            await s.commit()
+            with self.assertRaises(ApiHTTPException) as ctx:
+                await lifecycle.lifecycle_service.patch_session(
+                    s, draft.id, schemas.DraftSessionPatchRequest(pick_time_seconds=30), actor_user_id=1
+                )
+            self.assertEqual(ctx.exception.status_code, 409)
+            self.assertEqual(ctx.exception.detail[0]["code"], "draft_settings_locked")
+            self.assertEqual(draft.pick_time_seconds, 90)
+
     async def test_select_advances_board(self) -> None:
         async with self.Session() as s:
             draft = await self._new_session(s)
@@ -376,7 +488,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                     )
                 )
             ).all()
-            chosen = available[0]
+            chosen = min(available, key=lambda player: player.id)  # First seeded seat is damage.
             res = await selection.selection_service.select(
                 s,
                 draft,
@@ -439,7 +551,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 current,
                 player_id=chosen.id,
                 expected_version=current.version,
-                target_role=HeroClass.damage,
+                target_role="damage",
                 actor_user_id=team.captain_user_id,
                 actor_auth_user_id=None,
                 actor_player_ids=[team.captain_user_id],
@@ -447,7 +559,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             )
             await s.commit()
             # The pick records the drafted off-role and its rank (not primary TANK@3000).
-            self.assertEqual(res.pick.target_role, HeroClass.damage.slot_code)
+            self.assertEqual(res.pick.target_role, "damage")
             self.assertEqual(res.pick.target_rank_value, 2500)
 
     async def test_select_allows_captain_auth_user_without_team_import(self) -> None:
@@ -605,6 +717,74 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
 
             self.assertEqual(res.pick.status, DraftPickStatus.COMPLETED.value)
 
+    async def _first_available(self, s, draft) -> lifecycle.DraftPlayer:
+        return (
+            await s.scalars(
+                sa.select(lifecycle.DraftPlayer)
+                .where(
+                    lifecycle.DraftPlayer.session_id == draft.id,
+                    lifecycle.DraftPlayer.status == DraftPlayerStatus.AVAILABLE.value,
+                )
+                .order_by(lifecycle.DraftPlayer.id.asc())
+            )
+        ).first()
+
+    async def test_a_stale_version_on_a_pick_still_on_the_clock_says_the_board_changed(self) -> None:
+        """Not "already resolved": the pick is still on the clock, only the token moved."""
+        async with self.Session() as s:
+            draft = await self._new_session(s)
+            await lifecycle.lifecycle_service.start(s, draft)
+            await s.commit()
+            current = await s.get(DraftPick, draft.current_pick_id)
+            chosen = await self._first_available(s, draft)
+
+            with self.assertRaises(ApiHTTPException) as ctx:
+                await selection.selection_service.select(
+                    s,
+                    draft,
+                    current,
+                    player_id=chosen.id,
+                    expected_version=current.version - 1,
+                    target_role=None,
+                    actor_user_id=None,
+                    actor_auth_user_id=None,
+                    actor_player_ids=[],
+                    is_admin=True,
+                )
+
+            self.assertEqual(ctx.exception.status_code, 409)
+            self.assertEqual(ctx.exception.detail[0]["code"], "draft_pick_stale_version")
+
+    async def test_a_version_bumped_mid_request_is_reported_as_a_changed_board(self) -> None:
+        """The race path: the row was read at v, overtime moved it to v+1 before the UPDATE ran."""
+        async with self.Session() as s:
+            draft = await self._new_session(s)
+            await lifecycle.lifecycle_service.start(s, draft)
+            await s.commit()
+            current = await s.get(DraftPick, draft.current_pick_id)
+            chosen = await self._first_available(s, draft)
+            async with self.Session() as clock:
+                await clock.execute(
+                    sa.update(DraftPick).where(DraftPick.id == current.id).values(version=DraftPick.version + 1)
+                )
+                await clock.commit()
+
+            with self.assertRaises(ApiHTTPException) as ctx:
+                await selection.selection_service.select(
+                    s,
+                    draft,
+                    current,
+                    player_id=chosen.id,
+                    expected_version=current.version,
+                    target_role=None,
+                    actor_user_id=None,
+                    actor_auth_user_id=None,
+                    actor_player_ids=[],
+                    is_admin=True,
+                )
+
+            self.assertEqual(ctx.exception.detail[0]["code"], "draft_pick_stale_version")
+
     async def test_finalize_race_only_one_winner(self) -> None:
         async with self.Session() as s:
             draft = await self._new_session(s)
@@ -612,7 +792,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await s.commit()
             current = await s.get(DraftPick, draft.current_pick_id)
             v = current.version
-            won_first = await selection.selection_service._finalize(
+            won_first = await selection.selection_service.picks_repo.finalize_if_on_clock(
                 s,
                 current.id,
                 status=DraftPickStatus.COMPLETED,
@@ -623,7 +803,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 expected_version=v,
             )
             # Second writer with the same expected_version must lose.
-            won_second = await selection.selection_service._finalize(
+            won_second = await selection.selection_service.picks_repo.finalize_if_on_clock(
                 s,
                 current.id,
                 status=DraftPickStatus.AUTOPICKED,
@@ -671,7 +851,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await lifecycle.lifecycle_service.delete_session(s, draft)
             await s.commit()
 
-            from shared.models.balancer.draft import DraftPlayer, DraftSession, DraftTeam
+            from shared.models.draft import DraftPlayer, DraftSession, DraftTeam
 
             for model in (DraftSession, DraftTeam, DraftPlayer, DraftPick):
                 column = DraftSession.id if model is DraftSession else model.session_id
@@ -699,7 +879,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await lifecycle.lifecycle_service.delete_session(s, draft)
             await s.commit()
 
-            from shared.models.balancer.draft import DraftSession
+            from shared.models.draft import DraftSession
 
             self.assertIsNone(await s.get(DraftSession, draft_id))
 
@@ -722,8 +902,10 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 await s.commit()
 
             self.assertEqual(draft.status, DraftStatus.COMPLETED.value)
+            await self._provision_export_identities(s)
 
-            _, removed, imported = await draft_export.export_service.export(s, draft)
+            _, removed, imported, advisories = await draft_export.export_service.export(s, draft)
+            self.assertEqual(advisories, [])
             await s.commit()
             self.assertEqual(removed, 0)
             self.assertEqual(imported, 3)
@@ -746,6 +928,33 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await s.commit()
             with self.assertRaises(ApiHTTPException):
                 await draft_export.export_service.export(s, draft)
+
+    async def test_export_refuses_players_without_a_handle_before_writing(self) -> None:
+        """A handle-less captain used to be skipped while a team named after them was created captainless."""
+        async with self.Session() as s:
+            draft = await self._new_session(s)
+            await lifecycle.lifecycle_service.start(s, draft)
+            await s.commit()
+            while draft.status == DraftStatus.LIVE.value:
+                current = await s.get(DraftPick, draft.current_pick_id)
+                await selection.selection_service.autopick(s, draft, current, expected_version=current.version)
+                await s.commit()
+                await s.refresh(draft)
+            await self._provision_export_identities(s)
+            captain = f"Cap{self._suffix}-0#1"
+            await s.execute(sa.delete(RegistrationIdentity).where(RegistrationIdentity.handle == captain))
+            await s.commit()
+
+            with self.assertRaises(ApiHTTPException) as caught:
+                await draft_export.export_service.export(s, draft)
+
+            self.assertEqual(caught.exception.status_code, 422)
+            [detail] = caught.exception.detail
+            self.assertEqual(detail["code"], "missing_handle")
+            self.assertIn(captain, detail["msg"])
+            await s.rollback()
+            teams = await s.scalars(sa.select(models.Team).where(models.Team.tournament_id == self.tournament_id))
+            self.assertEqual(teams.all(), [])
 
     async def test_clock_fires_autopick_when_expired(self) -> None:
         async with self.Session() as s:
@@ -786,7 +995,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 payload={"session_id": draft.id, "status": draft.status},
             )
             await s.commit()
-            topic = f"tournament:{self.tournament_id}:draft"
+            topic = f"draft:{draft.id}:board"
             max_id = await s.scalar(sa.select(sa.func.max(WorkspaceEvent.id)).where(WorkspaceEvent.topic == topic))
             board = await draft_board.board_service.build_board(s, draft)
             self.assertIsNotNone(board.last_event_id)
@@ -809,13 +1018,14 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 current = await s.get(DraftPick, draft.current_pick_id)
                 await selection.selection_service.autopick(s, draft, current, expected_version=current.version)
                 await s.commit()
+            await self._provision_export_identities(s)
 
-            _, removed1, imported1 = await draft_export.export_service.export(s, draft)
+            _, removed1, imported1, _ = await draft_export.export_service.export(s, draft)
             await s.commit()
             self.assertEqual((removed1, imported1), (0, 3))
 
             # Re-export: prior teams are removed first, then re-created.
-            _, removed2, imported2 = await draft_export.export_service.export(s, draft)
+            _, removed2, imported2, _ = await draft_export.export_service.export(s, draft)
             await s.commit()
             self.assertEqual(removed2, 3)
             self.assertEqual(imported2, 3)
@@ -825,7 +1035,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             self.assertEqual(len(teams), 3)
 
     async def _build_balancer_pool(self, s, n: int) -> list[int]:
-        """Create n approved, in-pool BalancerRegistration rows (with roles). Returns ids."""
+        """Create n approved, in-pool Registration rows (with roles). Returns ids."""
         roles = ["tank", "damage", "support"]
         return [
             await self._registration(s, tag=f"Pool{self._suffix}-{i}#1", ranks={roles[i % 3]: 3000 + i * 25})
@@ -858,7 +1068,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             # rank typed in the balancer after seeding show up without a re-seed.
             rosters = await draft_rosters.load(s, draft, list(players))
             self.assertEqual(len(rosters), 9)
-            leads = {rosters[p.id].primary.role.slot_code for p in players}
+            leads = {rosters[p.id].primary.role for p in players}
             self.assertEqual(leads, {"tank", "damage", "support"})
             available = [p for p in players if p.status == DraftPlayerStatus.AVAILABLE.value]
             self.assertEqual(len(available), 6)
@@ -879,13 +1089,13 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             captain = next(p for p in players if p.status == DraftPlayerStatus.PICKED.value)
             available = next(p for p in players if p.status == DraftPlayerStatus.AVAILABLE.value)
             await s.execute(
-                sa.update(BalancerRegistration)
-                .where(BalancerRegistration.id == available.registration_id)
+                sa.update(Registration)
+                .where(Registration.id == available.registration_id)
                 .values(balancer_status="excluded")
             )
             await s.execute(
-                sa.update(BalancerRegistration)
-                .where(BalancerRegistration.id == captain.registration_id)
+                sa.update(Registration)
+                .where(Registration.id == captain.registration_id)
                 .values(deleted_at=datetime.now(UTC))
             )
             await s.commit()
@@ -997,7 +1207,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 payload={"session_id": draft.id, "status": draft.status},
             )
             await s.commit()
-            topic = f"tournament:{self.tournament_id}:draft"
+            topic = f"draft:{draft.id}:board"
             row = await s.scalar(
                 sa.select(WorkspaceEvent).where(
                     WorkspaceEvent.topic == topic,
@@ -1005,7 +1215,6 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 )
             )
             self.assertIsNotNone(row)
-            self.assertEqual(row.tournament_id, self.tournament_id)
             self.assertEqual(row.payload["session_id"], draft.id)
 
     async def test_rollback_reverts_pick_and_players(self) -> None:
@@ -1030,7 +1239,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                     )
                 )
             ).all()
-            chosen = available[0]
+            chosen = min(available, key=lambda player: player.id)  # First seeded seat is damage.
 
             await selection.selection_service.select(
                 s,
@@ -1108,7 +1317,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             roster = rosters.get(player.id)
             if roster is None or roster.primary is None:
                 continue
-            grouped.setdefault(roster.primary.role.slot_code, []).append((roster.best_rank or 0, player.id))
+            grouped.setdefault(roster.primary.role, []).append((roster.best_rank or 0, player.id))
         return {role: [pid for _, pid in sorted(rows)] for role, rows in grouped.items()}
 
     async def test_queue_skips_unsafe_entries_and_hands_autopick_its_first_safe_one(self) -> None:
@@ -1130,7 +1339,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             preview = queued.autopick_preview
             self.assertIsNotNone(preview)
             self.assertEqual(preview.player_id, weakest_damage)
-            self.assertEqual(preview.role, "damage")
+            self.assertEqual(preview.role.role, "damage")
             self.assertEqual(preview.source, "queue")
 
             result = await selection.selection_service.autopick(s, draft, current, expected_version=current.version)
@@ -1138,7 +1347,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             # Preview and autopick are one code path: the board must land on
             # exactly the player the captain was shown.
             self.assertEqual(result.pick.picked_player_id, preview.player_id)
-            self.assertEqual(result.pick.target_role, preview.role)
+            self.assertEqual(result.pick.target_role, preview.role.role)
 
     async def test_an_empty_queue_leaves_autopick_on_its_fit_strategy(self) -> None:
         async with self.Session() as s:
@@ -1219,7 +1428,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
 
             # The captain already fills this shape's single tank slot and there
             # are no flex slots, so damage is the only role left to seat.
-            self.assertEqual({score.role.slot_code for score in scores}, {"damage"})
+            self.assertEqual({score.role for score in scores}, {"damage"})
             self.assertEqual({score.player_id for score in scores}, set(pool["damage"]))
             self.assertTrue(all(1 <= score.score <= 99 for score in scores))
             # Min-max normalization: the spread always reaches both ends.
@@ -1336,3 +1545,271 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
 
         denied = await broker.handlers["rpc.balancer.draft.queue_set"]({**reader, "payload": {"player_ids": []}}, None)
         self.assertEqual(denied["error"]["code"], "forbidden")
+
+    async def test_tournament_routes_refuse_a_session_of_another_tournament(self) -> None:
+        # An organizer of THIS workspace names their own tournament in the path
+        # and a session of a tournament in a workspace they hold nothing in.
+        broker = _CapturingBroker()
+        draft_rpc.register(broker, _LoudLogger())
+        async with self.Session() as s:
+            other_ws = Workspace(slug=f"ws-other-{self._suffix}", name=f"WS other {self._suffix}")
+            s.add(other_ws)
+            await s.flush()
+            other = Tournament(
+                workspace_id=other_ws.id, name=f"T other {self._suffix}", slug=f"t-other-{self._suffix}", status="draft"
+            )
+            s.add(other)
+            await s.flush()
+            foreign = await lifecycle.lifecycle_service.create_session(
+                s, tournament_id=other.id, workspace_id=other_ws.id, shape=_SHAPE
+            )
+            await s.commit()
+            foreign_id, other_id, other_ws_id = foreign.id, other.id, other_ws.id
+
+        async def _cleanup() -> None:
+            async with self.Session() as s:
+                await s.execute(
+                    sa.delete(lifecycle.DraftSession).where(lifecycle.DraftSession.tournament_id == other_id)
+                )
+                await s.execute(sa.delete(WorkspaceEvent).where(WorkspaceEvent.tournament_id == other_id))
+                await s.execute(sa.delete(Tournament).where(Tournament.id == other_id))
+                await s.execute(sa.delete(Workspace).where(Workspace.id == other_ws_id))
+                await s.commit()
+
+        self.addAsyncCleanup(_cleanup)
+
+        base = {
+            "id": foreign_id,
+            "tournament_id": self.tournament_id,
+            "identity": _identity(1, self.workspace_id, ["read", "create"]),
+        }
+        payloads = {
+            "rpc.balancer.draft.session_patch": {"pick_time_seconds": 99},
+            "rpc.balancer.draft.seed": {"pool_captains": [{"registration_id": 1}], "preview_only": True},
+        }
+        for verb in (
+            "session_patch",
+            "seed",
+            "export",
+            "export_ranks",
+            "session_delete",
+        ):
+            subject = f"rpc.balancer.draft.{verb}"
+            result = await broker.handlers[subject]({**base, "payload": payloads.get(subject, {})}, None)
+            self.assertFalse(result["ok"], subject)
+            self.assertEqual(result["error"]["code"], "not_found", subject)
+
+        async with self.Session() as s:
+            untouched = await s.get(lifecycle.DraftSession, foreign_id)
+            self.assertEqual((untouched.status, untouched.pick_time_seconds), (DraftStatus.SETUP.value, 45))
+
+    async def test_session_lifecycle_answers_to_the_sessions_own_workspace(self) -> None:
+        # The lifecycle routes name only the session: its own workspace decides, so an organizer of this workspace
+        # cannot pause a draft of a workspace they hold nothing in.
+        broker = _CapturingBroker()
+        draft_rpc.register(broker, _LoudLogger())
+        async with self.Session() as s:
+            other_ws = Workspace(slug=f"ws-life-{self._suffix}", name=f"WS life {self._suffix}")
+            s.add(other_ws)
+            await s.flush()
+            other = Tournament(
+                workspace_id=other_ws.id, name=f"T life {self._suffix}", slug=f"t-life-{self._suffix}", status="draft"
+            )
+            s.add(other)
+            await s.flush()
+            foreign = await lifecycle.lifecycle_service.create_session(
+                s, tournament_id=other.id, workspace_id=other_ws.id, shape=_SHAPE
+            )
+            await s.commit()
+            foreign_id, other_id, other_ws_id = foreign.id, other.id, other_ws.id
+            own = await self._live_draft(s)
+            own_id = own.id
+
+        async def _cleanup() -> None:
+            async with self.Session() as s:
+                await s.execute(
+                    sa.delete(lifecycle.DraftSession).where(lifecycle.DraftSession.tournament_id == other_id)
+                )
+                await s.execute(sa.delete(Tournament).where(Tournament.id == other_id))
+                await s.execute(sa.delete(Workspace).where(Workspace.id == other_ws_id))
+                await s.commit()
+
+        self.addAsyncCleanup(_cleanup)
+        # A real account: the journal names the actor of every lifecycle move.
+        organizer = _identity(self.captain_auth_user_ids[0], self.workspace_id, ["read", "create"])
+
+        refused = await broker.handlers["rpc.balancer.draft.cancel"]({"id": foreign_id, "identity": organizer}, None)
+        paused = await broker.handlers["rpc.balancer.draft.pause"]({"id": own_id, "identity": organizer}, None)
+
+        self.assertEqual("forbidden", refused["error"]["code"])
+        self.assertTrue(paused["ok"], paused)
+        self.assertEqual("paused", paused["data"]["status"])
+
+    async def test_a_tournament_role_edit_answers_to_the_organizer_grant(self) -> None:
+        # R-B1: the role edit authorizes on the session's own owner -- here the tournament workspace's team.create.
+        broker = _CapturingBroker()
+        draft_rpc.register(broker, _LoudLogger())
+        handler = broker.handlers["rpc.balancer.draft.player_role_edit"]
+        async with self.Session() as s:
+            draft = await self._new_session(s)
+            player_id, version = (
+                await s.execute(
+                    sa.select(models.DraftPlayer.id, models.DraftPlayer.version)
+                    .join(Registration, Registration.id == models.DraftPlayer.registration_id)
+                    .join(RegistrationRole, RegistrationRole.registration_id == Registration.id)
+                    .where(models.DraftPlayer.session_id == draft.id, models.DraftPlayer.is_captain.is_(False))
+                    .where(RegistrationRole.catalog_role.has(code="damage"))
+                    .limit(1)
+                )
+            ).one()
+        request = {
+            "id": player_id,
+            "session_id": draft.id,
+            "payload": {
+                "expected_version": version,
+                "role": {"dimension": "player_role", "role": "tank"},
+                "rank_value": 2500,
+                "reason": "Emergency tank",
+                "preview_only": True,
+            },
+        }
+
+        refused = await handler({**request, "identity": _identity(1, self.workspace_id, ["read"])}, None)
+        edited = await handler({**request, "identity": _identity(1, self.workspace_id, ["create"])}, None)
+
+        self.assertEqual("forbidden", refused["error"]["code"])
+        self.assertTrue(edited["ok"], edited)
+        self.assertEqual((player_id, False), (edited["data"]["player_id"], edited["data"]["committed"]))
+
+    async def test_all_role_input_boundaries_reject_foreign_dimensions_and_sub_roles(self) -> None:
+        broker = _CapturingBroker()
+        draft_rpc.register(broker, _LoudLogger())
+        async with self.Session() as s:
+            draft = await self._live_draft(s)
+            pick = await s.get(DraftPick, draft.current_pick_id)
+            players = (
+                (await s.scalars(sa.select(models.DraftPlayer).where(models.DraftPlayer.session_id == draft.id)))
+                .unique()
+                .all()
+            )
+            player = next(player for player in players if not player.is_captain)
+            captain = next(player for player in players if player.is_captain)
+            roles = await CatalogRoleRepository().rated_rows(s, discipline="overwatch", workspace_id=None)
+            s.add(
+                CatalogRole(
+                    dimension_id=roles["damage"].dimension_id,
+                    code="damage_custom",
+                    name="Custom",
+                    workspace_id=self.workspace_id,
+                    parent_role_id=roles["damage"].id,
+                )
+            )
+            await s.commit()
+            # Parent is derived output, never an alternative lookup key.
+            resolved = await lifecycle.lifecycle_service.resolve_role(
+                s, draft, RoleRef(dimension="player_role", role="damage", parent="tank")
+            )
+            self.assertEqual(resolved, "damage")
+            self.assertIsNone(await lifecycle.lifecycle_service.resolve_role(s, draft, None))
+
+        identity = _identity(self.captain_auth_user_ids[0], self.workspace_id, ["create"])
+        for ref, error in (
+            ({"dimension": "lane", "role": "damage"}, "role_dimension_mismatch"),
+            ({"dimension": "player_role", "role": "damage_custom", "parent": "damage"}, "unknown_role"),
+        ):
+            cases = (
+                (
+                    "seed",
+                    {"id": draft.id, "tournament_id": self.tournament_id},
+                    {
+                        "expected_version": draft.version,
+                        "pool_captains": [{"registration_id": captain.registration_id, "role": ref}],
+                    },
+                ),
+                (
+                    "player_role_edit",
+                    {"id": player.id, "session_id": draft.id},
+                    {
+                        "expected_version": player.version,
+                        "role": ref,
+                        "rank_value": 2500,
+                        "reason": "Role boundary",
+                        "preview_only": True,
+                    },
+                ),
+                (
+                    "pick_select",
+                    {"id": pick.id},
+                    {
+                        "expected_version": pick.version,
+                        "player_id": player.id,
+                        "target_role": ref,
+                    },
+                ),
+                (
+                    "pick_override",
+                    {"id": pick.id},
+                    {
+                        "expected_version": pick.version,
+                        "player_id": player.id,
+                        "target_role": ref,
+                    },
+                ),
+            )
+            for subject, path, payload in cases:
+                with self.subTest(subject=subject, ref=ref):
+                    result = await broker.handlers[f"rpc.balancer.draft.{subject}"](
+                        {**path, "identity": identity, "payload": payload}, None
+                    )
+                    self.assertFalse(result["ok"])
+                    self.assertEqual(result["error"]["code"], "unprocessable")
+                    self.assertIn(error, result["error"]["message"])
+
+    async def test_linked_captain_pin_seeds_in_preview_and_commit(self) -> None:
+        broker = _CapturingBroker()
+        draft_rpc.register(broker, _LoudLogger())
+        async with self.Session() as s:
+            draft = await lifecycle.lifecycle_service.create_session(
+                s,
+                tournament_id=self.tournament_id,
+                workspace_id=self.workspace_id,
+                shape=_SHAPE,
+            )
+            captains = [seat for seat in await self._seats(s) if seat.draft_position is not None]
+            pool = await draft_rosters.pool(s, draft)
+            self.assertTrue(all(pool[seat.registration_id].player_id is not None for seat in captains))
+            await s.commit()
+            payload = {
+                "expected_version": draft.version,
+                "pool_captains": [
+                    {"registration_id": captain.registration_id, "role": {"dimension": "player_role", "role": "tank"}}
+                    for captain in captains
+                ],
+            }
+        for preview in (True, False):
+            result = await broker.handlers["rpc.balancer.draft.seed"](
+                {
+                    "id": draft.id,
+                    "tournament_id": self.tournament_id,
+                    "identity": _identity(self.captain_auth_user_ids[0], self.workspace_id, ["create"]),
+                    "payload": {**payload, "preview_only": preview},
+                },
+                None,
+            )
+            self.assertTrue(result["ok"], result)
+            async with self.Session() as s:
+                seeded = (
+                    (
+                        await s.scalars(
+                            sa.select(models.DraftPlayer).where(
+                                models.DraftPlayer.session_id == draft.id,
+                                models.DraftPlayer.is_captain,
+                            )
+                        )
+                    )
+                    .unique()
+                    .all()
+                )
+                self.assertEqual(len(seeded), 0 if preview else 3)
+                self.assertTrue(all(player.captain_role == "tank" for player in seeded))
+                self.assertTrue(all(player.workspace_member_id is not None for player in seeded))

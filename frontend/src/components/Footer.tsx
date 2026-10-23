@@ -7,31 +7,27 @@ import { type ComponentProps, type ReactNode } from "react";
 
 import CookieSettingsButton from "@/components/CookieSettingsButton";
 import Github from "@/components/icons/Github";
+import { Eyebrow } from "@/components/ui/eyebrow";
+import Image from "@/components/ui/image";
 import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
-import { APP_VERSION, BRAND_NAME, SITE_URL } from "@/config/site";
+import { APP_VERSION, BRAND_NAME, REPO_URL, SITE_URL } from "@/config/site";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { getAuthProfileHref } from "@/lib/auth/profile-links";
+import { releaseForVersion } from "@/lib/changelog/releases";
 import type { Workspace } from "@/types/workspace.types";
 
-const COLUMN_HEADING_CLASS =
-  "mb-3 text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 const LINK_CLASS =
   "inline-flex min-h-8 items-center gap-1.5 text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+// Colour spelled out (not inherited) so the cookie-settings `Button` matches the links beside it.
 const META_CLASS =
-  "transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+  "text-[color:var(--aqt-fg-dim)] transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 const VERSION_CLASS =
   "rounded-[5px] border border-[color:var(--aqt-border-2)] px-1.5 py-[3px] text-label font-semibold tabular-nums text-[color:var(--aqt-fg-dim)]";
 
-// The repository the app is built from. One constant, because the source link
-// and the version tag link must point at the same repo — they were written out
-// twice and both carried the old `anak-tournaments` name after the rename, so
-// every version chip in the footer 404'd.
-const REPO_URL = "https://github.com/CraazzzyyFoxx/overwatch-tournaments";
-
 /**
  * The footer renders on every page, so its links sit in the viewport of every
- * page — and Next prefetches links on viewport entry by default. Under
- * `force-dynamic` that means a full server render of the privacy policy, the
+ * page — and Next prefetches links on viewport entry by default. With every
+ * route request-time that means a full server render of the privacy policy, the
  * terms and the whole section column for every visitor who scrolls, none of
  * which anyone asked for. Production on 2026-08-15 rendered /privacy 463 times
  * in 23 minutes, 12-19 per visitor, and that traffic helped saturate the edge.
@@ -40,8 +36,8 @@ const REPO_URL = "https://github.com/CraazzzyyFoxx/overwatch-tournaments";
  * a reader reaches maybe once, so paying a normal request on the rare click is
  * the right trade. Every route here has a loading boundary.
  */
-function FooterLink(props: ComponentProps<typeof Link>) {
-  return <Link prefetch={false} {...props} />;
+function FooterLink({ href, ...props }: ComponentProps<typeof Link>) {
+  return <Link prefetch={false} href={href} {...props} />;
 }
 
 /**
@@ -54,8 +50,11 @@ export function Footer({ tenant }: Readonly<{ tenant: Workspace | null }>) {
   const { user } = useAuthProfile();
   const year = new Date().getFullYear();
 
+  // The changelog entry of the running version: a patch release has none of its
+  // own and opens the newest one below it; a version none matches, the page top.
+  const release = releaseForVersion(APP_VERSION);
   const version = APP_VERSION ? (
-    <FooterLink href={`${REPO_URL}/releases/tag/${APP_VERSION}`} className={VERSION_CLASS}>
+    <FooterLink href={release ? `/changelog#v${release.version}` : "/changelog"} className={VERSION_CLASS}>
       {APP_VERSION}
     </FooterLink>
   ) : null;
@@ -94,8 +93,7 @@ export function Footer({ tenant }: Readonly<{ tenant: Workspace | null }>) {
               </>
             ) : (
               <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/brand-mark.svg" alt="" width={28} height={28} className="rounded-[7px]" />
+                <Image src="/brand-mark.svg" alt="" width={28} height={28} className="rounded-[7px]" />
                 <span className="font-display text-[17px] font-extrabold leading-none tracking-[0.02em]">
                   {BRAND_NAME}
                 </span>
@@ -142,6 +140,9 @@ export function Footer({ tenant }: Readonly<{ tenant: Workspace | null }>) {
               <FooterLink href="/docs" className={LINK_CLASS}>
                 {t("common.footer.docs")}
               </FooterLink>
+              <FooterLink href="/changelog" className={LINK_CLASS}>
+                {t("common.footer.changelog")}
+              </FooterLink>
             </Column>
           </>
         ) : (
@@ -163,6 +164,9 @@ export function Footer({ tenant }: Readonly<{ tenant: Workspace | null }>) {
             <Column heading={t("common.footer.resourcesHeading")}>
               <FooterLink href="/docs" className={LINK_CLASS}>
                 {t("common.footer.docs")}
+              </FooterLink>
+              <FooterLink href="/changelog" className={LINK_CLASS}>
+                {t("common.footer.changelog")}
               </FooterLink>
               {/* Same host, any tenant: the gateway registers /api/docs
                   unconditionally regardless of which workspace domain served
@@ -191,8 +195,7 @@ export function Footer({ tenant }: Readonly<{ tenant: Workspace | null }>) {
               href={SITE_URL}
               className="inline-flex items-center gap-1.5 font-semibold text-[color:var(--aqt-fg)]"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand-mark.svg" alt="" width={18} height={18} className="rounded-[4px]" />
+              <Image src="/brand-mark.svg" alt="" width={18} height={18} className="rounded-[4px]" />
               {BRAND_NAME}
             </FooterLink>
             {version}
@@ -212,7 +215,7 @@ export function Footer({ tenant }: Readonly<{ tenant: Workspace | null }>) {
 function Column({ heading, children }: Readonly<{ heading: string; children: ReactNode }>) {
   return (
     <div>
-      <h3 className={COLUMN_HEADING_CLASS}>{heading}</h3>
+      <Eyebrow as="h3" className="mb-3">{heading}</Eyebrow>
       <div className="flex flex-col gap-1">{children}</div>
     </div>
   );

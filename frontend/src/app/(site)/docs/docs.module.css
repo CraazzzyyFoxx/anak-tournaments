@@ -302,33 +302,6 @@
   color: var(--aqt-fg);
 }
 
-.toggle {
-  margin-top: 0.75rem;
-  padding: 0.3rem 0.7rem;
-  border: 1px solid var(--aqt-border);
-  border-radius: var(--aqt-radius-sm);
-  background: none;
-  font-size: var(--text-caption);
-  color: var(--aqt-fg);
-  cursor: pointer;
-  transition: border-color 150ms ease, color 150ms ease;
-}
-
-.toggle:hover {
-  border-color: var(--aqt-teal);
-  color: var(--aqt-teal);
-}
-
-.toggle:focus-visible {
-  outline: 2px solid var(--aqt-teal);
-  outline-offset: 2px;
-}
-
-.empty {
-  font-size: var(--text-body);
-  color: var(--aqt-fg-muted);
-}
-
 /* ---------- Mermaid diagram ---------- */
 
 .diagram {
@@ -368,30 +341,6 @@
   border: 1px solid var(--aqt-border);
   border-radius: var(--aqt-radius-sm);
   background: var(--aqt-card);
-}
-
-.zoomBtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 30px;
-  height: 30px;
-  padding: 0 6px;
-  border: 1px solid var(--aqt-border);
-  border-radius: var(--aqt-radius-sm);
-  background: var(--aqt-bg);
-  color: var(--aqt-fg);
-  cursor: pointer;
-}
-
-.zoomBtn:hover:not(:disabled) {
-  border-color: var(--aqt-teal);
-  color: var(--aqt-teal);
-}
-
-.zoomBtn:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 
 .zoomLevel {

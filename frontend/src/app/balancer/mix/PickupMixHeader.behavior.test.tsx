@@ -10,6 +10,7 @@
 //
 // Switching mixes and creating one moved to the list at `/balancer/mix` --
 // those contracts live in `PickupMixList.behavior.test.tsx` now.
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,24 +28,59 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // the few controls whose accessible names were localized are mapped to their
 // existing English contract below.
 vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string, values?: Record<string, unknown>) => {
-    const label = String(values?.label ?? "");
-    const labels: Record<string, string> = {
-      more: "more",
-      edit: label ? `Edit ${label}` : "edit",
-      save: label ? `Save ${label}` : "save",
-      cancel: label ? `Cancel ${label} edit` : "cancel",
-      roleEdit: "roleEdit",
-      signupTrigger: "signupTrigger",
-      "discord.trigger": "discord.trigger",
-      "discord.allPosts": "discord.allPosts",
-      "posts.delete": "posts.delete"
-    };
-    const value = labels[key] ?? key;
-    if (key === "edit" || key === "save" || key === "cancel") return value;
-    return values ? `${value}(${Object.values(values).join(",")})` : value;
-  }
+  useTranslations: () =>
+    Object.assign(
+      (key: string, values?: Record<string, unknown>) => {
+        const label = String(values?.label ?? "");
+        const labels: Record<string, string> = {
+          more: "more",
+          edit: label ? `Edit ${label}` : "edit",
+          save: label ? `Save ${label}` : "save",
+          cancel: label ? `Cancel ${label} edit` : "cancel",
+          roleEdit: "roleEdit",
+          signupTrigger: "signupTrigger",
+          "discord.trigger": "discord.trigger",
+          "discord.allPosts": "discord.allPosts",
+          "posts.delete": "posts.delete",
+          nameLabel: "mix name",
+          noMix: "No mix yet",
+          "start.addPlayers": "Add players",
+          deleteConfirm: "Delete permanently"
+        };
+        const value = labels[key] ?? key;
+        if (key === "edit" || key === "save" || key === "cancel") return value;
+        return values ? `${value}(${Object.values(values).join(",")})` : value;
+      },
+      // Preset names read as their codes.
+      { has: () => false }
+    )
 }));
+// The server's catalog for the mix's game, with the `mix_eligible` flag it computes.
+vi.mock("@/services/pickBan.service", () => {
+  const preset = (id: string, kind: "hero" | "map", mix_eligible: boolean) => ({
+    id,
+    kind,
+    modes: ["pool"],
+    first_ban_rotation: null,
+    ruleset: { version: 2, timer_seconds: null, on_timeout: "random_fill", phases: [] },
+    mix_eligible
+  });
+  return {
+    default: {
+      getRulesCatalog: async () => ({
+        leaves: [],
+        constraints: [],
+        groups: { hero: [], map: [] },
+        presets: [
+          preset("hero_classic", "hero", true),
+          preset("hero_targeted", "hero", false),
+          preset("hero_anti_one_trick", "hero", true),
+          preset("map_bracket", "map", false)
+        ]
+      })
+    }
+  };
+});
 
 const onOpenPool = vi.fn();
 const onOpenAccess = vi.fn();
@@ -54,11 +90,13 @@ const onLobbyCountChange = vi.fn();
 const onDeleteDiscordPost = vi.fn();
 const onDeleteMix = vi.fn();
 const onRename = vi.fn();
+const onSetBanPreset = vi.fn();
 
 function game(overrides: Partial<CustomGame> = {}): CustomGame {
   return {
     id: 12,
     workspace_id: 7,
+    discipline: "overwatch",
     host_user_id: 9,
     co_hosts: [],
     host_display_name: "Host",
@@ -81,6 +119,7 @@ function game(overrides: Partial<CustomGame> = {}): CustomGame {
     last_match_at: null,
     self_signup: "closed",
     self_role_edit: false,
+    hero_ban_preset: null,
     settings: { points_per_win: 0, team_names: {}, workspace_discord_channel_id: "555" },
     ...overrides
   } as CustomGame;
@@ -107,37 +146,59 @@ function tick() {
 
 const roots: { unmount: () => void }[] = [];
 
-async function mount(
-  currentGame: CustomGame | undefined,
-  props: { canWrite?: boolean; gameLoading?: boolean; canDelete?: boolean } = {}
-) {
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  await act(async () => {
-    const root = createRoot(container);
-    roots.push(root);
-    root.render(
+type MountProps = {
+  canWrite?: boolean;
+  gameLoading?: boolean;
+  canDelete?: boolean;
+  showsRoles?: boolean;
+  onSetFearless?: (fearless: boolean) => void;
+};
+
+function header(currentGame: CustomGame | undefined, props: MountProps, client: QueryClient) {
+  return (
+    <QueryClientProvider client={client}>
       <PickupMixHeader
         canWrite={props.canWrite ?? true}
         game={currentGame}
         gameLoading={props.gameLoading ?? false}
         onOpenPool={onOpenPool}
+        showsRoles={props.showsRoles ?? true}
         onOpenAccess={onOpenAccess}
         canDelete={props.canDelete ?? false}
         onDeleteMix={onDeleteMix}
         onRename={onRename}
         onSetSelfService={onSetSelfService}
+        onSetBanPreset={onSetBanPreset}
+        onSetFearless={props.onSetFearless}
         onPostSignup={onPostSignup}
         settingLobbyCount={false}
         onLobbyCountChange={onLobbyCountChange}
         onDeleteDiscordPost={onDeleteDiscordPost}
       />
-    );
+    </QueryClientProvider>
+  );
+}
+
+async function mount(currentGame: CustomGame | undefined, props: MountProps = {}) {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const root = createRoot(container);
+  roots.push(root);
+  await act(async () => {
+    root.render(header(currentGame, props, client));
   });
   await act(async () => {
     await tick();
   });
-  return container;
+  return Object.assign(container, {
+    /** The same header on the mix as the server saved it: a host write hands the game back down. */
+    rerender: (savedGame: CustomGame) =>
+      act(async () => {
+        root.render(header(savedGame, props, client));
+        await tick();
+      })
+  });
 }
 
 function click(node: Element | null | undefined) {
@@ -169,6 +230,7 @@ beforeEach(() => {
   onDeleteDiscordPost.mockReset();
   onDeleteMix.mockReset();
   onRename.mockReset();
+  onSetBanPreset.mockReset();
 });
 
 // The `⋯` menu: what a host sets once per mix, and the irreversible delete.
@@ -253,6 +315,16 @@ describe("PickupMixHeader", () => {
     expect(onRename).toHaveBeenCalledWith("Friday scrim");
   });
 
+  it("names a one-lobby mix's stage beside its name, and leaves several lobbies to their cards", async () => {
+    const one = await mount(game({ lobbies: [lobbyRow(0, { state: "live", live_started_at: "2026-01-01T20:00:00Z" })] }));
+    expect(one.textContent).toContain("state.live");
+
+    const several = await mount(
+      game({ lobby_count: 2, lobbies: [lobbyRow(0, { state: "live" }), lobbyRow(1, { state: "ready" })] })
+    );
+    expect(several.textContent).not.toContain("state.");
+  });
+
   it("disables Add players until a mix has loaded", async () => {
     const scope = await mount(undefined);
 
@@ -323,6 +395,74 @@ describe("PickupMixHeader", () => {
 
     await click(byName(document, "Delete permanently"));
     expect(onDeleteMix).toHaveBeenCalledTimes(1);
+  });
+});
+
+// R-HDR: everyone reads which hero bans the next Start opens; only a host changes them, behind the Rules trigger.
+async function openRules(scope: ParentNode) {
+  await click(scope.querySelector('[aria-label^="rulesTrigger"]'));
+  return document;
+}
+
+describe("PickupMixHeader hero bans", () => {
+  it("names the mix's ban preset to a viewer, with no control to change it", async () => {
+    const scope = await mount(game({ hero_ban_preset: "hero_classic" }), { canWrite: false });
+
+    expect(scope.textContent).toContain("hero_classic");
+    expect(scope.querySelector('[role="combobox"]')).toBeNull();
+    expect(scope.querySelector('[aria-label^="rulesTrigger"]')).toBeNull();
+  });
+
+  it("tells a viewer a mix without a preset plays no bans", async () => {
+    const scope = await mount(game({ hero_ban_preset: null }), { canWrite: false });
+
+    expect(scope.textContent).toContain("none");
+  });
+
+  it("reads the rules on the host's trigger, the same words a viewer reads", async () => {
+    const host = await mount(game({ hero_ban_preset: "hero_classic", hero_fearless: true }));
+
+    expect(host.querySelector('[aria-label^="rulesTrigger"]')?.textContent).toContain(
+      "hero_classic · formationBalance · fearless"
+    );
+  });
+
+  it("gives a host the select, on the mix's preset, offering only what a mix of its game may play", async () => {
+    const popover = await openRules(await mount(game({ hero_ban_preset: "hero_anti_one_trick" })));
+    const select = popover.querySelector('[role="combobox"][aria-label="label"]');
+
+    expect(select?.textContent?.trim()).toBe("hero_anti_one_trick");
+    await click(select);
+    expect([...document.querySelectorAll('[role="option"]')].map((node) => node.textContent?.trim())).toEqual([
+      "none",
+      "hero_classic",
+      "hero_anti_one_trick"
+    ]);
+  });
+
+  it("gives a host the Fearless switch beside the preset, on what the mix saved", async () => {
+    // The write answers with the saved mix (`usePickupMix`'s `applyGame`), which the screen hands back down.
+    let saved = game({ hero_fearless: false });
+    const scope = await mount(saved, {
+      onSetFearless: (fearless) => {
+        saved = game({ hero_fearless: fearless });
+      }
+    });
+    const popover = await openRules(scope);
+    const fearless = () => popover.querySelector('[role="switch"][aria-label="fearless"]');
+    expect(fearless()?.getAttribute("aria-checked")).toBe("false");
+
+    await click(fearless());
+    await scope.rerender(saved);
+
+    expect(fearless()?.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("tells a viewer the mix plays Fearless, with no switch", async () => {
+    const scope = await mount(game({ hero_fearless: true }), { canWrite: false });
+
+    expect(scope.textContent).toContain("fearless");
+    expect(scope.querySelector('[role="switch"][aria-label="fearless"]')).toBeNull();
   });
 });
 
@@ -400,6 +540,15 @@ describe("PickupMixHeader signup settings", () => {
     await click(popover.querySelector('[aria-label="roleEdit"]'));
 
     expect(onSetSelfService).toHaveBeenCalledWith({ self_role_edit: true });
+  });
+
+  it("offers no role-edit switch in a game with one role", async () => {
+    const popover = await openSignup(await mount(game(), { showsRoles: false }));
+
+    // The popover itself still opens: only the switch with nothing to edit is gone.
+    expect(radio(popover, "signupOpen")).not.toBeNull();
+    expect(popover.querySelector('[aria-label="roleEdit"]')).toBeNull();
+    expect(popover.body.textContent).not.toContain("roleEdit");
   });
 
   it("shows a viewer who cannot write none of it", async () => {

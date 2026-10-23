@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
 import { SITE_NAME, SITE_URL } from "@/config/site";
+import { seatAt } from "@/lib/encounter/seats";
 import encounterService from "@/services/encounter.service";
 
 export async function generateMetadata(props: {
@@ -18,10 +19,10 @@ export async function generateMetadata(props: {
   let description = t("pickBan.room.metaDescriptionFallback", { siteName: SITE_NAME });
   try {
     const encounter = await encounterService.getEncounter(Number(params.encounterId));
-    const home = encounter.home_team?.name ?? t("common.tbd");
-    const away = encounter.away_team?.name ?? t("common.tbd");
-    title = `${t("pickBan.room.metaTitle", { home, away })} | ${SITE_NAME}`;
-    description = t("pickBan.room.metaDescription", { home, away, siteName: SITE_NAME });
+    const first = seatAt(encounter.teams, 1)?.name ?? t("common.tbd");
+    const second = seatAt(encounter.teams, 2)?.name ?? t("common.tbd");
+    title = `${t("pickBan.room.metaTitle", { first, second })} | ${SITE_NAME}`;
+    description = t("pickBan.room.metaDescription", { first, second, siteName: SITE_NAME });
   } catch (error) {
     console.error(`pregame metadata: failed to load encounter ${params.encounterId}:`, error);
   }

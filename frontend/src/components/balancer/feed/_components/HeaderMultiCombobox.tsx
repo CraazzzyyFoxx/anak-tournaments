@@ -1,20 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { Check, ChevronDown, ChevronsUpDown, ChevronUp, X } from "lucide-react";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
+import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
+import { CommandGroup, CommandItem } from "@/components/ui/command";
 
 interface HeaderMultiComboboxProps {
   /** Available header keys to choose from. */
@@ -38,7 +29,6 @@ function moveItem(list: string[], index: number, direction: -1 | 1): string[] {
 /** Multi-select combobox with selected chips that can be reordered/removed. */
 export function HeaderMultiCombobox({ options, value, onChange, disabled }: Readonly<HeaderMultiComboboxProps>) {
   const t = useTranslations("sheetsFeed.controls");
-  const [open, setOpen] = useState(false);
 
   const toggle = (option: string) => {
     onChange(value.includes(option) ? value.filter((item) => item !== option) : [...value, option]);
@@ -46,42 +36,29 @@ export function HeaderMultiCombobox({ options, value, onChange, disabled }: Read
 
   return (
     <div className="space-y-2">
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            role="combobox"
-            aria-expanded={open}
-            disabled={disabled || options.length === 0}
-            className="h-9 w-full justify-between font-normal"
-          >
-            <span className={cn("truncate", value.length === 0 && "text-muted-foreground")}>
-              {value.length > 0 ? t("columnsSelected", { count: value.length }) : t("selectColumns")}
-            </span>
-            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="p-0" style={{ width: "var(--radix-popover-trigger-width)" }}>
-          <Command>
-            <CommandInput placeholder={t("searchColumns")} />
-            <CommandList>
-              <CommandEmpty>{t("noColumns")}</CommandEmpty>
-              <CommandGroup>
-                {options.map((option) => {
-                  const checked = value.includes(option);
-                  return (
-                    <CommandItem key={option} value={option} onSelect={() => toggle(option)}>
-                      <Check className={cn("mr-2 h-4 w-4", checked ? "opacity-100" : "opacity-0")} />
-                      <span className="truncate">{option}</span>
-                    </CommandItem>
-                  );
-                })}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
+      {/* Uncontrolled: the popover stays open while columns are toggled. */}
+      <Combobox
+        label={
+          value.length > 0 ? (
+            t("columnsSelected", { count: value.length })
+          ) : (
+            <span className="text-muted-foreground">{t("selectColumns")}</span>
+          )
+        }
+        labelTitle={value.length > 0 ? t("columnsSelected", { count: value.length }) : t("selectColumns")}
+        disabled={disabled || options.length === 0}
+        searchPlaceholder={t("searchColumns")}
+        emptyMessage={t("noColumns")}
+      >
+        <CommandGroup>
+          {options.map((option) => (
+            <CommandItem key={option} value={option} onSelect={() => toggle(option)}>
+              <span className="min-w-0 flex-1 truncate">{option}</span>
+              <ComboboxCheck selected={value.includes(option)} />
+            </CommandItem>
+          ))}
+        </CommandGroup>
+      </Combobox>
 
       {value.length > 0 ? (
         <ul className="flex flex-col gap-1.5">
@@ -94,33 +71,38 @@ export function HeaderMultiCombobox({ options, value, onChange, disabled }: Read
                 <span className="mr-1.5 text-muted-foreground">{index + 1}.</span>
                 {column}
               </span>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-xs"
                 disabled={disabled || index === 0}
                 onClick={() => onChange(moveItem(value, index, -1))}
                 title={t("moveUp")}
-                className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent disabled:opacity-30"
+                className="text-muted-foreground"
               >
-                <ChevronUp className="size-3.5" />
-              </button>
-              <button
+                <ChevronUp />
+              </Button>
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-xs"
                 disabled={disabled || index === value.length - 1}
                 onClick={() => onChange(moveItem(value, index, 1))}
                 title={t("moveDown")}
-                className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent disabled:opacity-30"
+                className="text-muted-foreground"
               >
-                <ChevronDown className="size-3.5" />
-              </button>
-              <button
+                <ChevronDown />
+              </Button>
+              <Button
                 type="button"
+                variant="ghost-destructive"
+                size="icon-xs"
                 disabled={disabled}
                 onClick={() => onChange(value.filter((item) => item !== column))}
                 title={t("remove")}
-                className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
               >
-                <X className="size-3.5" />
-              </button>
+                <X />
+              </Button>
             </li>
           ))}
         </ul>

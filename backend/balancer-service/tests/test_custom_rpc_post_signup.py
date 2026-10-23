@@ -8,9 +8,9 @@ at all -- no post in a channel that no row of ours knows about -- and the order
 the service built the commands in is the order the bot receives them (the
 delete of the previous signup card before the post of its replacement).
 
-The live card's own refresh is not here: no handler edits it. Every mutation
-emits ``pickup_mix_changed`` and the projector re-renders from the committed
-state (``src/services/mix_discord_projector.py``).
+No handler renders or edits a card: the claimed rows carry none, discord-service
+renders them from ``rpc.balancer.custom.discord_view`` and keeps the live ones in
+step on the ``pickup_mix_changed`` fact every mutation emits.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-from shared.schemas.events import DiscordCard, DiscordCommandEvent  # noqa: E402
+from shared.schemas.events import DiscordCommandEvent  # noqa: E402
 from src.rpc import custom  # noqa: E402
 
 SUBJECT = "rpc.balancer.custom.post_signup"
@@ -95,16 +95,12 @@ def _identity() -> dict:
     }
 
 
-def _card() -> DiscordCard:
-    return DiscordCard(text="**Запись на микс**")
-
-
 def _post(message_ref: int = 31) -> DiscordCommandEvent:
-    return DiscordCommandEvent(action="post_message", channel_id=555, message_ref=message_ref, card=_card())
+    return DiscordCommandEvent(action="send", message_ref=message_ref)
 
 
 def _delete(message_ref: int) -> DiscordCommandEvent:
-    return DiscordCommandEvent(action="delete_message", message_ref=message_ref)
+    return DiscordCommandEvent(action="delete", message_ref=message_ref)
 
 
 class PostSignupOutboxTests(IsolatedAsyncioTestCase):
@@ -163,7 +159,7 @@ class PostSignupOutboxTests(IsolatedAsyncioTestCase):
         await self._call(commit_fails=False, commands=[_delete(30), _post(31)])
 
         self.assertEqual(
-            [("delete_message", 30), ("post_message", 31)],
+            [("delete", 30), ("send", 31)],
             [(event.action, event.message_ref) for event in self.enqueued],
         )
 
@@ -173,7 +169,7 @@ class PostSignupOutboxTests(IsolatedAsyncioTestCase):
         await self._call(commit_fails=False)
 
         self.assertEqual([31], [event.message_ref for event in self.enqueued])
-        self.assertEqual(["post_message"], [event.action for event in self.enqueued])
+        self.assertEqual(["send"], [event.action for event in self.enqueued])
 
 
 class MixDiscordCommandTests(IsolatedAsyncioTestCase):
@@ -270,3 +266,27 @@ class MixDiscordCommandTests(IsolatedAsyncioTestCase):
         self.assertEqual({"id": GAME_ID}, result["data"])
         self.assertEqual(["enqueue", "commit"], self.calls)
         self.assertEqual([30, 31], [event.message_ref for event in self.enqueued])
+
+    async def test_discord_view_needs_no_identity_and_names_lineups_by_slot(self) -> None:
+        """The bot is the only caller and acts for nobody: no identity rides the
+        request, nothing is written, and each lineup is its row's (lobby, match)."""
+        self.service.discord_view = AsyncMock(return_value={"custom_game_id": GAME_ID})
+
+        result = await self.broker.handlers["rpc.balancer.custom.discord_view"](
+            {"custom_game_id": GAME_ID, "lineups": [{"lobby_index": 1, "match_number": 3}]}, None
+        )
+
+        self.assertEqual({"custom_game_id": GAME_ID}, result["data"])
+        self.assertEqual((GAME_ID, [(1, 3)]), self.service.discord_view.await_args.args[1:])
+        self.assertEqual(custom.config.public_site_url, self.service.discord_view.await_args.kwargs["board_url_base"])
+        self.assertEqual([], self.calls)
+
+    async def test_discord_view_rejects_a_malformed_request(self) -> None:
+        self.service.discord_view = AsyncMock()
+
+        result = await self.broker.handlers["rpc.balancer.custom.discord_view"](
+            {"custom_game_id": GAME_ID, "lineups": [{"lobby_index": 0, "match_number": 0}]}, None
+        )
+
+        self.assertEqual("unprocessable", result["error"]["code"])
+        self.service.discord_view.assert_not_awaited()

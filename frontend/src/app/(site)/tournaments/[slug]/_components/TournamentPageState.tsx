@@ -3,6 +3,7 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { cn } from "@/lib/utils";
 
@@ -67,9 +68,9 @@ export function TournamentPageState(props: TournamentPageStateProps) {
           <span>
             <strong>{title}</strong> — {description}
           </span>
-          <button type="button" className={styles.stateAction} onClick={props.onRetry}>
+          <Button type="button" variant="outline" size="sm" onClick={props.onRetry}>
             {t("tournamentDetail.pageState.retry")}
-          </button>
+          </Button>
         </div>
         {props.isUpdating ? (
           <span className={styles.updating}>{t("tournamentDetail.pageState.updating")}</span>

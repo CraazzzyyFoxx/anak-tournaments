@@ -35,3 +35,7 @@ predates it and still needs its own revision on top: production columns typed
 exist only in the models, and a handful of server defaults on either side.
 `tournament.team.image_url` is the one that already has such a revision
 (`teamimg0001`), which is why the baseline leaves it out of `tournament.team`.
+
+The baseline carries no data either. The global built-in registration/balancer
+status rows the v5 chain seeded (`a7v1w5x6y7z8`) come back in `regstat01`, which
+inserts only the ones a database is missing, so a stamped database keeps its own.

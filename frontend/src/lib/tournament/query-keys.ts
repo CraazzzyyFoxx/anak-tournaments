@@ -22,8 +22,9 @@ export const tournamentQueryKeys = {
       ? (["teams", tournamentId] as const)
       : (["teams", tournamentId, workspaceId] as const),
   teamsCount: (tournamentId: number) => ["teams", tournamentId, "count"] as const,
-  heroPlaytime: (tournamentId: number) =>
-    ["hero-playtime", "tournament", tournamentId] as const,
+  /** The tournament's character playtime (its own game and workspace, so the id names the whole scope). */
+  characterPlaytime: (tournamentId: number) =>
+    ["character-playtime", "tournament", tournamentId] as const,
   standings: (tournamentId: number, workspaceId?: number | null) =>
     workspaceId == null
       ? (["standings", tournamentId] as const)
@@ -53,20 +54,15 @@ export const tournamentQueryKeys = {
     ["ffa", tournamentId, "stage", stageId, "admin"] as const,
   /** That shared prefix, for the writes that move every lobby of a tournament. */
   ffaAll: (tournamentId: number) => ["ffa", tournamentId] as const,
-  encountersOverview: (workspaceId?: number | "all" | null) =>
+  /** `discipline` null/absent is every game; a concrete code narrows every aggregate and strip. */
+  encountersOverview: (workspaceId?: number | "all" | null, discipline?: string | null) =>
     workspaceId == null
-      ? (["encounters", "overview"] as const)
-      : (["encounters", "overview", workspaceId] as const),
+      ? (["encounters", "overview", discipline ?? "all"] as const)
+      : (["encounters", "overview", workspaceId, discipline ?? "all"] as const),
   overallStatistics: (workspaceId?: number | "all" | null) =>
     workspaceId == null
       ? (["statistics", "overall"] as const)
       : (["statistics", "overall", workspaceId] as const),
-  encountersPage: (
-    tournamentId: number,
-    workspaceId: number | null | undefined,
-    page: number,
-    search: string,
-  ) => [...tournamentQueryKeys.encounters(tournamentId, workspaceId), page, search] as const,
   registration: (workspaceId: number, tournamentId: number) =>
     ["registration", workspaceId, tournamentId] as const,
   registrationsList: (workspaceId: number, tournamentId: number) =>
@@ -104,6 +100,8 @@ export const tournamentQueryKeys = {
   draftBoard: (tournamentId: number) => ["draft", tournamentId, "board"] as const,
   draftSessions: (tournamentId: number) => ["draft", tournamentId, "sessions"] as const,
   draftSession: (sessionId: number) => ["draft", "session", sessionId] as const,
+  /** One session's board, whoever owns the draft: the room's cache, patched by the session's own topic. */
+  draftSessionBoard: (sessionId: number) => ["draft", "session", sessionId, "board"] as const,
   draftFeasibility: (sessionId: number) =>
     ["draft", "session", sessionId, "feasibility"] as const,
   draftPickOptions: (pickId: number) => ["draft", "pick", pickId, "options"] as const,
@@ -115,10 +113,10 @@ export const tournamentQueryKeys = {
   draftTeamQueue: (sessionId: number, teamId: number) =>
     ["draft", "session", sessionId, "queue", teamId] as const,
   draftJournal: (sessionId: number) => ["draft", "session", sessionId, "journal"] as const,
-  draftPlayerCard: (userId: number) => ["draft", "player-card", userId] as const,
-  /** The engine's leaf/constraint/preset registry. Tournament-independent, and
-   *  cached for the session: it only changes when the engine ships a new leaf. */
-  pickBanRulesCatalog: () => ["pick-ban-rules", "catalog"] as const,
+  draftPlayerCard: (userId: number, discipline: string) => ["draft", "player-card", userId, discipline] as const,
+  /** One discipline's constructor catalog: the engine's leaf/constraint registry plus that game's item groups and
+   *  presets. The discipline is part of the key, so another game's presets never answer for this one. */
+  pickBanRulesCatalog: (discipline: KeyPart) => ["pick-ban-rules", "catalog", discipline] as const,
   /** The validator's verdict on one authored ruleset. The ruleset itself is
    *  part of the key: every edit is a different question, and the answer to the
    *  previous one must not stand in for it. */
@@ -140,10 +138,22 @@ export const tournamentQueryKeys = {
   ) => ["pick-ban-rules", "preview", tournamentId, kind, mode, bestOf, ruleset, pool] as const,
   /** The public tournament list, and the bare prefix every admin write drops. */
   list: () => ["tournaments"] as const,
-  listPage: (workspaceId: KeyPart, status: KeyPart, type: KeyPart, query: KeyPart, sort: KeyPart) =>
-    ["tournaments", "list", workspaceId, status, type, query, sort] as const,
-  facets: (workspaceId: KeyPart, status: KeyPart, type: KeyPart, query: KeyPart) =>
-    ["tournaments", "facets", workspaceId, status, type, query] as const,
+  /**
+   * One workspace's admin list of one game, or of every game under `"all"`; under `list()`, so every admin write drops
+   * it.
+   */
+  adminList: (workspaceId: KeyPart, discipline: KeyPart) => ["tournaments", "admin", workspaceId, discipline] as const,
+  /** `discipline` is a concrete code, or `"all"` for the all-games directory view. */
+  listPage: (
+    workspaceId: KeyPart,
+    discipline: KeyPart,
+    status: KeyPart,
+    type: KeyPart,
+    query: KeyPart,
+    sort: KeyPart
+  ) => ["tournaments", "list", workspaceId, discipline, status, type, query, sort] as const,
+  facets: (workspaceId: KeyPart, discipline: KeyPart, status: KeyPart, type: KeyPart, query: KeyPart) =>
+    ["tournaments", "facets", workspaceId, discipline, status, type, query] as const,
   /** The workspace's own slice, or the platform-wide one under `"global"`. */
   byWorkspace: (workspaceScope: KeyPart) => ["tournaments", workspaceScope] as const,
   allActive: () => ["tournaments", "all-active"] as const,

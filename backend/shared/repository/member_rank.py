@@ -20,6 +20,7 @@ class MemberRankRepository(BaseRepository[models.MemberRank]):
         session: AsyncSession,
         *,
         workspace_id: int,
+        dimension_id: int,
         member_ids: Sequence[int],
         author_user_id: int | None = None,
         include_canon: bool = True,
@@ -41,6 +42,8 @@ class MemberRankRepository(BaseRepository[models.MemberRank]):
         result = await session.scalars(
             self.select().where(
                 self.model.workspace_id == workspace_id,
+                self.model.dimension_id == dimension_id,
+                self.model.catalog_role.has(models.CatalogRole.workspace_id.is_(None)),
                 self.model.workspace_member_id.in_(list(member_ids)),
                 sa.or_(*layers),
             )
@@ -52,6 +55,7 @@ class MemberRankRepository(BaseRepository[models.MemberRank]):
         session: AsyncSession,
         *,
         workspace_id: int,
+        dimension_id: int,
         member_id: int,
         author_user_id: int | None = None,
     ) -> Sequence[models.MemberRank]:
@@ -64,6 +68,8 @@ class MemberRankRepository(BaseRepository[models.MemberRank]):
         result = await session.scalars(
             self.select().where(
                 self.model.workspace_id == workspace_id,
+                self.model.dimension_id == dimension_id,
+                self.model.catalog_role.has(models.CatalogRole.workspace_id.is_(None)),
                 self.model.workspace_member_id == member_id,
                 owner,
             )

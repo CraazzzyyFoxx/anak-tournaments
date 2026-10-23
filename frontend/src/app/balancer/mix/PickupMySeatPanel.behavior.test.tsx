@@ -4,8 +4,8 @@
 //
 //  1. a blocker that only an account link can fix offers the link, because the
 //     player cannot discover "go link Battle.net" from a refusal alone;
-//  2. `can_edit_roles=false` shows the roles and edits nothing -- the host's
-//     mix is the host's, and a disabled editor must not be a lie;
+//  2. `can_edit_roles=false` prints the roles as one line and renders no
+//     editor -- the host's mix is the host's, and a disabled editor is a lie;
 //  3. each role edit writes at once -- the drag order and the flex flag, and
 //     nothing else: ranks are the host's book (`MIX_ORDER`), participation is
 //     the host's decision -- and a settled write puts the server's seat back;
@@ -19,9 +19,11 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { MixSelfSeat, MixSelfState } from "@/services/custom-game.service";
+import type { MixLobbyState, MixSelfSeat, MixSelfState } from "@/services/custom-game.service";
 
 import { PickupMySeatPanel } from "./PickupMySeatPanel";
+import { DEADLOCK_OWNER, OW_OWNER } from "./mix-owner.fixture";
+import type { MixOwner, MySeatTeam } from "./pickup-lineup";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -34,10 +36,26 @@ globalThis.ResizeObserver ??= class {
 } as unknown as typeof ResizeObserver;
 
 vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string, values?: Record<string, unknown>) =>
-    values ? `${key}:${Object.values(values).join(",")}` : key,
+  useTranslations: () =>
+    Object.assign(
+      (key: string, values?: Record<string, unknown>) =>
+        values ? `${key}:${Object.values(values).join(",")}` : key,
+      { has: () => false },
+    ),
 }));
-vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+// A decorative icon sits beside the role's name; a bare one stands in for it, so it names the role code here.
+vi.mock("@/components/PlayerRoleIcon", () => ({
+  default: ({ role, decorative }: { role: string; decorative?: boolean }) =>
+    decorative ? null : <span role="img" aria-label={role} />,
+}));
 // Drag itself is not what this pins, and dnd-kit resolves its own React copy
 // under bun/node, so the sortable wrapper and its hook render inertly here.
 vi.mock("@/components/kit/SortableRows", () => ({
@@ -61,14 +79,18 @@ vi.mock("@/stores/account-settings-modal.store", () => ({
 const onJoin = vi.fn();
 const onLeave = vi.fn();
 const onSave = vi.fn();
+const onSetAway = vi.fn();
 
 function seat(overrides: Partial<MixSelfSeat> = {}): MixSelfSeat {
   return {
     participation: "pool",
-    roles: ["tank", "damage"],
+    roles: ["tank", "damage"].map((role) => ({ dimension: "player_role", role })),
     is_flex: false,
     ranks: { tank: 3300, damage: 2700, support: null },
     current_lobby: null,
+    workspace_member_id: 7,
+    away: false,
+    voice_url: null,
     ...overrides,
   };
 }
@@ -87,8 +109,10 @@ function state(overrides: Partial<MixSelfState> = {}): MixSelfState {
       can_join: false,
       can_leave: true,
       can_edit_roles: true,
+      can_set_away: true,
       join_blocker: "already_joined",
       edit_blocker: null,
+      away_blocker: null,
     },
     ...overrides,
   };
@@ -103,7 +127,15 @@ function tick() {
 const roots: { unmount: () => void }[] = [];
 let rerender: (saving: boolean) => Promise<void> = async () => {};
 
-async function mount(value: MixSelfState) {
+type PhoneProps = {
+  myTeam: MySeatTeam | null;
+  nextMapName: string | null;
+  queuePosition: number | null;
+  lobbies: { lobbyIndex: number; state: MixLobbyState }[];
+  roomHref: string | null;
+};
+
+async function mount(value: MixSelfState, owner: MixOwner = OW_OWNER, phone: Partial<PhoneProps> = {}) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -112,10 +144,17 @@ async function mount(value: MixSelfState) {
     root.render(
       <PickupMySeatPanel
         state={value}
+        owner={owner}
         saving={saving}
         onJoin={onJoin}
         onLeave={onLeave}
         onSave={onSave}
+        myTeam={phone.myTeam ?? null}
+        nextMapName={phone.nextMapName ?? null}
+        queuePosition={phone.queuePosition ?? null}
+        lobbies={phone.lobbies ?? []}
+        onSetAway={onSetAway}
+        roomHref={phone.roomHref ?? null}
       />,
     );
   rerender = async (saving) => {
@@ -158,6 +197,7 @@ beforeEach(() => {
   onJoin.mockReset();
   onLeave.mockReset();
   onSave.mockReset();
+  onSetAway.mockReset();
 });
 
 describe("PickupMySeatPanel blockers", () => {
@@ -171,6 +211,8 @@ describe("PickupMySeatPanel blockers", () => {
           can_edit_roles: false,
           join_blocker: "battlenet_not_linked",
           edit_blocker: "battlenet_not_linked",
+          can_set_away: false,
+          away_blocker: null,
         },
       }),
     );
@@ -191,6 +233,8 @@ describe("PickupMySeatPanel blockers", () => {
           can_edit_roles: false,
           join_blocker: "signup_closed",
           edit_blocker: "not_on_roster",
+          can_set_away: false,
+          away_blocker: null,
         },
       }),
     );
@@ -208,6 +252,8 @@ describe("PickupMySeatPanel blockers", () => {
           can_edit_roles: false,
           join_blocker: "battlenet_not_linked",
           edit_blocker: "battlenet_not_linked",
+          can_set_away: false,
+          away_blocker: null,
         },
       }),
     );
@@ -227,6 +273,8 @@ describe("PickupMySeatPanel blockers", () => {
           can_edit_roles: false,
           join_blocker: null,
           edit_blocker: "not_on_roster",
+          can_set_away: false,
+          away_blocker: null,
         },
       }),
     );
@@ -238,42 +286,56 @@ describe("PickupMySeatPanel blockers", () => {
 });
 
 describe("PickupMySeatPanel roles", () => {
-  it("edits nothing while the host keeps role editing to themselves", async () => {
+  it("prints the roles as one line, and edits nothing, while the host keeps role editing to themselves", async () => {
     const scope = await mount(
       state({
         self_role_edit: false,
+        seat: seat({ roles: ["damage", "tank"].map((role) => ({ dimension: "player_role", role })), is_flex: true }),
         policy: {
           can_join: false,
           can_leave: true,
           can_edit_roles: false,
           join_blocker: "already_joined",
           edit_blocker: "role_edit_off",
+          can_set_away: false,
+          away_blocker: null,
         },
       }),
     );
 
-    // The roles are still readable -- the mix is theirs to read either way.
-    expect(scope.textContent).toContain("Tank");
+    // The roles are still readable -- the mix is theirs to read either way: the on ones in priority order, each
+    // with its rank, then Full flex. Support is off, so it is not there at all.
+    expect([...scope.querySelectorAll('[role="img"]')].map((node) => node.getAttribute("aria-label"))).toEqual([
+      "damage",
+      "tank",
+    ]);
+    expect(scope.textContent).toMatch(/2700.*3300.*fullFlex/);
     expect(scope.textContent).toContain("blocker.role_edit_off");
+    // Nothing on them is a control, not even a disabled one.
+    expect(scope.querySelectorAll('[role="switch"]')).toHaveLength(0);
+    expect([...scope.querySelectorAll("button")].map((node) => node.textContent?.trim())).toEqual(["leave"]);
     expect(onSave).not.toHaveBeenCalled();
-    expect([...scope.querySelectorAll('[role="switch"]')].every((node) => node.hasAttribute("disabled"))).toBe(
-      true,
-    );
   });
 
   it("writes each edit as it is made: the role order and the flex flag", async () => {
     const scope = await mount(state());
 
-    await click(scope.querySelector('[aria-label="Support for you"]'));
-    expect(onSave).toHaveBeenLastCalledWith({ roles: ["tank", "damage", "support"], is_flex: false });
+    await click(scope.querySelector('[aria-label="roleFor:Support,rolesOwner"]'));
+    expect(onSave).toHaveBeenLastCalledWith({
+      roles: ["tank", "damage", "support"].map((role) => ({ dimension: "player_role", role })),
+      is_flex: false,
+    });
 
-    await click(scope.querySelector('[aria-label="Full flex for you"]'));
-    expect(onSave).toHaveBeenLastCalledWith({ roles: ["tank", "damage", "support"], is_flex: true });
+    await click(scope.querySelector('[aria-label="flexFor:rolesOwner"]'));
+    expect(onSave).toHaveBeenLastCalledWith({
+      roles: ["tank", "damage", "support"].map((role) => ({ dimension: "player_role", role })),
+      is_flex: true,
+    });
   });
 
   it("puts the server's seat back once a write settles without it", async () => {
     const scope = await mount(state());
-    const support = () => scope.querySelector('[aria-label="Support for you"]');
+    const support = () => scope.querySelector('[aria-label="roleFor:Support,rolesOwner"]');
 
     await click(support());
     await rerender(true);
@@ -306,5 +368,113 @@ describe("PickupMySeatPanel roles", () => {
 
     const waiting = await mount(state({ lobby_count: 2, seat: seat({ current_lobby: null }) }));
     expect(waiting.textContent).toContain("waitingSeat");
+  });
+
+  it("shows a one-role game's rank alone: no roles, no Full flex, no role names", async () => {
+    const ranked = await mount(state({ seat: seat({ roles: null, ranks: { agent: 2900 } }) }), DEADLOCK_OWNER);
+
+    expect(ranked.querySelectorAll('[role="switch"]')).toHaveLength(0);
+    expect(ranked.textContent).toContain("2900");
+    expect(ranked.textContent).not.toContain("Agent");
+    expect(ranked.textContent).not.toContain("rolesAllRanked");
+
+    const unranked = await mount(
+      state({ seat: seat({ roles: null, ranks: { agent: null } }), unranked_roles: ["agent"] }),
+      DEADLOCK_OWNER,
+    );
+    expect(unranked.textContent).toContain("unrankedOne");
+    expect(unranked.textContent).not.toContain("Agent");
+  });
+
+  it("offers no Full flex in a game without it and never sends one", async () => {
+    const scope = await mount(state({ seat: seat({ is_flex: true }) }), { ...OW_OWNER, flex: false });
+
+    expect(scope.querySelector('[aria-label="flexFor:rolesOwner"]')).toBeNull();
+    await click(scope.querySelector('[aria-label="roleFor:Support,rolesOwner"]'));
+    expect(onSave).toHaveBeenLastCalledWith({
+      roles: ["tank", "damage", "support"].map((role) => ({ dimension: "player_role", role })),
+      is_flex: false,
+    });
+  });
+});
+
+describe("PickupMySeatPanel on a phone", () => {
+  it("shows a seated player their own team, its captain, the next map and their voice, and lets them step away", async () => {
+    const scope = await mount(
+      state({ seat: seat({ current_lobby: 1, voice_url: "https://discord.com/channels/1/2" }) }),
+      OW_OWNER,
+      {
+        myTeam: {
+          lobbyIndex: 1,
+          teamName: "Owls",
+          nextMapId: 42,
+          members: [
+            { uuid: "9", name: "Egor", role: "tank", isCaptain: true, isMe: false },
+            { uuid: "7", name: "karin", role: "damage", isCaptain: false, isMe: true },
+          ],
+        },
+        nextMapName: "Busan",
+      },
+    );
+
+    expect(scope.textContent).toContain("yourTeam:B,Owls");
+    expect(scope.textContent).toContain("nextMap:Busan");
+    expect(scope.querySelectorAll('[aria-label="captain"]')).toHaveLength(1);
+    // One inline roster: each member is a role glyph and a nick, and only the player's own carries "you".
+    const members = [...scope.querySelectorAll("p > span")].map((node) => node.textContent);
+    expect(members.filter((text) => text !== "·")).toEqual(["Egor", "karinyou"]);
+    expect(scope.querySelector('a[href="https://discord.com/channels/1/2"]')).not.toBeNull();
+
+    await click(byName(scope, "goAway"));
+    expect(onSetAway).toHaveBeenCalledWith(true);
+  });
+
+  it("tells a waiting player their place in line and how the lobbies are doing", async () => {
+    const scope = await mount(state({ lobby_count: 2 }), OW_OWNER, {
+      queuePosition: 3,
+      lobbies: [
+        { lobbyIndex: 0, state: "live" },
+        { lobbyIndex: 1, state: "ready" },
+      ],
+    });
+
+    expect(scope.textContent).toContain("queue:3");
+    expect(scope.textContent).toContain("A · state.live");
+    expect(scope.textContent).toContain("B · state.ready");
+  });
+
+  it("brings an away player back with one press", async () => {
+    const scope = await mount(state({ seat: seat({ away: true }) }));
+
+    expect(scope.textContent).toContain("awayStatus");
+    expect(byName(scope, "goAway")).toBeNull();
+    await click(byName(scope, "back"));
+
+    expect(onSetAway).toHaveBeenCalledWith(false);
+  });
+
+  it("offers no away switch when the policy refuses it", async () => {
+    const scope = await mount(
+      state({ policy: { ...state().policy, can_set_away: false, away_blocker: "battlenet_not_linked" } }),
+    );
+
+    expect(byName(scope, "goAway")).toBeNull();
+  });
+
+  it("leads with the way into their lobby's room while something plays out there", async () => {
+    const scope = await mount(state({ seat: seat({ current_lobby: 1 }) }), OW_OWNER, {
+      roomHref: "/balancer/mix/12/lobby/B",
+    });
+    const link = scope.querySelector('a[href="/balancer/mix/12/lobby/B"]');
+
+    expect(link?.textContent).toBe("openRoom");
+    // First among the header's actions.
+    expect(link?.parentElement?.firstElementChild).toBe(link);
+  });
+
+  it("offers no room link while their lobby has nothing on there", async () => {
+    const scope = await mount(state({ seat: seat({ current_lobby: 1 }) }));
+
+    expect(scope.querySelector("a")).toBeNull();
   });
 });

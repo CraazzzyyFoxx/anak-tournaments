@@ -1,8 +1,11 @@
 """Schemas for the catalog alias-miss queue (superuser admin surface).
 
-A miss is a hero/map/gamemode name a match log used that neither the canonical
-`name` nor any `aliases` entry resolved. The queue is what the admin works
-through: pick the entity the raw name meant and attach it, or dismiss it.
+A miss is a name a match log or canonical document used that did not resolve:
+a hero/map/gamemode no `name`/`aliases` entry matched (``character|map|mode``),
+or a stat/event/role code the module does not declare (``stat|event|role``;
+a role's ``raw_name`` is ``dimension:role``). The admin picks the entity a
+hero/map/gamemode name meant and attaches it; every other kind is read and
+dismiss only, never an alias or an auto-created definition.
 
 `CatalogAliasAttach` is a dedicated write instead of `PATCH aliases=[...]` from
 the browser: appending an alias client-side is a read-modify-write that two
@@ -16,8 +19,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
-from shared.core import enums
-from src.core import pagination
+from shared.core import pagination
+from shared.models.catalog.alias_miss import ALIAS_MISS_KINDS
 from src.schemas import BaseRead
 
 __all__ = (
@@ -28,6 +31,8 @@ __all__ = (
     "ALIAS_MAX_LENGTH",
 )
 
+AliasMissKind = typing.Literal[*ALIAS_MISS_KINDS]
+
 # Mirrors `CatalogAliasMiss.raw_name` (String(128)) — a longer name could not be
 # stored, and could therefore never have produced a miss row to attach to.
 ALIAS_MAX_LENGTH = 128
@@ -36,14 +41,14 @@ ALIAS_MAX_LENGTH = 128
 class CatalogAliasMissRead(BaseRead):
     """One unresolved catalog name, with how often logs have hit it."""
 
-    entity_type: enums.CatalogEntityType
+    discipline: str
+    kind: AliasMissKind
     raw_name: str
     occurrences: int
     first_seen_at: datetime
     last_seen_at: datetime
-    last_log_record_id: int | None = None
-    # Joined from `log_processing.record`, not stored: a log record is only
-    # addressable in the admin UI as /admin/tournaments/{id}/matches/logs.
+    last_ingest_job_id: int | None = None
+    # Joined through stats.ingest_job.hint_tournament_id; breadcrumbs retain the real job ID.
     last_log_tournament_id: int | None = None
     resolved_at: datetime | None = None
 
@@ -55,22 +60,23 @@ class CatalogAliasMissListQueryParams(
     # `sort`/`order` are inherited but unused: the queue is always ordered by how
     # much the missing alias hurts (occurrences, then recency).
     sort: typing.Literal["id", "occurrences", "first_seen_at", "last_seen_at"] = "occurrences"
-    entity_type: enums.CatalogEntityType | None = None
+    discipline: str | None = None
+    kind: AliasMissKind | None = None
     include_resolved: bool = False
 
 
 @dataclass
 class CatalogAliasMissListParams(pagination.PaginationSortParams):
     per_page: int = 50
-    entity_type: enums.CatalogEntityType | None = None
+    discipline: str | None = None
+    kind: AliasMissKind | None = None
     include_resolved: bool = False
 
 
 class CatalogAliasAttach(BaseModel):
     """Attach `alias` to one catalog entity and close the matching miss."""
 
-    entity_type: enums.CatalogEntityType
-    entity_id: int
+    entity_id: int = Field(gt=0)
     alias: str = Field(min_length=1, max_length=ALIAS_MAX_LENGTH)
 
     @field_validator("alias")

@@ -4,12 +4,15 @@
 //  1. the `match.read` gate — five sidebar entries became one screen, so the
 //     grant is checked once, on the screen;
 //  2. `?view=` is the only state the switch owns, and it survives a reload;
-//  3. switching view keeps the shared tournament scope and drops the row id,
-//     because an encounter id means nothing in the parsed-maps view;
-//  4. the tournament chip is NOT pinned here — that is the difference from the
-//     same browser mounted inside a hub;
+//  3. switching view keeps the shared tournament scope and the Game chip and
+//     drops the row id, because an encounter id means nothing in the
+//     parsed-maps view;
+//  4. the tournament chip is removable here — inside a hub the tournament is
+//     not a filter at all — and applies under every game;
 //  5. below `md` the rows become cards: these tables carry more than four
-//     columns, so a phone gets the card layout instead of a sideways scroll.
+//     columns, so a phone gets the card layout instead of a sideways scroll;
+//  6. a Game chip pick drops the map always and the tournament scope only when
+//     it is another game's, keeping the view.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -39,6 +42,9 @@ const MESSAGES = {
   kit: en.kit,
   kitAudit: en.kitAudit,
   kitTable: en.kitTable,
+  bracket: en.bracket,
+  accountSettings: { logDirectory: en.accountSettings.logDirectory },
+  adminTournaments: { standings: en.adminTournaments.standings },
   adminMatches: {
     matches: en.adminMatches.matches,
     audit: en.adminMatches.audit,
@@ -116,12 +122,24 @@ vi.mock("@/services/admin.service", () => ({
     listAdminMatches: vi.fn().mockResolvedValue({ results: [], total: 0, page: 1, per_page: 25 })
   }
 }));
+vi.mock("@/services/catalog.service", () => ({
+  default: { list: vi.fn().mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 }) }
+}));
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() }
 }));
 vi.mock("@/components/kit/AuditTrailSheet", () => ({
   AuditTrailButton: () => <button type="button">Change history</button>
 }));
+const scopeGame = vi.hoisted(() => ({ value: null as string | null }));
+vi.mock("@/hooks/useGameScope", async () => {
+  const { gameScopeState } = await import("@/test/game-scope");
+  return { useGameScope: () => gameScopeState(scopeGame.value) };
+});
+vi.mock("@/hooks/useGameDescriptors", async () => {
+  const { GAME_DESCRIPTORS } = await import("@/test/game-scope");
+  return { useGameDescriptors: () => GAME_DESCRIPTORS };
+});
 
 const replace = vi.fn((url: string) => {
   window.history.replaceState(null, "", url);
@@ -142,9 +160,6 @@ function encounter(overrides: Partial<Encounter> = {}): Encounter {
     created_at: new Date("2026-05-01T00:00:00Z"),
     updated_at: null,
     name: "Team C vs Team D",
-    home_team_id: 3,
-    away_team_id: 4,
-    score: { home: 1, away: 2 },
     round: 3,
     best_of: 3,
     tournament_id: 78,
@@ -158,11 +173,20 @@ function encounter(overrides: Partial<Encounter> = {}): Encounter {
     scheduled_at: null,
     started_at: null,
     ended_at: null,
+    played_at: null,
+    is_live: false,
+    is_final: false,
     current_map_index: null,
     confirmed_at: null,
     matches: [],
-    home_team: { id: 3, name: "Team C" } as Encounter["home_team"],
-    away_team: { id: 4, name: "Team D" } as Encounter["away_team"],
+    slot_count: 2,
+    result_source: null,
+    result_version: 1,
+    games: [],
+    teams: [
+      { id: 31, slot: 1, team_id: 3, name: "Team C", seed: null, score: 1, placement: null, active: true },
+      { id: 41, slot: 2, team_id: 4, name: "Team D", seed: null, score: 2, placement: null, active: true }
+    ],
     tournament: { id: 78, name: "OWT 78" } as Encounter["tournament"],
     stage: { id: 5, name: "Groups" } as Encounter["stage"],
     stage_item: null,
@@ -236,6 +260,19 @@ function tab(scope: ParentNode, label: string) {
   );
 }
 
+/** The chip popover portals out of the page; an option's label sits beside its game mark. */
+function commandItem(label: string) {
+  return Array.from(document.querySelectorAll('[cmdk-item=""]')).find((item) =>
+    (item.querySelector(".truncate") ?? item).textContent?.trim().startsWith(label)
+  );
+}
+
+async function pickChip(filter: string, option: string) {
+  await click(document.querySelector('button[aria-label="Add filter"]'));
+  await click(await waitFor(() => commandItem(filter), `the ${filter} filter`));
+  await click(await waitFor(() => commandItem(option), `the ${option} option`));
+}
+
 function setViewportWidth(width: number) {
   Object.defineProperty(window, "innerWidth", { value: width, configurable: true });
   window.matchMedia = ((query: string) => ({
@@ -251,6 +288,7 @@ function setViewportWidth(width: number) {
 }
 
 beforeEach(() => {
+  scopeGame.value = "overwatch";
   permitted = true;
   replace.mockClear();
   setViewportWidth(1280);
@@ -261,7 +299,7 @@ beforeEach(() => {
     per_page: 15
   });
   getTournaments.mockReset().mockResolvedValue({
-    results: [{ id: 78, name: "OWT 78" }],
+    results: [{ id: 78, name: "OWT 78", discipline: "overwatch" }],
     total: 1,
     page: 1,
     per_page: -1
@@ -293,7 +331,7 @@ describe("/admin/matches", () => {
     permitted = false;
     const container = await mount();
 
-    expect(container.textContent).toContain("Unauthorized");
+    expect(container.textContent).toContain("No access");
     expect(getEncounters).not.toHaveBeenCalled();
   });
 
@@ -319,8 +357,8 @@ describe("/admin/matches", () => {
     expect(getEncounters).not.toHaveBeenCalled();
   });
 
-  it("keeps the tournament scope across a view switch and drops the row id", async () => {
-    window.history.replaceState(null, "", "/admin/matches?view=encounters&tournament=78&id=8812");
+  it("keeps the tournament scope and the Game chip across a view switch and drops the row id", async () => {
+    window.history.replaceState(null, "", "/admin/matches?view=encounters&tournament=78&discipline=overwatch&id=8812");
     const container = await mount();
     await waitFor(() => container.querySelector("table"), "the encounters table");
 
@@ -328,6 +366,8 @@ describe("/admin/matches", () => {
     const params = new URLSearchParams(href.split("?")[1] ?? "");
     expect(params.get("view")).toBe("parsed");
     expect(params.get("tournament")).toBe("78");
+    // The encounters and parsed views share one Game chip.
+    expect(params.get("discipline")).toBe("overwatch");
     // A row id from the encounters view would select a different entity here.
     expect(params.get("id")).toBeNull();
   });
@@ -337,7 +377,6 @@ describe("/admin/matches", () => {
     const container = await mount();
     await waitFor(() => container.querySelector("table"), "the encounters table");
 
-    expect(container.querySelector('[data-pinned-filter="tournament"]')).toBeNull();
     const chip = document.querySelector<HTMLButtonElement>(
       'button[aria-label^="Remove filter Tournament:"]'
     );
@@ -363,6 +402,59 @@ describe("/admin/matches", () => {
     // The card is chosen, not the first three columns: the score and the log
     // state are what a phone needs from an encounter.
     expect(cards[0].textContent).toContain("1–2");
-    expect(cards[0].textContent).toContain("no logs");
+    expect(cards[0].querySelector('[role="img"][aria-label="No logs"]')).not.toBeNull();
+  });
+
+  it("names each card's game below md under all games, where the Game column is not shown", async () => {
+    scopeGame.value = null;
+    getEncounters.mockResolvedValue({ results: [encounter({ discipline: "lol" })], total: 1, page: 1, per_page: 15 });
+    setViewportWidth(375);
+    const container = await mount();
+    const card = await waitFor(() => container.querySelector("ul[aria-label='Rows'] > li"), "the mobile card");
+
+    expect(card.textContent).toContain("Team C vs Team D");
+    expect(card.textContent).toContain("League of Legends");
+  });
+
+  it("asks the encounters view for the game in scope", async () => {
+    scopeGame.value = "lol";
+    const container = await mount();
+    await waitFor(() => container.querySelector("table"), "the encounters table");
+
+    expect(getEncounters.mock.calls.at(-1)?.[7]).toMatchObject({ discipline: "lol" });
+  });
+
+  it("applies the tournament and stage chips under all games", async () => {
+    scopeGame.value = null;
+    window.history.replaceState(null, "", "/admin/matches?tournament=78&stage=5");
+    const container = await mount();
+    await waitFor(() => container.querySelector("table"), "the encounters table");
+
+    const call = getEncounters.mock.calls.at(-1)!;
+    expect(call[2]).toBe(78);
+    expect(call[7]).toMatchObject({ stage_id: 5, discipline: null });
+    expect(document.querySelector('button[aria-label^="Remove filter Tournament"]')).not.toBeNull();
+  });
+
+  it("a Game chip pick in the parsed view drops the map always and another game's tournament scope, and keeps the view", async () => {
+    scopeGame.value = null;
+    window.history.replaceState(null, "", "/admin/matches?view=parsed&tournament=78&stage=2&map_id=9&unlinked_only=1");
+    await mount();
+    await waitFor(() => document.querySelector('button[aria-label="Add filter"]'), "the parsed view's filter bar");
+
+    // OWT 78 is an Overwatch tournament: picking its own game keeps it.
+    await pickChip("Game", "Overwatch");
+    let url = new URLSearchParams(window.location.search);
+    expect(url.get("discipline")).toBe("overwatch");
+    expect(url.get("tournament")).toBe("78");
+    expect(url.get("stage")).toBe("2");
+    expect(url.has("map_id")).toBe(false);
+
+    await pickChip("Game", "League of Legends");
+    url = new URLSearchParams(window.location.search);
+    expect(url.get("view")).toBe("parsed");
+    expect(url.get("discipline")).toBe("lol");
+    for (const param of ["map_id", "tournament", "stage"]) expect(url.has(param), param).toBe(false);
+    expect(url.get("unlinked_only")).toBe("1");
   });
 });

@@ -8,7 +8,6 @@ their own tests (create_tournament/update_tournament, challonge_client, challong
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from datetime import date
 from pathlib import Path
@@ -20,9 +19,9 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 admin_tournament = importlib.import_module("src.services.admin.tournament")
+challonge_sync = importlib.import_module("src.services.challonge.sync")
 
 
 class CreateTournamentFromChallongeTests(IsolatedAsyncioTestCase):
@@ -41,7 +40,12 @@ class CreateTournamentFromChallongeTests(IsolatedAsyncioTestCase):
             ) as create,
             patch.object(admin_tournament.tournament_service, "_link_tournament_challonge_source", AsyncMock()) as link,
             patch.object(
-                admin_tournament.sync_service, "import_tournament", AsyncMock(return_value={"created": 3})
+                # ``src.services.challonge.sync`` is imported inside
+                # ``create_from_challonge``, so the singleton is patched where it
+                # lives rather than on the admin module that never binds it.
+                challonge_sync.sync_service,
+                "import_tournament",
+                AsyncMock(return_value={"created": 3}),
             ) as import_,
             patch.object(
                 admin_tournament.tournament_service, "get_tournament", AsyncMock(return_value=finalized)
@@ -50,6 +54,7 @@ class CreateTournamentFromChallongeTests(IsolatedAsyncioTestCase):
             result = await admin_tournament.tournament_service.create_tournament_from_challonge(
                 session,
                 workspace_id=9,
+                discipline="lol",
                 is_league=False,
                 start_date=date(2026, 1, 1),
                 end_date=date(2026, 2, 1),
@@ -63,6 +68,7 @@ class CreateTournamentFromChallongeTests(IsolatedAsyncioTestCase):
         self.assertEqual("Winter Cup", create_data.name)
         self.assertEqual("desc", create_data.description)
         self.assertEqual(9, create_data.workspace_id)
+        self.assertEqual("lol", create_data.discipline)
 
         link.assert_awaited_once_with(session, created, challonge_id=777, slug="winter-cup")
         session.commit.assert_awaited_once()

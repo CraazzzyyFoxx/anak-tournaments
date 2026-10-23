@@ -6,201 +6,43 @@ merged into the gateway's OpenAPI by the export script. Keyed by RPC subject
 from __future__ import annotations
 
 DOCS: dict[str, dict] = {
-    # ── generic CRUD read engine (rpc.app.read.{get,list}#<entity>) ────────────
-    "rpc.app.read.get#hero": {
-        "summary": "Get hero",
-        "description": "Permission: public; no authentication required. Returns a single hero by id via the shared CRUD read engine, 404 if not found.",
+    "rpc.app.workspaces.team_format_get": {
+        "summary": "Get a workspace's default team format",
+        "description": "Permission: workspace `workspace.update`. Returns the discipline's workspace default or module preset with its slot projection.",
     },
-    "rpc.app.read.list#hero": {
-        "summary": "List heroes",
-        "description": "Permission: public; no authentication required. Returns a paginated, sortable, name/slug-searchable list of heroes via the shared CRUD read engine.",
+    "rpc.app.workspaces.team_format_put": {
+        "summary": "Replace a workspace's default team format",
+        "description": "Permission: workspace `workspace.update`. Sets the template for future tournaments and mixes; existing copies never change. Invalid formats return 422.",
     },
-    "rpc.app.read.get#map": {
-        "summary": "Get map",
-        "description": "Permission: public; no authentication required. Returns a single map by id with optional entity expansion via the shared CRUD read engine, 404 if not found.",
+    # ── public native catalog ──────────────────────────────────────────────────
+    "rpc.app.catalog.list": {
+        "summary": "List a discipline's catalog",
+        "description": "Permission: public; no authentication required. Returns a paginated list of one discipline's characters, maps or modes (`kind`); `search`, `parent_id`, `attrs` (JSON object) and `active` filter it, active rows only unless `active=false` is passed. 404 `discipline_not_installed` for an unknown discipline, 404 `catalog_kind_not_declared` for a kind the game does not declare (League has no `mode`).",
     },
-    "rpc.app.read.list#map": {
-        "summary": "List maps",
-        "description": "Permission: public; no authentication required. Returns a paginated, sortable, name-searchable list of maps via the shared CRUD read engine.",
+    "rpc.app.catalog.get": {
+        "summary": "Get a catalog entity",
+        "description": "Permission: public; no authentication required. Returns one entity with its parent expanded; inactive rows are readable. 404 `not_found` when the id is not a row of that discipline and kind (never an entity relabelled from another game).",
     },
-    "rpc.app.read.get#gamemode": {
-        "summary": "Get gamemode",
-        "description": "Permission: public; no authentication required. Returns a single gamemode by id with optional entity expansion via the shared CRUD read engine, 404 if not found.",
+    "rpc.app.disciplines.list": {
+        "summary": "List installed disciplines",
+        "description": "Permission: public; an optional identity lets a hidden workspace's members read it. Returns the installed disciplines with their kinds, capabilities and, for `workspace_id=<id>`, whether the workspace enabled each (`all` is the global view, every discipline enabled). Order: declaration order for `all`; for a workspace, its enabled disciplines first in its own `disciplines_enabled` order, then the rest in declaration order. 404 for an unknown or hidden-to-viewer workspace, 422 `invalid_workspace_id` otherwise.",
     },
-    "rpc.app.read.list#gamemode": {
-        "summary": "List gamemodes",
-        "description": "Permission: public; no authentication required. Returns a paginated, sortable, name/slug-searchable list of gamemodes via the shared CRUD read engine.",
+    "rpc.app.disciplines.metadata": {
+        "summary": "Get a discipline's native metadata",
+        "description": "Permission: public; an optional identity lets a hidden workspace's members read it. Returns the descriptor, the role dictionary (inactive rows included for history; global roles plus the requested workspace's sub-roles), stat and event vocabularies, team-format presets and the native ladder. 404 `discipline_not_installed` for an unknown code; a disabled discipline is still readable.",
     },
-    "rpc.app.read.get#achievement": {
-        "summary": "Get achievement",
-        "description": "Permission: public; no authentication required. Returns a single achievement rule by id with optional entity expansion via the shared CRUD read engine, 404 if not found.",
-    },
-    "rpc.app.read.list#achievement": {
-        "summary": "List achievements",
-        "description": "Permission: public; no authentication required. Returns a paginated, sortable list of achievements optionally filtered by workspace via the shared CRUD read engine.",
-    },
-    # ── lookups ────────────────────────────────────────────────────────────────
-    "rpc.app.heroes.lookup": {
-        "summary": "Hero lookup",
-        "description": "Permission: public; no authentication required. Returns all heroes as id/name lookup items ordered by name (no pagination).",
-    },
-    "rpc.app.maps.lookup": {
-        "summary": "Map lookup",
-        "description": "Permission: public; no authentication required. Returns all maps as id/name lookup items ordered by name (no pagination).",
-    },
-    "rpc.app.gamemodes.lookup": {
-        "summary": "Gamemode lookup",
-        "description": "Permission: public; no authentication required. Returns all gamemodes as id/name lookup items ordered by name (no pagination).",
-    },
-    # ── heroes (bespoke) ─────────────────────────────────────────────────────────
-    "rpc.app.heroes.playtime": {
-        "summary": "Hero playtime stats",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns paginated aggregated hero-playtime statistics, optionally scoped to a workspace.",
-    },
-    "rpc.app.heroes.leaderboard": {
-        "summary": "Hero leaderboard",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a paginated per-hero player leaderboard resolved against the workspace context and its division grid.",
-    },
-    # ── statistics ───────────────────────────────────────────────────────────────
-    "rpc.app.statistics.dashboard": {
-        "summary": "Dashboard stats",
-        "description": "Permission: public; no authentication required. Returns aggregate dashboard statistics for the optional workspace.",
-    },
-    "rpc.app.statistics.champion": {
-        "summary": "Most-champion players",
-        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments won, optionally workspace-scoped.",
-    },
-    "rpc.app.statistics.winrate": {
-        "summary": "Top winrate players",
-        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate, optionally workspace-scoped.",
-    },
-    "rpc.app.statistics.won_maps": {
-        "summary": "Top won-maps players",
-        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by maps won, optionally workspace-scoped.",
-    },
-    "rpc.app.statistics.tournament_readiness": {
-        "summary": "Tournament readiness checklist",
-        "description": (
-            "Permission: workspace `tournament.read` or `team.read` on the tournament's own workspace. Returns the"
-            " living readiness checklist for one tournament, telling its organisers what is still missing before it can"
-            " run: schedule/grid/stage-slot configuration, bracket and encounter log coverage, and the registration,"
-            " pool, balance and draft state. Each group of fields is masked to null when the caller lacks the permission"
-            " that gates it, so a partial reader sees no-access rather than zeros. 403 without either permission, 404 if"
-            " the tournament is unknown; hidden tournaments of the caller's own workspace are visible."
-        ),
-    },
-    # ── users (bespoke reads) ──────────────────────────────────────────────────────
+    # ── users (identity reads) ───────────────────────────────────────────────────
     "rpc.app.users.list": {
         "summary": "List users",
         "description": "Permission: public; no authentication required. Returns a paginated, sortable, name-searchable list of players.",
     },
-    "rpc.app.users.get_profile": {
-        "summary": "User profile",
-        "description": "Permission: public; no authentication required. Returns a player's full profile resolved against the workspace context and division grid.",
-    },
-    "rpc.app.users.draft_card": {
-        "summary": "User draft card",
-        "description": "Permission: public; no authentication required. Returns the draft room's player card for a user: career record, per-role and per-hero map records, MVP maps and the last five tournaments, scoped to the workspace.",
-    },
     "rpc.app.users.search": {
         "summary": "Search users",
-        "description": "Permission: public; no authentication required. Returns players matching a free-text query across the requested identity fields.",
-    },
-    "rpc.app.users.overview": {
-        "summary": "Users overview",
-        "description": (
-            "Permission: public; no authentication required. Returns a paginated, workspace-normalized "
-            "player overview table built from the workspace grid. `workspace_id=all` reads across every "
-            "workspace instead: divisions are then resolved on each row's own tournament grid and every "
-            "referenced grid is returned in `division_grids`. A missing `workspace_id` is a 400."
-        ),
-    },
-    "rpc.app.users.overview_stats": {
-        "summary": "Users overview stats",
-        "description": (
-            "Permission: public; no authentication required. Returns aggregate statistics for the "
-            "players-overview table computed against the workspace grid, or across every workspace "
-            "(each row on its own tournament grid) with `workspace_id=all`."
-        ),
-    },
-    "rpc.app.users.overview_catalog": {
-        "summary": "Users overview catalog",
-        "description": (
-            "Permission: public; no authentication required. Returns the filter-catalog (facets) for the "
-            "players-overview table from the workspace grid, or across every workspace with "
-            "`workspace_id=all` (see `division_grids`)."
-        ),
-    },
-    "rpc.app.users.compare": {
-        "summary": "Compare users",
-        "description": (
-            "Permission: public; no authentication required, though a hidden tournament 404s unless the "
-            "optional identity may view it. Returns a head-to-head comparison between the given user and "
-            "others, resolved against the `workspace_id` workspace's division grid and tournaments, or "
-            "across every workspace with `workspace_id=all` (the default)."
-        ),
-    },
-    "rpc.app.users.compare_heroes": {
-        "summary": "Compare user heroes",
-        "description": (
-            "Permission: public; no authentication required, though a hidden tournament 404s unless the "
-            "optional identity may view it. Returns a per-hero head-to-head comparison for the given user "
-            "against others, resolved against the `workspace_id` workspace's division grid and tournaments, "
-            "or across every workspace with `workspace_id=all` (the default)."
-        ),
+        "description": "Permission: public; no authentication required. Returns players whose profile name, or a game, Discord or Twitch handle shown on their public profile, matches a free-text query.",
     },
     "rpc.app.users.by_name": {
         "summary": "Get user by name",
         "description": "Permission: public; no authentication required. Resolves a player by BattleTag (name containing '#', dashes normalized) or by Discord name with optional entity expansion.",
-    },
-    "rpc.app.users.tournaments": {
-        "summary": "User tournaments",
-        "description": "Permission: public; no authentication required. Returns the tournaments a player participated in, scoped to the workspace context and grid.",
-    },
-    "rpc.app.users.tournament": {
-        "summary": "User tournament stats",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's participation and stats for one tournament, resolved against that tournament's division grid.",
-    },
-    "rpc.app.users.tournament_encounters": {
-        "summary": "User tournament encounters",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's encounters (with per-match stats) within one tournament — the lazy detail behind the Tournaments-tab dossier, fetched only for the tournament currently open in the UI.",
-    },
-    "rpc.app.users.tournament_leaderboard": {
-        "summary": "Tournament stat leaderboard",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns every player in a tournament ranked by a single stat — the full ranked list behind a user's per-stat rank/total on the tournament-stats page. Inverse stats like Deaths rank ascending. The `stat` must be one of the ranked tournament stats.",
-    },
-    "rpc.app.users.maps": {
-        "summary": "User maps",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated, sortable per-map record (win/loss/draw/winrate), optionally workspace-scoped.",
-    },
-    "rpc.app.users.maps_summary": {
-        "summary": "User maps summary",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns aggregate totals for a player's per-map record, optionally workspace-scoped.",
-    },
-    "rpc.app.users.encounters": {
-        "summary": "User encounters",
-        "description": "Permission: public; no authentication required. Returns a player's paginated encounters filterable by result, stage, MVP, log availability, and opponent.",
-    },
-    "rpc.app.users.matches_summary": {
-        "summary": "User matches summary",
-        "description": "Permission: public; no authentication required. Returns aggregate match totals for a player, optionally workspace-scoped.",
-    },
-    "rpc.app.users.heroes": {
-        "summary": "User heroes",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated per-hero stats for the requested stat names, optionally scoped to a tournament and workspace; rejects invalid stat values with 422.",
-    },
-    "rpc.app.users.teammates": {
-        "summary": "User best teammates",
-        "description": "Permission: public; no authentication required. Returns a player's paginated, sortable best teammates by winrate and shared tournaments, optionally workspace-scoped.",
-    },
-    # ── achievements (bespoke) ─────────────────────────────────────────────────────
-    "rpc.app.achievements.user": {
-        "summary": "User achievements",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's earned (and optionally locked) achievements, scoped by tournament or without-tournament and workspace; rejects combining tournament_id with without_tournament=true.",
-    },
-    "rpc.app.achievements.users": {
-        "summary": "Achievement earners",
-        "description": "Permission: public; no authentication required. Returns a paginated list of players who earned a given achievement.",
     },
     # ── workspaces (reads + writes + members) ──────────────────────────────────────
     "rpc.app.workspaces.list": {
@@ -211,7 +53,17 @@ DOCS: dict[str, dict] = {
             " byte-identical for every caller, superusers included: hidden and `unverified` workspaces never appear."
             " `scope=admin` is the management list -- every workspace for a superuser, otherwise only the caller's own"
             " memberships at any tier. `scope=all` is that unioned with the public directory (the workspace switcher)."
-            " Any other value is a 422."
+            " Any other value is a 422. Rows carry no `effective_division_grid_versions`: read one workspace for its"
+            " grids."
+        ),
+    },
+    "rpc.app.workspaces.by_slug": {
+        "summary": "Get workspace by slug",
+        "description": (
+            "Permission: public; no authentication required -- an optional identity widens what resolves. The"
+            " community page's lookup: the workspace whose slug is `slug`, with its grids, when `scope=all` of the"
+            " list would include it for the caller (listed, one of their memberships, or any for a superuser);"
+            " 404 otherwise, so a hidden or `unverified` workspace never opens to anyone else by its slug."
         ),
     },
     "rpc.app.workspaces.by_host": {
@@ -269,7 +121,7 @@ DOCS: dict[str, dict] = {
         "summary": "Remove workspace member",
         "description": "Permission: workspace `workspace_member.delete`. Removes a member from a workspace and busts their RBAC cache; refuses to remove the last owner, returns 204.",
     },
-    # ── workspace custom domain (white-label Phase 2) ───────────────────────────────
+    # ── workspace custom domain ─────────────────────────────────────────────────────
     "rpc.app.workspaces.set_custom_domain": {
         "summary": "Set workspace custom domain",
         "description": "Permission: workspace `workspace.update`. Normalizes and stores a custom domain plus a fresh DNS TXT verification token, resetting verification; 404 if workspace missing, 400 on an invalid domain.",
@@ -284,7 +136,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.workspaces.discord_guild_verify": {
         "summary": "Verify and bind a Discord guild",
-        "description": "Permission: workspace `workspace.update`, and the caller must additionally administer the Discord guild (owner or MANAGE_GUILD, proven through identity-service). Binds the guild to the workspace, stamping verified_at/verified_by; 404 if workspace missing, 403 if the caller does not administer the guild, 409 if another workspace already claims it, 503 if identity-service is unreachable.",
+        "description": "Permission: workspace `workspace.update`, and the caller must additionally administer the Discord guild (owner or MANAGE_GUILD, proven through identity-service). Binds the guild to the workspace, stamping verified_at/verified_by; 404 if workspace missing, 403 `discord_relink_required` when the caller's Discord connection has no usable OAuth token (re-link Discord), 403 `discord_guild_not_administered` if the caller does not administer the guild, 409 if another workspace already claims it, 503 if identity-service is unreachable.",
     },
     "rpc.app.workspaces.discord_guild_clear": {
         "summary": "Unbind a Discord guild",
@@ -292,15 +144,15 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.workspaces.my_discord_guilds": {
         "summary": "List my administered Discord guilds",
-        "description": "Permission: authenticated (active) user; self-service — the caller's own Discord guilds only. Returns the Discord guilds the caller owns or can manage (via identity-service, the `guilds` OAuth scope), for picking one to verify; 503 if identity-service is unreachable.",
+        "description": 'Permission: authenticated (active) user; self-service — the caller\'s own Discord guilds only. Returns the Discord guilds the caller owns or can manage (via identity-service, the `guilds` OAuth scope), for picking one to verify, and `relink_required` — true when the caller\'s Discord connection has no usable OAuth token, so the empty list means "re-link Discord" rather than "administers nothing"; 503 if identity-service is unreachable.',
     },
     "rpc.app.workspaces.notification_config_get": {
         "summary": "Read a workspace's notification delivery settings",
-        "description": "Permission: workspace `workspace.update`, like the sibling Discord pickers — the stored channel names a private guild. Returns where this workspace's broadcast notifications are posted (`discord_channel_id`, a snowflake as a string), the language they are written in, which kinds are posted (`broadcast_kinds`), and the full set that may be enabled (`broadcastable_kinds`) so the screen needs no second source of truth. A workspace that never saved anything reads as its defaults — no channel, `ru`, registration and check-in openings. 404 if workspace missing.",
+        "description": "Permission: workspace `workspace.update` — the stored channel names a private guild. Returns where this workspace's broadcast notifications are posted (`discord_channel_id`, a snowflake as a string), the language they are written in, which kinds are posted (`broadcast_kinds`), and the full set that may be enabled (`broadcastable_kinds`) so the screen needs no second source of truth. A workspace that never saved anything reads as its defaults — no channel, `ru`, registration and check-in openings. 404 if workspace missing.",
     },
     "rpc.app.workspaces.notification_config_update": {
         "summary": "Update a workspace's notification delivery settings",
-        "description": "Permission: workspace `workspace.update`. Stores the whole form. A non-null `discord_channel_id` must be a text channel of THIS workspace's verified guild — otherwise an administrator of one workspace could make the bot post into another organiser's server: 409 `discord_guild_not_linked` when no guild is bound, 422 `discord_channel_not_in_guild` when the channel is not one of its text channels, and 503 `discord_unavailable` when Discord cannot be asked (an unchecked channel is never stored). `broadcast_kinds` must be a subset of `broadcastable_kinds` and `locale` one of `ru`/`en`, both 422 otherwise. Returns the same shape as the read. 404 if workspace missing.",
+        "description": "Permission: workspace `workspace.update`. Stores the whole form. A non-null `discord_channel_id` must be a text channel of THIS workspace's verified guild — otherwise an administrator of one workspace could make the bot post into another organiser's server: 409 `discord_guild_not_linked` when no guild is bound, 422 `discord_channel_not_in_guild` when the channel is not one of its text channels, and 503 `discord_unavailable` when discord-service cannot be asked (an unchecked channel is never stored). `broadcast_kinds` must be a subset of `broadcastable_kinds` and `locale` one of `ru`/`en`, both 422 otherwise. Returns the same shape as the read. 404 if workspace missing.",
     },
     "rpc.app.workspaces.verification_set": {
         "summary": "Set workspace verification status",
@@ -343,19 +195,6 @@ DOCS: dict[str, dict] = {
         "summary": "Read workspace quota usage",
         "description": "Permission: workspace `team.create` (i.e. a workspace admin) or superuser. Returns the workspace's plan slug and its shared pool's effective ceilings next to what has been spent — requests this minute, heavy units today, concurrent heavy slots held, and the two payload caps — with the seconds until each window resets. Per-key usage is not reported here (identity-service answers for an API key). `policy` is the editable half and covers all three scopes (`workspace`/`key`/`session`), because all three override rows belong to this tenant: each entry carries `override`, the row exactly as stored (all-null when the scope has none), and `inherited`, the ceiling `quota_set` holds a non-superuser write to. 404 if the workspace is missing. A metered call refused against these numbers answers 429 `code=rate_limited` with `Retry-After`, naming the dimension and the bucket as `details.limit_name` and `details.scope` (relayed by the gateway inside `fields[0]`).",
     },
-    # ── workspace discord entities ──────────────────────────────────────────────────
-    "rpc.app.workspaces.discord_roles": {
-        "summary": "List workspace Discord roles",
-        "description": "Permission: workspace `workspace.update`. Returns roles of the workspace's linked Discord server with names, colors, and positions from discord.py cache.",
-    },
-    "rpc.app.workspaces.discord_channels": {
-        "summary": "List workspace Discord channels",
-        "description": "Permission: workspace `workspace.update`. Returns text channels of the workspace's linked Discord server with names and categories.",
-    },
-    "rpc.app.workspaces.discord_guild": {
-        "summary": "Workspace Discord server status",
-        "description": "Permission: workspace `workspace.update`. Returns connection status, server name, icon URL, member count, and Discord owner of the workspace's linked Discord server.",
-    },
     # ── workspace icon (binary) ────────────────────────────────────────────────────
     "rpc.app.workspaces.icon_upload": {
         "summary": "Upload workspace icon",
@@ -368,76 +207,46 @@ DOCS: dict[str, dict] = {
     # ── assets (binary, workspace-scoped) ────────────────────────────────────────────
     "rpc.app.assets.upload": {
         "summary": "Upload asset",
-        "description": "Permission: workspace `asset.create` in the given workspace, or superuser when no `workspace_id` is given. Uploads an achievements/divisions asset to S3, returning its key and public URL; 422 on invalid asset_type.",
+        "description": "Permission: workspace `asset.create` in the given workspace, or superuser when no `workspace_id` is given. Uploads an achievements/divisions/catalog asset to S3, returning its key and public URL; 422 on invalid asset_type.",
     },
     "rpc.app.assets.delete": {
         "summary": "Delete asset",
-        "description": "Permission: workspace `asset.delete` in the given workspace, or superuser when no `workspace_id` is given. Deletes an achievements/divisions asset from S3 by slug prefix; 422 on invalid asset_type, 404 if nothing deleted.",
+        "description": "Permission: workspace `asset.delete` in the given workspace, or superuser when no `workspace_id` is given. Deletes an achievements/divisions/catalog asset from S3 by slug prefix; 422 on invalid asset_type, 404 if nothing deleted.",
     },
     # ── match log (binary download) ──────────────────────────────────────────────────
     "rpc.app.matches.log": {
         "summary": "Download match log",
         "description": "Permission: any authenticated user — the gateway route requires a session and the handler performs no further permission or ownership check. Returns the raw match-log file bytes for a match (base64 from the worker, decoded by the gateway); 404 if the match or log is missing.",
     },
-    # ── metadata admin: heroes ─────────────────────────────────────────────────────────
-    "rpc.app.heroes.admin_list": {
-        "summary": "Admin list heroes",
-        "description": "Permission: superuser only. Returns a paginated admin list of heroes.",
+    # ── game catalog admin (catalog.entity) ────────────────────────────────────────────
+    "rpc.app.catalog.admin_list": {
+        "summary": "Admin list catalog entities",
+        "description": "Permission: superuser only. Returns a paginated list of one discipline's catalog entities of one kind (character, map, mode); filters search, parent_id, attrs (JSON containment), active; 404 for a kind the discipline does not declare.",
     },
-    "rpc.app.heroes.admin_create": {
-        "summary": "Create hero",
-        "description": "Permission: superuser only. Creates a hero.",
+    "rpc.app.catalog.workspace_characters": {
+        "summary": "List a discipline's characters for a workspace",
+        "description": "Permission: workspace `achievement.create` or `achievement.update`. Read-only: returns a paginated list of one discipline's catalog characters (same entity shape as the admin catalog list) so an organizer can link an achievement rule to one; catalog mutations stay superuser only; 404 for a missing workspace, 422 for a discipline the workspace does not have enabled.",
     },
-    "rpc.app.heroes.admin_update": {
-        "summary": "Update hero",
-        "description": "Permission: superuser only. Updates a hero by id.",
+    "rpc.app.catalog.admin_create": {
+        "summary": "Create catalog entity",
+        "description": "Permission: superuser only. Creates a catalog entity; slug defaults to the slugified name and must fit 64 characters (422 otherwise); a character's attrs.class must be one of the discipline's classes; a map of a discipline with modes needs its mode as parent_id.",
     },
-    "rpc.app.heroes.admin_delete": {
-        "summary": "Delete hero",
-        "description": "Permission: superuser only. Deletes a hero by id, returns 204.",
+    "rpc.app.catalog.admin_update": {
+        "summary": "Update catalog entity",
+        "description": "Permission: superuser only. Updates a catalog entity by id; attrs is a shallow merge (present keys replace, absent keys keep). Explicit null is refused for name, slug, attrs and active (422); image_path and parent_id can be cleared. Renaming preserves the stored slug; an explicit slug must fit 64 characters.",
     },
-    # ── metadata admin: maps ────────────────────────────────────────────────────────────
-    "rpc.app.maps.admin_list": {
-        "summary": "Admin list maps",
-        "description": "Permission: superuser only. Returns a paginated admin list of maps.",
-    },
-    "rpc.app.maps.admin_create": {
-        "summary": "Create map",
-        "description": "Permission: superuser only. Creates a map.",
-    },
-    "rpc.app.maps.admin_update": {
-        "summary": "Update map",
-        "description": "Permission: superuser only. Updates a map by id.",
-    },
-    "rpc.app.maps.admin_delete": {
-        "summary": "Delete map",
-        "description": "Permission: superuser only. Deletes a map by id, returns 204.",
-    },
-    # ── metadata admin: gamemodes ─────────────────────────────────────────────────────────
-    "rpc.app.gamemodes.admin_list": {
-        "summary": "Admin list gamemodes",
-        "description": "Permission: superuser only. Returns a paginated admin list of gamemodes.",
-    },
-    "rpc.app.gamemodes.admin_create": {
-        "summary": "Create gamemode",
-        "description": "Permission: superuser only. Creates a gamemode.",
-    },
-    "rpc.app.gamemodes.admin_update": {
-        "summary": "Update gamemode",
-        "description": "Permission: superuser only. Updates a gamemode by id.",
-    },
-    "rpc.app.gamemodes.admin_delete": {
-        "summary": "Delete gamemode",
-        "description": "Permission: superuser only. Deletes a gamemode by id, returns 204.",
+    "rpc.app.catalog.admin_delete": {
+        "summary": "Delete catalog entity",
+        "description": "Permission: superuser only. Deletes a catalog entity by id, returns 204; fails while a game, pool or legacy mapping references it.",
     },
     # ── metadata admin: catalog alias-miss queue ──────────────────────────────────────────
     "rpc.app.catalog_aliases.misses_list": {
         "summary": "List catalog alias misses",
-        "description": "Permission: superuser only. Returns a paginated queue of hero/map/gamemode names from match logs that no alias resolved, ordered by occurrences then recency; open misses only unless include_resolved=true.",
+        "description": "Permission: superuser only. Returns a paginated queue of names (any discipline) a match log or canonical document used that did not resolve, ordered by occurrences then recency. kind is one of character|map|mode (catalog entity names) or stat|event|role (undeclared codes; a role's raw_name is dimension:role); open misses only unless include_resolved=true.",
     },
     "rpc.app.catalog_aliases.attach": {
         "summary": "Attach a catalog alias",
-        "description": "Permission: superuser only. Adds the raw name to the target entity's aliases and closes the matching miss in one transaction; 404 if the entity is missing.",
+        "description": "Permission: superuser only. Adds the raw name to the target entity's aliases and closes that entity's discipline/kind miss in one transaction; 404 if the entity is missing. Stat/event/role misses are never attachable (dismiss only).",
     },
     "rpc.app.catalog_aliases.dismiss": {
         "summary": "Dismiss a catalog alias miss",

@@ -74,7 +74,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src import models  # noqa: E402
+from shared import models  # noqa: E402
 from src.schemas.oauth import OAuthUserInfo  # noqa: E402
 from src.services.api_keys import api_keys  # noqa: E402
 
@@ -262,11 +262,14 @@ class FakeSessionCache:
         self.reads += 1
         return self.rbac_entry
 
+    async def rbac_generation(self, user_id: int) -> str:
+        return "0"
+
     async def set_rbac(self, user_id: int, **payload: object) -> None:
         self.writes.append((user_id, payload))
 
-    async def invalidate_rbac(self, user_id: int) -> None:
-        self.invalidated.append(user_id)
+    async def invalidate_rbac(self, *user_ids: int) -> None:
+        self.invalidated.extend(user_ids)
 
     async def blacklist_session(self, session_id: str, ttl_seconds: int) -> None:
         self.blacklisted.append((session_id, ttl_seconds))

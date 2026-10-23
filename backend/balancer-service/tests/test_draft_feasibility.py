@@ -16,13 +16,12 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 
 from shared.core.enums import (  # noqa: E402
-    HERO_TYPE_CLASSES,
     DraftPickStatus,
     DraftPlayerStatus,
-    HeroClass,
 )
-from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
-from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
+from shared.models.catalog import CatalogRole  # noqa: E402
+from shared.models.draft import DraftPick, DraftPlayer, DraftTeam  # noqa: E402
 from src.domain.draft import rules  # noqa: E402
 from tests.factories import roster  # noqa: E402
 
@@ -36,7 +35,7 @@ def _load_feature_modules():
     return matching, feasibility
 
 
-def _player(feasibility, player_id: int, *roles: HeroClass):
+def _player(feasibility, player_id: int, *roles: str):
     return feasibility.EligiblePlayer(player_id=player_id, playable_roles=frozenset(roles))
 
 
@@ -45,7 +44,7 @@ def _assignment(feasibility, player_id: int, team_id: int, slot_code: str):
 
 
 def _shape(slots: dict[str, int]):
-    return parse_roster_slots(slots)
+    return RosterShape(entries=tuple(slots.items()))
 
 
 def _error_code(exc: Exception) -> str:
@@ -76,14 +75,28 @@ def test_generic_matcher_reassigns_an_existing_owner_to_complete_the_matching() 
     }
 
 
+def test_pick_options_preserve_non_overwatch_role_codes() -> None:
+    _, feasibility = _load_feature_modules()
+    options = feasibility.evaluate_pick_options(
+        team_id=10,
+        team_ids=(10,),
+        slot_targets={"mid": 1, "jungle": 1},
+        players=[_player(feasibility, 1, "mid"), _player(feasibility, 2, "jungle")],
+    )
+    assert [(option.player_id, option.role, option.is_safe) for option in options] == [
+        (1, "mid", True),
+        (2, "jungle", True),
+    ]
+
+
 def test_service_errors_expose_contract_codes_and_role_deficit_details() -> None:
     _, feasibility = _load_feature_modules()
     report = feasibility.analyze_draft_feasibility(
         team_ids=[10],
         slot_targets={"tank": 1, "damage": 1, "support": 1},
         players=[
-            _player(feasibility, 1, HeroClass.tank),
-            _player(feasibility, 2, HeroClass.damage),
+            _player(feasibility, 1, "tank"),
+            _player(feasibility, 2, "damage"),
         ],
     )
 
@@ -99,11 +112,11 @@ def test_service_errors_expose_contract_codes_and_role_deficit_details() -> None
 def test_insufficient_pool_reports_unmatched_slot() -> None:
     _, feasibility = _load_feature_modules()
     players = [
-        _player(feasibility, 1, HeroClass.tank),
-        _player(feasibility, 2, HeroClass.tank),
-        _player(feasibility, 3, HeroClass.damage),
-        _player(feasibility, 4, HeroClass.damage),
-        _player(feasibility, 5, HeroClass.support),
+        _player(feasibility, 1, "tank"),
+        _player(feasibility, 2, "tank"),
+        _player(feasibility, 3, "damage"),
+        _player(feasibility, 4, "damage"),
+        _player(feasibility, 5, "support"),
     ]
 
     report = feasibility.analyze_draft_feasibility(
@@ -123,12 +136,12 @@ def test_hall_deficit_is_detected_when_each_role_counter_looks_sufficient() -> N
     # Tank and DPS each show supply=2, but it is the same two flex players. Four
     # distinct Tank/DPS slots therefore cannot be filled simultaneously.
     players = [
-        _player(feasibility, 1, HeroClass.tank, HeroClass.damage),
-        _player(feasibility, 2, HeroClass.tank, HeroClass.damage),
-        _player(feasibility, 3, HeroClass.support),
-        _player(feasibility, 4, HeroClass.support),
-        _player(feasibility, 5, HeroClass.support),
-        _player(feasibility, 6, HeroClass.support),
+        _player(feasibility, 1, "tank", "damage"),
+        _player(feasibility, 2, "tank", "damage"),
+        _player(feasibility, 3, "support"),
+        _player(feasibility, 4, "support"),
+        _player(feasibility, 5, "support"),
+        _player(feasibility, 6, "support"),
     ]
 
     report = feasibility.analyze_draft_feasibility(
@@ -147,9 +160,9 @@ def test_hall_deficit_is_detected_when_each_role_counter_looks_sufficient() -> N
 def test_one_flex_player_cannot_cover_two_critical_roles() -> None:
     _, feasibility = _load_feature_modules()
     players = [
-        _player(feasibility, 1, HeroClass.tank, HeroClass.damage, HeroClass.support),
-        _player(feasibility, 2, HeroClass.damage),
-        _player(feasibility, 3, HeroClass.damage),
+        _player(feasibility, 1, "tank", "damage", "support"),
+        _player(feasibility, 2, "damage"),
+        _player(feasibility, 3, "damage"),
     ]
 
     report = feasibility.analyze_draft_feasibility(
@@ -166,14 +179,14 @@ def test_one_flex_player_cannot_cover_two_critical_roles() -> None:
 def test_hypothetical_pick_can_be_locally_legal_but_globally_unsafe() -> None:
     _, feasibility = _load_feature_modules()
     players = [
-        _player(feasibility, 1, HeroClass.support),
-        _player(feasibility, 2, HeroClass.damage, HeroClass.support),
-        _player(feasibility, 3, HeroClass.damage),
-        _player(feasibility, 4, HeroClass.damage),
+        _player(feasibility, 1, "support"),
+        _player(feasibility, 2, "damage", "support"),
+        _player(feasibility, 3, "damage"),
+        _player(feasibility, 4, "damage"),
     ]
     assignments = (
-        _assignment(feasibility, 101, 10, HeroClass.tank.slot_code),
-        _assignment(feasibility, 102, 20, HeroClass.tank.slot_code),
+        _assignment(feasibility, 101, 10, "tank"),
+        _assignment(feasibility, 102, 20, "tank"),
     )
     common = {
         "team_ids": (10, 20),
@@ -199,14 +212,14 @@ def test_hypothetical_pick_can_be_locally_legal_but_globally_unsafe() -> None:
 def test_pick_options_explain_safe_slot_filled_and_role_shortage_states() -> None:
     _, feasibility = _load_feature_modules()
     players = [
-        _player(feasibility, 1, HeroClass.support),
-        _player(feasibility, 2, HeroClass.damage, HeroClass.support),
-        _player(feasibility, 3, HeroClass.damage),
-        _player(feasibility, 4, HeroClass.damage),
+        _player(feasibility, 1, "support"),
+        _player(feasibility, 2, "damage", "support"),
+        _player(feasibility, 3, "damage"),
+        _player(feasibility, 4, "damage"),
     ]
     assignments = (
-        _assignment(feasibility, 101, 10, HeroClass.tank.slot_code),
-        _assignment(feasibility, 102, 20, HeroClass.tank.slot_code),
+        _assignment(feasibility, 101, 10, "tank"),
+        _assignment(feasibility, 102, 20, "tank"),
     )
 
     options = feasibility.evaluate_pick_options(
@@ -218,20 +231,20 @@ def test_pick_options_explain_safe_slot_filled_and_role_shortage_states() -> Non
     )
     by_key = {(option.player_id, option.role): option for option in options}
 
-    assert by_key[(1, HeroClass.support)].is_safe is True
-    assert by_key[(2, HeroClass.support)].is_safe is True
-    assert by_key[(2, HeroClass.damage)].is_safe is False
-    assert by_key[(2, HeroClass.damage)].reason_code == "role_shortage"
-    assert by_key[(2, HeroClass.damage)].unmatched_slots
+    assert by_key[(1, "support")].is_safe is True
+    assert by_key[(2, "support")].is_safe is True
+    assert by_key[(2, "damage")].is_safe is False
+    assert by_key[(2, "damage")].reason_code == "role_shortage"
+    assert by_key[(2, "damage")].unmatched_slots
 
 
 def test_full_coverage_with_extra_players_is_feasible() -> None:
     _, feasibility = _load_feature_modules()
     players = [
-        _player(feasibility, 1, HeroClass.tank),
-        _player(feasibility, 2, HeroClass.damage),
-        _player(feasibility, 3, HeroClass.support),
-        _player(feasibility, 4, HeroClass.tank, HeroClass.damage, HeroClass.support),
+        _player(feasibility, 1, "tank"),
+        _player(feasibility, 2, "damage"),
+        _player(feasibility, 3, "support"),
+        _player(feasibility, 4, "tank", "damage", "support"),
     ]
 
     report = feasibility.analyze_draft_feasibility(
@@ -278,7 +291,7 @@ def test_build_state_reads_roles_off_the_engine_rosters_and_the_pick_target_role
         draft_team_id=10,
         status=DraftPickStatus.COMPLETED.value,
         picked_player_id=102,
-        target_role=HeroClass.support.slot_code,
+        target_role_row=CatalogRole(code="support"),
     )
 
     state = feasibility.build_feasibility_state(
@@ -303,7 +316,9 @@ def test_build_state_reads_roles_off_the_engine_rosters_and_the_pick_target_role
         feasibility.DraftAssignment(player_id=101, team_id=10, slot_code="tank"),
         feasibility.DraftAssignment(player_id=102, team_id=10, slot_code="support"),
     )
-    assert state.players == (feasibility.EligiblePlayer(player_id=103, playable_roles=frozenset(HERO_TYPE_CLASSES)),)
+    assert state.players == (
+        feasibility.EligiblePlayer(player_id=103, playable_roles=frozenset(("tank", "damage", "support"))),
+    )
 
 
 def test_build_state_leaves_an_unranked_available_player_out_of_the_eligible_set() -> None:
@@ -350,9 +365,7 @@ def test_options_for_supported_scale_complete_under_latency_budget() -> None:
         _player(
             feasibility,
             player_id,
-            *(HeroClass.damage, HeroClass.support)
-            if player_id % 5 == 0
-            else ((HeroClass.damage,) if player_id % 2 == 0 else (HeroClass.support,)),
+            *("damage", "support") if player_id % 5 == 0 else (("damage",) if player_id % 2 == 0 else ("support",)),
         )
         for player_id in range(1, 151)
     ]
@@ -380,8 +393,8 @@ def test_flex_slot_accepts_a_player_who_cannot_play_the_role_slot() -> None:
         team_ids=(10,),
         slot_targets={"tank": 1, "flex": 1},
         players=[
-            _player(feasibility, 1, HeroClass.tank),
-            _player(feasibility, 2, HeroClass.support),
+            _player(feasibility, 1, "tank"),
+            _player(feasibility, 2, "support"),
         ],
     )
 
@@ -394,12 +407,12 @@ def test_flex_slot_accepts_a_player_who_cannot_play_the_role_slot() -> None:
 def test_an_all_flex_roster_is_feasible_for_any_declared_roles() -> None:
     _, feasibility = _load_feature_modules()
     players = [
-        _player(feasibility, 1, HeroClass.support),
-        _player(feasibility, 2, HeroClass.support),
-        _player(feasibility, 3, HeroClass.support),
-        _player(feasibility, 4, HeroClass.tank),
-        _player(feasibility, 5, HeroClass.tank),
-        _player(feasibility, 6, HeroClass.damage),
+        _player(feasibility, 1, "support"),
+        _player(feasibility, 2, "support"),
+        _player(feasibility, 3, "support"),
+        _player(feasibility, 4, "tank"),
+        _player(feasibility, 5, "tank"),
+        _player(feasibility, 6, "damage"),
     ]
 
     report = feasibility.analyze_draft_feasibility(
@@ -420,8 +433,8 @@ def test_flex_slot_never_absorbs_the_deficit_of_an_unfillable_role_slot() -> Non
         team_ids=(10,),
         slot_targets={"tank": 1, "flex": 1},
         players=[
-            _player(feasibility, 1, HeroClass.support),
-            _player(feasibility, 2, HeroClass.support),
+            _player(feasibility, 1, "support"),
+            _player(feasibility, 2, "support"),
         ],
     )
 
@@ -456,7 +469,7 @@ def test_player_level_flex_still_covers_a_role_slot() -> None:
         assignments=state.assignments,
     )
 
-    assert state.players[0].playable_roles == frozenset(HERO_TYPE_CLASSES)
+    assert state.players[0].playable_roles == frozenset(("tank", "damage", "support"))
     # Two role slots, one player: the tank slot is filled, support is left open.
     assert report.matched_slots == 1
     assert [slot.slot_code for slot in report.unmatched_slots] == ["support"]
@@ -465,7 +478,7 @@ def test_player_level_flex_still_covers_a_role_slot() -> None:
 def test_a_taken_flex_slot_consumes_flex_capacity_not_role_capacity() -> None:
     _, feasibility = _load_feature_modules()
     slot_targets = {"tank": 1, "flex": 1}
-    players = [_player(feasibility, 1, HeroClass.support)]
+    players = [_player(feasibility, 1, "support")]
 
     with_flex_taken = feasibility.analyze_draft_feasibility(
         team_ids=(10,),

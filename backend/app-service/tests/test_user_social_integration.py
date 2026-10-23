@@ -24,7 +24,7 @@ def test_by_name_returns_social_accounts(rpc, db):
     # by_name maps '-' back to '#', so pass the tag with '#' encoded as '-'.
     env = {
         "name": battle_tag.replace("#", "-"),
-        "query": {"entities": ["twitch", "discord", "battle_tag"]},
+        "query": {"entities": ["social_accounts"]},
     }
     res = rpc.call_sync("rpc.app.users.by_name", env)
     assert res.get("ok"), res

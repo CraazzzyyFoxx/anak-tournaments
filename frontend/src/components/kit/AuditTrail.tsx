@@ -24,13 +24,13 @@ import {
   type AuditTrailScope,
   useAuditTranslator
 } from "@/components/kit/audit-log";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import type { AuditLogRead } from "@/types/admin.types";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 
 /**
@@ -39,26 +39,20 @@ import { Spinner } from "@/components/ui/spinner";
  * The symbol and the screen-reader word carry the difference; the colour only
  * reinforces it. Colour-only encoding is out of bounds — `docs/design-book.md`
  * ("никогда color-only") — and this diff is read on exactly the occasions
- * someone is checking whether a value was raised or lowered.
+ * someone is checking whether a value was raised or lowered. `word` is a
+ * `kitAudit.audit.diffLine` key.
  */
 const DIFF_LINES: Record<
   AuditDiffKind,
-  Array<{ side: "before" | "after"; symbol: string; word: string; className: string }>
+  Array<{ side: "before" | "after"; symbol: string; word: "added" | "removed" | "set" | "was" | "now"; className: string }>
 > = {
   added: [{ side: "after", symbol: "+", word: "added", className: "text-success" }],
   removed: [{ side: "before", symbol: "\u2212", word: "removed", className: "text-danger" }],
-  set: [{ side: "after", symbol: "\u2192", word: "set to", className: "text-info" }],
+  set: [{ side: "after", symbol: "+", word: "set", className: "text-info" }],
   changed: [
     { side: "before", symbol: "\u2212", word: "was", className: "text-danger" },
     { side: "after", symbol: "+", word: "now", className: "text-success" },
   ],
-};
-
-const DIFF_KIND_WORD: Record<AuditDiffKind, string> = {
-  added: "added",
-  removed: "removed",
-  changed: "changed",
-  set: "set",
 };
 
 /**
@@ -70,6 +64,7 @@ function AuditDiffList({
   rows,
   parentKind,
 }: Readonly<{ rows: AuditDiffRow[]; parentKind?: AuditDiffKind }>) {
+  const t = useTranslations("kitAudit.audit");
   return (
     <dl className="space-y-1.5">
       {rows.map((row) => (
@@ -77,7 +72,7 @@ function AuditDiffList({
           <dt className="flex items-baseline gap-1.5">
             <span className="font-mono text-xs text-foreground">{row.field}</span>
             {row.kind === parentKind ? null : (
-              <span className={EYEBROW_CLASS}>{DIFF_KIND_WORD[row.kind]}</span>
+              <span className={eyebrowClass("muted")}>{t(`diffKind.${row.kind}`)}</span>
             )}
           </dt>
           {row.children ? (
@@ -91,7 +86,7 @@ function AuditDiffList({
                   <span aria-hidden className={cn("w-3 shrink-0 text-center", line.className)}>
                     {line.symbol}
                   </span>
-                  <span className="sr-only">{line.word}:</span>
+                  <span className="sr-only">{t(`diffLine.${line.word}`)}:</span>
                   <span className="min-w-0 break-all text-muted-foreground">
                     {line.side === "before" ? row.before : row.after}
                   </span>
@@ -219,11 +214,10 @@ function AuditEntry({ entry }: Readonly<{ entry: AuditLogRead }>) {
             </span>
             {action.recognised ? null : (
               // A phrase we had to derive from the string must not pass for a
-              // curated one: the reader needs to know the wording is a guess,
-              // not a fact.
-              <Badge tone="neutral" className="font-normal">
+              // curated one: the raw action stays readable in the tooltip.
+              <span className="text-xs text-muted-foreground" title={action.raw}>
                 {t("unrecognised")}
-              </Badge>
+              </span>
             )}
           </div>
           {/* `title` keeps the full actor readable once it truncates. */}
@@ -243,18 +237,17 @@ function AuditEntry({ entry }: Readonly<{ entry: AuditLogRead }>) {
         </div>
 
         {hasDetail ? (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             aria-expanded={open}
             onClick={() => setOpen((current) => !current)}
-            className="flex shrink-0 items-center gap-1 rounded text-xs text-muted-foreground transition-colors hover:text-foreground"
+            className="shrink-0 gap-1 text-muted-foreground"
           >
             {open ? t("hideDetails") : t("details")}
-            <ChevronDown
-              aria-hidden
-              className={cn("size-3.5 transition-transform", open && "rotate-180")}
-            />
-          </button>
+            <ChevronDown aria-hidden className={cn("transition-transform", open && "rotate-180")} />
+          </Button>
         ) : null}
       </div>
 
@@ -262,6 +255,18 @@ function AuditEntry({ entry }: Readonly<{ entry: AuditLogRead }>) {
     </li>
   );
 }
+
+/** Three entry-shaped rows while the trail (or its start date) loads. */
+const TRAIL_SKELETON = (
+  <div aria-busy="true" className="space-y-3">
+    {[0, 1, 2].map((row) => (
+      <div key={row} className="space-y-1.5">
+        <Skeleton className="h-4 w-2/3" />
+        <Skeleton className="h-3 w-1/3" />
+      </div>
+    ))}
+  </div>
+);
 
 /**
  * "Who changed this" for a single entity.
@@ -274,7 +279,7 @@ function AuditEntry({ entry }: Readonly<{ entry: AuditLogRead }>) {
 export function AuditTrailBody({ scope }: Readonly<{ scope: AuditTrailScope }>) {
   const t = useTranslations("kitAudit.audit");
   const auditT = useAuditTranslator();
-  const entityNoun = (auditEntityLabel(scope.entityType, auditT) ?? "record").toLowerCase();
+  const entityNoun = (auditEntityLabel(scope.entityType, auditT) ?? t("record")).toLowerCase();
   const format = useFormatter();
 
   const trailQuery = useInfiniteQuery({
@@ -311,7 +316,7 @@ export function AuditTrailBody({ scope }: Readonly<{ scope: AuditTrailScope }>) 
   });
 
   if (trailQuery.isLoading) {
-    return <p className="text-sm text-muted-foreground">{t("loading")}</p>;
+    return TRAIL_SKELETON;
   }
 
   if (trailQuery.isError) {
@@ -322,7 +327,7 @@ export function AuditTrailBody({ scope }: Readonly<{ scope: AuditTrailScope }>) 
   // never collapsed into one.
   if (entries.length === 0) {
     if (historyStart.isLoading) {
-      return <p className="text-sm text-muted-foreground">{t("loading")}</p>;
+      return TRAIL_SKELETON;
     }
     if (historyStart.data) {
       // Empty state 1 of 3: the journal runs, this entity is simply older than

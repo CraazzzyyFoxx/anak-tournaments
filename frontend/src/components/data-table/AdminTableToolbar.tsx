@@ -2,11 +2,10 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Download, Rows3, Rows4, Search } from "lucide-react";
+import { Download, Rows3, Rows4 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { SearchField } from "@/components/ui/search-field";
 import { Spinner } from "@/components/ui/spinner";
 import { CategorizedColumnPicker } from "@/components/ui/categorized-column-picker";
 import type { AdminColumnCategory } from "@/components/data-table/columns";
@@ -82,19 +81,16 @@ export function AdminTableToolbar({
   return (
     <div className="flex flex-wrap items-center gap-3 border-b border-border/40 px-4 py-2.5">
       {showSearch ? (
-        <div className="relative w-full sm:w-64 sm:shrink-0">
-          <Label htmlFor={searchInputId} className="sr-only">{searchLabel}</Label>
-          <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            id={searchInputId}
-            autoComplete="off"
-            className="h-8 border-border bg-muted/30 pl-9 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:border-ring"
-            name="admin-table-search"
-            placeholder={searchLabel}
-            value={searchValue}
-            onChange={(event) => onSearchChange(event.target.value)}
-          />
-        </div>
+        <SearchField
+          id={searchInputId}
+          containerClassName="w-full sm:w-64 sm:shrink-0"
+          autoComplete="off"
+          name="admin-table-search"
+          label={searchLabel}
+          placeholder={searchLabel}
+          value={searchValue}
+          onValueChange={onSearchChange}
+        />
       ) : null}
 
       {toolbar ? <div className="min-w-32 flex-1">{toolbar}</div> : null}
@@ -117,7 +113,6 @@ export function AdminTableToolbar({
           type="button"
           variant="outline"
           size="sm"
-          className="h-8"
           onClick={onExportCsv}
           disabled={!canExport}
           title={selectedCount > 0 ? t("exportSelected", { count: selectedCount }) : t("exportCurrent")}
@@ -129,7 +124,7 @@ export function AdminTableToolbar({
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 w-8 px-0"
+          className="w-8 px-0"
           aria-pressed={density === "compact"}
           aria-label={density === "compact" ? t("comfortableRows") : t("compactRows")}
           title={density === "compact" ? t("comfortableRows") : t("compactRows")}

@@ -17,6 +17,8 @@ import type { Tournament } from "@/types/tournament.types";
 
 import RegistrationTeamsList from "./RegistrationTeamsList";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
@@ -37,7 +39,7 @@ vi.mock("@/services/registration.service", () => ({
   default: { getMyRegistration: (...args: unknown[]) => getMyRegistration(...args) }
 }));
 
-const TOURNAMENT = { id: 5, workspace_id: 1, name: "Autumn Cup" } as unknown as Tournament;
+const TOURNAMENT = { id: 5, workspace_id: 1, discipline: "overwatch", name: "Autumn Cup" } as unknown as Tournament;
 
 function team(overrides: Partial<RegistrationTeam>): RegistrationTeam {
   return {

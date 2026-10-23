@@ -1,3 +1,3 @@
-from shared.schemas.base import BaseRead, LookupItem, Score
+from shared.schemas.base import BaseRead, LookupItem
 
-__all__ = ("BaseRead", "LookupItem", "Score")
+__all__ = ("BaseRead", "LookupItem")

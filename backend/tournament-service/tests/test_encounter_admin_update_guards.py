@@ -9,7 +9,7 @@ effect of unrelated edits.
 
 Leaving ``COMPLETED`` is the same boundary from the other side: a bare ``status``
 write left ``result_status='confirmed'`` next to a non-COMPLETED status, and the
-row died on ``ck_encounter_result_status_matches_status`` -- an IntegrityError in
+row died on ``ck_encounter_confirmed_completed`` -- an IntegrityError in
 place of a message naming the reopen endpoint, which is the only writer that also
 clears the score and unwinds the bracket.
 """
@@ -17,7 +17,6 @@ clears the score and unwinds the bracket.
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from contextlib import contextmanager
 from pathlib import Path
@@ -29,7 +28,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 enc_service = importlib.import_module("src.services.admin.encounter")
 schemas = importlib.import_module("src.schemas")
@@ -50,14 +48,10 @@ def assert_http_status(test_case: IsolatedAsyncioTestCase, expected_status: int)
 def _encounter() -> SimpleNamespace:
     return SimpleNamespace(
         id=10,
-        format=enums.EncounterFormat.DUEL,
+        slot_count=2,
+        scoring_preset="wins",
         tournament_id=1,
-        stage_id=5,
-        stage_item_id=6,
-        home_team_id=1,
-        away_team_id=2,
-        home_score=2,
-        away_score=0,
+        scheduled_at=None,
         status=enums.EncounterStatus.COMPLETED,
         result_status=enums.EncounterResultStatus.CONFIRMED,
         name="a vs b",
@@ -78,6 +72,8 @@ def _session(encounter: SimpleNamespace) -> SimpleNamespace:
 
     return SimpleNamespace(
         execute=AsyncMock(side_effect=fake_execute),
+        # The bracket coordinate the encounter sits at (``tournament.bracket_encounter``).
+        get=AsyncMock(return_value=SimpleNamespace(stage_id=5, stage_item_id=6, round=1)),
         commit=AsyncMock(),
         refresh=AsyncMock(),
         flush=AsyncMock(),
@@ -105,8 +101,6 @@ class UpdateEncounterGuards(IsolatedAsyncioTestCase):
                 schemas.EncounterCreate(
                     name="a vs b",
                     tournament_id=1,
-                    home_team_id=1,
-                    away_team_id=2,
                     round=1,
                     status="completed",
                 ),
@@ -145,44 +139,13 @@ class UpdateEncounterGuards(IsolatedAsyncioTestCase):
                 schemas.EncounterUpdate(status="open"),
             )
 
-    async def test_rejects_rewiring_a_completed_encounters_teams(self) -> None:
-        """A confirmed score belongs to the matchup that played it; re-assigning a
-        slot under it must go through reopen, which voids the result first."""
-        with assert_http_status(self, 409):
-            await enc_service.encounter_service.update_encounter(
-                _session(_encounter()),
-                10,
-                schemas.EncounterUpdate(away_team_id=99),
-            )
-
-    async def test_rejects_rewriting_a_completed_encounters_score(self) -> None:
-        """Advancement only runs on finalize, so a bare score write flipped the
-        winner while the next match kept the old one -- with no audit row."""
-        encounter = _encounter()
-        with assert_http_status(self, 409):
-            await enc_service.encounter_service.update_encounter(
-                _session(encounter),
-                10,
-                schemas.EncounterUpdate(home_score=0, away_score=2),
-            )
-        self.assertEqual((2, 0), (encounter.home_score, encounter.away_score))
-
-    async def test_repeating_the_current_score_is_not_a_correction(self) -> None:
-        """The admin form posts every field, the unchanged score included."""
-        encounter = _encounter()
-
-        with (
-            patch.object(enc_service, "enqueue_tournament_recalculation", AsyncMock()),
-            patch.object(enc_service.encounter_service, "_resolve_stage_refs", AsyncMock(return_value=(5, 6))),
-            patch.object(enc_service.AdminEncounterService, "_assert_source_correction_allowed", AsyncMock()),
-        ):
-            await enc_service.encounter_service.update_encounter(
-                _session(encounter),
-                10,
-                schemas.EncounterUpdate(name="renamed", home_score=2, away_score=0),
-            )
-
-        self.assertEqual("renamed", encounter.name)
+    async def test_the_field_editor_carries_no_seat_and_no_standing(self) -> None:
+        """A confirmed standing belongs to the line-up that played it. Re-seating
+        goes through the slot swap (refused on a settled encounter, see
+        ``test_admin_encounter_swap_slot``) and a standing through the result
+        writer -- the editor has no field that could write either."""
+        fields = set(schemas.EncounterUpdate.model_fields)
+        self.assertTrue({"teams", "score", "placement", "result_status", "slot_count"}.isdisjoint(fields))
 
     async def test_repeating_the_current_status_is_not_a_transition(self) -> None:
         """The admin form posts every field, so renaming a completed encounter
@@ -223,6 +186,30 @@ class MatchLogNameIsNotEditable(IsolatedAsyncioTestCase):
         gain by allowing the string to be rewritten."""
         self.assertNotIn("log_name", schemas.MatchUpdate.model_fields)
 
-    def test_the_other_match_fields_are_still_editable(self) -> None:
-        fields = set(schemas.MatchUpdate.model_fields)
-        assert {"home_score", "away_score", "map_id", "code", "time"} <= fields
+    def test_observed_scores_duration_and_bound_map_remain_editable(self) -> None:
+        body = schemas.MatchUpdate(
+            map_id=10,
+            duration_s=120.5,
+            team_facts=[
+                schemas.MatchTeamFactIn(encounter_team_id=1, stat_code="score", value=3),
+                schemas.MatchTeamFactIn(encounter_team_id=2, stat_code="score", value=2),
+            ],
+        )
+        assert body.model_dump(exclude_unset=True) == {
+            "map_id": 10,
+            "duration_s": 120.5,
+            "team_facts": [
+                {"encounter_team_id": 1, "stat_code": "score", "value": 3.0},
+                {"encounter_team_id": 2, "stat_code": "score", "value": 2.0},
+            ],
+        }
+        # A participant is addressed once, and only the observed score is editable.
+        with self.assertRaises(ValueError):
+            schemas.MatchUpdate(
+                team_facts=[
+                    schemas.MatchTeamFactIn(encounter_team_id=1, stat_code="score", value=3),
+                    schemas.MatchTeamFactIn(encounter_team_id=1, stat_code="score", value=4),
+                ]
+            )
+        with self.assertRaises(ValueError):
+            schemas.MatchTeamFactIn(encounter_team_id=1, stat_code="hero_damage_dealt", value=3)

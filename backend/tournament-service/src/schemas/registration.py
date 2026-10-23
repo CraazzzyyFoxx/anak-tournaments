@@ -7,16 +7,14 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from shared.schemas.role import RoleRef
 from shared.services.subscriptions import VERIFICATION_METHODS, VerificationMethod, parse_requirement
 from src.schemas.admission import AdmissionRead
 from src.schemas.division_grid import DivisionGridVersionRead
 
 # ---------------------------------------------------------------------------
-# Registration form (config)
-#
-# What a tournament ASKS now lives in ``schemas/registration_form.py`` as one
-# versioned ``FormSchema``; only the sub-role catalog entry both sides render
-# stayed behind.
+# Registration form (config): only the sub-role catalog entry both sides
+# render; what a tournament ASKS is ``schemas/registration_form.py``.
 # ---------------------------------------------------------------------------
 
 
@@ -51,12 +49,11 @@ class RegistrationUpdate(BaseModel):
 
 
 class RegistrationRoleRead(BaseModel):
-    role: str
-    subrole: str | None = None
+    role: RoleRef
     is_primary: bool = False
     priority: int = 0
     rank_value: int | None = None
-    top_heroes: list[str] = Field(default_factory=list)  # ordered hero slugs
+    top_characters: list[str] = Field(default_factory=list)  # ordered character slugs
 
 
 class RegistrationTeamBrief(BaseModel):
@@ -64,7 +61,7 @@ class RegistrationTeamBrief(BaseModel):
 
     Deliberately not the full ``RegistrationTeamRead``: this rides in every row of
     the public participants list, so it holds only what a team column and the
-    §12.5 status line need. In particular it carries **no invites** — a public
+    team status line need. In particular it carries **no invites** — a public
     roster must not leak who has been asked and declined.
     """
 
@@ -81,8 +78,9 @@ class RegistrationRead(BaseModel):
     tournament_id: int
     workspace_id: int
     user_id: int | None = None
-    #: Primary handle of the registration's first GAME identity (battlenet
-    #: today), the name every surface renders this row by.
+    #: Primary handle of the registration's first GAME identity -- the owning
+    #: tournament's identity provider, position zero -- the name every surface renders
+    #: this row by.
     primary_handle: str | None = None
     #: Every answer this registration carries that the READER may see: the
     #: public participants list passes the form version's ``public_keys()``, an
@@ -102,8 +100,7 @@ class RegistrationRead(BaseModel):
     checked_in: bool = False
     # The single admission answer, computed server-side. Never ``None``: a
     # registration the list did not resolve carries ``AdmissionRead.unknown()``,
-    # so no consumer needs a null branch -- the five client-side re-derivations
-    # this replaced all grew out of per-consumer defaulting.
+    # so no consumer needs a null branch.
     admission: AdmissionRead = Field(default_factory=AdmissionRead.unknown)
     # All-profiles-open verdict when the tournament requires it:
     # True = public, False = closed, None = unknown / not required.
@@ -119,16 +116,14 @@ class RegistrationRead(BaseModel):
     # Team registration: which registered team this player belongs to, if any.
     # Present on the PUBLIC roster because the participants table needs a team
     # column and the "Your Registration" card must be able to say "your team is
-    # still incomplete" — §12.5's whole point is that the people in a stuck team
-    # learn it from their own card, not from an admin-only list.
+    # still incomplete": the people in a stuck team learn it from their own card,
+    # not from an admin-only list.
     team: RegistrationTeamBrief | None = None
     submitted_at: datetime | None = None
     reviewed_at: datetime | None = None
     #: Signed up AFTER the registration window's ``ends_at`` (only possible when
     #: the organizer switched ``allow_late_registration`` on). A fact about the
-    #: schedule, never about the player: it replaced the old "a late sign-up is
-    #: written as a reserve" rule, which put the registrant's own availability
-    #: answer to work saying something the registrant never said.
+    #: schedule, never about the player.
     submitted_late: bool = False
     #: Place in submission order and the size of that order — overall, and inside
     #: this registration's primary role. The role pair is the one that answers
@@ -141,7 +136,7 @@ class RegistrationRead(BaseModel):
     #: equal to the row's own index. ``None`` on every other path.
     queue_position: int | None = None
     queue_total: int | None = None
-    queue_role: str | None = None
+    queue_role: RoleRef | None = None
     queue_role_position: int | None = None
     queue_role_total: int | None = None
     #: Self-service editing, answered by the server (``self_edit_policy``): the
@@ -163,7 +158,9 @@ class RegistrationRead(BaseModel):
 class TournamentHistoryEntry(BaseModel):
     tournament_id: int
     tournament_name: str
-    role: str | None = None
+    #: The past tournament's own game: its ``role`` belongs to that discipline's ontology, not the viewed one's.
+    discipline: str
+    role: RoleRef | None = None
     division: int | None = None
     # References a version in ``RegistrationListResponse.division_grids`` instead of
     # embedding the (large) version per entry. ``None`` when the rank/division is unknown.
@@ -212,7 +209,6 @@ class SubscriptionStatusRead(BaseModel):
     required: bool = False
     mode: str | None = None
     outcome: str | None = None
-    rule: str | None = None
     # Whether signing up is refused right now. Narrower than ``outcome == refused``:
     # a provider the patron can still satisfy with a challenge code is deferred,
     # because that field only exists at check-in. The form uses it to explain the
@@ -222,9 +218,8 @@ class SubscriptionStatusRead(BaseModel):
 
 
 # ── workspace subscription provider config ──────────────────────────────────
-#
-# Minimal surface on purpose: raw ids typed by hand. Resolving Discord role names
-# through the API and offering a picker is the "more elegant" follow-up.
+# ponytail: raw ids typed by hand; resolve Discord role names through the API
+# and offer a picker if hand entry proves error-prone.
 
 _SUBSCRIPTION_PROVIDERS = ("boosty", "twitch")
 
@@ -357,15 +352,11 @@ class WorkspaceSubscriptionRequirementRead(BaseModel):
     """
 
     requirement: dict[str, Any] = Field(default_factory=dict)
-    #: How many live tournaments this rule would gate. One workspace rule now governs
-    #: every tournament in the workspace, so clearing or tightening it is not a local
-    #: edit -- the admin surface names the blast radius rather than leaving the organizer
-    #: to guess it. Counts open, unfinished tournaments whose form has the subscription
-    #: toggle on: the collector's TOURNAMENT-side predicate only. It deliberately omits
-    #: the collector's inner join on the workspace rule row and its drop of empty blobs,
-    #: so it reports what a rule WOULD gate rather than only what one currently does --
-    #: otherwise it would read 0 for "toggles on, no rule saved yet", the very state the
-    #: card exists to warn about.
+    #: How many live tournaments this rule would gate: open, unfinished tournaments
+    #: whose form has the subscription toggle on (the collector's TOURNAMENT-side
+    #: predicate only). It omits the collector's join on the rule row and its drop of
+    #: empty blobs, so "toggles on, no rule saved yet" -- the state the card warns
+    #: about -- does not read 0.
     enforcing_tournaments: int = 0
 
 
@@ -381,13 +372,10 @@ class WorkspaceSubscriptionRequirementUpsert(BaseModel):
     def _validate_requirement(cls, value: dict[str, Any]) -> dict[str, Any]:
         """Reject a malformed requirement on SAVE, not at check-in.
 
-        Moved here verbatim from ``RegistrationFormUpsert`` when the rule moved to the
-        workspace: ``parse_requirement`` raises on an unknown ``mode`` (silently picking
-        one would change the admission rule) and drops rows with no provider -- which
-        would leave the organizer believing they configured a gate that does nothing, so
-        an all-dropped payload is rejected too. Better a 422 on save than a surprise at
-        check-in, and the read path deliberately stays fail-open for anything that got
-        past here.
+        ``parse_requirement`` raises on an unknown ``mode`` (silently picking one
+        would change the admission rule) and drops rows with no provider, so an
+        all-dropped payload is rejected too: it would configure a gate that does
+        nothing. The read path stays fail-open for anything that got past here.
         """
         if not value:
             return {}
@@ -426,8 +414,8 @@ class RegistrationListResponse(BaseModel):
     #: Live registrations (``deleted_at IS NULL``) — exactly the row set the visible
     #: list would have shown, so flipping ``hidden`` never changes the number.
     total: int = 0
-    #: Primary role -> count, one bucket per registration. Mirrors what the overview
-    #: card used to derive client-side from the rows it can no longer see.
+    #: Primary role -> count, one bucket per registration; still filled when
+    #: ``hidden`` empties the rows.
     role_counts: dict[str, int] = Field(default_factory=dict)
     #: Advisory capacity from the form, echoed here so a consumer that already reads
     #: this envelope needs no second request for it.

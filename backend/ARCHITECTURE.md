@@ -8,13 +8,13 @@ which layer new code belongs in.
 
 It is not a proposal. It is a description of the pattern `identity-service` has followed
 since it was written, that `app-service` (2026-08-20), `balancer-service` (2026-08-21),
-`parser-service` (2026-08-21), `tournament-service` (2026-08-22) and
+`stats-service` (2026-08-21), `tournament-service` (2026-08-22) and
 `analytics-service` (2026-08-24) were converted to. Every new domain, in every service,
 follows it. Case studies with before/after numbers are archived (Graphiti, or
 `git show 50b83c88f537:<path>`):
 `docs/plans/2026-08-20-app-service-oop-repositories.md`,
 `docs/plans/2026-08-21-balancer-service-oop-repositories.md`,
-`docs/plans/2026-08-21-parser-service-oop-repositories.md`,
+`docs/plans/2026-08-21-stats-service-oop-repositories.md`,
 `docs/plans/2026-08-22-tournament-service-oop-repositories.md` and
 `docs/plans/2026-08-24-analytics-service-oop-repositories.md`.
 
@@ -44,9 +44,9 @@ src/domain/**/*.py                 PURE LOGIC. Dataclasses, algorithms, validati
                                    `asyncio.run`. See "The domain/ boundary, precisely" below.
   ↓
 shared.repository.*                CRUD. `BaseRepository[Model]` + concrete repos
-                                   (`HeroRepository`, `DraftPickRepository`, …). Accepts a
-                                   session, returns ORM rows or row tuples. Never imports
-                                   Pydantic, FastAPI/FastStream, cache clients, or outbox
+                                   (`CatalogEntityRepository("character", discipline="overwatch")`,
+                                   `CatalogRoleRepository`, `DraftPickRepository`, …). Accepts a session, returns ORM rows
+                                   or row tuples. Never imports Pydantic, FastAPI/FastStream, cache clients, or outbox
                                    publishers. Write methods flush only — see
                                    `backend/docs/repository-boundaries.md`.
   ↓
@@ -60,7 +60,7 @@ shared.models.*                    ORM. SQLAlchemy models, one shared `MetaData`
 
 `src/schemas/*.py` sits beside this stack, not inside it: Pydantic wire contracts for the RPC
 boundary (and OpenAPI docs generation). Schemas convert *at* the boundary
-(`schemas.HeroRead.model_validate(hero, from_attributes=True)` in a service's `to_read`, or
+(`CatalogEntityRead.from_entity(entity, with_parent=False)` in a service's `to_read`, or
 `DraftFeasibilityResponse.model_validate(report)` in an rpc handler) — they are never passed
 down into `domain/` or `shared.repository`, and `domain/`'s own dataclasses are never redefined
 as schemas just to "have one type." Two vocabularies exist on purpose: `schemas` is what the
@@ -70,9 +70,9 @@ wire carries; `domain` is what the algorithm thinks in. See
 `arbitrary_types_allowed`, defeating Pydantic validation, if merged into `schemas`).
 
 `src/clients/*.py` sits beside the stack too, for the same reason schemas do: a wrapper
-around a *shared* external-API client (`shared.clients.ChallongeClient`, a bespoke
-`OverFastCatalogClient`, ...) has no orchestration to inject collaborators into and no pure
-algorithm to test — it isn't a `service` and isn't `domain`. It gets `src/clients/<name>.py`,
+around a *shared* external-API client (for example, `shared.clients.ChallongeClient`) has no
+orchestration to inject collaborators into and no pure algorithm to test — it isn't a `service`
+and isn't `domain`. It gets `src/clients/<name>.py`,
 holding exactly one line of substance: construct the instance from this service's settings,
 export it.
 
@@ -84,13 +84,13 @@ challonge_client = ChallongeClient.from_settings(config.settings)
 Callers import the instance and call its real bound methods directly —
 `challonge_client.fetch_tournament(...)`. **Do not** rebind its methods as module-level names
 (`fetch_tournament = challonge_client.fetch_tournament`, `fetch_participants = ...`, one line
-per method): that was `parser-service`'s original shape for this exact file
+per method): that was `stats-service`'s original shape for this exact file
 (`services/challonge/service.py`, converted 2026-08-21), and it bought nothing over exposing
 the instance itself — one indirection that reads like a `service.py` (misleading: no
 orchestration lives there) for the price of an `__all__` entry updated by hand every time the
 wrapped client grows a method. Nothing in this document flagged that shape as wrong at the
 time — it matched an identical pre-existing file in `tournament-service`, so it was carried
-forward as "established precedent" during the parser-service conversion instead of being
+forward as "established precedent" during the stats-service conversion instead of being
 questioned. That second copy is gone too: `tournament-service`'s
 `services/challonge/service.py` was deleted on 2026-08-22 in favour of
 `src/clients/challonge.py`, so no instance of the shape survives — which is the point of
@@ -100,12 +100,12 @@ Two placement traps this avoids:
 
 1. Do not put it under `src/services/<domain>/` when the "domain" is nothing but a client —
    that misleads a reader into expecting orchestration/session-handling that isn't there
-   (parser-service's `services/challonge/service.py` did this).
+   (stats-service's `services/challonge/service.py` did this).
 2. Do not put it under `src/rpc/` (e.g. a `rpc/_clients.py` grab-bag of process-global clients)
    if any `services/` code needs to import it — a service reaching into the transport package
    inverts the `rpc → services` dependency direction. `app-service`'s original `rpc/_clients.py`
    moved to `core/clients.py` for exactly this reason (§2.5 of
-   `docs/plans/2026-08-20-app-service-oop-repositories.md`), and `parser-service`'s did the same
+   `docs/plans/2026-08-20-app-service-oop-repositories.md`), and `stats-service`'s did the same
    once `services/subscription_collection/scheduler.py` started importing `realtime_redis` from
    it. Both live in `core/clients.py` now; a new `rpc/_clients.py` is the mistake this names.
 
@@ -135,40 +135,45 @@ beyond this set is fine; a `core/` module that grew a query or a business rule i
 ## `shared/` vs `src/`, for session-taking code
 
 `shared/domain/` is the easy half (pure logic, two+ consumers). The harder half is
-`shared/services/` — ~50 modules that *do* take an `AsyncSession`: `bracket/`, `encounter/`,
-`team_export/`, `workspace_scope`, `registration_window`, `subscription_*`, `audit`,
-`distributed_lock`, `realtime_publisher`. Something belongs there **iff two or more services
-already need it** (not "might"), and it can be written without importing any service's `src.*`.
+`shared/services/` — modules that *do* take an `AsyncSession`: `encounter/`,
+`workspace_scope`, `registration_window`, `subscriptions/`, `audit`, `distributed_lock`,
+`realtime_publisher`. Something belongs there **iff two or more services already import it**
+(not "might"), and it can be written without importing any service's `src.*`; a module with one
+consumer lives in that service's `src/services/`.
 Per-service inputs — a Redis URL, a feature flag, a settings object — arrive as arguments, never
 as `from src.core import config`. A `shared/services/` module that needs one service's settings
 is that service's `services/` file, and the second consumer should call it over RPC.
 
 ## Concrete shape of a layer
 
-**`rpc/<domain>.py`** (`app-service/src/rpc/heroes.py`):
+**`rpc/<domain>.py`** (`stats-service/src/rpc/statistics.py`):
 
 ```python
-def register(broker: Any, logger: Any) -> None:
-    @broker.subscriber("rpc.app.heroes.leaderboard")
-    async def _leaderboard(data: dict, msg: RabbitMessage) -> dict:
+def register(broker: Any, logger: Any, *, channel: Any) -> None:
+    @broker.subscriber("rpc.stats.statistics.character_leaderboard", channel=channel)
+    async def _character_leaderboard(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
+            discipline = c.require_discipline(data, in_path=True)
             await c.gate_tournament(session, data, c.q1(data, "tournament_id", int))
-            ws = await resolve_workspace_context(session, c.q1(data, "workspace_id", int))
-            return await hero_service.get_hero_leaderboard(session, hero_id=..., grid=ws.grid)
+            # Analytics reads: a scoped read resolves its workspace grid; `workspace_id=all` reads the native ladder.
+            ws = await c.analytics_context(session, c.q_workspace_scope(data), discipline)
+            return await character_service.get_hero_leaderboard(
+                session, discipline=discipline, entity_id=c.require_id(data), params=..., grid=ws.grid
+            )
 
-        return await c.envelope(logger, "heroes.leaderboard", op, session_factory=_SF)
+        return await c.envelope(logger, "statistics.character_leaderboard", op, session_factory=_SF)
 ```
 
-**`services/<domain>/service.py`** (`app-service/src/services/hero/service.py`):
+**`services/<domain>/service.py`** (`stats-service/src/services/hero/service.py`):
 
 ```python
 class HeroService:
-    def __init__(self, *, queries: HeroQueries = hero_queries, repo: HeroRepository = HeroRepository()) -> None:
-        self.queries = queries
-        self.repo = repo
-
-    async def get_hero_leaderboard(self, session: AsyncSession, hero_id: int, ...) -> Paginated[...]:
-        rows, total = await self.queries.get_hero_leaderboard(session, hero_id=hero_id, ...)
+    async def get_hero_leaderboard(
+        self, session: AsyncSession, *, discipline: str, entity_id: int, ...
+    ) -> Paginated[CharacterLeaderboardEntry]:
+        entity = await CatalogEntityRepository("character", discipline=discipline).get(session, entity_id)
+        ...  # 404 for another game's or kind's id
+        rows, total = await HeroQueries.of(discipline).get_hero_leaderboard(session, hero_id=entity_id, ...)
         ...
 
 heroes = HeroService()
@@ -185,10 +190,11 @@ singletons, one shared injected `feasibility_service`.
 **`domain/<x>.py`** (`balancer-service/src/domain/draft/rules.py`):
 
 ```python
-def resolve_pick_slot(shape: RosterShape, counts: Mapping[str, int], player: DraftPlayer, target_role: HeroClass | None) -> SlotDecision:
-    if not role_is_legal(player, target_role if shape.has_role_slots else None):
-        raise _err("illegal_role", ...)
-    ...
+def resolve_pick_slot(
+    shape: RosterShape, counts: Mapping[str, int], roster: PlayerRoster | None,
+    target_role: str | None,
+) -> SlotDecision:
+    """Validate a pick against module role codes and the remaining projected slots."""
 ```
 
 No `session`, no `await`, no repository import. `services/draft/selection.py`'s
@@ -242,24 +248,49 @@ refactor's own correction pass explicitly walked back — see §6-7 of
 A service never publishes to RabbitMQ from inside a request. It calls
 `shared.messaging.outbox.enqueue_outbox_event(session, event, exchange=..., routing_key=...)`
 in the *same transaction* as the mutation, so "the row changed" and "the world was told" commit
-or roll back together. `serve.py`'s scheduler drains the table with
-`publish_pending_outbox_events` (`tournament-service/serve.py`'s `event_outbox_drain`), retrying
-failures with exponential backoff capped at 300s. Every tournament-service replica runs that
-drain, so it takes its batch with `FOR UPDATE SKIP LOCKED` and holds the locks until the one
-commit that ends the pass: a row released mid-pass is free for the other replica to take and
-publish a second time.
+or roll back together. **Every service that writes outbox rows also drains them**: its
+`serve.py` schedules `shared.messaging.outbox.drain_outbox(session_factory, broker)` every
+second (tournament, stats-worker, app, balancer, analytics-svc). The drain takes its batch
+`FOR UPDATE SKIP LOCKED` and holds the locks until the one commit that ends the pass, so any
+number of drains across services and replicas never publish a row twice; failures retry with
+exponential backoff capped at 300 s. One relay per service means no service's events stop
+flowing because another service is down (they all did, when tournament-service ran the only
+drain).
+
+The exceptions that stay direct, and why: `publish_required` for a replay request (an
+unroutable request must fail the caller, not sit in a table), `MatchLogProcessedEvent` (a reply
+to a bot with no transaction of its own), `FetchRankEvent` (Redis-deduped sweep), balancer
+jobs (their state lives in Redis, there is no transaction to join), and the discord bot's own
+gateway events (`UploadMatchLogEvent`, `DiscordMemberChangedEvent`: the bot has nothing to
+commit). Anything else publishing from a request or a consumer is a bug.
 
 - Event payloads are Pydantic models in `shared/schemas/events.py` and **must** carry
-  `event_id` — `enqueue_outbox_event` raises `ValueError` without one. That id is the
-  consumer's idempotency key; every consumer must tolerate redelivery.
-- Exchange/queue/DLQ names are constants in `shared/messaging/config.py`, declared with
-  `shared.messaging.topology.declare_dead_letter_queue`. No string literals at call sites.
-- Exactly one service owns each queue (`TOURNAMENT_CHANGED_APP_QUEUE` → app-service's
-  `services/tournament_events.py`). Two consumers of one queue is a bug, not fan-out; fan-out
-  is two queues bound to the same exchange.
+  `event_id` — `enqueue_outbox_event` raises `ValueError` without one. Delivery is
+  at-least-once, and **no consumer dedupes on `event_id`**: every consumer is idempotent through
+  its own state — a job row's status (`claim_job`, `run_job`'s runnable-status guard), a
+  version fence (`result_version` on the Challonge push, `revision` on `match.ingested`), a
+  `discord_message` row's status machine, or an operation that is naturally repeatable (drop a
+  cache key, reload a registry, re-render a card from current state). A new consumer must be
+  one of those; a deterministic `event_id` (`challonge_push:<encounter>:<version>`,
+  `achievement:<ws>:<tournament>:<source>:<key>`) makes a duplicate attributable in logs and
+  is the hook for a dedupe table if one is ever needed.
+- Exchange/queue/DLQ names are constants in `shared/messaging/config.py`. Every queue a service
+  consumes has its DLQ declared by that service at startup
+  (`shared.messaging.topology.declare_dead_letter_queue` over an `_OWNED_DLQS` tuple): RabbitMQ
+  creates nothing for a dead-letter routing key, so an undeclared DLQ means expired and
+  rejected messages vanish. `backend/tests/test_messaging_config.py` fails on a queue constant
+  no `subscriber(...)` names and on a DLQ constant no service declares — that is how two
+  produced-but-never-consumed events and eleven undeclared DLQs were found.
+- Exactly one service owns each queue (`NOTIFICATION_DELIVERY_QUEUE` → app-service's
+  `services/notification_delivery/consumer.py`). Two consumers of one queue is a bug, not
+  fan-out; fan-out is two queues bound to the same exchange. A per-replica reload signal (the
+  discord bot's channel registry) is a server-named exclusive queue bound to the exchange, one
+  per replica.
 - Synchronous cross-service calls use `shared.messaging.request_dict(broker, payload, queue)`
   and nothing else — `broker.request()` returns a message, not a body, and mistaking the two
-  is how the Discord entity endpoints shipped empty lists to production.
+  is how the Discord entity endpoints shipped empty lists to production. They are for answers a
+  request cannot proceed without (an ownership proof, a merge finalization, a voice-move
+  report), never for telling another service that something happened.
 
 ## Realtime patches are part of the transaction
 
@@ -275,11 +306,19 @@ refetching.
 
 Cache decorators live on `services/` methods, never on a repository or a `domain/` function.
 Backends are registered per key-prefix in `src/core/caching.py`: cashews has no default backend
-and raises `NotConfiguredError` for an unroutable key, so **every** entrypoint that can read,
-write, or invalidate the cache calls `configure_cache()` before the first subscriber runs
-(`app-service/serve.py`). The prefix tuple in `core/caching.py` is the single source for
-invalidation patterns — an invalidation consumer generates its patterns from it rather than
-re-typing them.
+and raises `NotConfiguredError` for an unroutable key, so **every** entrypoint that can read or
+write the cache calls `configure_cache()` before the first subscriber runs (`app-service/serve.py`).
+
+Nothing invalidates by pattern (a `delete_match` is a keyspace `SCAN`; under load it times out and
+the drop is silently lost). A read that a write can stale is cached with
+`shared.services.cache_generations.versioned`, whose key carries the current *generations* it
+names: `resource_generation(resource, "{tournament_id}")` for a tournament-scoped read,
+`resource_generation(resource)` (any tournament) for an aggregate across them, or a service's own
+name (`user_cache`, `division_grid/cache.py`). `emit`'s commit bumps the generations of every
+resource it staled — one `SET` each, in the Redis all services share (`configure_realtime`) —
+so another service's cached copy misses before the writer's `commit()` returns; the
+`cache.invalidated` outbox consumer re-bumps them durably. A new cached read names its
+generations; a new write only has to `emit` what it staled.
 
 ## Errors
 
@@ -337,19 +376,76 @@ Unchanged, repo-wide, since `backend/docs/repository-boundaries.md`:
   ratcheted — an exemption whose file stopped writing directly fails the suite — so neither
   list can rot the way the single allowlist did.
 
-## Import layering between domains, when it's worth enforcing
+### Catalog reads
 
-Most services are a flat set of mutually-non-importing domains (`balancer-service`'s
-`admin/*`/`draft/*`; most of `identity-service`) — nothing to enforce beyond "don't import
-another domain's private module," checked by grep at review time, not by tooling.
+Characters, maps and modes are `CatalogEntity` rows (`kind="character"` / `"map"` / `"mode"`),
+served as one `CatalogEntityRead` shape: a map's mode is `parent_id` / `parent` on the wire
+too, expanded only when the caller requests `parent`. Public catalog reads are native per
+discipline (`/api/v1/catalog/{discipline}/{kind}[/{id}]`, `CatalogEntityRepository(kind,
+discipline=...)`); generic map existence checks use `CatalogEntityRepository("map")`.
 
-Only reach for an `.importlinter` contract when a service has grown a genuine multi-level
-dependency hierarchy — `app-service`'s `services.achievements` → `services.{dashboard,user}` →
-`services.{hero,map,statistics,workspace}` (`app-service/.importlinter`,
-`backend/docs/architecture/layering.md`). The contract states the layers, forbids the reverse
-direction, and grandfathers pre-existing violations by name so they can't grow silently. Adding
-one to a flat service (`balancer-service`) would enforce nothing real; skip it there and say so
-in the plan doc, as `docs/plans/2026-08-21-balancer-service-oop-repositories.md` §5/§7 do.
+Character statistics are one game's: `/api/v1/statistics/{discipline}/characters/playtime`,
+`/api/v1/statistics/{discipline}/characters/{entity_id}/leaderboard`,
+`/api/v1/users/{id}/characters?discipline=` and `/api/v1/users/{id}/compare/characters?discipline=`
+(the old `/api/v1/heroes/…`, `/users/{id}/heroes` and `/users/{id}/compare/heroes` routes are
+gone). Readers are bound to the request's discipline (`UserService.of(code)`,
+`HeroQueries.of(code)`); a character, map or stat code of another game is a 404 / 422, never
+an empty row under a borrowed label. The per-user maps read filters by `mode_id` and expands
+`parent` / `character_stats`. Class and color live in a character's `attrs`.
+
+Registration picks live in `registration.role_entity` with `entity_id`,
+`entity_kind="character"` and an `entity` relationship; the collection remains
+`hero_entries`. Its character-kind FK cascades on deletion and its two deferred
+uniques still allow replacing or reordering a pick list in one commit.
+Achievement rules carry `discipline`, `entity_id` and `entity_kind="character"` with
+a composite FK that nulls only `entity_id` on deletion. Read schemas and the
+create/update adapter retain the wire names `hero_id` / `hero`; registration retains
+`top_heroes` and its `hero_id` references.
+
+`discipline01` rewrote hard map and hero references and both kinds' pick-ban ids
+(including snapshots and room events) through an old-id mapping that `legacy01` has since dropped. Side-pick
+answers are side indexes and stay unchanged; preflight counts dangling soft ids, which stay unchanged too.
+Games and mix-lobby maps have kind-constant composite FKs.
+
+### Role ontology and team formats
+
+`CatalogRoleRepository` is the ontology repository; `RoleRepository` remains the RBAC repository.
+App-service startup projects `shared.disciplines` declarations into `catalog.role_dimension` /
+`catalog.role`, with exactly one rated dimension per discipline and deactivation rather than
+deletion for removed module roles. Workspace sub-roles use `<parent>_<slug>` codes and immutable
+parents. Resolve every reference against the owner's discipline, dimension and workspace.
+
+Assignments store one leaf through `(role_id, dimension_id)`. Composite assignment/quota FKs into
+`catalog.role` are `DEFERRABLE INITIALLY DEFERRED`. `RoleRef` is the wire boundary:
+`{dimension, role, parent}` codes, with a derived output-only parent that inputs ignore.
+The domain uses module codes and ontology nodes, not API role enums. `flex` remains only an
+open-slot key; it has no catalog row or assignment.
+
+`roster.team_format` owns relational sizes, dimension modes and quotas. A tournament gets an
+editable copy; a mix freezes its copy at creation. The legacy slot and role columns and the
+migration-only reconciliation tables are gone (`legacy01`).
+The [P2 release guide](../docs/multi-game-p2-roles-release.md) lists wire changes and cutover gates.
+
+
+## Import layering, enforced
+
+Every RPC service carries an `.importlinter` with the three contracts that fall out of the five
+layers, checked by `uv run --project .. lint-imports` from the service directory and by CI
+("Per-service import layering" in `lint-backend.yml`):
+
+- `rpc-no-sql` — `src.rpc` imports no `sqlalchemy` (handlers annotate the session as `Any`);
+- `domain-is-pure` — `src.domain` imports neither `src.services`, `src.rpc`, `src.core.db` nor
+  `sqlalchemy`, directly or transitively (so a domain module cannot reach a wire schema that
+  pulls in the ORM either);
+- `services-dont-import-rpc`.
+
+`app-service` adds a `services-independence` contract (`services.user` and `services.workspace` never
+import each other), and `stats-service` a `read-services-layers` contract for its public
+read surface (`services.achievement_reads` → `services.user` → `services.{hero,map,statistics}`),
+which grandfathers three pre-existing `map.service` imports by name so they cannot grow silently. A
+flat service needs nothing beyond the three above. `backend/.importlinter` covers the `shared` kernel
+(`shared.*` never imports a discipline module directly). A new service copies the first three
+contracts of `stats-service/.importlinter`.
 
 ## What actually lives in `serve.py`
 
@@ -495,4 +591,9 @@ in the published API docs.
    `alembic upgrade head` first if the DB is fresh), `python -c "import serve"` to catch import
    cycles, `lint-imports` if the service has an `.importlinter`, and the repo-wide guards in
    `backend/tests/` (`test_repository_boundaries.py`, `test_rpc_route_parity.py`,
-   `test_rpc_error_code_parity.py`).
+   `test_rpc_error_code_parity.py`, `test_discipline_module_boundary.py`). Anything game-specific
+   (a game code, role, catalog label, identity provider, stat code, asset folder) belongs in
+   `shared/disciplines/<code>/` or comes from the registry/ontology:
+   `uv run python scripts/check_discipline_literals.py` (D99) fails on such a literal anywhere else
+   unless `scripts/discipline_literal_exceptions.json` names it exactly, with an owner and removal
+   event.

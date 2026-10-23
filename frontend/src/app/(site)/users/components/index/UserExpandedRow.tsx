@@ -1,29 +1,24 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
+import { useRoleName } from "@/hooks/useRoleName";
+import { findRole, type RoleOntology } from "@/lib/roster/ontology";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
-import HeroImage from "@/components/hero/HeroImage";
+import type { PlayerIdentity } from "@/components/PlayerAvatar";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { PlaceBadge } from "@/components/ui/place-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { winrateColor } from "@/lib/colors";
 import { getPlayerSlug } from "@/lib/player";
-import { PLAYER_ROLE_LABEL_KEY, normalizePlayerRole } from "@/lib/roster/player-role";
 import { formatOptional } from "@/app/(site)/users/components/shared/list-utils";
+import { SummaryStrip } from "@/app/(site)/users/components/tournaments/tournaments-history.atoms";
 import userService from "@/services/user.service";
 import { userQueryKeys } from "@/lib/users/query-keys";
-import type { UserDraftCard } from "@/types/user.types";
-
-import type { PlayerIdentity } from "./users-index.atoms";
-
-const Label = ({ children }: Readonly<{ children: ReactNode }>) => (
-  <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-    {children}
-  </span>
-);
 
 const sharePct = (won: number, total: number): number | null =>
   total > 0 ? (won / total) * 100 : null;
@@ -45,20 +40,27 @@ function Winrate({ won, total }: Readonly<{ won: number; total: number }>) {
 export function UserExpandedRow({
   user,
   workspaceId,
+  discipline,
+  ontology,
   compareSelected,
   compareDisabled,
   onToggleCompare
 }: Readonly<{
   user: PlayerIdentity;
   workspaceId: number | "all" | null;
+  /** The index's game: the drawer's career is that game's. */
+  discipline: string;
+  /** That game's role dictionary; `null` while it loads (roles then read by code). */
+  ontology: RoleOntology | null;
   compareSelected: boolean;
   compareDisabled: boolean;
   onToggleCompare: () => void;
 }>) {
   const t = useTranslations();
+  const nameOf = useRoleName();
   const { data, isPending, isError } = useQuery({
-    queryKey: userQueryKeys.draftCard(user.id, workspaceId),
-    queryFn: () => userService.getDraftCard(user.id, workspaceId),
+    queryKey: userQueryKeys.draftCard(user.id, workspaceId, discipline),
+    queryFn: () => userService.getDraftCard(user.id, discipline, workspaceId),
     staleTime: 60_000
   });
 
@@ -73,25 +75,40 @@ export function UserExpandedRow({
   if (isPending || !data) {
     return (
       <div className="space-y-3 px-4 py-5">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton key={`kpi-${index}`} className="h-12" />
-          ))}
-        </div>
+        <Skeleton className="h-14" />
         <Skeleton className="h-28" />
       </div>
     );
   }
 
   const slug = getPlayerSlug(user.name);
+  const winratePct = sharePct(data.maps_won, data.maps_won + data.maps_lost);
 
   return (
     <div className="space-y-5 px-4 py-5">
-      <KpiGrid card={data} />
+      <SummaryStrip
+        cells={[
+          { key: "tournaments", label: t("common.tournaments"), value: data.tournaments },
+          { key: "tournamentsWon", label: t("users.list.expanded.tournamentsWon"), value: data.tournaments_won },
+          { key: "maps", label: t("users.list.expanded.mapsLabel"), value: data.maps },
+          {
+            key: "winrate",
+            label: t("users.list.table.winrate"),
+            value: winratePct === null ? "-" : `${winratePct.toFixed(0)}%`,
+            color: winratePct === null ? undefined : winrateColor(winratePct)
+          },
+          { key: "avgPlacement", label: t("users.list.table.avgPlacement"), value: formatOptional(data.avg_placement) },
+          {
+            key: "bestPlacement",
+            label: t("users.list.table.bestPlacement"),
+            value: data.best_placement ? <PlaceBadge place={data.best_placement} /> : "-"
+          }
+        ]}
+      />
 
       <div className="grid gap-5 lg:grid-cols-3">
         <section className="space-y-2">
-          <Label>{t("users.list.expanded.roles")}</Label>
+          <Eyebrow>{t("users.list.expanded.roles")}</Eyebrow>
           {data.roles.length === 0 ? (
             <p className="text-caption text-[color:var(--aqt-fg-faint)]">
               {t("users.list.expanded.noRoleData")}
@@ -99,12 +116,13 @@ export function UserExpandedRow({
           ) : (
             <ul className="space-y-1.5">
               {data.roles.map((role) => {
-                const roleOption = normalizePlayerRole(role.role);
+                const node = ontology ? findRole(ontology, role.role) : null;
+                const label = role.role === null ? t("common.roles.flex") : node ? nameOf(node) : role.role.role;
                 return (
-                <li key={role.role} className="flex items-center gap-2 text-caption">
-                  <PlayerRoleIcon role={roleOption} size={16} decorative />
+                <li key={`${role.role?.dimension}-${role.role?.role}`} className="flex items-center gap-2 text-caption">
+                  <PlayerRoleIcon role={role.role} ontology={ontology} size={16} decorative />
                   <span className="text-[color:var(--aqt-fg-muted)]">
-                    {t(PLAYER_ROLE_LABEL_KEY[roleOption])}
+                    {label}
                   </span>
                   <span className="ml-auto flex items-center gap-3">
                     <Winrate won={role.maps_won} total={role.maps} />
@@ -120,7 +138,7 @@ export function UserExpandedRow({
         </section>
 
         <section className="space-y-2">
-          <Label>{t("users.list.expanded.recentTournaments")}</Label>
+          <Eyebrow>{t("users.list.expanded.recentTournaments")}</Eyebrow>
           {data.recent_tournaments.length === 0 ? (
             <p className="text-caption text-[color:var(--aqt-fg-faint)]">
               {t("users.list.expanded.noTournaments")}
@@ -148,17 +166,17 @@ export function UserExpandedRow({
         </section>
 
         <section className="space-y-2">
-          <Label>{t("users.list.expanded.heroes")}</Label>
-          {data.heroes.length === 0 ? (
+          <Eyebrow>{t("users.list.expanded.heroes")}</Eyebrow>
+          {!data.characters?.length ? (
             <p className="text-caption text-[color:var(--aqt-fg-faint)]">
               {t("users.list.expanded.noHeroData")}
             </p>
           ) : (
             <ul className="space-y-1.5">
-              {data.heroes.slice(0, 5).map((entry) => (
-                <li key={entry.hero.id} className="flex items-center gap-2 text-caption">
-                  <HeroImage hero={entry.hero} size="sm" />
-                  <span className="truncate text-[color:var(--aqt-fg-muted)]">{entry.hero.name}</span>
+              {data.characters.slice(0, 5).map((entry) => (
+                <li key={entry.character.id} className="flex items-center gap-2 text-caption">
+                  <CatalogEntityImage entity={entry.character} size="sm" decorative />
+                  <span className="truncate text-[color:var(--aqt-fg-muted)]">{entry.character.name}</span>
                   <span className="ml-auto flex items-center gap-3">
                     <Winrate won={entry.maps_won} total={entry.maps} />
                     <span className="tabular-nums text-[color:var(--aqt-fg-faint)]">
@@ -173,68 +191,30 @@ export function UserExpandedRow({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <HoverPrefetchLink href={`/users/${slug}`} className="aqt-filter-chip no-underline">
-          {t("users.list.expanded.openProfile")}
-        </HoverPrefetchLink>
-        <HoverPrefetchLink href={`/users/${slug}?tab=matches`} className="aqt-filter-chip no-underline">
-          {t("common.matches")}
-        </HoverPrefetchLink>
-        <HoverPrefetchLink href={`/users/${slug}?tab=heroes`} className="aqt-filter-chip no-underline">
-          {t("common.heroes")}
-        </HoverPrefetchLink>
-        <button
-          type="button"
-          onClick={onToggleCompare}
-          disabled={compareDisabled && !compareSelected}
-          title={compareDisabled && !compareSelected ? t("users.list.compare.limit") : undefined}
-          className="aqt-filter-chip disabled:cursor-not-allowed disabled:opacity-40"
-          aria-pressed={compareSelected}
-        >
-          {compareSelected
-            ? t("users.list.compare.removeShort")
-            : t("users.list.compare.addShort")}
-        </button>
+        <Button asChild variant="outline" size="sm">
+          <HoverPrefetchLink href={`/users/${slug}`}>{t("users.list.expanded.openProfile")}</HoverPrefetchLink>
+        </Button>
+        <Button asChild variant="outline" size="sm">
+          <HoverPrefetchLink href={`/users/${slug}?tab=matches`}>{t("common.matches")}</HoverPrefetchLink>
+        </Button>
+        <Button asChild variant="outline" size="sm">
+          <HoverPrefetchLink href={`/users/${slug}?tab=heroes`}>{t("common.characters")}</HoverPrefetchLink>
+        </Button>
+        {/* A disabled `Button` takes no pointer events, so the limit hint sits on a wrapper. */}
+        <span title={compareDisabled && !compareSelected ? t("users.list.compare.limit") : undefined}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onToggleCompare}
+            disabled={compareDisabled && !compareSelected}
+            aria-pressed={compareSelected}
+          >
+            {compareSelected
+              ? t("users.list.compare.removeShort")
+              : t("users.list.compare.addShort")}
+          </Button>
+        </span>
       </div>
-    </div>
-  );
-}
-
-function KpiGrid({ card }: Readonly<{ card: UserDraftCard }>) {
-  const t = useTranslations();
-  const decided = card.maps_won + card.maps_lost;
-  const winratePct = sharePct(card.maps_won, decided);
-
-  const cells: Array<{ label: string; value: ReactNode }> = [
-    { label: t("common.tournaments"), value: card.tournaments },
-    { label: t("users.list.expanded.tournamentsWon"), value: card.tournaments_won },
-    { label: t("users.list.expanded.mapsLabel"), value: card.maps },
-    {
-      label: t("users.list.table.winrate"),
-      value:
-        winratePct === null ? (
-          "-"
-        ) : (
-          <span style={{ color: winrateColor(winratePct) }}>{winratePct.toFixed(0)}%</span>
-        )
-    },
-    { label: t("users.list.table.avgPlacement"), value: formatOptional(card.avg_placement) },
-    {
-      label: t("users.list.table.bestPlacement"),
-      value: card.best_placement ? <PlaceBadge place={card.best_placement} /> : "-"
-    }
-  ];
-
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-      {cells.map((cell) => (
-        <div
-          key={cell.label}
-          className="flex flex-col gap-1 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] px-3 py-2"
-        >
-          <Label>{cell.label}</Label>
-          <span className="font-semibold tabular-nums text-[color:var(--aqt-fg)]">{cell.value}</span>
-        </div>
-      ))}
     </div>
   );
 }

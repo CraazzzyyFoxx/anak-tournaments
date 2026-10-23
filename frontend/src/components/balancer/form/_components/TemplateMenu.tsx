@@ -23,12 +23,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RowButton } from "@/components/ui/row-button";
 import { fieldErrorsFrom } from "@/lib/forms/form-errors";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import registrationFormTemplatesService from "@/services/registration-form-templates.service";
 import type { FormSchema } from "@/types/forms.types";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import { balancerQueryKeys } from "@/lib/balancer/query-keys";
 
 export const registrationFormTemplatesKey = (workspaceId: number) =>
@@ -50,11 +51,14 @@ export const registrationFormTemplatesKey = (workspaceId: number) =>
 export function TemplateMenu({
   workspaceId,
   tournamentId,
+  discipline,
   dirty,
   onLoad
 }: Readonly<{
   workspaceId: number | null;
   tournamentId: number;
+  /** The tournament's game: only its templates can be loaded (spec §8.4); `null` while it loads. */
+  discipline: string | null;
   dirty: boolean;
   onLoad: (schema: FormSchema) => void;
 }>) {
@@ -68,9 +72,9 @@ export function TemplateMenu({
   const [name, setName] = useState("");
 
   const listQuery = useQuery({
-    queryKey: registrationFormTemplatesKey(workspaceId ?? 0),
-    queryFn: () => registrationFormTemplatesService.list(workspaceId as number),
-    enabled: loadOpen && workspaceId !== null
+    queryKey: balancerQueryKeys.registrationFormTemplateList(workspaceId ?? 0, discipline),
+    queryFn: () => registrationFormTemplatesService.list(workspaceId as number, discipline),
+    enabled: loadOpen && workspaceId !== null && discipline !== null
   });
 
   const saveMutation = useMutation({
@@ -124,22 +128,23 @@ export function TemplateMenu({
           </DialogHeader>
 
           {listQuery.isLoading ? (
-            <output className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-              <Spinner />
-              {t("loading")}
-            </output>
+            <div role="status" className="grid gap-1.5">
+              <span className="sr-only">{t("loading")}</span>
+              {[0, 1, 2].map((row) => (
+                <Skeleton key={row} aria-hidden className="h-14 w-full rounded-lg" />
+              ))}
+            </div>
           ) : templates.length === 0 ? (
             <EmptyNote title={t("emptyTitle")}>{t("emptyHint")}</EmptyNote>
           ) : (
             <div className="grid max-h-72 gap-1.5 overflow-y-auto">
               {templates.map((template) => (
-                <button
+                <RowButton
                   key={template.id}
-                  type="button"
                   aria-pressed={template.id === selectedId}
                   onClick={() => setSelectedId(template.id)}
                   className={cn(
-                    "rounded-lg border px-3 py-2 text-left text-sm",
+                    "rounded-lg border px-3 py-2 text-sm",
                     template.id === selectedId
                       ? "border-primary/40 bg-primary/10"
                       : "border-border/60 hover:border-border"
@@ -149,7 +154,7 @@ export function TemplateMenu({
                   <span className="block text-xs text-muted-foreground">
                     {t("sectionCount", { count: template.form_schema.sections.length })}
                   </span>
-                </button>
+                </RowButton>
               ))}
             </div>
           )}

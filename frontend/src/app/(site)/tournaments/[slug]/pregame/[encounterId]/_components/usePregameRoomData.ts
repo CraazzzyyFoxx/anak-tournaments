@@ -4,21 +4,27 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } fro
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import captainService from "@/services/captain.service";
+import { useMyEncounterRole } from "@/hooks/useMyEncounterRole";
 import encounterService from "@/services/encounter.service";
 import pickBanService from "@/services/pickBan.service";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { notify } from "@/lib/notify";
 import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
-import { useHeroesCatalog } from "@/hooks/useHeroesCatalog";
-import { useMapsCatalog } from "@/hooks/useMapsCatalog";
+import { useCatalogEntities } from "@/hooks/useCatalogEntities";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { createTrailingCoalescer, type Coalescer } from "@/lib/realtime/coalesce";
 import { useRealtimeStore } from "@/stores/realtime.store";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
-import type { PickBanSide } from "@/components/pick-ban/pick-ban-model";
 import type { Encounter } from "@/types/encounter.types";
-import type { MapRead } from "@/types/map.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
+import type { DisciplineMetadata } from "@/types/discipline.types";
 import type { PickBanKind, PickBanState } from "@/types/tournament.types";
+
+/** The room's game metadata as a screen sees it: loading, failed (with a retry) or ready. */
+export type RoomMetadata =
+  | { status: "pending" }
+  | { status: "error"; retry: () => void }
+  | { status: "ready"; metadata: DisciplineMetadata };
 
 export interface PregameRoomData {
   /** Query keys the room's own writes invalidate, handed to child controls. */
@@ -32,9 +38,14 @@ export interface PregameRoomData {
   mapsById: Record<number, PickBanItemLike | undefined>;
   heroesById: Record<number, PickBanItemLike | undefined>;
   itemsByKind: Record<PickBanKind, Record<number, PickBanItemLike | undefined>>;
+  /** The room's game's declared `character_classes`: the order class groups are listed in. Empty until loaded. */
+  characterClasses: readonly string[];
+  /** The room's game's native metadata, for its module's slots. A failure is its own state: the room still runs. */
+  metadata: RoomMetadata;
   /** Every map in the catalog, for the no-veto "which map did you play" picker. */
-  mapChoices: MapRead[];
-  viewerSide: PickBanSide | null;
+  mapChoices: CatalogEntityRead[];
+  /** The participation the viewer captains (`EncounterTeam.id`), or null for anyone else. */
+  viewerTeamId: number | null;
   readyPending: boolean;
   markReady: () => void;
   refetchAll: () => void;
@@ -114,17 +125,15 @@ export function usePregameRoomData(encounterId: number): PregameRoomData {
     queryFn: () => encounterService.getEncounter(encounterId),
     enabled
   });
-  const mapsQuery = useMapsCatalog();
-  const heroesQuery = useHeroesCatalog();
-  // `build_unavailable_state` reports `viewer_side: null` regardless of
-  // identity (there is no session yet to resolve a side against), so the
+  // The room's own game: the encounter names it, and nothing is read until it has loaded.
+  const discipline = encounterQuery.data?.discipline ?? null;
+  const mapsQuery = useCatalogEntities(discipline, "map");
+  const heroesQuery = useCatalogEntities(discipline, "character");
+  const metadataQuery = useDisciplineMetadata(encounterQuery.data?.workspace_id ?? "all", discipline);
+  // `build_unavailable_state` reports `viewer_team_id: null` regardless of
+  // identity (there is no session yet to resolve a participation against), so the
   // readiness gate's "you're a captain" check needs its own read.
-  const roleQuery = useQuery({
-    queryKey: encounterQueryKeys.myRole(encounterId),
-    queryFn: () => captainService.getMyRole(encounterId),
-    enabled,
-    retry: false
-  });
+  const roleQuery = useMyEncounterRole(encounterId, enabled);
 
   // Both topics and local writes share one bounded, jittered batch. Never
   // restart its timer on another signal: continuous blind drafts must not
@@ -210,6 +219,9 @@ export function usePregameRoomData(encounterId: number): PregameRoomData {
   // Parsed logs add/replace matches without moving the game's accepted score.
   // The parser names affected encounters on the tournament invalidation, so
   // only this room's explicit encounter changes join the full-refresh batch.
+  // The same signal is what a fetched match's ingest emits once its observation
+  // is written: the import rows' warnings appear only then, after the fetch
+  // itself already reads `done` and stopped polling.
   const tournamentId = encounterQuery.data?.tournament_id;
   useRealtimeTopic<{
     resources?: string[];
@@ -222,6 +234,7 @@ export function usePregameRoomData(encounterId: number): PregameRoomData {
       if (Array.isArray(resources) && resources.includes("tournament.encounters") &&
           Array.isArray(ids) && ids.includes(encounterId)) {
         invalidateRoom();
+        void queryClient.invalidateQueries({ queryKey: encounterQueryKeys.matchImportsOf(encounterId) });
       }
     }
   );
@@ -246,6 +259,11 @@ export function usePregameRoomData(encounterId: number): PregameRoomData {
   const encounter = encounterQuery.data ?? null;
   const mapState = mapQuery.data ?? null;
   const heroState = heroQuery.data ?? null;
+  const metadataStatus: RoomMetadata = metadataQuery.data
+    ? { status: "ready", metadata: metadataQuery.data }
+    : metadataQuery.isError
+      ? { status: "error", retry: () => void metadataQuery.refetch() }
+      : { status: "pending" };
 
   return {
     mapKey,
@@ -263,14 +281,17 @@ export function usePregameRoomData(encounterId: number): PregameRoomData {
     mapsById,
     heroesById,
     itemsByKind: { map: mapsById, hero: heroesById },
+    characterClasses: metadataQuery.data?.discipline.character_classes ?? [],
+    metadata: metadataStatus,
     mapChoices: mapsQuery.data ?? [],
-    viewerSide: roleQuery.data?.side ?? null,
+    viewerTeamId: roleQuery.data?.encounter_team_id ?? null,
     readyPending: readyMutation.isPending,
     markReady: () => readyMutation.mutate(),
     refetchAll: () => {
       void mapQuery.refetch();
       void heroQuery.refetch();
       void encounterQuery.refetch();
+      if (discipline !== null) void metadataQuery.refetch();
     },
     invalidateRoom
   };

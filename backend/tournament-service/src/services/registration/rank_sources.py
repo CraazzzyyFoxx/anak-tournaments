@@ -5,7 +5,7 @@ weekly OW rank-snapshot composites, past balancer-registration ranks
 ("division_history") and past tournament-participation ranks ("analytics"),
 plus the grid normalization that maps historical ranks into the target
 tournament's division grid. The stage resolution and orchestration live in
-``rank_autofill``; everything here is re-exported by the ``admin`` facade.
+``rank_autofill``.
 """
 
 from __future__ import annotations
@@ -19,38 +19,72 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
 
+from shared import models
 from shared.core import enums
 from shared.core.social import SocialProvider
-from shared.division_grid import DivisionGrid
-from shared.domain.player_sub_roles import REGISTRATION_TO_CANONICAL, canonical_to_registration_role
+from shared.disciplines import discipline
+from shared.division_grid import DivisionGrid, normalize_native_ranks_to_grid
 from shared.repository import (
-    BalancerRegistrationRepository,
+    RegistrationRepository,
     SocialAccountRepository,
     TournamentRepository,
 )
+from shared.schemas.role import RoleRef
+from shared.services import rank_snapshots
+from shared.services.division_grid.access import build_workspace_division_grid_normalizer
 from shared.services.division_grid.normalization import (
     DivisionGridNormalizationError,
     DivisionGridNormalizer,
-    build_division_grid_normalizer,
 )
 from shared.services.roster import registration_load_options
-from src import models
+from src.domain.registration.ow_rank_selection import select_main_account_ow_ranks
 
-__all__ = ("primary_battlenet_key", "rank_sources_service")
+__all__ = ("native_ranks_by_registration", "primary_identity_key", "rank_sources_service")
 
 
-def primary_battlenet_key(registration: models.BalancerRegistration) -> str | None:
-    """The normalized PRIMARY battlenet handle of a registration, or ``None``.
+async def native_ranks_by_registration(
+    session: AsyncSession,
+    registrations: Sequence[Any],
+    *,
+    discipline_code: str,
+    grid: DivisionGrid,
+) -> dict[int, dict[str, int]]:
+    """Each registration's native ranks placed on ``grid``: OverFast main accounts for a Battle.net game, the module's
+    ``native_ranks`` otherwise.
 
-    ``handle_normalized`` is written with the battletag rule, so it is exactly the
-    ``social_account.username_normalized`` the OW rank tables key on.
+    A discipline whose module declares no native layer gets nothing, and a game whose identity provider is not
+    Battle.net never reads the OverFast tables, so a LoL registrant's linked BattleTag never reads as a LoL rank.
     """
+    spec = discipline(discipline_code)
+    if spec.native_ranks is None:
+        return {}
+    members = [registration for registration in registrations if registration.workspace_member is not None]
+    if spec.identity_provider != SocialProvider.BATTLENET:
+        # A module's own native layer (not the OverFast tables): the best rank across the player's accounts.
+        by_user = await spec.native_ranks(session, [r.workspace_member.player_id for r in members])
+        return normalize_native_ranks_to_grid(
+            {r.id: by_user.get(r.workspace_member.player_id, {}) for r in members}, grid
+        )
+    accounts_by_user = await rank_snapshots.fetch_latest_ow_ranks_by_account(
+        session, [registration.workspace_member.player_id for registration in members], discipline=discipline_code
+    )
+    return normalize_native_ranks_to_grid(
+        {
+            registration.id: select_main_account_ow_ranks(
+                accounts_by_user.get(registration.workspace_member.player_id, {}),
+                # Extras of the battlenet identity ARE the declared smurfs.
+                registration.handles(SocialProvider.BATTLENET)[1:],
+            )
+            for registration in members
+        },
+        grid,
+    )
+
+
+def primary_identity_key(registration: models.Registration, *, provider: str | None) -> str | None:
+    """The normalized position-zero handle of the owner's provider, never another game's."""
     return next(
-        (
-            row.handle_normalized
-            for row in registration.identities
-            if row.provider == SocialProvider.BATTLENET and row.position == 0
-        ),
+        (row.handle_normalized for row in registration.identities if row.provider == provider and row.position == 0),
         None,
     )
 
@@ -62,14 +96,14 @@ def _primary_battlenet_order() -> sa.ScalarSelect[str]:
     battlenet identity rows, and joining them would multiply the result.
     """
     return (
-        sa.select(models.BalancerRegistrationIdentity.handle_normalized)
+        sa.select(models.RegistrationIdentity.handle_normalized)
         .where(
-            models.BalancerRegistrationIdentity.registration_id == models.BalancerRegistration.id,
-            models.BalancerRegistrationIdentity.provider == SocialProvider.BATTLENET,
-            models.BalancerRegistrationIdentity.position == 0,
+            models.RegistrationIdentity.registration_id == models.Registration.id,
+            models.RegistrationIdentity.provider == SocialProvider.BATTLENET,
+            models.RegistrationIdentity.position == 0,
         )
         .limit(1)
-        .correlate(models.BalancerRegistration)
+        .correlate(models.Registration)
         .scalar_subquery()
     )
 
@@ -114,13 +148,13 @@ class _OwRankSignals:
     latest_snapshot: models.UserRankSnapshot | Any | None = None
 
 
-# Registration role codes, kept as a *validated* lookup: ``.get()`` answers None for
-# anything that is not one of the three roles a registration can name. Single source of
-# truth is shared.domain.player_sub_roles.
-RANK_ROLE_BY_REGISTRATION_ROLE = dict(REGISTRATION_TO_CANONICAL)
-REGISTRATION_ROLE_LABELS = {
-    role.slot_code: role.value for role in (enums.HeroClass.tank, enums.HeroClass.damage, enums.HeroClass.support)
-}
+@dataclass(frozen=True)
+class _NativeSnapshot:
+    """A module's native rank standing in for the ``ow`` stage's "current" reading (no OverFast row behind it)."""
+
+    rank_value: int
+
+
 # Window for the OW rank source: the rank a player held over one week.
 OW_RANK_WEEK_WINDOW = timedelta(days=7)
 
@@ -232,8 +266,8 @@ def _compute_ow_week_ranks(
     """``(composite, peak)`` OW rank_value over a weekly window.
 
     ``composite`` is ``round((max + mean) / 2)``, the mean weighted by how long each rank held
-    inside the window -- what the mean over 15-minute polls measured before the table kept only
-    changes. ``peak`` is that ``max``: the highest rank a poll saw, a lower bound on the real one.
+    inside the window. ``peak`` is that ``max``: the highest rank a poll saw, a lower bound on
+    the real one.
 
     ``snapshots`` are one (account, role)'s changes (any platform, unranked ones included, the
     row each platform entered the window in among them); ``known_until`` is the account's last
@@ -319,7 +353,7 @@ def _map_ow_rank_value(ow_rank_value: int | None, grid: DivisionGrid) -> int | N
     """Map an OW ``rank_value`` to a tournament division rank via the grid, or None if unmapped."""
     if ow_rank_value is None:
         return None
-    tier = grid.resolve_division_from_ow_rank(ow_rank_value)
+    tier = grid.resolve_division_from_native_rank(ow_rank_value)
     return tier.rank_min if tier is not None else None
 
 
@@ -335,7 +369,7 @@ class RankSourcesService:
         self,
         *,
         tournament_repo: TournamentRepository = TournamentRepository(),
-        registration_repo: BalancerRegistrationRepository = BalancerRegistrationRepository(),
+        registration_repo: RegistrationRepository = RegistrationRepository(),
         social_repo: SocialAccountRepository = SocialAccountRepository(),
     ) -> None:
         self.tournament_repo = tournament_repo
@@ -369,11 +403,12 @@ class RankSourcesService:
         if target_version_id is None:
             return None
         try:
-            return await build_division_grid_normalizer(
+            return await build_workspace_division_grid_normalizer(
                 session,
                 tournament.workspace_id,
                 target_version_id=target_version_id,
                 require_complete=False,
+                discipline=tournament.discipline,
             )
         except DivisionGridNormalizationError:
             return None
@@ -401,44 +436,49 @@ class RankSourcesService:
 
         # Registrations are anchored on workspace_member; the domain player id is
         # the member's player_id. Inner join: member-less registrations have no
-        # player identity and (as before, when user_id was NULL) never match.
+        # player identity and never match.
         stmt = (
             sa.select(
                 models.WorkspaceMember.player_id.label("user_id"),
-                models.BalancerRegistrationRole.role,
-                models.BalancerRegistrationRole.rank_value,
+                models.RegistrationRole.role,
+                models.RegistrationRole.rank_value,
                 models.Tournament.division_grid_version_id,
             )
-            .select_from(models.BalancerRegistration)
+            .select_from(models.Registration)
             .join(
                 models.WorkspaceMember,
-                models.WorkspaceMember.id == models.BalancerRegistration.workspace_member_id,
+                models.WorkspaceMember.id == models.Registration.workspace_member_id,
             )
             .join(
-                models.BalancerRegistrationRole,
-                models.BalancerRegistrationRole.registration_id == models.BalancerRegistration.id,
+                models.RegistrationRole,
+                models.RegistrationRole.registration_id == models.Registration.id,
             )
             .join(
                 models.Tournament,
-                models.Tournament.id == models.BalancerRegistration.tournament_id,
+                models.Tournament.id == models.Registration.tournament_id,
             )
             .where(
                 models.WorkspaceMember.player_id.in_(user_ids),
                 models.Tournament.workspace_id == workspace_id,
-                models.BalancerRegistration.tournament_id != current_tournament_id,
-                models.BalancerRegistration.deleted_at.is_(None),
-                models.BalancerRegistrationRole.is_active.is_(True),
-                models.BalancerRegistrationRole.rank_value.is_not(None),
+                models.Tournament.discipline
+                == sa.select(models.Tournament.discipline)
+                .where(models.Tournament.id == current_tournament_id)
+                .correlate(None)
+                .scalar_subquery(),
+                models.Registration.tournament_id != current_tournament_id,
+                models.Registration.deleted_at.is_(None),
+                models.RegistrationRole.is_active.is_(True),
+                models.RegistrationRole.rank_value.is_not(None),
             )
             .order_by(
                 models.WorkspaceMember.player_id,
-                models.BalancerRegistrationRole.role,
+                models.RegistrationRole.role,
                 models.Tournament.start_date.desc().nulls_last(),
                 models.Tournament.id.desc(),
             )
         )
         if allowed_tournament_ids is not None:
-            stmt = stmt.where(models.BalancerRegistration.tournament_id.in_(allowed_tournament_ids))
+            stmt = stmt.where(models.Registration.tournament_id.in_(allowed_tournament_ids))
 
         rows = (await session.execute(stmt)).all()
 
@@ -467,9 +507,8 @@ class RankSourcesService:
 
         This is the "analytics" source: actual ranks played in the workspace's previous tournaments
         (``tournament.player``), distinct from the balancer-registration history. Excludes the current
-        tournament and substitution rows; the most recent tournament wins per role. ``Player.role`` is
-        a HeroClass and its name is the registration role code, so the keying lines up directly. Ranks
-        are normalized from each source tournament's grid version into the target grid. When
+        tournament and substitution rows; the most recent tournament wins per role. Player.role
+        is already the top-level code. Ranks are normalized from each source tournament's grid version into the target grid. When
         ``allowed_tournament_ids`` is set, only players from those tournaments are considered
         (recency window).
         """
@@ -483,6 +522,7 @@ class RankSourcesService:
                 models.Player.rank,
                 models.Tournament.division_grid_version_id,
             )
+            .select_from(models.Player)
             .join(
                 models.Tournament,
                 models.Tournament.id == models.Player.tournament_id,
@@ -494,6 +534,11 @@ class RankSourcesService:
             .where(
                 models.WorkspaceMember.player_id.in_(user_ids),
                 models.Tournament.workspace_id == workspace_id,
+                models.Tournament.discipline
+                == sa.select(models.Tournament.discipline)
+                .where(models.Tournament.id == current_tournament_id)
+                .correlate(None)
+                .scalar_subquery(),
                 models.Player.tournament_id != current_tournament_id,
                 models.Player.role.is_not(None),
                 models.Player.is_substitution.is_(False),
@@ -513,13 +558,7 @@ class RankSourcesService:
 
         latest: dict[int, dict[str, int]] = {}
         for row in rows:
-            # ``HeroClass.flex`` is not a registration role, so the validator answers None and the
-            # row is skipped: a flex roster row carries ONE rank that stands for no particular role
-            # (the player's maximum, see balancer-service ``services.draft.ranks.slot_rank``), and
-            # attributing it to tank, damage or support would invent per-role history the tournament
-            # never recorded. That is why a player whose only history is flex tournaments autofills
-            # empty.
-            role_code = canonical_to_registration_role(row.role)
+            role_code = row.role
             if role_code is None:
                 continue
             user_map = latest.setdefault(row.user_id, {})
@@ -535,42 +574,48 @@ class RankSourcesService:
         *,
         user_id: int,
         workspace_id: int,
+        discipline_code: str,
     ) -> list[dict[str, Any]]:
-        """Per (tournament, role) ranks from a user's past balancer registrations in a workspace.
+        """Per (tournament, role) ranks from a user's past balancer registrations of one game in a workspace.
 
-        Newest tournament first; only active, ranked roles. Powers the balancer step of the
-        PlayerEditSheet "Load from history" preview (source = "balancer").
+        Newest tournament first; only active, ranked roles of tournaments of ``discipline_code`` -- a rank earned in
+        another game of the same workspace is never this game's rank, even under an identical role code. Powers the
+        balancer step of the PlayerEditSheet "Load from history" preview (source = "balancer").
         """
         rows = (
             await session.execute(
                 sa.select(
                     models.Tournament.id.label("tournament_id"),
                     models.Tournament.name.label("tournament_name"),
-                    models.BalancerRegistrationRole.role,
-                    models.BalancerRegistrationRole.rank_value,
+                    models.RegistrationRole.role,
+                    models.RegistrationRole.subrole,
+                    models.Tournament.discipline,
+                    models.RegistrationRole.rank_value,
                 )
+                .select_from(models.RegistrationRole)
                 .join(
-                    models.BalancerRegistration,
-                    models.BalancerRegistration.id == models.BalancerRegistrationRole.registration_id,
+                    models.Registration,
+                    models.Registration.id == models.RegistrationRole.registration_id,
                 )
                 .join(
                     models.Tournament,
-                    models.Tournament.id == models.BalancerRegistration.tournament_id,
+                    models.Tournament.id == models.Registration.tournament_id,
                 )
                 .join(
                     models.WorkspaceMember,
-                    models.WorkspaceMember.id == models.BalancerRegistration.workspace_member_id,
+                    models.WorkspaceMember.id == models.Registration.workspace_member_id,
                 )
                 .where(
                     models.WorkspaceMember.player_id == user_id,
                     models.Tournament.workspace_id == workspace_id,
-                    models.BalancerRegistration.deleted_at.is_(None),
-                    models.BalancerRegistrationRole.is_active.is_(True),
-                    models.BalancerRegistrationRole.rank_value.is_not(None),
+                    models.Tournament.discipline == discipline_code,
+                    models.Registration.deleted_at.is_(None),
+                    models.RegistrationRole.is_active.is_(True),
+                    models.RegistrationRole.rank_value.is_not(None),
                 )
                 .order_by(
                     models.Tournament.start_date.desc().nulls_last(),
-                    models.BalancerRegistration.tournament_id.desc(),
+                    models.Registration.tournament_id.desc(),
                 )
             )
         ).all()
@@ -579,7 +624,7 @@ class RankSourcesService:
             {
                 "tournament_id": row.tournament_id,
                 "tournament_name": row.tournament_name,
-                "role": row.role,
+                "role": RoleRef.of(discipline(row.discipline).rated_dimension.code, row.role, row.subrole).model_dump(),
                 "rank_value": row.rank_value,
             }
             for row in rows
@@ -590,12 +635,12 @@ class RankSourcesService:
         session: AsyncSession,
         tournament_id: int,
         registration_ids: list[int] | None,
-    ) -> list[models.BalancerRegistration]:
+    ) -> list[models.Registration]:
         query = (
             self.registration_repo.select()
             .where(
-                models.BalancerRegistration.tournament_id == tournament_id,
-                models.BalancerRegistration.deleted_at.is_(None),
+                models.Registration.tournament_id == tournament_id,
+                models.Registration.deleted_at.is_(None),
             )
             # These rows go to the roster engine for their role set and ranks; it
             # reads roles, their heroes and the member anchor, none of which may
@@ -603,34 +648,34 @@ class RankSourcesService:
             .options(*registration_load_options())
             .order_by(
                 _primary_battlenet_order().asc().nullslast(),
-                models.BalancerRegistration.id.asc(),
+                models.Registration.id.asc(),
             )
         )
         if registration_ids is not None:
             if not registration_ids:
                 return []
-            query = query.where(models.BalancerRegistration.id.in_(registration_ids))
+            query = query.where(models.Registration.id.in_(registration_ids))
         result = await session.execute(query)
         return list(result.scalars().all())
 
-    async def _load_main_battle_tags_by_key(
+    async def _load_primary_accounts_by_key(
         self,
         session: AsyncSession,
-        registrations: list[models.BalancerRegistration],
+        registrations: list[models.Registration],
+        *,
+        provider: str | None,
     ) -> dict[str, models.SocialAccount]:
-        """Map normalized battletag key → the battlenet ``social_account`` it belongs to.
-
-        A registration's ``handle_normalized`` IS ``social_account.username_normalized``
-        for battlenet, so the keys match directly.
-        """
-        tag_keys = {key for registration in registrations if (key := primary_battlenet_key(registration))}
+        """Map the owner's normalized primary handle to its provider-scoped social account."""
+        tag_keys = {
+            key for registration in registrations if (key := primary_identity_key(registration, provider=provider))
+        }
         if not tag_keys:
             return {}
 
         acc = models.SocialAccount
         result = await session.execute(
             self.social_repo.select().where(
-                acc.provider == SocialProvider.BATTLENET,
+                acc.provider == provider,
                 acc.username_normalized.in_(tag_keys),
             )
         )
@@ -662,7 +707,7 @@ class RankSourcesService:
             [(account_id,) for account_id in sorted(set(social_account_ids))]
         )
         roles = sa.values(sa.column("role", sa.String), name="roles").data(
-            [(role,) for role in sorted(set(RANK_ROLE_BY_REGISTRATION_ROLE.values()))]
+            [(role.name,) for role in enums.HERO_TYPE_CLASSES]
         )
         pair = (snap.social_account_id == accounts.c.id, snap.role == roles.c.role)
         # One index descent per (account, role) on ``ix_rank_snapshot_latest_ranked``.
@@ -691,13 +736,26 @@ class RankSourcesService:
         if not rows:
             return {}
 
-        state = models.BattleTagRankState
+        state = models.RankAccountState
         polled = await session.execute(
             sa.select(state.social_account_id, state.last_success_at).where(
                 state.social_account_id.in_({row.social_account_id for row in rows})
             )
         )
         return _group_ow_rank_signals(rows, now, dict(polled.all()), week_window)
+
+    async def _load_native_rank_signals_by_user_id(
+        self, session: AsyncSession, discipline_code: str, user_ids: Iterable[int]
+    ) -> dict[int, dict[str, _OwRankSignals]]:
+        """The ``ow`` stage for a game whose native layer is its module's: one value per role, keyed by player (the
+        registration's member, whatever handle it was submitted with), standing for composite, current and peak
+        alike."""
+        ids = sorted(set(user_ids))
+        by_user = await discipline(discipline_code).native_ranks(session, ids) if ids else {}
+        return {
+            user_id: {role: _OwRankSignals(value, value, _NativeSnapshot(value)) for role, value in by_role.items()}
+            for user_id, by_role in by_user.items()
+        }
 
 
 rank_sources_service = RankSourcesService()

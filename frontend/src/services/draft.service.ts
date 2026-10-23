@@ -1,11 +1,13 @@
 import { apiFetch } from "@/lib/api/fetch";
+import type { RoleRef } from "@/lib/roster/role-ref";
 import type {
   DraftBoard,
+  DraftExportResponse,
   DraftFeasibility,
   DraftJournalResponse,
+  DraftLifecycleAction,
   DraftPickExtendRequest,
   DraftPickOptionsResponse,
-  DraftRole,
   DraftRoleEditRequest,
   DraftRoleEditResponse,
   DraftSeedRequest,
@@ -146,14 +148,17 @@ export default class draftService {
     return res.json();
   }
 
-  static async lifecycle(
-    tournamentId: number,
-    sessionId: number,
-    action: "start" | "pause" | "resume" | "cancel" | "export" | "rollback"
-  ): Promise<DraftSession> {
-    const res = await apiFetch(`/api/v1/balancer/draft/tournaments/${tournamentId}/sessions/${sessionId}/${action}`,
-      { method: "POST" }
-    );
+  /** A session's lifecycle, for a tournament's draft and a mix lobby's alike: the server checks the session's owner. */
+  static async lifecycle(sessionId: number, action: DraftLifecycleAction): Promise<DraftSession> {
+    const res = await apiFetch(`/api/v1/balancer/draft/sessions/${sessionId}/${action}`, { method: "POST" });
+    return res.json();
+  }
+
+  /** A completed tournament draft becomes the tournament's teams (a mix draft writes its lobby's lineup itself). */
+  static async exportDraft(tournamentId: number, sessionId: number): Promise<DraftExportResponse> {
+    const res = await apiFetch(`/api/v1/balancer/draft/tournaments/${tournamentId}/sessions/${sessionId}/export`, {
+      method: "POST"
+    });
     return res.json();
   }
 
@@ -171,7 +176,7 @@ export default class draftService {
   // --- pick actions (keyed by pick_id) ---
   static async select(
     pickId: number,
-    body: { player_id: number; expected_version: number; target_role?: DraftRole | null }
+    body: { player_id: number; expected_version: number; target_role?: RoleRef | null }
   ): Promise<DraftSession> {
     const res = await apiFetch(`/api/v1/balancer/draft/picks/${pickId}/select`, {
       method: "POST",
@@ -196,7 +201,7 @@ export default class draftService {
     body: {
       expected_version: number;
       player_id?: number | null;
-      target_role?: DraftRole | null;
+      target_role?: RoleRef | null;
       note?: string | null;
     }
   ): Promise<DraftSession> {

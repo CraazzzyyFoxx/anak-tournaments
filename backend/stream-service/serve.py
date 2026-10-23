@@ -25,7 +25,6 @@ from shared.observability import (
 from shared.quota import configure as configure_quota
 from shared.services.realtime import configure_realtime
 from src.core import config, db
-from src.core.broker import set_worker_broker
 from src.rpc import admin as rpc_admin
 from src.rpc import reads as rpc_reads
 from src.services import scheduler as poll_scheduler
@@ -41,11 +40,6 @@ broker = make_rabbit_broker(
     config.settings.rabbitmq_url, logger=logger, prefetch_count=config.settings.rpc_prefetch_count
 )
 app = FastStream(broker)
-
-# The poll tick publishes the `stream.updated` realtime envelope from outside any
-# subscriber, so it resolves the connected broker through src.core.broker rather
-# than being handed one.
-set_worker_broker(broker)
 
 # The poll tick stages its stream.updated / tournament.streams events through
 # shared/services/realtime, which has no settings of its own.

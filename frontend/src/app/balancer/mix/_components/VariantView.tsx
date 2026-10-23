@@ -1,33 +1,43 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 
 import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 
 import { teamAccent } from "@/app/balancer/mix/pickup-chrome";
-import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { InlineEditText } from "@/components/kit/InlineEditText";
 import { useDragSensors } from "@/hooks/useDragSensors";
 import { cn } from "@/lib/utils";
 
-import type { PickupTeam, PickupVariant } from "../pickup-lineup";
+import type { MixOwner, PickupTeam, PickupVariant } from "../pickup-lineup";
 import { SeatDragPreview, SeatRow, type ActiveSeatDrag } from "./SeatRow";
 import { VariantMetrics } from "./VariantMetrics";
 
 export function VariantView({
   variant,
+  owner,
   canWrite,
   capturing,
   onRenameTeam,
-  onSwapSeats
+  onSwapSeats,
+  awayUuids,
+  onMakeCaptain
 }: Readonly<{
   variant: PickupVariant;
+  /** The mix owner's game: names, glyphs and the grid of every seat. */
+  owner: MixOwner;
   canWrite: boolean;
   /** A screenshot is being taken: the rename pencils drop out so the card exports as a plain matchup. */
   capturing: boolean;
   onRenameTeam?: (teamIndex: number, name: string) => void | Promise<unknown>;
   /** Omitted -- seats render without drag handles, matching a `canWrite=false` viewer. */
   onSwapSeats?: (firstUuid: string, secondUuid: string) => void | Promise<unknown>;
+  /** Seats whose player stepped away, badged (spec §7.4). */
+  awayUuids?: ReadonlySet<string>;
+  /** Omitted -- no "Make captain" on any seat. */
+  onMakeCaptain?: (uuid: string) => void;
 }>) {
   const twoTeams = variant.teams.length === 2;
   const canDrag = canWrite && onSwapSeats != null;
@@ -50,13 +60,13 @@ export function VariantView({
   };
 
   return (
-    // One card with a divider column, not two cards: the matchup is a single
+    // One block with a divider column, not two cards: the matchup is a single
     // object, and a gap between two boxes read as two unrelated rosters. The
     // verdict pills live inside it too, centred over the seam between the
-    // teams and above their rosters -- inside the same border, not a strip
-    // floating above the card on its own. Who the option left out is not
-    // repeated here: the lineup column already marks them benched.
-    <div className={cn(PANEL_CLASS, "overflow-hidden rounded-2xl")}>
+    // teams and above their rosters. The lobby card around it is the frame.
+    // Who the option left out is not repeated here: the lineup column already
+    // marks them benched.
+    <div>
       <div className="flex flex-wrap items-center justify-center gap-1.5 border-b border-[color:var(--aqt-border)] px-4 py-2.5">
         <VariantMetrics variant={variant} />
       </div>
@@ -71,6 +81,7 @@ export function VariantView({
             <TeamColumnAndDivider
               key={team.id}
               team={team}
+              owner={owner}
               teamIndex={teamIndex}
               showDivider={twoTeams && teamIndex === 0}
               canWrite={canWrite}
@@ -79,13 +90,16 @@ export function VariantView({
               onRenameTeam={capturing ? undefined : onRenameTeam}
               canDrag={canDrag}
               activeDrag={activeDrag}
+              awayUuids={awayUuids}
+              // The screenshot carries no buttons.
+              onMakeCaptain={capturing ? undefined : onMakeCaptain}
             />
           ))}
         </div>
         {/* Follows the pointer instead of the seat teleporting under it --
               without this dnd-kit still swaps correctly, it just looks broken
               mid-drag (the dragged row snaps back until drop). */}
-        <DragOverlay>{activeDrag ? <SeatDragPreview seat={activeDrag.seat} /> : null}</DragOverlay>
+        <DragOverlay>{activeDrag ? <SeatDragPreview seat={activeDrag.seat} owner={owner} /> : null}</DragOverlay>
       </DndContext>
     </div>
   );
@@ -93,29 +107,38 @@ export function VariantView({
 
 function TeamColumnAndDivider({
   team,
+  owner,
   teamIndex,
   showDivider,
   canWrite,
   onRenameTeam,
   canDrag,
-  activeDrag
+  activeDrag,
+  awayUuids,
+  onMakeCaptain
 }: Readonly<{
   team: PickupTeam;
+  owner: MixOwner;
   teamIndex: number;
   showDivider: boolean;
   canWrite: boolean;
   onRenameTeam?: (teamIndex: number, name: string) => void | Promise<unknown>;
   canDrag: boolean;
   activeDrag: ActiveSeatDrag | null;
+  awayUuids?: ReadonlySet<string>;
+  onMakeCaptain?: (uuid: string) => void;
 }>) {
   return (
     <>
       <TeamColumn
         team={team}
+        owner={owner}
         teamIndex={teamIndex}
         canWrite={canWrite}
         onRenameTeam={onRenameTeam}
         canDrag={canDrag}
+        awayUuids={awayUuids}
+        onMakeCaptain={onMakeCaptain}
         activeDrag={activeDrag}
       />
       {showDivider ? (
@@ -134,19 +157,26 @@ function TeamColumnAndDivider({
 
 function TeamColumn({
   team,
+  owner,
   teamIndex,
   canWrite,
   onRenameTeam,
   canDrag,
-  activeDrag
+  activeDrag,
+  awayUuids,
+  onMakeCaptain
 }: Readonly<{
   team: PickupTeam;
+  owner: MixOwner;
   teamIndex: number;
   canWrite: boolean;
   onRenameTeam?: (teamIndex: number, name: string) => void | Promise<unknown>;
   canDrag: boolean;
   activeDrag: ActiveSeatDrag | null;
+  awayUuids?: ReadonlySet<string>;
+  onMakeCaptain?: (uuid: string) => void;
 }>) {
+  const t = useTranslations("mixes.teams");
   const accent = teamAccent(teamIndex);
 
   return (
@@ -155,20 +185,13 @@ function TeamColumn({
         <span aria-hidden="true" className={cn("h-4 w-[3px] shrink-0 rounded-sm", accent.bar)} />
         <InlineEditText
           value={team.name}
-          label="team name"
+          label={t("teamName")}
           canEdit={canWrite && onRenameTeam != null}
           onSave={(next) => onRenameTeam?.(teamIndex, next)}
-          textClassName="truncate font-display text-xl font-bold tracking-[0.01em] text-[color:var(--aqt-fg)]"
+          textClassName="truncate font-display text-heading font-bold text-[color:var(--aqt-fg)]"
         />
-        <span
-          className={cn(
-            "ml-auto shrink-0 text-label uppercase tracking-label",
-            "text-[color:var(--aqt-fg-faint)]"
-          )}
-        >
-          avg
-        </span>
-        <span className="shrink-0 text-xl font-bold tabular-nums text-[color:var(--aqt-fg)]">
+        <Eyebrow className="ml-auto shrink-0">{t("average")}</Eyebrow>
+        <span className="shrink-0 font-display text-heading font-bold tabular-nums text-[color:var(--aqt-fg)]">
           {team.averageRank == null ? "\u2014" : Math.round(team.averageRank)}
         </span>
       </header>
@@ -177,9 +200,12 @@ function TeamColumn({
           <SeatRow
             key={`${seat.uuid}:${seat.role}`}
             seat={seat}
+            owner={owner}
             teamIndex={teamIndex}
             canDrag={canDrag}
             activeDrag={activeDrag}
+            away={awayUuids?.has(seat.uuid) ?? false}
+            onMakeCaptain={onMakeCaptain && !seat.isCaptain ? () => onMakeCaptain(seat.uuid) : undefined}
           />
         ))}
       </ul>

@@ -27,6 +27,7 @@ import {
   parseRulesetJson,
   pickBanDraftFromConfig,
   pickBanDraftToInput,
+  presetDraftPatch,
   removeStep,
   rescopePickBanDraft,
   resolveSeriesLength,
@@ -94,9 +95,11 @@ function stage(overrides: Partial<Stage> = {}): Stage {
     tiebreak_order: null,
     scoring: { win: null, draw: null, loss: null },
     swiss_bye_points: null,
+    swiss_qualify_wins: null,
+    swiss_eliminate_losses: null,
     de_grand_final_type: "no_reset",
     seed_ranking: "slot",
-    best_of: { default: 3, by_round: {}, final: null },
+    best_of: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
     ffa_scoring: { placement_points: [], score_points: 1, score_label: null },
     challonge_id: null,
     challonge_slug: null,
@@ -375,7 +378,7 @@ describe("the cascade", () => {
 });
 
 describe("scope resolution", () => {
-  const stages = [stage({ id: 10, max_rounds: 3, best_of: { default: 5, by_round: {}, final: null } })];
+  const stages = [stage({ id: 10, max_rounds: 3, best_of: { default: 5, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null } })];
 
   it("takes a stage's rounds from the generated encounters when they exist", () => {
     const rounds = stageRoundOptions(10, [
@@ -410,7 +413,7 @@ describe("scope resolution", () => {
       resolveSeriesLength(
         10,
         null,
-        [stage({ id: 10, best_of: { default: 3, by_round: { "3": 5 }, final: null } })],
+        [stage({ id: 10, best_of: { default: 3, by_round: { "3": 5 }, final: null, swiss_qualify: null, swiss_eliminate: null } })],
         undefined
       ).source
     ).toBe("variesByRound");
@@ -447,7 +450,7 @@ describe("scope resolution", () => {
           })),
         },
       ],
-      best_of: { default: 3, by_round: {}, final: 5 },
+      best_of: { default: 3, by_round: {}, final: 5, swiss_qualify: null, swiss_eliminate: null },
     } as unknown as Partial<Stage>);
 
     expect(resolveSeriesLength(10, 3, [playoffs], [])).toEqual({ bestOf: 5, source: "round" });
@@ -483,7 +486,7 @@ describe("round groups are counted from the bracket", () => {
   });
 
   it("reads the stage's configuration before the bracket exists, final included", () => {
-    const stages = [stage({ id: 10, best_of: { default: 3, by_round: {}, final: 5 } })];
+    const stages = [stage({ id: 10, best_of: { default: 3, by_round: {}, final: 5, swiss_qualify: null, swiss_eliminate: null } })];
 
     expect(resolveSlotCount(10, null, stages, [])).toBe(5);
     expect(resolveSlotCount(10, null, stages, undefined)).toBe(5);
@@ -607,5 +610,35 @@ describe("scope collisions", () => {
   it("does not call a config a collision with itself, nor across kinds", () => {
     expect(findScopeCollision(draft({ configId: 2, kind: "map", stageId: 10 }), saved)).toBeNull();
     expect(findScopeCollision(draft({ kind: "map", stageId: 10, round: 1 }), saved)).toBeNull();
+  });
+});
+
+describe("presetDraftPatch", () => {
+  const ruleset = emptyRuleset("hero");
+
+  it("applies the ruleset AND the rotation a module preset declares, and they survive save and reload", () => {
+    const patch = presetDraftPatch({ ruleset, first_ban_rotation: "result_loser_first" });
+    expect(patch).toEqual({ ruleset, firstBanRotation: "result_loser_first" });
+
+    const applied: PickBanDraft = { ...draft({ kind: "hero" }), firstBanRotation: "alternate", ...patch };
+    const input = pickBanDraftToInput(applied);
+    expect(input.first_ban_rotation).toBe("result_loser_first");
+    // Reload: what the server stored is what the form reads back.
+    const reloaded = pickBanDraftFromConfig(
+      config({ kind: "hero", ruleset: input.ruleset, first_ban_rotation: input.first_ban_rotation ?? "fixed" })
+    );
+    expect(reloaded.firstBanRotation).toBe("result_loser_first");
+  });
+
+  it("leaves the organizer's rotation and every other field alone when the preset declares none", () => {
+    const patch = presetDraftPatch({ ruleset, first_ban_rotation: null });
+    expect(patch).toEqual({ ruleset });
+    expect("firstBanRotation" in patch).toBe(false);
+
+    const before: PickBanDraft = { ...draft({ kind: "hero" }), firstBanRotation: "alternate", itemIds: [4, 5] };
+    const after = { ...before, ...patch };
+    expect(after.firstBanRotation).toBe("alternate");
+    expect(after.itemIds).toEqual([4, 5]);
+    expect(pickBanDraftToInput(after).first_ban_rotation).toBe("alternate");
   });
 });

@@ -10,7 +10,7 @@
  * `services/bracket/*`; nothing new is derived here, so the preview and the
  * best-of editor cannot disagree.
  */
-import type { Tone } from "@/components/kit/tone";
+import type { Tone } from "@/components/ui/tone";
 import { resolveBestOf, stageBestOfRoundSections } from "@/lib/tournament/best-of";
 import { bracketRoundLabelEn, type BracketRoundShape } from "@/lib/bracket/round-name";
 import type {
@@ -47,14 +47,7 @@ export const STAGE_TYPE_LABELS: Record<StageType, string> = {
   single_elimination: "Single Elimination",
   double_elimination: "Double Elimination",
   swiss: "Swiss",
-  ffa_league: "FFA League"
-};
-export const STAGE_TYPE_LABEL_KEYS: Record<StageType, string> = {
-  round_robin: "round_robin",
-  single_elimination: "single_elimination",
-  double_elimination: "double_elimination",
-  swiss: "swiss",
-  ffa_league: "ffa_league"
+  ffa_league: "FFA"
 };
 
 export const STAGE_ITEM_TYPE_LABELS: Record<StageItemType, string> = {
@@ -62,12 +55,6 @@ export const STAGE_ITEM_TYPE_LABELS: Record<StageItemType, string> = {
   bracket_upper: "Upper bracket",
   bracket_lower: "Lower bracket",
   single_bracket: "Single bracket"
-};
-export const STAGE_ITEM_TYPE_LABEL_KEYS: Record<StageItemType, string> = {
-  group: "group",
-  bracket_upper: "bracket_upper",
-  bracket_lower: "bracket_lower",
-  single_bracket: "single_bracket"
 };
 
 export const SEED_RANKING_LABELS: Record<SeedRanking, string> = {
@@ -83,7 +70,7 @@ export const SEED_RANKING_LABEL_KEYS: Record<SeedRanking, string> = {
   random: "random"
 };
 
-export const DEFAULT_SWISS_TIEBREAKERS = [
+const DEFAULT_SWISS_TIEBREAKERS = [
   "points",
   "median_buchholz",
   "buchholz",
@@ -92,7 +79,7 @@ export const DEFAULT_SWISS_TIEBREAKERS = [
   "head_to_head"
 ];
 
-export const DEFAULT_RR_TIEBREAKERS = [
+const DEFAULT_RR_TIEBREAKERS = [
   "points",
   "head_to_head",
   "median_buchholz",
@@ -101,7 +88,7 @@ export const DEFAULT_RR_TIEBREAKERS = [
   "buchholz"
 ];
 
-export const DEFAULT_BRACKET_TIEBREAKERS = [
+const DEFAULT_BRACKET_TIEBREAKERS = [
   "points",
   "head_to_head",
   "median_buchholz",
@@ -116,7 +103,7 @@ export const DEFAULT_BRACKET_TIEBREAKERS = [
  * Not a constant any more: the third step is the sum of the stage's FIRST
  * column, and a stage that records nothing per game simply has no such step.
  */
-export function ffaDefaultTiebreakers(columns: readonly { key: string }[] = []): string[] {
+function ffaDefaultTiebreakers(columns: readonly { key: string }[] = []): string[] {
   const first = columns[0]?.key;
   return first
     ? ["points", "ffa_game_wins", `ffa_stat:${first}`, "ffa_last_placement"]
@@ -160,11 +147,11 @@ export function tiebreakOrderForPreset(
   return defaultTiebreakOrder(stageType, ffaColumns);
 }
 
-export function getStageTeamSlots(stage: Stage) {
+function getStageTeamSlots(stage: Stage) {
   return stage.items.reduce((acc, item) => acc + item.inputs.length, 0);
 }
 
-export function getStageAssignedTeams(stage: Stage) {
+function getStageAssignedTeams(stage: Stage) {
   return stage.items.reduce(
     (acc, item) => acc + item.inputs.filter((input) => input.team_id != null).length,
     0
@@ -183,7 +170,7 @@ export function getDefaultStageItemType(stageType: StageType): StageItemType {
   return BRACKET_STAGE_TYPES.includes(stageType) ? "single_bracket" : "group";
 }
 
-export function getTeamName(teamById: Map<number, Team>, teamId: number | null) {
+function getTeamName(teamById: Map<number, Team>, teamId: number | null) {
   if (teamId == null) return "Empty slot";
   return teamById.get(teamId)?.name ?? `Team #${teamId}`;
 }
@@ -216,14 +203,6 @@ export function getStageStatusTone(stage: Stage, hasEncounters: boolean): Tone {
   if (status === "Active") return "accent";
   if (status === "Preview") return "info";
   return "neutral";
-}
-
-export function getInputDisplayLabel(
-  input: StageItemInput,
-  stages: Stage[],
-  teamById: Map<number, Team>
-) {
-  return getInputDisplayLabelInfo(input, stages, teamById).label;
 }
 
 export type InputDisplayLabelInfo =
@@ -395,7 +374,7 @@ export function projectedRoundRobinRounds(stage: Stage): number {
   return (largest % 2 === 0 ? largest : largest + 1) - 1;
 }
 
-export interface ProjectedRound {
+interface ProjectedRound {
   /** Signed round number; negative is a lower-bracket round. */
   round: number;
   label: string;

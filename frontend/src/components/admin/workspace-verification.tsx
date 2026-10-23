@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { BadgeCheck, ShieldAlert, ShieldCheck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Select,
   SelectContent,
@@ -13,14 +14,13 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { StatusIcon } from "@/components/admin/StatusIcon";
-import { TONE_CLASS, type Tone } from "@/components/kit/tone";
+import { SettingRow } from "@/components/kit/SettingRow";
+import type { Tone } from "@/components/ui/tone";
 import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
 import workspaceService from "@/services/workspace.service";
 import type { Workspace, WorkspaceVerificationStatus } from "@/types/workspace.types";
 
-// `tone` is narrowed to the three that are also `StatusIcon` variants, so the
-// glyph and the notice's tinted surface stay driven by one field.
+// `tone` is narrowed to the three that are also `StatusIcon` variants.
 const TIERS: Record<
   WorkspaceVerificationStatus,
   { tone: Extract<Tone, "warning" | "info" | "success">; icon: LucideIcon }
@@ -63,21 +63,17 @@ export function WorkspaceNotListedNotice({
   if (status !== "unverified") return null;
 
   return (
-    <div
-      className={cn(
-        "rounded-lg border px-4 py-3 text-sm",
-        TONE_CLASS[TIERS.unverified.tone]
-      )}
-    >
-      <p className="font-medium">{t("notListed")}</p>
-      <p className="mt-1 max-w-prose opacity-90">
-        {t("notice")}
-      </p>
-    </div>
+    <Alert>
+      <AlertTitle>{t("notListed")}</AlertTitle>
+      <AlertDescription>{t("notice")}</AlertDescription>
+    </Alert>
   );
 }
 
-/** Superuser-only trust tier control. Renders nothing for anyone else. */
+/**
+ * Superuser-only trust tier control, as a `SettingRow` of its own. Renders
+ * nothing for anyone else, so a non-superuser gets no empty row.
+ */
 export function WorkspaceVerificationControl({
   workspace,
   isSuperuser,
@@ -97,16 +93,13 @@ export function WorkspaceVerificationControl({
   if (!isSuperuser) return null;
 
   return (
-    <div>
-      <label htmlFor="workspace-verification" className="text-sm font-medium leading-none">
-        {t("label")}
-      </label>
+    <SettingRow htmlFor="workspace-verification" label={t("label")} hint={t("description")}>
       <Select
         value={workspace.verification_status}
         disabled={mutation.isPending}
         onValueChange={(next) => mutation.mutate(next as WorkspaceVerificationStatus)}
       >
-        <SelectTrigger id="workspace-verification" className="mt-1.5 w-full sm:w-64">
+        <SelectTrigger id="workspace-verification" className="w-full">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -117,9 +110,6 @@ export function WorkspaceVerificationControl({
           ))}
         </SelectContent>
       </Select>
-      <p className="mt-1 max-w-prose text-xs text-muted-foreground">
-        {t("description")}
-      </p>
-    </div>
+    </SettingRow>
   );
 }

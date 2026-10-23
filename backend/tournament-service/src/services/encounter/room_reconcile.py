@@ -1,7 +1,7 @@
 """What drives ``PickBanActionService.reconcile_room``.
 
 The room's state read is pure (see ``pick_ban_action``), so nothing heals a
-room by being looked at any more. Three things heal it instead:
+room by being looked at. Three things heal it instead:
 
 * a POST-COMMIT trigger -- every write that touches a room already signals it
   through ``emit_pick_ban_update``, so staging a reconcile alongside that signal
@@ -14,7 +14,7 @@ room by being looked at any more. Three things heal it instead:
 * a one-second DUE-ROOM tick, for the only change nothing writes: a step's
   timer running out;
 * a one-minute BACKSTOP sweep, for writes that happen in another service
-  entirely (parser-service finalizing a map, app-service CRUD) and so never
+  entirely (stats-service finalizing a map, app-service CRUD) and so never
   reach this process's commit hooks.
 
 The trigger stages onto the session exactly the way ``shared.services.realtime.
@@ -34,22 +34,24 @@ import asyncio
 from typing import Any
 
 from loguru import logger
-from sqlalchemy import event, or_, select
+from sqlalchemy import event, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from shared.core.enums import (
-    EncounterFormat,
     EncounterStatus,
     MapVetoSessionStatus,
     TournamentStatus,
 )
 from shared.domain import pick_ban_rules as pbr
-from shared.models.tournament.encounter import Encounter
-from shared.models.tournament.pick_ban import PickBanSession, PickBanSubmission
+from shared.models.encounter.encounter import Encounter
+from shared.models.encounter.pick_ban import PickBanSession, PickBanSubmission
+from shared.models.encounter.team import EncounterTeam
+from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.models.tournament.stage import Stage
 from shared.models.tournament.tournament import Tournament
 from src.core import db
+from src.services.encounter.veto_session import ROOM_SLOT_COUNT
 
 __all__ = (
     "reconcile_due_rooms",
@@ -61,6 +63,7 @@ __all__ = (
 )
 
 _STAGED_KEY = "pick_ban_reconcile_staged"
+_SAVEPOINTS_KEY = "pick_ban_reconcile_savepoints"
 
 # asyncio keeps only a weak reference to a running task, so a fire-and-forget
 # reconcile whose handle nobody holds can be collected mid-flight.
@@ -130,6 +133,8 @@ def request_stage_reconcile(session: Any, stage_id: int) -> None:
 
 @event.listens_for(Session, "after_commit")
 def _run_staged(session: Session) -> None:
+    if session.in_nested_transaction():
+        return  # a SAVEPOINT release is not a commit: nothing may run before the root commit
     staged: set[tuple[str, int]] = session.info.pop(_STAGED_KEY, set())
     if not staged:
         return
@@ -147,14 +152,40 @@ def _run_staged(session: Session) -> None:
         task.add_done_callback(_background_tasks.discard)
 
 
-# BOTH rollback hooks, for the same reason ``emit``'s drop uses both:
-# after_rollback fires only when a DBAPI transaction was actually begun, so a
-# session that staged a reconcile and rolled back before touching the database
-# would otherwise keep it staged and run it on its NEXT commit.
+# Rollback hooks, split so a SAVEPOINT rollback only forgets what the savepoint staged (the snapshot taken when it
+# opened comes back) while a root rollback drops everything. ``after_rollback`` fires only when a DBAPI transaction
+# was actually begun, so both it and ``after_soft_rollback`` stay: a session that staged a reconcile and rolled back
+# before touching the database would otherwise run it on its NEXT commit.
+@event.listens_for(Session, "after_transaction_create")
+def _snapshot_at_savepoint(session: Session, transaction: Any) -> None:
+    if transaction.nested:
+        session.info.setdefault(_SAVEPOINTS_KEY, {})[transaction] = set(session.info.get(_STAGED_KEY, ()))
+
+
+@event.listens_for(Session, "after_transaction_end")
+def _forget_savepoint(session: Session, transaction: Any) -> None:
+    if transaction.nested:
+        session.info.get(_SAVEPOINTS_KEY, {}).pop(transaction, None)
+
+
 @event.listens_for(Session, "after_rollback")
-@event.listens_for(Session, "after_soft_rollback")
-def _drop_staged(session: Session, _previous_transaction: Any = None) -> None:
+def _drop_staged_on_rollback(session: Session) -> None:
+    nested = session.get_nested_transaction()
+    snapshots: dict[Any, set[tuple[str, int]]] = session.info.get(_SAVEPOINTS_KEY, {})
+    if nested is not None and nested in snapshots:
+        restored = snapshots[nested]
+        if restored:
+            session.info[_STAGED_KEY] = restored
+        else:
+            session.info.pop(_STAGED_KEY, None)
+        return
     session.info.pop(_STAGED_KEY, None)
+
+
+@event.listens_for(Session, "after_soft_rollback")
+def _drop_staged_on_soft_rollback(session: Session, previous_transaction: Any) -> None:
+    if not previous_transaction.nested:
+        session.info.pop(_STAGED_KEY, None)
 
 
 async def _reconcile_in_new_session(scope: tuple[str, int]) -> None:
@@ -170,20 +201,37 @@ async def _reconcile_in_new_session(scope: tuple[str, int]) -> None:
         logger.exception("Pick-ban room reconcile failed", scope=kind, scope_id=scope_id)
 
 
+def _fully_seated() -> Any:
+    """ "Every slot of the card has a live participation" as one predicate.
+
+    Counting the live seats answers it for a card of any width, the same
+    question ``creation_plan`` asks.
+    """
+    return (
+        select(func.count())
+        .select_from(EncounterTeam)
+        .where(EncounterTeam.encounter_id == Encounter.id, EncounterTeam.active.is_(True))
+        .correlate(Encounter)
+        .scalar_subquery()
+    ) == Encounter.slot_count
+
+
 async def _encounters_of(session: AsyncSession, kind: str, scope_id: int) -> list[int]:
     """The rooms one staged scope covers."""
     if kind == "encounter":
         return [scope_id]
-    column = Encounter.tournament_id if kind == "tournament" else Encounter.stage_id
-    result = await session.execute(
-        select(Encounter.id).where(
-            column == scope_id,
-            Encounter.format != EncounterFormat.FFA.value,
-            Encounter.home_team_id.isnot(None),
-            Encounter.away_team_id.isnot(None),
-            Encounter.status != EncounterStatus.COMPLETED,
-        )
+    query = select(Encounter.id).where(
+        Encounter.slot_count == ROOM_SLOT_COUNT,
+        Encounter.status != EncounterStatus.COMPLETED,
+        _fully_seated(),
     )
+    if kind == "tournament":
+        query = query.where(Encounter.tournament_id == scope_id)
+    else:
+        query = query.join(BracketEncounter, BracketEncounter.encounter_id == Encounter.id).where(
+            BracketEncounter.stage_id == scope_id
+        )
+    result = await session.execute(query)
     return sorted(result.scalars().all())
 
 
@@ -244,6 +292,17 @@ async def reconcile_due_rooms() -> None:
         )
         for row in rows.scalars().all():
             submissions.setdefault(row.session_id, []).append(row)
+        # One seat read for the whole batch: a stored sequence may name slots
+        # rather than participations, and translating it needs the seats.
+        slots: dict[int, dict[int, int]] = {}
+        seats = await session.execute(
+            select(EncounterTeam).where(
+                EncounterTeam.encounter_id.in_({row.encounter_id for row in sessions}),
+                EncounterTeam.active.is_(True),
+            )
+        )
+        for seat in seats.scalars().all():
+            slots.setdefault(seat.encounter_id, {})[seat.slot] = seat.id
 
         actions = _service()
         due = sorted(
@@ -252,7 +311,10 @@ async def reconcile_due_rooms() -> None:
                 for row in sessions
                 if actions.session_pending(
                     row,
-                    pbr.resolved_steps_from_json(list(row.resolved_sequence_json or [])),
+                    pbr.resolved_steps_from_json(
+                        list(row.resolved_sequence_json or []),
+                        actors_by_slot=slots.get(row.encounter_id, {}),
+                    ),
                     submissions.get(row.id, []),
                 )
             }
@@ -263,9 +325,9 @@ async def reconcile_due_rooms() -> None:
 async def reconcile_stalled_rooms() -> None:
     """Every minute: catch up rooms whose last mover was another service.
 
-    parser-service finalizing a map and app-service's encounter CRUD commit in
+    stats-service finalizing a map and app-service's encounter CRUD commit in
     their own processes, so no commit hook here ever sees them. The sweep is
-    bounded to encounters that can still be played -- both teams known, a live
+    bounded to encounters that can still be played -- every slot seated, a live
     tournament, a non-terminal status, a published stage (or none) -- and every
     one of them is prechecked unlocked before anything is locked.
     """
@@ -273,14 +335,14 @@ async def reconcile_stalled_rooms() -> None:
         result = await session.execute(
             select(Encounter.id)
             .join(Tournament, Tournament.id == Encounter.tournament_id)
-            .outerjoin(Stage, Stage.id == Encounter.stage_id)
+            .outerjoin(BracketEncounter, BracketEncounter.encounter_id == Encounter.id)
+            .outerjoin(Stage, Stage.id == BracketEncounter.stage_id)
             .where(
-                Encounter.format != EncounterFormat.FFA.value,
-                Encounter.home_team_id.isnot(None),
-                Encounter.away_team_id.isnot(None),
+                Encounter.slot_count == ROOM_SLOT_COUNT,
                 Encounter.status != EncounterStatus.COMPLETED,
+                _fully_seated(),
                 Tournament.status.notin_((TournamentStatus.COMPLETED, TournamentStatus.ARCHIVED)),
-                or_(Encounter.stage_id.is_(None), Stage.is_published.is_(True)),
+                or_(BracketEncounter.stage_id.is_(None), Stage.is_published.is_(True)),
             )
         )
         await _sweep(session, sorted(result.scalars().all()))

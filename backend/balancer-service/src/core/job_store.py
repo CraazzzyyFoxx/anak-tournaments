@@ -42,10 +42,6 @@ class BalancerJobStore:
     def _event_sequence_key(job_id: str) -> str:
         return f"balancer:job:{job_id}:event_seq"
 
-    async def _save_meta(self, job_id: str, meta: dict[str, Any]) -> None:
-        await self._redis.set(self._meta_key(job_id), json.dumps(meta), ex=self._ttl_seconds)
-        record_balancer_redis_writes("save_meta", 1)
-
     async def _persist_event_and_meta(
         self,
         job_id: str,
@@ -163,6 +159,38 @@ class BalancerJobStore:
         # Result payloads can reach tens of MB; parse off the event loop.
         return await asyncio.to_thread(json.loads, raw)
 
+    async def _require_meta(self, job_id: str, meta: dict[str, Any] | None) -> dict[str, Any]:
+        if meta is None:
+            meta = await self.get_job_meta(job_id)
+        if meta is None:
+            raise KeyError(job_id)
+        return meta
+
+    async def _next_event(
+        self,
+        job_id: str,
+        *,
+        status: JobStatus,
+        stage: str,
+        level: str,
+        message: str,
+        progress: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        # Separate round-trip by necessity: the INCR result is embedded in the
+        # event body, so it must resolve before the event is serialized and
+        # RPUSHed in the pipeline.
+        event_id = await self._redis.incr(self._event_sequence_key(job_id))
+        record_balancer_redis_writes("next_event_id", 1)
+        return {
+            "event_id": event_id,
+            "timestamp": time.time(),
+            "level": level,
+            "status": status,
+            "stage": stage,
+            "message": message,
+            "progress": progress,
+        }
+
     async def append_event(
         self,
         job_id: str,
@@ -175,26 +203,10 @@ class BalancerJobStore:
         update_meta: bool = False,
         meta: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        meta_snapshot = meta
-        if meta_snapshot is None:
-            meta_snapshot = await self.get_job_meta(job_id)
-        if meta_snapshot is None:
-            raise KeyError(job_id)
-
-        # Separate round-trip by necessity: the INCR result is embedded in the
-        # event body below, so it must resolve before the event is serialized
-        # and RPUSHed in the pipeline.
-        event_id = await self._redis.incr(self._event_sequence_key(job_id))
-        record_balancer_redis_writes("next_event_id", 1)
-        event = {
-            "event_id": event_id,
-            "timestamp": time.time(),
-            "level": level,
-            "status": status,
-            "stage": stage,
-            "message": message,
-            "progress": progress,
-        }
+        meta_snapshot = await self._require_meta(job_id, meta)
+        event = await self._next_event(
+            job_id, status=status, stage=stage, level=level, message=message, progress=progress
+        )
 
         meta_snapshot["events_count"] = int(meta_snapshot.get("events_count", 0)) + 1
 
@@ -212,11 +224,7 @@ class BalancerJobStore:
         return event
 
     async def mark_running(self, job_id: str, meta: dict[str, Any] | None = None) -> dict[str, Any]:
-        meta_snapshot = meta
-        if meta_snapshot is None:
-            meta_snapshot = await self.get_job_meta(job_id)
-        if meta_snapshot is None:
-            raise KeyError(job_id)
+        meta_snapshot = await self._require_meta(job_id, meta)
 
         meta_snapshot["status"] = "running"
         meta_snapshot["stage"] = "running"
@@ -240,38 +248,16 @@ class BalancerJobStore:
         result: dict[str, Any],
         meta: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        meta_snapshot = meta
-        if meta_snapshot is None:
-            meta_snapshot = await self.get_job_meta(job_id)
-        if meta_snapshot is None:
-            raise KeyError(job_id)
-
-        meta_snapshot["status"] = "succeeded"
-        meta_snapshot["stage"] = "completed"
-        meta_snapshot["finished_at"] = time.time()
-        meta_snapshot["error"] = None
-        meta_snapshot["events_count"] = int(meta_snapshot.get("events_count", 0)) + 1
-
-        event_id = await self._redis.incr(self._event_sequence_key(job_id))
-        record_balancer_redis_writes("next_event_id", 1)
-        event = {
-            "event_id": event_id,
-            "timestamp": time.time(),
-            "level": "success",
-            "status": "succeeded",
-            "stage": "completed",
-            "message": "Balancer job completed successfully",
-            "progress": None,
-        }
-
-        await self._persist_event_and_meta(
+        return await self._finish(
             job_id,
-            event=event,
-            meta=meta_snapshot,
+            meta,
+            status="succeeded",
+            stage="completed",
+            level="success",
+            message="Balancer job completed successfully",
+            error=None,
             result=result,
         )
-        await self._release_active_job(job_id, meta_snapshot)
-        return meta_snapshot
 
     async def mark_failed(
         self,
@@ -279,35 +265,37 @@ class BalancerJobStore:
         error_message: str,
         meta: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        meta_snapshot = meta
-        if meta_snapshot is None:
-            meta_snapshot = await self.get_job_meta(job_id)
-        if meta_snapshot is None:
-            raise KeyError(job_id)
+        return await self._finish(
+            job_id,
+            meta,
+            status="failed",
+            stage="failed",
+            level="error",
+            message=error_message,
+            error=error_message,
+        )
 
-        meta_snapshot["status"] = "failed"
-        meta_snapshot["stage"] = "failed"
+    async def _finish(
+        self,
+        job_id: str,
+        meta: dict[str, Any] | None,
+        *,
+        status: JobStatus,
+        stage: str,
+        level: str,
+        message: str,
+        error: str | None,
+        result: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        meta_snapshot = await self._require_meta(job_id, meta)
+        meta_snapshot["status"] = status
+        meta_snapshot["stage"] = stage
         meta_snapshot["finished_at"] = time.time()
-        meta_snapshot["error"] = error_message
+        meta_snapshot["error"] = error
         meta_snapshot["events_count"] = int(meta_snapshot.get("events_count", 0)) + 1
 
-        event_id = await self._redis.incr(self._event_sequence_key(job_id))
-        record_balancer_redis_writes("next_event_id", 1)
-        event = {
-            "event_id": event_id,
-            "timestamp": time.time(),
-            "level": "error",
-            "status": "failed",
-            "stage": "failed",
-            "message": error_message,
-            "progress": None,
-        }
-
-        await self._persist_event_and_meta(
-            job_id,
-            event=event,
-            meta=meta_snapshot,
-        )
+        event = await self._next_event(job_id, status=status, stage=stage, level=level, message=message, progress=None)
+        await self._persist_event_and_meta(job_id, event=event, meta=meta_snapshot, result=result)
         await self._release_active_job(job_id, meta_snapshot)
         return meta_snapshot
 

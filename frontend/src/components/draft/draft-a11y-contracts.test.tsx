@@ -4,13 +4,17 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { buildTeamViews, needRoles, type QueueControls } from "@/lib/draft/room-model";
 import { draftPoolView, type DraftPoolTab, type DraftViewParams } from "@/lib/draft/workspace-model";
 import type { RosterSlotMap } from "@/lib/roster/shape";
+import { OW_METADATA } from "@/test/discipline-metadata";
 import type { DraftBoard, DraftPickOptionsResponse, DraftPlayer, DraftStatus } from "@/types/draft.types";
 
 vi.mock("next-intl", () => ({
   useLocale: () => "en",
   // Shared across bun test files: DraftJournal (loaded by siblings) reads it.
-  useTranslations: () => (key: string, values?: Record<string, unknown>) =>
-    values ? `${key}:${JSON.stringify(values)}` : key
+  useTranslations: () =>
+    Object.assign(
+      (key: string, values?: Record<string, unknown>) => (values ? `${key}:${JSON.stringify(values)}` : key),
+      { has: () => false }
+    )
 }));
 vi.mock("@/lib/datetime/client", () => ({
   useFormatter: () => ({ dateTime: (value: Date) => value.toISOString() })
@@ -29,17 +33,16 @@ function makePlayer(id: number, patch: Partial<DraftPlayer> = {}): DraftPlayer {
     session_id: 1,
     registration_id: id * 10,
     user_id: null,
-    battle_tag: `P${id}#1`,
+    identity: { provider: "battlenet", handle: `P${id}#1` }, player_name: null,
     status: "available",
-    primary_role: "damage",
-    sub_role: null,
+    primary_role: { dimension: "player_role", role: "damage" },
     is_flex: false,
     is_captain: false,
     effective_rank: 2500,
     secondary_roles: [],
     role_ranks: { damage: 2500 },
     role_sources: {},
-    role_top_heroes: {},
+    role_top_characters: {},
     role_sub_roles: {},
     drafted_by_team_id: null,
     notes: null,
@@ -50,10 +53,10 @@ function makePlayer(id: number, patch: Partial<DraftPlayer> = {}): DraftPlayer {
 }
 
 const ana = makePlayer(7, {
-  battle_tag: "Ana#1234",
-  primary_role: "support",
+  identity: { provider: "battlenet", handle: "Ana#1234" }, player_name: null,
+  primary_role: { dimension: "player_role", role: "support" },
   effective_rank: 3000,
-  secondary_roles: ["damage"],
+  secondary_roles: [{ dimension: "player_role", role: "damage" }],
   role_ranks: { support: 3000, damage: 2800 }
 });
 
@@ -127,7 +130,7 @@ function renderPool({
   return renderToStaticMarkup(
     <PlayerPool
       board={board}
-      pool={draftPoolView(board.players, viewParams, queue?.ids ?? [], actingTeam ? needRoles(actingTeam) : null)}
+      pool={draftPoolView(board.players, viewParams, queue?.ids ?? [], actingTeam ? needRoles(actingTeam, ["tank", "damage", "support"]) : null)}
       viewParams={viewParams}
       onViewParamsChange={() => {}}
       teamViews={teamViews}
@@ -142,6 +145,7 @@ function renderPool({
       options={options}
       safetyRequired={safetyRequired}
       divisionGrid={{ tiers: [] } as never}
+      ontology={OW_METADATA}
       headingId={headingId}
       bottomInset={0}
     />
@@ -149,9 +153,9 @@ function renderPool({
 }
 
 const pickAs = (player: string, role: string) =>
-  `aria-label="pickAs:{&quot;player&quot;:&quot;${player}&quot;,&quot;role&quot;:&quot;roles.${role}&quot;}"`;
-// PlayerRoleIcon names itself `common.roles.*`; the pool's own labels are `roles.*`.
-const poolRole = (role: string) => new RegExp(`(?<!common\\.)roles\\.${role}`);
+  `aria-label="pickAs:{&quot;player&quot;:&quot;${player}&quot;,&quot;role&quot;:&quot;${role.charAt(0).toUpperCase()}${role.slice(1)}&quot;}"`;
+// The owner ontology names every role the pool shows (chips, columns, glyphs): a role the game lacks never appears.
+const poolRole = (role: string) => new RegExp(`${role.charAt(0).toUpperCase()}${role.slice(1)}`);
 
 describe("draft accessibility contracts", () => {
   test("a captain gets one named button per pickable role, hearts and the shortlist tab", () => {
@@ -179,7 +183,7 @@ describe("draft accessibility contracts", () => {
         options: [
           {
             player_id: 7,
-            role: "support",
+            role: { dimension: "player_role", role: "support" },
             is_safe: false,
             reason_code: "role_shortage",
             unmatched_slots: [],
@@ -240,8 +244,8 @@ describe("draft accessibility contracts", () => {
     const rostered = [
       makePlayer(1, { status: "picked", drafted_by_team_id: 3 }),
       makePlayer(2, { status: "picked", drafted_by_team_id: 3 }),
-      makePlayer(3, { status: "picked", drafted_by_team_id: 3, primary_role: "support", role_ranks: { support: 2000 } }),
-      makePlayer(4, { status: "picked", drafted_by_team_id: 3, primary_role: "support", role_ranks: { support: 2000 } })
+      makePlayer(3, { status: "picked", drafted_by_team_id: 3, primary_role: { dimension: "player_role", role: "support" }, role_ranks: { support: 2000 } }),
+      makePlayer(4, { status: "picked", drafted_by_team_id: 3, primary_role: { dimension: "player_role", role: "support" }, role_ranks: { support: 2000 } })
     ];
     const html = renderPool({ players: [ana, ...rostered], slots: { tank: 1, damage: 2, flex: 2 } });
 

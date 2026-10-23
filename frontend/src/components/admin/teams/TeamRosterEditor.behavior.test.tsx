@@ -8,6 +8,15 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Player } from "@/types/team.types";
 import { TeamRosterEditor } from "./TeamRosterEditor";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
+/** The tournament's own grid: this editor never reaches for another game's ladder. */
+const DIVISION_GRID = {
+  tiers: [
+    { number: 20, name: "Diamond 5", slug: "diamond-5", sort_order: 20, rank_min: 3000, rank_max: 3499, icon_url: "/divisions/diamond-5.png" }
+  ]
+};
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
@@ -40,8 +49,8 @@ vi.mock("next/image", () => ({
   // eslint-disable-next-line @next/next/no-img-element -- this IS the next/image stand-in
   default: ({ src, alt }: { src: string; alt: string }) => <img src={src} alt={alt} />
 }));
-vi.mock("@/hooks/useCurrentWorkspace", () => ({ useDivisionGrid: () => ({ tiers: [] }) }));
-vi.mock("@/components/admin/UserSearchCombobox", () => ({
+vi.mock("@/hooks/useCurrentWorkspace", () => ({ useDivisionGrid: () => DIVISION_GRID }));
+vi.mock("@/components/kit/ServerSearchCombobox", () => ({
   UserSearchCombobox: () => <div data-testid="user-search" />
 }));
 
@@ -49,10 +58,9 @@ function player(overrides: Partial<Player> & { id: number; name: string }): Play
   return {
     created_at: new Date(0),
     updated_at: null,
-    sub_role: null,
     rank: 3000,
     division: 20,
-    role: "Damage",
+    role: { dimension: "player_role", role: "damage" },
     tournament_id: 7,
     user_id: overrides.id + 100,
     team_id: 3,
@@ -65,13 +73,13 @@ function player(overrides: Partial<Player> & { id: number; name: string }): Play
   };
 }
 
-const SUPPORT = player({ id: 1, name: "Mercy", role: "Support", rank: 2800 });
-const TANK = player({ id: 2, name: "Rein", role: "Tank", rank: 3300, sub_role: "main_heal" });
-const DAMAGE = player({ id: 3, name: "Tracer", role: "Damage", rank: 3100 });
+const SUPPORT = player({ id: 1, name: "Mercy", role: { dimension: "player_role", role: "support" }, rank: 2800 });
+const TANK = player({ id: 2, name: "Rein", role: { dimension: "player_role", role: "tank_main_heal", parent: "tank" }, rank: 3300 });
+const DAMAGE = player({ id: 3, name: "Tracer", role: { dimension: "player_role", role: "damage" }, rank: 3100 });
 const TANK_SUB = player({
   id: 4,
   name: "Sigma",
-  role: "Tank",
+  role: { dimension: "player_role", role: "tank" },
   rank: 3200,
   is_substitution: true,
   related_player_id: 2
@@ -83,7 +91,7 @@ function tick() {
   return promise;
 }
 
-async function mount(props?: { canUpdatePlayer?: boolean }) {
+async function mount(props?: { canUpdatePlayer?: boolean; discipline?: string | null; players?: Player[] }) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -98,7 +106,8 @@ async function mount(props?: { canUpdatePlayer?: boolean }) {
             teamId={3}
             tournamentId={7}
             workspaceId={1}
-            players={[SUPPORT, TANK, DAMAGE, TANK_SUB]}
+            discipline={props?.discipline === undefined ? "overwatch" : props.discipline}
+            players={props?.players ?? [SUPPORT, TANK, DAMAGE, TANK_SUB]}
             divisionGrid={null}
             canCreatePlayer
             canUpdatePlayer={props?.canUpdatePlayer ?? true}
@@ -147,6 +156,9 @@ describe("TeamRosterEditor", () => {
       {
         id: 9,
         workspace_id: 1,
+        discipline: "overwatch",
+        dimension: "player_role",
+        attrs: {},
         role: "tank",
         slug: "main_heal",
         label: "Main Heal",
@@ -156,6 +168,31 @@ describe("TeamRosterEditor", () => {
       }
     ]);
     updatePlayer.mockResolvedValue({});
+  });
+
+  it("reads child roles from its authorized owner prop without a tournament.read request", async () => {
+    await mount({ discipline: "lol" });
+    expect(getPlayerSubRoles).toHaveBeenCalledWith({ workspace_id: 1, discipline: "lol" }, expect.any(AbortSignal));
+  });
+
+  it("shows an owner-scope error instead of silently disabling child-role access", async () => {
+    const scope = await mount({ discipline: null });
+    expect(scope.textContent).toContain("Owner workspace or discipline is missing");
+    expect(getPlayerSubRoles).not.toHaveBeenCalled();
+  });
+
+  it("keeps the roster visible when player.read denies only the child-role catalog", async () => {
+    getPlayerSubRoles.mockRejectedValue(Object.assign(new Error("Forbidden"), { status: 403 }));
+    const scope = await mount();
+    expect(rankFields(scope)).toHaveLength(4);
+    expect(rankFields(scope).every(field => !field.disabled)).toBe(true);
+    expect(rankFields(scope)[0].getAttribute("aria-label")).toBe("Rank of Rein");
+    expect(rankFields(scope)[0].value).toBe("3300");
+    const message = scope.querySelector<HTMLParagraphElement>('p[role="status"]')!;
+    expect(message.textContent).toBe("Could not load the owner's child roles.");
+    const subRoleControls = [...scope.querySelectorAll<HTMLButtonElement>('button[aria-label^="Sub-role of "]')];
+    expect(subRoleControls).toHaveLength(4);
+    expect(subRoleControls.every(control => control.disabled && control.getAttribute("aria-describedby") === message.id)).toBe(true);
   });
 
   it("orders the roster by role and nests a substitute under the slot it covers", async () => {
@@ -179,12 +216,31 @@ describe("TeamRosterEditor", () => {
     expect(roleTriggers.map((trigger) => trigger.getAttribute("aria-label"))).toContain(
       "Role of Rein: Tank"
     );
-    expect(roleTriggers[0].querySelector("svg")).not.toBeNull();
+    // …drawn from the owner game's own presentation, never a bundled one.
+    expect(roleTriggers[0].querySelector('img[src="/test-roles/tank.svg"]')).not.toBeNull();
 
-    // Rank: a division image beside the editable number.
-    const divisionIcons = scope.querySelectorAll<HTMLImageElement>("img");
-    expect(divisionIcons).toHaveLength(4);
-    expect(divisionIcons[0].getAttribute("src")).toContain("/divisions/");
+    // The supplied OW division stays visible beside the editable rank.
+    const divisionIcon = scope.querySelector<HTMLImageElement>('img[alt="Diamond 5"]');
+    expect(divisionIcon?.getAttribute("src")).toBe("/divisions/diamond-5.png");
+    expect(rankFields(scope)[0].value).toBe("3300");
+  });
+
+  it("names and draws a League roster from its own positions, not Overwatch's", async () => {
+    const scope = await mount({
+      discipline: "lol",
+      players: [
+        player({ id: 5, name: "Faker", role: { dimension: "position", role: "mid" }, rank: 2900 }),
+        player({ id: 6, name: "Canyon", role: { dimension: "position", role: "jungle" }, rank: 2700 }),
+        player({ id: 7, name: "Flex One", role: null, rank: 2500 })
+      ]
+    });
+
+    const triggers = Array.from(scope.querySelectorAll<HTMLElement>('[aria-label^="Role of "]'));
+    expect(triggers.map((trigger) => trigger.getAttribute("aria-label"))).toEqual(
+      expect.arrayContaining(["Role of Faker: Mid", "Role of Canyon: Jungle", "Role of Flex One: Flex"])
+    );
+    expect(scope.querySelector('img[src="/test-roles/mid.svg"]')).not.toBeNull();
+    expect(scope.querySelector('img[src="/test-roles/tank.svg"]')).toBeNull();
   });
 
   it("persists a rank edit on blur", async () => {
@@ -198,9 +254,19 @@ describe("TeamRosterEditor", () => {
     expect(updatePlayer).toHaveBeenCalledWith(2, { rank: 3450 });
   });
 
+  it("clears a rank when the field is emptied, and shows an unranked player's field empty", async () => {
+    const scope = await mount({ players: [TANK, player({ id: 5, name: "Duelist", rank: null, division: null })] });
+    const field = (name: string) => rankFields(scope).find((input) => input.getAttribute("aria-label") === `Rank of ${name}`)!;
+
+    expect(field("Duelist").value).toBe("");
+    await typeAndBlur(field("Rein"), "");
+
+    expect(updatePlayer).toHaveBeenCalledWith(2, { rank: null });
+  });
+
   it("persists a newcomer flag toggle", async () => {
     const scope = await mount();
-    const toggle = scope.querySelector<HTMLButtonElement>('button[aria-label="Newcomer — Rein"]')!;
+    const toggle = scope.querySelector<HTMLButtonElement>('button[aria-label="Newcomer: Rein"]')!;
 
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
 

@@ -9,7 +9,7 @@ import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import { cn } from "@/lib/utils";
 import type { PickBanConfig, PickBanKind, Stage } from "@/types/tournament.types";
 import type { PickBanScopeEncounter } from "@/lib/tournament/pick-ban-config";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useStageRounds } from "./useStageRounds";
 import {
   encodePreGameScope,
@@ -18,14 +18,12 @@ import {
   type ScopeConfigState
 } from "./pre-game-scope";
 
-const MARKER_CLASS: Record<ScopeConfigState, string> = {
-  own: "bg-primary",
-  // Dashed-looking: rules are here, candidates are not.
-  template: "border border-primary bg-transparent",
-  redundant: "bg-primary/40",
-  inherited: "bg-muted-foreground/40",
-  none: "border border-border bg-transparent"
-};
+/**
+ * The states worth a word on the row. Inherited and no-rules are the default
+ * of every scope that nobody touched; a list where most rows say "inherited"
+ * says nothing.
+ */
+const MARKED_STATES: ReadonlySet<ScopeConfigState> = new Set(["own", "template", "redundant"]);
 
 export interface ScopeTreeProps {
   kind: PickBanKind;
@@ -98,18 +96,19 @@ export function ScopeTree({
             "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           )}
         >
-          <span aria-hidden className={cn("size-2 shrink-0 rounded-full", MARKER_CLASS[state])} />
           <span className="min-w-0 flex-1 truncate">{label}</span>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            {t(`scopeState.${state}`)}
-          </span>
+          {MARKED_STATES.has(state) ? (
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {t(`scopeState.${state}`)}
+            </span>
+          ) : null}
         </Link>
       </li>
     );
   };
 
   return (
-    <nav aria-label={t("scopeTreeLabel")} className="rounded-xl border border-border bg-card p-2">
+    <nav aria-label={t("scopeTreeLabel")}>
       <ul className="flex flex-col gap-0.5">
         {node({ stageId: null, round: null }, t("tournamentLevel"), 0)}
 
@@ -122,9 +121,9 @@ export function ScopeTree({
                 <li>
                   <ul className="flex flex-col gap-0.5">
                     {roundsLoading ? (
-                      <li className="flex items-center gap-2 ps-8 py-1.5 text-xs text-muted-foreground">
-                        <Spinner className="size-3.5" />
-                        {t("roundHintLoading")}
+                      <li className="py-1.5 ps-8">
+                        <Skeleton className="h-4 w-32" />
+                        <span className="sr-only">{t("roundHintLoading")}</span>
                       </li>
                     ) : rounds.length === 0 ? (
                       <li className="py-1.5 ps-8 text-xs text-muted-foreground">

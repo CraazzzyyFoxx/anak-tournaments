@@ -3,16 +3,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { ArrowDownToLine, ArrowUpFromLine, ExternalLink, Users } from "lucide-react";
 import { useFormatter } from "@/lib/datetime/client";
-import { StatusPill } from "@/components/kit/StatusPill";
-import { EYEBROW_CLASS, TONE_TEXT, type Tone } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import type { DateFormatter } from "@/components/kit/format-time";
-import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import type { ChallongeSyncLogEntry } from "@/types/admin.types";
@@ -38,11 +36,8 @@ function formatSyncTime(format: DateFormatter, value: string) {
   });
 }
 
-function getLogTone(status: ChallongeSyncLogEntry["status"]): Tone {
-  if (status === "success") return "success";
-  if (status === "conflict") return "warning";
-  return "danger";
-}
+/** Entity types the sync writes (`challonge.py`); anything else shows raw. */
+const ENTITY_TYPES = ["tournament", "participant", "match"] as const;
 
 /**
  * The distinct Challonge participants that blocked an import, newest run first.
@@ -72,7 +67,8 @@ function getUnmappedParticipantIds(logs: ChallongeSyncLogEntry[]): number[] {
  * The link field used to sit in the settings form's "General information" card
  * while the sync buttons and log lived in a separate card further down the
  * page, so enabling sync meant editing one card to unlock another. They are one
- * connection, so they read as one block.
+ * connection, so they read as one block. The newest log row is the last sync;
+ * a row carries a pill only when it failed or conflicted.
  *
  * Rendered inside the settings form, hence the explicit `type="button"`: an
  * unlabelled button in a form submits it.
@@ -120,9 +116,6 @@ export function ChallongeIntegrationSection({
     }
   });
 
-  const lastLog = logs[0];
-  const failedLogCount = logs.filter((log) => log.status !== "success").length;
-  const syncPending = importMutation.isPending || exportMutation.isPending;
   const unmappedParticipantIds = getUnmappedParticipantIds(logs);
   // The slug is the settings form's live value, so this tracks an unsaved edit
   // too — which is the honest thing to link: it is the bracket about to be used.
@@ -130,29 +123,21 @@ export function ChallongeIntegrationSection({
   const teamMappingHref = `/admin/tournaments/${tournamentId}/teams/roster?challongeSync=1`;
 
   return (
-    <section className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className={EYEBROW_CLASS}>{t("title")}</h3>
-        <div className="flex shrink-0 items-center gap-2">
-          {/* The only genuinely linkable Challonge target on this card. Sync-log
-              rows carry match/participant ids, which have no public URL — they
-              used to render this same icon beside them and go nowhere. */}
-          {hasChallongeSource && bracketUrl ? (
-            <a
-              href={bracketUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
-            >
-              <ExternalLink className="size-3" aria-hidden />
-              {t("openBracket")}
-            </a>
-          ) : null}
-          <StatusPill tone={hasChallongeSource ? "accent" : "neutral"}>
-            {hasChallongeSource ? tx("statusConnected") : tx("notLinked")}
-          </StatusPill>
-        </div>
-      </div>
+    // A `div`, untitled: the settings page and its group already name this
+    // block, and a "Challonge" heading inside them said it a third time.
+    <div className="flex flex-col gap-4">
+      {/* The only genuinely linkable Challonge target on this card. Sync-log
+          rows carry match/participant ids, which have no public URL. */}
+      {hasChallongeSource && bracketUrl ? (
+        <a
+          href={bracketUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="self-end text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+        >
+          {t("openBracket")}
+        </a>
+      ) : null}
 
       <div>
         <Label htmlFor="settings-challonge" className="text-xs">
@@ -167,159 +152,104 @@ export function ChallongeIntegrationSection({
         />
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2">
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={!hasChallongeSource || importMutation.isPending}
-          onClick={() => importMutation.mutate()}
-        >
-          {importMutation.isPending ? (
-            <Spinner />
-          ) : (
-            <ArrowDownToLine className="size-4" aria-hidden />
-          )}
-          {importMutation.isPending ? tx("importing") : tx("import")}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={!hasChallongeSource || exportMutation.isPending}
-          onClick={() => exportMutation.mutate()}
-        >
-          {exportMutation.isPending ? (
-            <Spinner />
-          ) : (
-            <ArrowUpFromLine className="size-4" aria-hidden />
-          )}
-          {exportMutation.isPending ? tx("exporting") : tx("export")}
-        </Button>
-      </div>
-
-      {!hasChallongeSource ? (
-        <EmptyNote size="sm">
-          {t("enableSync")}
-        </EmptyNote>
-      ) : syncPending || isLoading || lastLog ? (
-        <div
-          aria-live="polite"
-          className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
-        >
-          <span className={EYEBROW_CLASS}>{t("lastSync")}</span>
-          {syncPending ? (
-            <span className="inline-flex items-center gap-1.5 text-foreground">
-              <Spinner className="size-3" />
-              {t("running")}
-            </span>
-          ) : isLoading ? (
-            <span>{t("loadingState")}</span>
-          ) : lastLog ? (
-            <>
-              <StatusPill tone={getLogTone(lastLog.status)} className="h-5">
-                {lastLog.status}
-              </StatusPill>
-              <span className="text-foreground">
-                {lastLog.direction} {lastLog.entity_type}
-                {lastLog.entity_id ? ` #${lastLog.entity_id}` : ""}
-              </span>
-              <span aria-hidden>·</span>
-              <span className="tabular-nums">{formatSyncTime(format, lastLog.created_at)}</span>
-            </>
-          ) : null}
-          {failedLogCount > 0 ? (
-            <>
-              <span aria-hidden>·</span>
-              <span className={TONE_TEXT.warning}>
-                {tx.rich("failedSyncSummary", {
-                  count: failedLogCount,
-                  num: (chunks) => <span className="tabular-nums">{chunks}</span>
-                })}
-              </span>
-            </>
-          ) : null}
+      {/* Absent, not disabled, until there is a source to sync with. */}
+      {hasChallongeSource ? (
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={importMutation.isPending}
+            onClick={() => importMutation.mutate()}
+          >
+            {importMutation.isPending ? <Spinner /> : null}
+            {importMutation.isPending ? tx("importing") : tx("import")}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={exportMutation.isPending}
+            onClick={() => exportMutation.mutate()}
+          >
+            {exportMutation.isPending ? <Spinner /> : null}
+            {exportMutation.isPending ? tx("exporting") : tx("export")}
+          </Button>
         </div>
-      ) : null}
+      ) : (
+        <EmptyNote size="sm">{t("enableSync")}</EmptyNote>
+      )}
 
       {/* The one failure an admin can actually clear from here, lifted out of the
           log: an unmapped participant fails every match it appears in, so the log
           shows the same problem N times with no hint that the fix is a mapping on
-          another tab. */}
+          another tab. It blocks the import, hence the one alert. */}
       {hasChallongeSource && unmappedParticipantIds.length > 0 ? (
-        <EmptyNote
-          size="sm"
-          tone="warning"
-          action={
+        <Alert>
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+            <span>
+              {tx.rich("unmappedParticipants", {
+                count: unmappedParticipantIds.length,
+                num: (chunks) => <span className="tabular-nums">{chunks}</span>
+              })}{" "}
+              {t("importBlocked")}
+            </span>
             <Button asChild type="button" size="sm" variant="outline" className="shrink-0">
-              <Link href={teamMappingHref}>
-                <Users className="size-4" aria-hidden />
-                {t("mapTeams")}
-              </Link>
+              <Link href={teamMappingHref}>{t("mapTeams")}</Link>
             </Button>
-          }
-        >
-          <span className={cn("font-medium", TONE_TEXT.warning)}>
-            {tx.rich("unmappedParticipants", {
-              count: unmappedParticipantIds.length,
-              num: (chunks) => <span className="tabular-nums">{chunks}</span>
-            })}
-          </span>{" "}
-          {t("importBlocked")}
-        </EmptyNote>
+          </AlertDescription>
+        </Alert>
       ) : null}
 
       {hasChallongeSource ? (
         <div>
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <p className={EYEBROW_CLASS}>{t("syncLog")}</p>
-            <Badge variant="secondary" className="tabular-nums">
-              {tx("recentCount", { count: logs.length })}
-            </Badge>
-          </div>
+          <p className={`${eyebrowClass("muted")} mb-2`}>{t("syncLog")}</p>
 
           {isLoading ? (
-            <div className="text-sm text-muted-foreground">{t("loadingLog")}</div>
-          ) : logs.length === 0 ? (
-            <EmptyNote>
-              {t("emptyLog")}
-            </EmptyNote>
-          ) : (
-            <div className="max-h-[260px] overflow-y-auto rounded-lg border border-border/60">
-              {logs.map((log) => (
-                <div
-                  key={log.id}
-                  className="flex items-center gap-2 border-b border-border/50 px-3 py-2 text-xs last:border-b-0"
-                >
-                  <Badge tone="neutral" className="w-14 justify-center text-xs capitalize">
-                    {log.direction}
-                  </Badge>
-                  <StatusPill tone={getLogTone(log.status)} className="w-16 justify-center text-xs capitalize">
-                    {log.status}
-                  </StatusPill>
-                  <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                    {log.entity_type}
-                    {log.entity_id ? ` #${log.entity_id}` : ""}
-                    {log.error_message ? ` · ${log.error_message}` : ""}
-                  </span>
-                  {/* Plain text, not a link: this is a Challonge match/participant
-                      id, and neither has a public URL. It used to carry an
-                      ExternalLink icon inside a span — a link affordance that led
-                      nowhere. The bracket link lives in the header instead. */}
-                  {log.challonge_id ? (
-                    <span className="hidden shrink-0 text-muted-foreground lg:inline">
-                      {t("participant")} <span className="tabular-nums">#{log.challonge_id}</span>
-                    </span>
-                  ) : null}
-                  <span className="shrink-0 tabular-nums text-muted-foreground">
-                    {formatSyncTime(format, log.created_at)}
-                  </span>
-                </div>
+            <div className="space-y-2" aria-busy>
+              {[0, 1, 2].map((index) => (
+                <Skeleton key={index} className="h-5 w-full" />
               ))}
             </div>
+          ) : logs.length === 0 ? (
+            <EmptyNote>{t("emptyLog")}</EmptyNote>
+          ) : (
+            <ul className="max-h-[260px] divide-y divide-border/50 overflow-y-auto text-xs">
+              {logs.map((log) => {
+                const entity = ENTITY_TYPES.find((known) => known === log.entity_type);
+                return (
+                  <li key={log.id} className="flex items-center gap-2 py-2">
+                    {/* A word, not a pill: a log of twenty failures would be
+                        twenty chips. Success, the norm, says nothing. */}
+                    {log.status !== "success" ? (
+                      <span
+                        className={log.status === "conflict" ? "shrink-0 text-warning" : "shrink-0 text-danger"}
+                      >
+                        {t(`status.${log.status}`)}
+                      </span>
+                    ) : null}
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                      {[
+                        t(`direction.${log.direction}`),
+                        `${entity ? t(`entity.${entity}`) : log.entity_type}${log.entity_id ? ` #${log.entity_id}` : ""}`,
+                        // Plain text, not a link: a Challonge match/participant id
+                        // has no public URL.
+                        log.challonge_id ? t("challongeId", { id: String(log.challonge_id) }) : null,
+                        log.error_message
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-muted-foreground">
+                      {formatSyncTime(format, log.created_at)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
       ) : null}
-    </section>
+    </div>
   );
 }

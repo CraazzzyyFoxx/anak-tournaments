@@ -1,3 +1,5 @@
+import { useTranslations } from "next-intl";
+
 import { METRIC_NEUTRAL_CLASS, METRIC_PILL_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import { cn } from "@/lib/utils";
 
@@ -13,15 +15,16 @@ import type { PickupVariant } from "../pickup-lineup";
  * clears the scored ones server-side, precisely so nothing stale is displayed.
  */
 export function VariantMetrics({ variant }: Readonly<{ variant: PickupVariant }>) {
+  const t = useTranslations("mixes.teams.metrics");
   const { stats } = variant;
   const offRole = stats.offRoleCount ?? 0;
   const floor = stats.offRoleFloor ?? 0;
   const avoidable = stats.offRoleAboveMinimum;
   const collisions = stats.subRoleCollisions ?? 0;
   const offRoleTitle = [
-    "Players the solver had to seat outside their first-choice role.",
-    floor > 0 ? `${floor} of them are forced by the pool — no split avoids those.` : null,
-    avoidable === 0 && offRole > 0 ? "This option is as comfortable as the pool allows." : null
+    t("offRoleHint"),
+    floor > 0 ? t("offRoleForced", { count: floor }) : null,
+    avoidable === 0 && offRole > 0 ? t("offRoleFloorHint") : null
   ]
     .filter(Boolean)
     .join(" ");
@@ -30,40 +33,40 @@ export function VariantMetrics({ variant }: Readonly<{ variant: PickupVariant }>
     <div className="flex flex-wrap items-center gap-1.5">
       {stats.qualityScore == null ? null : (
         <span
-          title="Solver score for this option across rank balance and role comfort \u2014 lower is better, and comparable only against the other options of this run."
+          title={t("qualityHint")}
           className={cn(
             METRIC_PILL_CLASS,
             "border-[color:color-mix(in_srgb,var(--aqt-emerald)_25%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-emerald)_10%,transparent)] text-[color:var(--aqt-emerald)]"
           )}
         >
-          {`QUALITY ${stats.qualityScore.toFixed(2)}`}
+          {t("quality", { value: stats.qualityScore.toFixed(2) })}
         </span>
       )}
       {stats.mmrStdDev == null ? null : (
         <span
-          title="Standard deviation of team rank \u2014 lower means the teams are closer together."
+          title={t("stddevHint")}
           className={cn(
             METRIC_PILL_CLASS,
             "border-[color:color-mix(in_srgb,var(--aqt-blue)_22%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-blue)_10%,transparent)] text-[color:var(--aqt-blue)]"
           )}
         >
-          {`STDDEV ${stats.mmrStdDev.toFixed(1)}`}
+          {t("stddev", { value: stats.mmrStdDev.toFixed(1) })}
         </span>
       )}
       {stats.ratingGap == null ? null : (
         <span
-          title="Rank gap between the strongest and weakest team."
+          title={t("spreadHint")}
           className={cn(METRIC_PILL_CLASS, METRIC_NEUTRAL_CLASS)}
         >
-          {`SPREAD ${Math.round(stats.ratingGap)}`}
+          {t("spread", { value: String(Math.round(stats.ratingGap)) })}
         </span>
       )}
       {stats.lineGap == null ? null : (
         <span
-          title="Average rank gap per role line between the teams \u2014 catches a tank or support mismatch the team totals hide."
+          title={t("linesHint")}
           className={cn(METRIC_PILL_CLASS, METRIC_NEUTRAL_CLASS)}
         >
-          {`LINES ${Math.round(stats.lineGap)}`}
+          {t("lines", { value: String(Math.round(stats.lineGap)) })}
         </span>
       )}
       <span
@@ -75,18 +78,18 @@ export function VariantMetrics({ variant }: Readonly<{ variant: PickupVariant }>
             : METRIC_NEUTRAL_CLASS
         )}
       >
-        {`OFF-ROLE ${offRole}`}
-        {avoidable === 0 && offRole > 0 ? " (floor)" : ""}
+        {t("offRole", { count: String(offRole) })}
+        {avoidable === 0 && offRole > 0 ? ` ${t("floor")}` : ""}
       </span>
       {collisions > 0 ? (
         <span
-          title="Pairs of players sharing a role subclass inside the same team \u2014 two main tanks, two snipers."
+          title={t("subroleHint")}
           className={cn(
             METRIC_PILL_CLASS,
             "border-[color:color-mix(in_srgb,var(--aqt-amber)_28%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-amber)_10%,transparent)] text-[color:var(--aqt-amber)]"
           )}
         >
-          {`SUBROLE ${collisions}`}
+          {t("subrole", { count: String(collisions) })}
         </span>
       ) : null}
     </div>

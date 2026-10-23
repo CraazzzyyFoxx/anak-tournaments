@@ -71,7 +71,7 @@ export const RESOURCE_QUERY_KEYS: Record<RealtimeResource, KeyBuilder> = {
   ],
   "tournament.standings": (id) => [
     tournamentQueryKeys.standings(id),
-    tournamentQueryKeys.heroPlaytime(id),
+    tournamentQueryKeys.characterPlaytime(id),
     getTournamentWorkspaceQueryKeys(id).standings,
     getTournamentWorkspaceQueryKeys(id).standingsTable,
     tournamentQueryKeys.ffaAll(id),
@@ -86,7 +86,7 @@ export const RESOURCE_QUERY_KEYS: Record<RealtimeResource, KeyBuilder> = {
     tournamentQueryKeys.detail(ctx.detailRef ?? id),
     tournamentQueryKeys.teams(id),
     tournamentQueryKeys.standings(id),
-    tournamentQueryKeys.heroPlaytime(id),
+    tournamentQueryKeys.characterPlaytime(id),
     tournamentQueryKeys.encounters(id),
     getTournamentWorkspaceQueryKeys(id).tournament,
     getTournamentWorkspaceQueryKeys(id).stages,

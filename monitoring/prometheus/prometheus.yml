@@ -53,13 +53,21 @@ scrape_configs:
   # (The former HTTP FastAPI services backend/auth/parser/tournament were
   # decommissioned; their dead scrape jobs were removed.)
   # --------------------------------------------------------------------------
-  - job_name: parser-svc
+  - job_name: stats-svc
     static_configs:
-      - targets: ["parser-svc:9100"]
+      - targets: ["stats-svc:9100"]
     relabel_configs:
       - source_labels: [__address__]
         target_label: instance
-        replacement: parser-svc
+        replacement: stats-svc
+
+  - job_name: stats-worker
+    static_configs:
+      - targets: ["stats-worker:9100"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: stats-worker
 
   - job_name: tournament-svc
     static_configs:
@@ -175,4 +183,3 @@ scrape_configs:
       - source_labels: [__address__]
         target_label: instance
         replacement: postgres
-

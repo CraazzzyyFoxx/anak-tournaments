@@ -3,25 +3,25 @@
 Errors block the upsert; warnings are shown in the constructor but do not.
 Every issue carries a stable snake_case ``code`` and a JSON path into the
 document, so the editor can highlight the offending field.
-
-Design: ``docs/plans/2026-09-28-pick-ban-constructor.md`` §1, §2.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, Literal
+
+from shared.disciplines import DisciplineSpec
+from shared.disciplines import discipline as discipline_spec
 
 from .registry import (
     CONSTRAINTS,
-    HERO_GROUPS,
     LEAVES,
     MAX_TREE_DEPTH,
     MAX_TREE_NODES,
     ParamSpec,
     normalize_group,
 )
-from .schema import Issue, Phase, Ruleset, RulesetError, Step, parse_ruleset
+from .schema import LEGACY_ACTOR_SLOTS, Issue, Phase, Ruleset, RulesetError, Step, parse_ruleset
 
 __all__ = ["Issue", "validate_ruleset"]
 
@@ -46,21 +46,35 @@ def validate_ruleset(
     ruleset_json: Any,
     *,
     kind: str,
+    discipline: str,
     mode: str = "pool",
+    slot_count: int = 2,
     groups: Sequence[str] | None = None,
+    owner: Literal["tournament", "mix"] = "tournament",
 ) -> list[Issue]:
-    """Validate a ruleset document for ``kind``/``mode``.
+    """Validate a ruleset document for ``kind``/``mode``/``discipline``.
 
-    ``groups`` is the item-group vocabulary of the kind (gamemode slugs for
-    maps); ``None`` means "do not check map group names" — the hero groups are
-    a closed set and always checked.
+    ``groups`` is the item-group vocabulary of the kind (class names for
+    characters, gamemode slugs for maps); ``None`` means "do not check map group
+    names", while a hero's groups are always checked -- against ``groups`` or,
+    absent that, the classes ``discipline``'s module declares.
+
+    ``discipline`` and ``slot_count`` decide what the actor vocabulary can say:
+    ``slot:<n>`` must name a seat the card has, ``side:<code>`` a side
+    the discipline declares AND a side some earlier ``side_pick`` assigned, and
+    ``side_pick`` itself is legal only for a discipline that declares exactly
+    as many sides as the encounter seats participants.
+
+    ``owner`` is who will play it: member picks and assignments are a pickup mix's only (spec §11.6 R4-6), and a hero
+    pick at all needs a game that fields a hero once per match (§11.2).
     """
     try:
         ruleset = parse_ruleset(ruleset_json)
     except RulesetError as exc:
         return list(exc.issues)
 
-    known_groups = _known_groups(kind, groups)
+    spec = discipline_spec(discipline)
+    known_groups = _known_groups(kind, groups, spec)
     issues: list[Issue] = []
     if not ruleset.phases:
         issues.append(_error("phases", "phases_empty", "a ruleset needs at least one phase"))
@@ -74,6 +88,9 @@ def validate_ruleset(
             issues.append(_error(f"{path}.id", "duplicate_phase_id", f"phase id {phase.id!r} is used twice"))
         seen_phase_ids.add(phase.id)
         _validate_phase(phase, path, issues, kind=kind, mode=mode, known_groups=known_groups)
+        # Sides a phase's own earlier steps have handed out: ``side:<code>`` is
+        # read per phase, because a phase IS one round of the series.
+        assigned_sides: set[str] = set()
         for step_index, step in enumerate(phase.steps):
             step_path = f"{path}.steps[{step_index}]"
             _validate_id(step.id, f"{step_path}.id", issues)
@@ -81,6 +98,10 @@ def validate_ruleset(
                 issues.append(_error(f"{step_path}.id", "duplicate_step_id", f"step id {step.id!r} is used twice"))
             seen_step_ids.add(step.id)
             _validate_step(step, step_path, issues, kind=kind, phase=phase, known_groups=known_groups)
+            _validate_actors(step, step_path, issues, spec=spec, slot_count=slot_count, assigned_sides=assigned_sides)
+            _validate_picks(step, step_path, issues, kind=kind, spec=spec, owner=owner)
+            if step.action == "side_pick":
+                assigned_sides.update(spec.sides)
 
     if ruleset.timer_seconds is not None and ruleset.timer_seconds < MIN_TIMER_SECONDS:
         issues.append(
@@ -94,11 +115,11 @@ def validate_ruleset(
     return issues
 
 
-def _known_groups(kind: str, groups: Sequence[str] | None) -> set[str] | None:
-    if kind == "hero":
-        return set(HERO_GROUPS)
+def _known_groups(kind: str, groups: Sequence[str] | None, spec: DisciplineSpec) -> set[str] | None:
     if groups is None:
-        return None
+        if kind != "hero":
+            return None
+        groups = spec.character_classes
     return {normalized for group in groups if (normalized := normalize_group(group))}
 
 
@@ -180,6 +201,18 @@ def _validate_step(
         if step.count != 1:
             issues.append(_error(f"{path}.count", "decider_count", "a decider settles exactly one item"))
 
+    if step.action == "side_pick":
+        if step.count != 1:
+            issues.append(_error(f"{path}.count", "side_pick_count", "a side pick settles exactly one side"))
+        if step.actors == "system":
+            # A coin flip is the TIMEOUT rule, not the step: someone has to be
+            # the one standing in for.
+            issues.append(_error(f"{path}.actors", "side_pick_actors", "a side pick is made by a participation"))
+        if step.blind:
+            issues.append(_error(f"{path}.blind", "side_pick_blind", "a side pick has nothing to hide"))
+        if step.target is not None:
+            issues.append(_error(f"{path}.target", "side_pick_target", "a side pick names no opponent player"))
+
     if not 1 <= step.count <= MAX_COUNT:
         issues.append(_error(f"{path}.count", "count_range", f"count must be between 1 and {MAX_COUNT}"))
     if step.min is not None and not 0 <= step.min <= step.count:
@@ -238,6 +271,77 @@ def _validate_step(
                 )
             )
         _validate_params(spec.params, constraint.params, constraint_path, issues, known_groups=known_groups)
+
+
+def _validate_actors(
+    step: Step,
+    path: str,
+    issues: list[Issue],
+    *,
+    spec: DisciplineSpec,
+    slot_count: int,
+    assigned_sides: set[str],
+) -> None:
+    """What the step's actor token may say about THIS discipline and card."""
+    actors = step.actors
+    if step.action == "side_pick" and len(spec.sides) != slot_count:
+        issues.append(
+            _error(
+                f"{path}.action",
+                "side_pick_unsupported",
+                f"{spec.name} declares {len(spec.sides)} side(s) for {slot_count} participants, "
+                "so there is no side to pick",
+            )
+        )
+    slot = LEGACY_ACTOR_SLOTS.get(actors)
+    if slot is None and actors.startswith("slot:"):
+        slot = int(actors.removeprefix("slot:"))
+    if slot is not None and not 1 <= slot <= slot_count:
+        issues.append(_error(f"{path}.actors", "actors_slot_unseated", f"this encounter seats slots 1..{slot_count}"))
+    if actors.startswith("side:"):
+        code = actors.removeprefix("side:")
+        if code not in spec.sides:
+            issues.append(_error(f"{path}.actors", "actors_unknown_side", f"{spec.name} declares no side {code!r}"))
+        elif code not in assigned_sides:
+            issues.append(
+                _error(
+                    f"{path}.actors",
+                    "actors_side_unassigned",
+                    f"side {code!r} is read before any side_pick step assigned it",
+                )
+            )
+
+
+def _validate_picks(step: Step, path: str, issues: list[Issue], *, kind: str, spec: DisciplineSpec, owner: str) -> None:
+    """Hero picks (spec §11.2, §11.6 R4-1, R4-5, R4-6): who answers, whether the game allows them, whose room."""
+    if step.member is not None:
+        if step.action != "pick" or kind != "hero":
+            issues.append(_error(f"{path}.member", "member_pick_only", "only a hero pick is made by a member"))
+        if step.count != 1:
+            issues.append(_error(f"{path}.count", "member_count", "a member picks exactly one hero"))
+        if step.actors == "system":
+            issues.append(_error(f"{path}.member", "member_system", "the engine has no members"))
+    if step.action == "assign":
+        if kind != "hero":
+            issues.append(_error(f"{path}.action", "assign_hero_only", "only heroes are assigned to members"))
+        if step.actors != "both":
+            issues.append(_error(f"{path}.actors", "assign_actors", "each captain assigns their own team's heroes"))
+        if step.blind or step.target is not None:
+            issues.append(_error(f"{path}.action", "assign_open", "an assignment is open and names no opponent"))
+    if kind != "hero" or step.action not in ("pick", "assign"):
+        return
+    if step.action == "pick" and step.blind:
+        issues.append(_error(f"{path}.blind", "pick_blind", "a blind hero pick has no collision rule yet"))
+    if spec.character_uniqueness != "match":
+        issues.append(
+            _error(
+                f"{path}.action",
+                "pick_uniqueness_unsupported",
+                f"{spec.name} may field a hero twice in a match; hero picks need a game that does not",
+            )
+        )
+    if owner != "mix" and (step.member is not None or step.action == "assign"):
+        issues.append(_error(path, "mix_only", "member picks and assignments run in pickup mixes only"))
 
 
 # ── condition trees ─────────────────────────────────────────────────────────

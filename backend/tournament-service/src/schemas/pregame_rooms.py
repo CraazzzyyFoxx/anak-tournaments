@@ -36,8 +36,14 @@ PregameAttention = Literal["game_disputed", "result_disputed", "awaiting_choice"
 
 
 class PregameRoomTeam(BaseModel):
-    id: int
+    """One seat of the room (``encounter.team``), in slot order."""
+
+    encounter_team_id: int
+    slot: int
+    #: The source tournament team; null for a seat with none behind it.
+    team_id: int | None = None
     name: str
+    score: float = 0.0
 
 
 class PregameKindSummary(BaseModel):
@@ -55,8 +61,8 @@ class PregameKindSummary(BaseModel):
     #: The open step's action (``ban``/``pick``/``protect``) and blindness.
     step_action: str | None = None
     step_blind: bool = False
-    #: Sides that still owe the open step an answer.
-    acting_sides: list[Literal["home", "away"]] = []
+    #: Participations that still owe the open step an answer.
+    acting_team_ids: list[int] = []
     step_started_at: datetime | None = None
     #: ``step_started_at`` + the open step's timer, when it has one.
     deadline_at: datetime | None = None
@@ -86,10 +92,9 @@ class PregameRoomRow(BaseModel):
     scheduled_at: datetime | None = None
     status: str
     result_status: str | None = None
-    home_team: PregameRoomTeam | None = None
-    away_team: PregameRoomTeam | None = None
-    home_score: int = 0
-    away_score: int = 0
+    #: The encounter's live seats, in slot order.
+    teams: list[PregameRoomTeam] = []
+    #: ``{participation id (as a string): has confirmed readiness}``.
     readiness: dict[str, bool]
     phase: PregamePhase
     #: ``None`` = this encounter plays no room of that kind (no pooled config,
@@ -121,7 +126,8 @@ class PregameRoomHistoryEntry(BaseModel):
     action: str
     kind: Literal["map", "hero"] | None = None
     source: Literal["captain", "admin", "system"]
-    side: Literal["home", "away"] | None = None
+    #: The participation acted by or for; null for a room-level row.
+    encounter_team_id: int | None = None
     actor_auth_user_id: int | None = None
     #: Display name of whoever acted; null for the clock and the engine.
     actor_name: str | None = None

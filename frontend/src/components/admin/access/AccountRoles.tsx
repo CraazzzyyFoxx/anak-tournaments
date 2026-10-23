@@ -5,9 +5,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
 
 import { AccountSection, invalidateAccount } from "@/components/admin/access/AccountCard";
-import { Combobox } from "@/components/kit/Combobox";
-import { Badge } from "@/components/ui/badge";
+import { Combobox } from "@/components/ui/combobox";
 import { CommandGroup, CommandItem } from "@/components/ui/command";
+import { FilterChip } from "@/components/ui/filter-chip";
+import { Skeleton } from "@/components/ui/skeleton";
 import { accessQueryKeys } from "@/lib/access/query-keys";
 import { notify } from "@/lib/notify";
 import { rbacService } from "@/services/rbac.service";
@@ -46,7 +47,11 @@ export function AccountRoles({
     role.workspace_id == null
       ? null
       : (workspaces.find((workspace) => workspace.id === role.workspace_id)?.name ??
-        `Workspace #${role.workspace_id}`);
+        tc("workspaceFallback", { id: role.workspace_id }));
+  const roleLabel = (role: RbacRole) => {
+    const scope = scopeName(role);
+    return scope ? `${role.name} · ${scope}` : role.name;
+  };
 
   const assign = useMutation({
     mutationFn: (roleId: number) => rbacService.assignRole({ user_id: userId, role_id: roleId }),
@@ -83,7 +88,6 @@ export function AccountRoles({
   return (
     <AccountSection
       title={tc("roles")}
-      summary={roles.length}
       action={
         canEdit ? (
           <Combobox
@@ -97,13 +101,22 @@ export function AccountRoles({
             }
             labelTitle={tc("addRole")}
             triggerAriaLabel={t("addLabel")}
-            triggerClassName="h-7 w-auto gap-1.5 px-2 text-xs"
+            size="sm"
+            triggerClassName="h-7 w-auto gap-1.5 px-2"
             disabled={assign.isPending}
             searchValue={search}
             onSearchValueChange={setSearch}
             searchPlaceholder={tc("searchRoles")}
             emptyMessage={
-              catalogQuery.isLoading ? t("loading") : t("noOtherRole")
+              catalogQuery.isLoading ? (
+                <div role="status" className="space-y-2 px-2">
+                  <span className="sr-only">{t("loading")}</span>
+                  <Skeleton aria-hidden className="h-4 w-full" />
+                  <Skeleton aria-hidden className="h-4 w-2/3" />
+                </div>
+              ) : (
+                t("noOtherRole")
+              )
             }
           >
             {orderedGroups.map((group) => (
@@ -138,35 +151,24 @@ export function AccountRoles({
         <p className="text-xs text-muted-foreground">
           {tc("roleNone")}
         </p>
-      ) : (
-        <ul className="flex flex-wrap gap-1.5" aria-label={t("assignedLabel")}>
-          {roles.map((role) => {
-            const scope = scopeName(role);
-            return (
-              <li key={role.id}>
-                <Badge
-                  variant="outline"
-                  className="h-7 gap-1 bg-muted/40 text-sm font-normal"
-                  title={role.description || undefined}
-                >
-                  <span className="font-medium">{role.name}</span>
-                  {scope ? <span className="text-xs text-muted-foreground">· {scope}</span> : null}
-                  {canEdit ? (
-                    <button
-                      type="button"
-                      aria-label={t("removeLabel", { role: role.name })}
-                      disabled={remove.isPending}
-                      onClick={() => remove.mutate(role.id)}
-                      className="-mr-1.5 inline-flex size-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-                    >
-                      <X aria-hidden className="size-3.5" />
-                    </button>
-                  ) : null}
-                </Badge>
-              </li>
-            );
-          })}
+      ) : canEdit ? (
+        <ul className="flex flex-wrap items-center gap-1.5" aria-label={t("assignedLabel")}>
+          {roles.map((role) => (
+            <li key={role.id} title={role.description || undefined}>
+              <FilterChip
+                active
+                aria-label={t("removeLabel", { role: role.name })}
+                disabled={remove.isPending}
+                onClick={() => remove.mutate(role.id)}
+              >
+                {roleLabel(role)}
+                <X aria-hidden className="size-3" />
+              </FilterChip>
+            </li>
+          ))}
         </ul>
+      ) : (
+        <p className="text-sm">{roles.map(roleLabel).join(", ")}</p>
       )}
     </AccountSection>
   );

@@ -9,7 +9,6 @@ and drafted another -- these tests are the contract that closes that.
 
 from __future__ import annotations
 
-import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,7 +19,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
 from shared.core.enums import DraftFormat  # noqa: E402
 from src.domain.draft.rules import (  # noqa: E402

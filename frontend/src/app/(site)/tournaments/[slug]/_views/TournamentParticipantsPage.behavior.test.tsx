@@ -14,11 +14,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { createRoot, hydrateRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
+import ru from "@/i18n/messages/ru.json";
 import { ApiError } from "@/lib/api/error";
+import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
+import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import type {
   Registration,
   RegistrationForm,
@@ -27,6 +31,8 @@ import type {
 import type { Tournament, TournamentStatus } from "@/types/tournament.types";
 
 import TournamentParticipantsPage from "./TournamentParticipantsPage";
+
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -56,12 +62,6 @@ vi.mock("@/services/registration.service", () => ({
   }
 }));
 
-// The `top_heroes` column is visible by default, so the hero catalogue is
-// fetched on mount. It backs nothing this test asserts.
-vi.mock("@/services/hero.service", () => ({
-  default: { getAll: () => Promise.resolve({ results: [] }) }
-}));
-
 // Pulled in by the self-edit dialog, for the identity questions' suggestions.
 vi.mock("@/services/me.service", () => ({
   default: { getSocialAccounts: () => Promise.resolve(null) }
@@ -69,16 +69,25 @@ vi.mock("@/services/me.service", () => ({
 vi.mock("@/services/rbac.service", () => ({
   rbacService: { listOAuthConnections: () => Promise.resolve({ results: [] }) }
 }));
-
-// Signed in, because an anonymous visitor has no registration to check in.
-vi.mock("@/hooks/useAuthProfile", () => ({
-  useAuthProfile: () => ({
-    status: "authenticated",
-    user: { id: 5 },
-    error: null,
-    refetch: () => {}
-  })
+// The card's own team read, for the "still incomplete" line.
+const listPublicTeams = vi.fn();
+vi.mock("@/services/registration-team.service", () => ({
+  default: { listPublic: (...args: unknown[]) => listPublicTeams(...args) }
 }));
+
+// Signed in, because an anonymous visitor has no registration to check in. The
+// real store, not a stubbed hook: a hydrating render reads its INITIAL
+// ("idle") state, exactly as the server did, and that is behaviour under test.
+const SIGNED_IN = {
+  id: 5,
+  username: "anak",
+  roles: [],
+  permissions: [],
+  denies: [],
+  isSuperuser: false,
+  workspaces: [],
+  linkedPlayers: []
+};
 
 /**
  * The roster itself: virtualised, ResizeObserver-driven, and irrelevant to the
@@ -134,7 +143,7 @@ function makeTournament(status: TournamentStatus, window: { starts_at: string; e
     teams_count: null,
     division_grid_version_id: null,
     division_grid_version: null,
-    roster_slots_json: null,
+    discipline: "overwatch",
     roster_shape: null,
     roster_locked_by_draft: null
   };
@@ -147,7 +156,7 @@ function makeRegistration(overrides: Partial<Registration> = {}): Registration {
     workspace_id: 3,
     user_id: 5,
     primary_handle: "Anak#2100",
-    roles: [{ role: "damage", subrole: null, is_primary: true, priority: 0, top_heroes: [] }],
+    roles: [{ role: {dimension: "player_role", role: "damage"}, is_primary: true, priority: 0, top_characters: [] }],
     answers: { stream_pov: false, identity_battlenet: ["Anak#2100"] },
     form_version_id: 4,
     form_version_stale: false,
@@ -248,6 +257,7 @@ const FORM: RegistrationForm = {
       }
     ]
   },
+  discipline: "overwatch",
   version_id: 4,
   version_number: 1
 };
@@ -290,6 +300,7 @@ beforeEach(() => {
   listRegistrations.mockResolvedValue(regList([makeRegistration()]));
   getForm.mockResolvedValue(FORM);
   getMyRegistration.mockResolvedValue(makeRegistration());
+  useAuthProfileStore.setState({ status: "authenticated", user: SIGNED_IN, error: undefined });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -311,12 +322,12 @@ async function settle(ticks = 3) {
   }
 }
 
-async function mount() {
+async function mount(locale: "en" | "ru" = "en") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
-        <NextIntlClientProvider locale="en" messages={en}>
+        <NextIntlClientProvider locale={locale} messages={locale === "ru" ? ru : en}>
           <TournamentParticipantsPage slug={String(TOURNAMENT_ID)} />
         </NextIntlClientProvider>
       </QueryClientProvider>
@@ -386,6 +397,69 @@ describe("tournament participants check-in", () => {
     await mount();
     expect(dialog()).toBeNull();
     expect(checkInButton()).toBeNull();
+  });
+
+  it.each([
+    ["en", en],
+    ["ru", ru]
+  ] as const)("words the gate's refusal from its reason code (%s)", async (locale, messages) => {
+    // The gate's `msg` is only an English default. It used to be a Russian
+    // sentence, shown verbatim to every reader whatever their locale.
+    checkInMyRegistration.mockRejectedValue(
+      new ApiError(400, [{ code: "not_subscribed", msg: "An active subscription is required for check-in: Boosty." }])
+    );
+    await mount(locale);
+
+    const confirm = Array.from(dialog()?.querySelectorAll("button") ?? []).find(
+      (button) => button.textContent?.trim() === messages.common.checkIn
+    );
+    await act(async () => {
+      confirm?.click();
+    });
+    await settle();
+
+    expect(dialog()?.querySelector('[role="alert"]')?.textContent).toBe(messages.admission.reason.not_subscribed);
+  });
+});
+
+describe("a first visit's hydration", () => {
+  it("hydrates the server's page, then shows the entry the shell already fetched", async () => {
+    const tree = (client: QueryClient) => (
+      <QueryClientProvider client={client}>
+        <NextIntlClientProvider locale="en" messages={en}>
+          <TournamentParticipantsPage slug={String(TOURNAMENT_ID)} />
+        </NextIntlClientProvider>
+      </QueryClientProvider>
+    );
+    const seeded = () => {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      client.setQueryData(tournamentQueryKeys.registrationsList(3, TOURNAMENT_ID), regList([makeRegistration()]));
+      client.setQueryData(tournamentQueryKeys.registrationForm(3, TOURNAMENT_ID), FORM);
+      return client;
+    };
+    // The server's render belongs to no viewer.
+    const html = renderToString(tree(seeded()));
+    // In the browser the shell's Register button reads the viewer's own entry
+    // as soon as the profile resolves — before this tab hydrates.
+    const browserClient = seeded();
+    browserClient.setQueryData(tournamentQueryKeys.registration(3, TOURNAMENT_ID), makeRegistration());
+    const hydrated = document.createElement("div");
+    hydrated.innerHTML = html;
+    document.body.appendChild(hydrated);
+    const mismatches: unknown[] = [];
+
+    let hydratedRoot: Root | undefined;
+    await act(async () => {
+      hydratedRoot = hydrateRoot(hydrated, tree(browserClient), {
+        onRecoverableError: (error) => mismatches.push(error)
+      });
+    });
+    await settle();
+
+    expect(mismatches).toEqual([]);
+    expect(hydrated.textContent).toContain(en.registration.myCard.title);
+    act(() => hydratedRoot?.unmount());
+    hydrated.remove();
   });
 });
 
@@ -625,7 +699,7 @@ describe("a roster the organizer hid", () => {
       makeRegistration({
         queue_position: 12,
         queue_total: 48,
-        queue_role: "damage",
+        queue_role: { dimension: "player_role", role: "damage" },
         queue_role_position: 4,
         queue_role_total: 24
       })
@@ -876,5 +950,66 @@ describe("late sign-ups", () => {
   it("says nothing for an on-time sign-up", async () => {
     await mount();
     expect(container.querySelector("[data-registration-late]")).toBeNull();
+  });
+});
+
+describe("a one-role game's card", () => {
+  const AGENT = { dimension: "agent", role: "agent" };
+
+  beforeEach(() => {
+    // Before check-in, so the card's line is the team's news rather than the check-in call.
+    tournament = { ...makeTournament("registration", CLOSED_WINDOW), discipline: "deadlock" };
+    listPublicTeams.mockResolvedValue({
+      items: [{ id: 7, name: "Alpha", status: "forming", exported_team_id: null, open_slots: { agent: 2 } }]
+    });
+  });
+
+  async function expandDetails() {
+    const expand = container.querySelector<HTMLButtonElement>(
+      `[aria-label="${en.registration.myCard.showDetails}"]`
+    );
+    await act(async () => expand?.click());
+  }
+
+  it("names no role in its queue place, its team's shortfall or its details", async () => {
+    getMyRegistration.mockResolvedValue(
+      makeRegistration({
+        roles: [{ role: AGENT, is_primary: true, priority: 0, top_characters: [] }],
+        queue_position: 12,
+        queue_total: 48,
+        queue_role: AGENT,
+        queue_role_position: 12,
+        queue_role_total: 48,
+        team: { id: 7, name: "Alpha", status: "forming", slot_code: "agent", is_substitute: false, is_captain: false }
+      })
+    );
+    await mount();
+    await expandDetails();
+    const text = container.textContent ?? "";
+
+    expect(text).not.toMatch(/agent/i);
+    expect(text).not.toContain(en.registration.myCard.primaryRole);
+    // The place overall is the place: every entry is in the one role's queue.
+    expect(text).toContain("12 / 48");
+    expect(container.querySelectorAll('[aria-label^="Position 12 of 48"]')).toHaveLength(1);
+    // What the team still needs is a count of players.
+    expect(text).toContain("2 players");
+  });
+
+  it("keeps a chosen specialization, under its own heading", async () => {
+    getMyRegistration.mockResolvedValue(
+      makeRegistration({
+        roles: [
+          { role: { ...AGENT, role: "agent_frontline", parent: "agent" }, is_primary: true, priority: 0, top_characters: [] }
+        ]
+      })
+    );
+    await mount();
+    await expandDetails();
+    const text = container.textContent ?? "";
+
+    expect(text).not.toMatch(/agent/i);
+    expect(text).toContain(en.registration.roles.specialization);
+    expect(text).toContain("Frontline");
   });
 });

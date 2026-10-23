@@ -4,6 +4,7 @@ import { useId } from "react";
 import { useTranslations } from "next-intl";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import {
   Select,
   SelectContent,
@@ -11,14 +12,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ROLE_ACCENTS, getRoleIconName, type RoleCode } from "@/lib/roster/roles";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { roleAccent } from "@/lib/registration/role-accent";
+import {
+  findRole,
+  ratedDimension,
+  rolePresentation,
+  type RoleOntology,
+} from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
-import type { Hero } from "@/types/hero.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { SubroleOption } from "@/types/registration.types";
 
-import type { RolePriority, RoleSelection } from "../types";
+import type { RoleCode, RolePriority, RoleSelection } from "../types";
 import { HeroPickerCell } from "./HeroPickerCell";
-import { SegmentedRadio, type SegmentedOption } from "./SegmentedRadio";
 
 /** Radix `Select` cannot carry an empty item value; `""` means "no preference". */
 const ANY_SUBROLE = "__any__";
@@ -26,14 +33,18 @@ const ANY_SUBROLE = "__any__";
 export interface RoleMatrixRowProps {
   roleCode: RoleCode;
   roleLabel: string;
+  /** The owner game's scoped ontology: the glyph and accent are this role's own presentation. */
+  ontology: RoleOntology | null;
   selection: RoleSelection;
   subroleOptions: readonly SubroleOption[];
-  /** Heroes offered for this row — always filtered to the role's own class. */
-  heroes: Hero[];
+  /** Characters offered for this row: the owner game's whole roster. A class is a display property, never a role. */
+  heroes: CatalogEntityRead[];
   topHeroesEnabled: boolean;
   maxHeroes: number;
   /** Hidden in the forced-flex mode, where every role is main by definition. */
   showPriority?: boolean;
+  /** `false` in a one-role game: the row is that role's heroes and specialization, not a role to name. */
+  showRole?: boolean;
   onPriorityChange: (priority: RolePriority) => void;
   onSubroleChange: (subrole: string) => void;
   onHeroesChange: (heroes: string[]) => void;
@@ -42,25 +53,31 @@ export interface RoleMatrixRowProps {
 export function RoleMatrixRow({
   roleCode,
   roleLabel,
+  ontology,
   selection,
   subroleOptions,
   heroes,
   topHeroesEnabled,
   maxHeroes,
   showPriority = true,
+  showRole = true,
   onPriorityChange,
   onSubroleChange,
   onHeroesChange,
 }: Readonly<RoleMatrixRowProps>) {
   const t = useTranslations();
   const subroleId = useId();
-  const accent = ROLE_ACCENTS[roleCode] ?? ROLE_ACCENTS.flex;
+  const rated = ontology ? ratedDimension(ontology) : null;
+  const roleRef = rated ? { dimension: rated.code, role: roleCode } : null;
+  const node = ontology && roleRef ? findRole(ontology, roleRef) : null;
+  const color = ontology && node ? rolePresentation(ontology.roles, node.id).color : null;
+  const accent = roleAccent(color);
   const active = showPriority ? selection.priority !== "off" : true;
 
-  const priorityOptions: readonly SegmentedOption<RolePriority>[] = [
+  const priorityOptions: readonly { value: RolePriority; label: string; accent?: string }[] = [
     { value: "off", label: t("registration.roles.matrix.off") },
     { value: "fallback", label: t("registration.roles.matrix.fallback") },
-    { value: "main", label: t("registration.roles.matrix.main"), selectedClassName: accent.tile },
+    { value: "main", label: t("registration.roles.matrix.main"), accent: color ?? undefined },
   ];
 
   return (
@@ -69,44 +86,63 @@ export function RoleMatrixRow({
         "grid items-center gap-2 rounded-xl border p-2 transition-colors",
         showPriority
           ? "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,13rem)_minmax(0,1fr)_minmax(0,8.5rem)]"
-          : "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,1fr)_minmax(0,8.5rem)]",
+          : showRole
+            ? "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,1fr)_minmax(0,8.5rem)]"
+            : "sm:grid-cols-[minmax(0,1fr)_minmax(0,8.5rem)]",
         active
           ? "border-[color:var(--aqt-border-3)] bg-[color:var(--aqt-overlay-2)]"
           : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)]",
       )}
     >
-      <div className="flex min-w-0 items-center gap-2.5">
-        <span
-          className={cn("flex size-7 shrink-0 items-center justify-center rounded-xl", accent.tile)}
-        >
-          <PlayerRoleIcon role={getRoleIconName(roleCode)} size={18} decorative />
-        </span>
-        <span
-          className={cn(
-            "truncate text-label font-semibold",
-            active ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-muted)]",
-          )}
-        >
-          {roleLabel}
-        </span>
-      </div>
+      {showRole && (
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className="flex size-7 shrink-0 items-center justify-center rounded-xl"
+            style={accent.tile}
+          >
+            <PlayerRoleIcon role={roleRef} ontology={ontology} size={18} decorative />
+          </span>
+          <span
+            className={cn(
+              "truncate text-label font-semibold",
+              active ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-muted)]",
+            )}
+          >
+            {roleLabel}
+          </span>
+        </div>
+      )}
 
       {showPriority && (
-        <SegmentedRadio
-          label={t("registration.roles.matrix.priorityLabel", { role: roleLabel })}
+        <ToggleGroup
+          type="single"
+          variant="pill"
+          size="sm"
+          aria-label={t("registration.roles.matrix.priorityLabel", { role: roleLabel })}
           value={selection.priority}
-          options={priorityOptions}
-          onChange={onPriorityChange}
-        />
+          onValueChange={(priority) => onPriorityChange(priority as RolePriority)}
+          className="w-full"
+        >
+          {priorityOptions.map((option) => (
+            <ToggleGroupItem
+              key={option.value}
+              value={option.value}
+              accent={option.accent}
+              className="flex-1 whitespace-nowrap px-2"
+            >
+              {option.label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
       )}
 
       {/* The column headers only exist from `sm` up, so the stacked layout
           carries its own labels instead of leaving bare controls. */}
       {subroleOptions.length > 0 ? (
         <div className="grid gap-1">
-          <span className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)] sm:hidden">
+          <Eyebrow tone="muted" className="sm:hidden">
             {t("registration.roles.specialization")}
-          </span>
+          </Eyebrow>
           <Select
             value={selection.subrole || ANY_SUBROLE}
             disabled={!active}
@@ -114,8 +150,12 @@ export function RoleMatrixRow({
           >
             <SelectTrigger
               id={subroleId}
-              aria-label={t("registration.roles.roleSpecialization", { role: roleLabel })}
-              className="h-9 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-label text-[color:var(--aqt-fg)] disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label={
+                showRole
+                  ? t("registration.roles.roleSpecialization", { role: roleLabel })
+                  : t("registration.roles.specialization")
+              }
+              variant="surface"
             >
               <SelectValue />
             </SelectTrigger>
@@ -135,12 +175,13 @@ export function RoleMatrixRow({
 
       {topHeroesEnabled ? (
         <div className="grid gap-1">
-          <span className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)] sm:hidden">
+          <Eyebrow tone="muted" className="sm:hidden">
             {t("registration.roles.topHeroes.title")}
-          </span>
+          </Eyebrow>
           <HeroPickerCell
-            roleCode={roleCode}
+            accent={accent}
             roleLabel={roleLabel}
+            showRole={showRole}
             heroes={heroes}
             selected={selection.topHeroes}
             max={maxHeroes}

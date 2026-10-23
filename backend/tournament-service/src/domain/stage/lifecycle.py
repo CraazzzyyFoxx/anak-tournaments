@@ -1,7 +1,7 @@
-"""Draft / Preview / Live / Done — derived from the three existing flags.
+"""Draft / Preview / Live / Done — derived from a stage's flags.
 
-No new column. ``is_active`` / ``is_published`` / ``is_completed`` stay the
-source of truth; this is the vocabulary the rewrite called a state machine.
+``is_active`` / ``is_published`` / ``is_completed`` are the source of truth;
+this module only names their combinations.
 """
 
 from __future__ import annotations

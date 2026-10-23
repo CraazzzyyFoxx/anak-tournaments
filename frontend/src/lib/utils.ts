@@ -17,20 +17,6 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * `aria-sort` for a sortable column header, from either a TanStack column's
- * `getIsSorted()` (`false | "asc" | "desc"`) or a hand-rolled sort state's
- * direction. Non-sortable columns must omit the attribute entirely rather than
- * report `"none"`, so that decision stays at the call site.
- */
-export function ariaSortValue(
-  direction: "asc" | "desc" | false | null | undefined
-): "ascending" | "descending" | "none" {
-  if (direction === "asc") return "ascending";
-  if (direction === "desc") return "descending";
-  return "none";
-}
-
-/**
  * Avatar-fallback initials. One implementation for every surface — this used to
  * be copy-pasted seven times with subtly different letters for the same person.
  *

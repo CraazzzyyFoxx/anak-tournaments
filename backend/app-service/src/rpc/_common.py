@@ -2,8 +2,8 @@
 
 Re-exports ``shared.rpc.common`` — the gateway envelope/param-decoding
 plumbing is identical across every typed-RPC service and lives there as the
-single source of truth. Only ``gate_tournament`` is genuinely app-service
-local (it wraps ``shared.services.tournament.visibility``).
+single source of truth. ``gate_tournament`` (which wraps ``shared.services.tournament.visibility``) is
+app-service local.
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ envelope = partial(_envelope, service="app")
 
 
 async def gate_tournament(session: Any, data: dict[str, Any], tournament_id: int | None) -> None:
-    """404 a hidden tournament for an ineligible viewer (issue #115).
+    """404 a hidden tournament for an ineligible viewer.
 
     No-op when ``tournament_id`` is None (a cross-tournament read with no single
     tournament to gate). The route must be AuthOptional so identity reaches here.

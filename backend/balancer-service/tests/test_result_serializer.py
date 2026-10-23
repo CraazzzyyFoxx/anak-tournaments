@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 BALANCER_SERVICE_ROOT = REPO_BACKEND_ROOT / "balancer-service"
@@ -11,7 +13,13 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 
-from shared.domain.roster_shape import DEFAULT_ROSTER_SHAPE  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
+from shared.domain.team_format import FormatDimension, FormatRule, TeamFormat  # noqa: E402
+from shared.tests.test_team_format import _module_ontology  # noqa: E402
+from src.domain.balancer.backends.base import BalanceMetrics, BalanceSolution  # noqa: E402
+from src.domain.balancer.runtime import _prepare_balance_context, balance_teams  # noqa: E402
+
+DEFAULT_ROSTER_SHAPE = RosterShape(entries=(("tank", 1), ("damage", 2), ("support", 2)))
 from src.domain.balancer.entities import Team  # noqa: E402
 from src.domain.balancer.result_serializer import lobby_document, seat_rating, teams_to_json  # noqa: E402
 from tests.factories import DEFAULT_MASK as MASK  # noqa: E402
@@ -96,3 +104,117 @@ def test_lobby_document_rebuilds_every_seat_the_payloads_carried() -> None:
             for uuid in uuids
         }
         assert rebuilt == emitted
+
+
+def test_owner_format_gates_solver_subclasses_and_keeps_them_in_results() -> None:
+    ontology = _module_ontology("overwatch", sub_roles=(("damage", "damage_hitscan"), ("damage", "damage_projectile")))
+    team_format = TeamFormat(
+        "overwatch",
+        "Duo",
+        2,
+        2,
+        dimensions=(FormatDimension("player_role", "enforced"),),
+        rules=(FormatRule("player_role", "damage_hitscan", recommended_max=1),),
+    )
+    data = {
+        "players": {
+            str(i): {
+                "identity": {"name": str(i)},
+                "stats": {"classes": {"damage": {"isActive": True, "rank": 2000, "priority": 0, "subtype": sub}}},
+            }
+            for i, sub in enumerate(("hitscan", "projectile"))
+        }
+    }
+    context = _prepare_balance_context(
+        data, {"use_captains": False}, None, {"damage": 2}, team_format=team_format, ontology=ontology
+    )
+    assert [player.subclasses for player in context.players] == [{"damage": "hitscan"}, {}]
+    assert context.config.sub_role_collision_weight == 24.0
+    for rules in ((), (FormatRule("player_role", "damage_hitscan", hard_max=2),)):
+        ungated = _prepare_balance_context(
+            data,
+            {"use_captains": False, "sub_role_collision_weight": 17.0},
+            None,
+            {"damage": 2},
+            team_format=replace(team_format, rules=rules),
+            ontology=ontology,
+        )
+        assert ungated.config.sub_role_collision_weight == 17.0
+        assert [player.subclasses for player in ungated.players] == [
+            {"damage": "hitscan"},
+            {"damage": "projectile"},
+        ]
+    for rule in (
+        FormatRule("player_role", "damage_hitscan", recommended_max=2),
+        FormatRule("player_role", "damage_hitscan", recommended_min=1),
+    ):
+        disabled = _prepare_balance_context(
+            data,
+            {"use_captains": False},
+            None,
+            {"damage": 2},
+            team_format=replace(team_format, rules=(rule,)),
+            ontology=ontology,
+        )
+        assert disabled.config.sub_role_collision_weight == 0
+        assert all(not player.subclasses for player in disabled.players)
+
+    class Backend:
+        name = "test"
+        max_teams = None
+
+        def solve(self, players, num_teams, config, role_assignment, seed, progress):
+            assert players[1].subclasses == {}
+            team = Team(1, {"damage": 2})
+            for player in players:
+                team.add_player("damage", player)
+            return [BalanceSolution([team], BalanceMetrics(composite_score=0))]
+
+    with patch("src.domain.balancer.runtime.get_backend", return_value=Backend()):
+        payload = balance_teams(
+            data, {"use_captains": False}, role_mask={"damage": 2}, team_format=team_format, ontology=ontology
+        )[0]
+    assert [player["sub_role"] for player in payload["teams"][0]["roster"]["damage"]] == ["hitscan", "projectile"]
+    assert payload["teams"][0]["format_advisories"] == []
+
+
+def test_format_findings_and_equal_objective_advisory_tie_break() -> None:
+    ontology = _module_ontology("overwatch", sub_roles=(("damage", "damage_hitscan"),))
+    team_format = TeamFormat(
+        "overwatch",
+        "Duo",
+        2,
+        2,
+        dimensions=(FormatDimension("player_role", "enforced"),),
+        rules=(FormatRule("player_role", "damage_hitscan", hard_max=1, recommended_min=1),),
+    )
+    data = {
+        "players": {
+            str(i): {
+                "identity": {"name": str(i)},
+                "stats": {"classes": {"damage": {"isActive": True, "rank": 2000, "priority": 0, "subtype": sub}}},
+            }
+            for i, sub in enumerate(("hitscan", "hitscan", "", ""))
+        }
+    }
+
+    class Backend:
+        name = "test"
+        max_teams = None
+
+        def solve(self, players, num_teams, config, role_assignment, seed, progress):
+            solutions = []
+            for order in ((0, 1, 2, 3), (0, 2, 1, 3)):
+                teams = [Team(1, {"damage": 2}), Team(2, {"damage": 2})]
+                for index, player_index in enumerate(order):
+                    teams[index // 2].add_player("damage", players[player_index])
+                solutions.append(BalanceSolution(teams, BalanceMetrics(composite_score=7)))
+            return solutions
+
+    with patch("src.domain.balancer.runtime.get_backend", return_value=Backend()):
+        payloads = balance_teams(
+            data, {"use_captains": False}, role_mask={"damage": 2}, team_format=team_format, ontology=ontology
+        )
+    assert all(team["format_advisories"] == [] for team in payloads[0]["teams"])
+    assert payloads[1]["teams"][0]["format_violations"] == ["role_above_hard_max"]
+    assert payloads[1]["teams"][1]["format_advisories"] == ["role_below_recommended_min"]

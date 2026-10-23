@@ -12,7 +12,6 @@ now always simulates a virtual double round robin over the registered teams.
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -26,10 +25,12 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "analytics-service"))
 
-os.environ["DEBUG"] = "false"
 
 standings_features = importlib.import_module("src.services.ml.features.standings_features")
-standings_v2 = importlib.import_module("src.services.ml.models.standings_v2")
+from tests.ow_analytics import exports as ow_exports  # noqa: E402
+from tests.ow_analytics import module as ow_module  # noqa: E402
+
+standings_v2 = ow_module("models.standings_v2")
 runner = importlib.import_module("src.services.ml.inference.runner")
 
 
@@ -108,19 +109,19 @@ class ScheduleLeakageTests(TestCase):
 class ForecastFrameTests(IsolatedAsyncioTestCase):
     async def _build(self, ranks, mus, synergy=None):
         with (
-            patch.object(standings_features, "_team_rank_stats", AsyncMock(return_value=_rank_stats(ranks))),
+            patch.object(ow_exports, "team_rank_stats", AsyncMock(return_value=_rank_stats(ranks))),
             patch.object(
                 standings_features,
                 "snapshot_pre_tournament_team_mu",
                 AsyncMock(return_value=_mu(mus)),
             ),
             patch.object(
-                standings_features,
+                ow_exports,
                 "team_synergy_features",
                 AsyncMock(return_value=_synergy(synergy)),
             ),
         ):
-            return await standings_features.build_standings_forecast_frame(SimpleNamespace(), 7)
+            return await standings_features.build_standings_forecast_frame(SimpleNamespace(), 7, discipline="overwatch")
 
     async def test_every_ordered_pair_is_emitted_once(self) -> None:
         frame = await self._build(
@@ -210,8 +211,9 @@ class StandingsRunnerTests(IsolatedAsyncioTestCase):
                 "load_active_artifact",
                 AsyncMock(return_value=SimpleNamespace(storage_uri="s")),
             ),
-            patch.object(runner, "load_artifact", lambda _uri: _StubModel()),
+            patch.object(runner, "load_artifact_or_none", lambda _uri: _StubModel()),
             patch.object(runner, "build_standings_forecast_frame", AsyncMock(return_value=forecast)),
+            patch.object(runner, "tournament_module", AsyncMock(return_value=("overwatch", ow_exports))),
         )
 
     @staticmethod
@@ -227,12 +229,13 @@ class StandingsRunnerTests(IsolatedAsyncioTestCase):
     async def test_forecast_frame_drives_the_simulation(self) -> None:
         session, patches = self._patches(self._forecast())
 
-        with patches[0], patches[1], patches[2], patches[3] as forecast_call:
+        with patches[0], patches[1], patches[2], patches[3] as forecast_call, patches[4]:
             written = await runner.run_standings_for_tournament(session, 7, workspace_id=3, n_iter=50)
 
         forecast_call.assert_awaited_once()
         self.assertEqual(7, forecast_call.await_args.args[1])
         self.assertEqual(3, forecast_call.await_args.kwargs["workspace_id"])
+        self.assertEqual("overwatch", forecast_call.await_args.kwargs["discipline"])
         self.assertEqual(2, written)
         session.commit.assert_awaited_once()
 
@@ -250,7 +253,7 @@ class StandingsRunnerTests(IsolatedAsyncioTestCase):
     async def test_unrateable_field_writes_nothing(self) -> None:
         session, patches = self._patches(pd.DataFrame())
 
-        with patches[0], patches[1], patches[2], patches[3]:
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
             written = await runner.run_standings_for_tournament(session, 7, workspace_id=3, n_iter=50)
 
         self.assertEqual(0, written)

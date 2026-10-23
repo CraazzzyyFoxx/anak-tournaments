@@ -1,7 +1,5 @@
 """Ad-hoc pre-game rooms ("scrims") that exist outside any real tournament.
 
-Design: ``docs/plans/2026-08-12-scrim-rooms.md``.
-
 A scrim reuses the whole pick-ban stack unchanged, so it must present itself as
 an ordinary encounter: ``PickBanSession.encounter_id`` is NOT NULL, and
 ``Encounter.tournament_id``/``Team.tournament_id`` are too. The rows that
@@ -25,7 +23,7 @@ from sqlalchemy import ForeignKey, Index, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
-from shared.models.tournament.encounter import Encounter
+from shared.models.encounter.encounter import Encounter
 from shared.models.tournament.stage import Stage
 from shared.models.tournament.tournament import Tournament
 

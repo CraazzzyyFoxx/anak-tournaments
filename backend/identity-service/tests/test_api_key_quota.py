@@ -21,6 +21,7 @@ import pytest  # noqa: E402
 from shared.models import QuotaApiKeyLimit, QuotaPlanLimit  # noqa: E402
 from shared.schemas.quota import QuotaLimitsPayload  # noqa: E402
 from src.services import api_keys as api_keys_module  # noqa: E402
+from src.services import audit as audit_module  # noqa: E402
 from src.services.api_keys import api_keys  # noqa: E402
 from tests._fakes import FakeExecuteResult as _FakeExecuteResult  # noqa: E402
 from tests._fakes import make_api_key_row as _api_key_row  # noqa: E402
@@ -78,7 +79,7 @@ def audit(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
     async def _record(_session, **kwargs) -> None:
         entries.append(kwargs)
 
-    monkeypatch.setattr(api_keys_module, "record_audit", _record)
+    monkeypatch.setattr(audit_module, "record_audit", _record)
     return entries
 
 

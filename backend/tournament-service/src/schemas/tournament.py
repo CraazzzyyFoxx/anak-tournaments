@@ -2,14 +2,16 @@ import typing
 from dataclasses import dataclass
 from datetime import datetime
 
-from pydantic import BaseModel, BeforeValidator
+from pydantic import BaseModel, BeforeValidator, computed_field
 
+from shared.core import enums, pagination
+from shared.disciplines import identity_provider as discipline_identity_provider
+from shared.schemas.discipline_filter import InstalledDisciplineFilter
+from shared.schemas.roster_slots import RosterShapeRead
 from shared.services.workspace_scope import ALL_WORKSPACES
-from src.core import enums, pagination
 from src.schemas.admin.tournament_link import TournamentLinkRead
 from src.schemas.base import BaseRead
 from src.schemas.division_grid import DivisionGridVersionRead
-from src.schemas.roster_shape import RosterShapeRead
 from src.schemas.stage import StageSummaryRead
 
 __all__ = (
@@ -42,6 +44,7 @@ class TournamentPhaseScheduleRead(BaseModel):
 
 class TournamentRead(BaseRead):
     workspace_id: int
+    discipline: str
     name: str
     # Public-URL identity (`/tournaments/{slug}`); see Tournament.slug.
     slug: str
@@ -58,7 +61,7 @@ class TournamentRead(BaseRead):
     is_finished: bool
     is_hidden: bool = False
     # Branding uploaded through the dedicated image subjects, never through
-    # `TournamentUpdate` (issue #95): the cover is the wide page banner, the logo
+    # `TournamentUpdate`: the cover is the wide page banner, the logo
     # the square mark. Both nullable — a tournament with neither renders the
     # gradient fallback.
     cover_image_url: str | None = None
@@ -71,6 +74,7 @@ class TournamentRead(BaseRead):
     allow_late_registration: bool = False
     discord_broadcasts_enabled: bool = True
     discord_dms_enabled: bool = True
+    logs_official: bool = False
     phase_schedule: list[TournamentPhaseScheduleRead] = []
     win_points: float = 1.0
     draw_points: float = 0.5
@@ -82,11 +86,10 @@ class TournamentRead(BaseRead):
     teams_count: int | None = None
     division_grid_version_id: int | None
     division_grid_version: DivisionGridVersionRead | None = None
-    roster_slots_json: dict[str, int] | None = None
     # The tournament's draft format rule; None = the snake default. Always
-    # exposed, like `roster_slots_json`: it costs no query.
+    # exposed: it costs no query.
     draft_format_json: dict[str, typing.Any] | None = None
-    # Opt-in entities (D16): TournamentRead is nested in six other schemas that
+    # Opt-in entities: TournamentRead is nested in six other schemas that
     # are built from ORM rows without a session, so neither of these can be
     # required -- filling them unconditionally would cost a query per nested row.
     roster_shape: RosterShapeRead | None = None
@@ -102,6 +105,12 @@ class TournamentRead(BaseRead):
     # filling them unconditionally would cost a query per nested TournamentRead.
     links: list[TournamentLinkRead] = []
 
+    @computed_field
+    @property
+    def identity_provider(self) -> str:
+        """The discipline's player identity provider."""
+        return discipline_identity_provider(self.discipline)
+
 
 class TournamentPaginationSortSearchQueryParams(
     pagination.PaginationSortSearchQueryParams[
@@ -111,6 +120,7 @@ class TournamentPaginationSortSearchQueryParams(
     is_league: bool | None = None
     workspace_id: WorkspaceFilter = None
     status: enums.TournamentStatus | None = None
+    discipline: InstalledDisciplineFilter = None
 
 
 @dataclass
@@ -118,6 +128,7 @@ class TournamentPaginationSortSearchParams(pagination.PaginationSortSearchParams
     is_league: bool | None = None
     workspace_id: int | None = None
     status: enums.TournamentStatus | None = None
+    discipline: str | None = None
 
     @classmethod
     def from_query_params(cls, query_params: pagination.PaginationQueryParams):
@@ -146,6 +157,7 @@ class TournamentFacetsQueryParams(BaseModel):
     workspace_id: WorkspaceFilter = None
     status: enums.TournamentStatus | None = None
     is_league: bool | None = None
+    discipline: InstalledDisciplineFilter = None
     query: str = ""
 
 

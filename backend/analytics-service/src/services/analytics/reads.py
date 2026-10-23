@@ -1,10 +1,7 @@
 """High-level read flows for the analytics HTTP surface.
 
-These functions used to live in ``app-service/src/services/analytics/flows.py``
-and depended on ``team_flows``/``user_flows`` for response serialisation.
-Moved here as part of the analytics-service extraction; serialisation is now
-done inline using lightweight Pydantic readers from
-:mod:`src.schemas.base` so we don't pull the heavyweight app-service stack.
+Responses are serialised inline with the lightweight Pydantic readers from
+:mod:`src.schemas.base`.
 """
 
 from __future__ import annotations
@@ -15,9 +12,13 @@ import typing
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from shared import models
 from shared.core import enums, errors, pagination
+from shared.disciplines import discipline
 from shared.division_grid import DivisionGrid
+from shared.domain.analytics import MATCH_QUALITY_MODEL, PERFORMANCE_MODEL, STANDINGS_MODEL, ModelDeclaration
 from shared.repository import (
+    AnalyticsAlgorithmRepository,
     AnalyticsAnomalyFeedbackRepository,
     AnalyticsMatchQualityRepository,
     AnalyticsPerformanceRepository,
@@ -26,9 +27,11 @@ from shared.repository import (
     MLModelArtifactRepository,
     PlayerRepository,
 )
+from shared.schemas.role import RoleRef
 from shared.services.division_grid.resolution import resolve_tournament_division
-from src import models, schemas
-from src.core.workspace import get_division_grid
+from shared.services.workspace_scope import get_division_grid
+from src import schemas
+from src.core.analytics_exports import supports_analytics, tournament_discipline
 from src.domain.forecast import predict_player_division
 
 from .read_queries import analytics_read_service
@@ -40,7 +43,7 @@ __all__ = (
 
 
 # ---------------------------------------------------------------------------
-# Inline serialisation helpers (replacement for ex-app-service team_flows/user_flows)
+# Inline serialisation helpers
 # ---------------------------------------------------------------------------
 
 
@@ -113,25 +116,20 @@ def _team_to_pydantic(team: models.Team, *, include_tournament: bool = True) -> 
 
 
 def _player_to_pydantic(player: models.Player, *, grid: DivisionGrid) -> schemas.PlayerRead:
-    # NOTE: ``user`` is intentionally left as ``None`` for the analytics
-    # response. The original ``app-service`` ``to_pydantic_player`` was called
-    # with an empty ``entities`` list, which also produced ``user=None``. The
-    # frontend analytics surface reads ``player.name`` directly, so the nested
-    # ``user`` object is unused here — and accessing ``player.user`` (or any
-    # of its ``battle_tag``/``discord``/``twitch`` relationships) would trip
+    # ``user`` is intentionally left as ``None``: the frontend analytics surface
+    # reads ``player.name`` directly, and accessing ``player.user`` (or any of its
+    # ``battle_tag``/``discord``/``twitch`` relationships) would trip
     # ``MissingGreenlet`` once the async session is detached.
     return schemas.PlayerRead(
         id=player.id,
         created_at=player.created_at,
         updated_at=player.updated_at,
         name=getattr(player, "name", None),
-        sub_role=getattr(player, "sub_role", None),
         rank=player.rank,
         division=resolve_tournament_division(player.rank, tournament_grid=grid),
-        role=player.role,
+        role=player.role_ref,
         tournament_id=player.tournament_id,
-        # Player.user_id was dropped in the contract step (iwrefac07); the
-        # identity anchor is workspace_member.player_id instead. Callers must
+        # The identity anchor is workspace_member.player_id. Callers must
         # eager-load Player.workspace_member on the query that produced ``player``.
         user_id=player.workspace_member.player_id,
         team_id=player.team_id,
@@ -215,6 +213,7 @@ class AnalyticsReadFlowsService:
         player_anomalies: AnalyticsPlayerAnomalyRepository = AnalyticsPlayerAnomalyRepository(),
         feedback: AnalyticsAnomalyFeedbackRepository = AnalyticsAnomalyFeedbackRepository(),
         artifacts: MLModelArtifactRepository = MLModelArtifactRepository(),
+        algorithms: AnalyticsAlgorithmRepository = AnalyticsAlgorithmRepository(),
     ) -> None:
         self.players = players
         self.performance = performance
@@ -223,6 +222,7 @@ class AnalyticsReadFlowsService:
         self.player_anomalies = player_anomalies
         self.feedback = feedback
         self.artifacts = artifacts
+        self.algorithms = algorithms
 
     async def to_pydantic(
         self,
@@ -249,6 +249,11 @@ class AnalyticsReadFlowsService:
         algorithms = await analytics_read_service.get_algorithms(session)
         ids_with_data: set[int] | None = None
         if tournament_id is not None:
+            # The tournament names its game: one that declares no analytics module offers no algorithm, never another
+            # game's (Linear, Points and the shift model all run on the module's canonical scale).
+            discipline_code = await tournament_discipline(session, tournament_id)
+            if discipline_code is not None and not supports_analytics(discipline_code):
+                algorithms = []
             ids_with_data = await analytics_read_service.get_algorithm_ids_with_shift_data(session, tournament_id)
         return pagination.Paginated(
             total=len(algorithms),
@@ -282,6 +287,13 @@ class AnalyticsReadFlowsService:
     ) -> schemas.TournamentAnalytics:
         algorithm = await analytics_read_service.get_algorithm(session, algorithm_id)
         if algorithm is None:
+            raise errors.ApiHTTPException(
+                status_code=404,
+                detail=[errors.ApiExc(code="not_found", msg="Analytics algorithm not found.")],
+            )
+        discipline_code = await tournament_discipline(session, tournament_id)
+        if discipline_code is not None and not supports_analytics(discipline_code):
+            # Stored predictions of an algorithm are never served to a tournament of a game that has no module.
             raise errors.ApiHTTPException(
                 status_code=404,
                 detail=[errors.ApiExc(code="not_found", msg="Analytics algorithm not found.")],
@@ -422,13 +434,13 @@ class AnalyticsReadFlowsService:
         )
 
     async def get_streaks(self, session: AsyncSession, tournament_id: int) -> list[schemas.PlayerStreak]:
-        cache_pos: dict[str, list[int]] = {}
-        cache_users: dict[str, schemas.UserReadMin | None] = {}
+        cache_pos: dict[tuple[int, RoleRef | None], list[int]] = {}
+        cache_users: dict[tuple[int, RoleRef | None], schemas.UserReadMin | None] = {}
         output: list[schemas.PlayerStreak] = []
         streaks = await analytics_read_service.get_streaks(session, tournament_id)
 
-        for user, role, place in streaks:
-            key = f"{user.id}-{role}"
+        for user, role, sub_role, discipline_code, place in streaks:
+            key = (user.id, RoleRef.of(discipline(discipline_code).rated_dimension.code, role, sub_role))
             cache_users.setdefault(key, _user_to_pydantic(user))
             cache_pos.setdefault(key, [])
             if len(cache_pos[key]) < 3:
@@ -440,7 +452,7 @@ class AnalyticsReadFlowsService:
             user = cache_users[key]
             if user is None:
                 continue
-            _, role = key.split("-", 1)
+            _, role = key
             current_position = positions[0]
             previous_position = positions[1] if len(positions) > 1 else None
             pre_previous_position = positions[2] if len(positions) > 2 else None
@@ -459,6 +471,29 @@ class AnalyticsReadFlowsService:
 
         return sorted(output, key=lambda x: (x.sum_position, x.user.name or ""))
 
+    async def _owned(
+        self,
+        session: AsyncSession,
+        tournament_id: int,
+        declaration: ModelDeclaration | None = None,
+        algorithm_id: int | None = None,
+    ) -> tuple[bool, int | None]:
+        """Whether stored rows of ``tournament_id`` may be served, and the algorithm id to restrict them to.
+
+        The tournament's discipline must declare analytics models (rows preserved from another game's model, or of a
+        tournament that does not exist, are never served), and a model read is restricted to the declared algorithm:
+        a requested ``algorithm_id`` that names another algorithm serves nothing.
+        """
+        code = await tournament_discipline(session, tournament_id)
+        if code is None or not supports_analytics(code):
+            return False, None
+        if declaration is None:
+            return True, algorithm_id
+        declared = await self.algorithms.get_id_by_name(session, declaration.algorithm_name)
+        if declared is None or (algorithm_id is not None and algorithm_id != declared):
+            return False, None
+        return True, declared
+
     async def list_performance(
         self,
         session: AsyncSession,
@@ -466,7 +501,10 @@ class AnalyticsReadFlowsService:
         *,
         algorithm_id: int | None = None,
     ) -> typing.Sequence[models.AnalyticsPerformance]:
-        return await self.performance.list_by_tournament(session, tournament_id, algorithm_id=algorithm_id)
+        owned, declared = await self._owned(session, tournament_id, PERFORMANCE_MODEL, algorithm_id)
+        if not owned:
+            return []
+        return await self.performance.list_by_tournament(session, tournament_id, algorithm_id=declared)
 
     async def list_standings(
         self,
@@ -475,7 +513,10 @@ class AnalyticsReadFlowsService:
         *,
         algorithm_id: int | None = None,
     ) -> typing.Sequence[models.AnalyticsStandingsDistribution]:
-        return await self.standings.list_by_tournament(session, tournament_id, algorithm_id=algorithm_id)
+        owned, declared = await self._owned(session, tournament_id, STANDINGS_MODEL, algorithm_id)
+        if not owned:
+            return []
+        return await self.standings.list_by_tournament(session, tournament_id, algorithm_id=declared)
 
     async def list_match_quality(
         self,
@@ -484,7 +525,10 @@ class AnalyticsReadFlowsService:
         *,
         algorithm_id: int | None = None,
     ) -> list[schemas.MatchQualityRow]:
-        rows = await self.match_quality.list_by_tournament(session, tournament_id, algorithm_id=algorithm_id)
+        owned, declared = await self._owned(session, tournament_id, MATCH_QUALITY_MODEL, algorithm_id)
+        if not owned:
+            return []
+        rows = await self.match_quality.list_by_tournament(session, tournament_id, algorithm_id=declared)
         grouped = dict(
             await analytics_read_service.get_match_quality_anomalies(session, tournament_id, algorithm_id or 0)
         )
@@ -509,6 +553,8 @@ class AnalyticsReadFlowsService:
         player_id: int | None = None,
         kind: str | None = None,
     ) -> typing.Sequence[models.AnalyticsPlayerAnomaly]:
+        if not (await self._owned(session, tournament_id))[0]:
+            return []
         return await self.player_anomalies.list_by_tournament(session, tournament_id, player_id=player_id, kind=kind)
 
     async def list_feedback(
@@ -516,6 +562,8 @@ class AnalyticsReadFlowsService:
         session: AsyncSession,
         tournament_id: int,
     ) -> typing.Sequence[models.AnalyticsAnomalyFeedback]:
+        if not (await self._owned(session, tournament_id))[0]:
+            return []
         return await self.feedback.list_by_tournament(session, tournament_id)
 
     async def upsert_feedback(
@@ -529,6 +577,11 @@ class AnalyticsReadFlowsService:
         note: str | None,
         reviewer_user_id: int | None,
     ) -> models.AnalyticsAnomalyFeedback:
+        if not (await self._owned(session, tournament_id))[0]:  # same gate as list_feedback: no analytics, no feedback
+            raise errors.ApiHTTPException(
+                status_code=404,
+                detail=[errors.ApiExc(code="not_found", msg="Analytics is not available for this tournament.")],
+            )
         existing = await self.feedback.get_by_key(
             session,
             tournament_id=tournament_id,
@@ -565,11 +618,14 @@ class AnalyticsReadFlowsService:
         *,
         algorithm_id: int | None = None,
     ) -> schemas.ExplanationRow | None:
+        owned, declared = await self._owned(session, tournament_id, PERFORMANCE_MODEL, algorithm_id)
+        if not owned:
+            return None
         row = await self.performance.get_for_player(
             session,
             player_id=player_id,
             tournament_id=tournament_id,
-            algorithm_id=algorithm_id,
+            algorithm_id=declared,
         )
         if row is None or not row.contributions:
             return None
@@ -588,8 +644,19 @@ class AnalyticsReadFlowsService:
         *,
         model_kind: str | None = None,
         active_only: bool = False,
-    ) -> typing.Sequence[models.MLModelArtifact]:
-        return await self.artifacts.list_filtered(session, model_kind=model_kind, active_only=active_only)
+    ) -> list[schemas.MLArtifactRow]:
+        rows = await self.artifacts.list_filtered(session, model_kind=model_kind, active_only=active_only)
+        return [
+            schemas.MLArtifactRow(
+                **{field: getattr(row, field) for field in schemas.MLArtifactRow.model_fields if field != "role"},
+                role=(
+                    RoleRef(dimension=row.role_row.dimension.code, role=row.role_row.code)
+                    if row.role_row is not None
+                    else None
+                ),
+            )
+            for row in rows
+        ]
 
 
 flows_service = AnalyticsReadFlowsService()

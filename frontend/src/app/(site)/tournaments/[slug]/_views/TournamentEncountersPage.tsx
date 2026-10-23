@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { bracketRoundShape } from "@/lib/bracket/view";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import { useMinuteClock } from "@/hooks/useMinuteClock";
@@ -42,8 +43,7 @@ import {
   type MatchesView
 } from "./tournamentMatches.model";
 
-const HEADING_CLASS =
-  "aqt-tnum mb-1 mt-5 text-label uppercase tracking-[.06em] text-[color:var(--aqt-fg-faint)]";
+const HEADING_CLASS = `${eyebrowClass()} aqt-tnum mb-1 mt-5`;
 
 /** The stage over its rounds. Every round heading used to carry the stage name
  *  glued in front of it ("DOUBLE ELIMINATION · UB Final"); it is said once here
@@ -115,11 +115,7 @@ const TournamentEncountersPage = ({ tournamentId, slug, now }: TournamentEncount
   const view: MatchesView = hasSchedule ? requestedView : "round";
 
   const entityFiltered = encounters.filter((encounter) => {
-    if (
-      teamFilter !== null &&
-      encounter.home_team_id !== teamFilter &&
-      encounter.away_team_id !== teamFilter
-    ) {
+    if (teamFilter !== null && !encounter.teams.some((seat) => seat.team_id === teamFilter)) {
       return false;
     }
     if (
@@ -160,14 +156,8 @@ const TournamentEncountersPage = ({ tournamentId, slug, now }: TournamentEncount
     teamFilter === null
       ? null
       : (encounters
-          .map((encounter) =>
-            encounter.home_team_id === teamFilter
-              ? encounter.home_team?.name
-              : encounter.away_team_id === teamFilter
-                ? encounter.away_team?.name
-                : null
-          )
-          .find(Boolean) ??
+          .flatMap((encounter) => encounter.teams)
+          .find((seat) => seat.team_id === teamFilter)?.name ??
         ffa.lobbies.flatMap((lobby) => lobby.rows).find((row) => row.team_id === teamFilter)
           ?.team_name ??
         null);
@@ -175,8 +165,9 @@ const TournamentEncountersPage = ({ tournamentId, slug, now }: TournamentEncount
   const teamOptions = (() => {
     const byId: Record<number, string> = {};
     for (const encounter of encounters) {
-      if (encounter.home_team) byId[encounter.home_team_id] = encounter.home_team.name;
-      if (encounter.away_team) byId[encounter.away_team_id] = encounter.away_team.name;
+      for (const seat of encounter.teams) {
+        if (seat.team_id != null) byId[seat.team_id] = seat.name;
+      }
     }
     for (const lobby of ffa.lobbies) {
       for (const row of lobby.rows) byId[row.team_id] = row.team_name;
@@ -361,8 +352,9 @@ const TournamentEncountersPage = ({ tournamentId, slug, now }: TournamentEncount
                         eyebrow={cardEyebrow(encounter)}
                         href={bracketHref(encounter) ?? `/encounters/${encounter.id}`}
                         streamsCount={
-                          (liveTeamStreams.has(encounter.home_team_id) ? 1 : 0) +
-                          (liveTeamStreams.has(encounter.away_team_id) ? 1 : 0)
+                          encounter.teams.filter(
+                            (seat) => seat.team_id != null && liveTeamStreams.has(seat.team_id)
+                          ).length
                         }
                       />
                     ))}

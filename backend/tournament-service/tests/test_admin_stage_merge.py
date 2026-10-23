@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib
 import json
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,7 +12,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 stage_service = importlib.import_module("src.services.admin.stage")
 enums = importlib.import_module("shared.core.enums")
@@ -185,6 +183,7 @@ class AdminStageDeleteOrderTests(IsolatedAsyncioTestCase):
         remaining_c = SimpleNamespace(id=12, order=2)
 
         session = SimpleNamespace(
+            scalar=AsyncMock(return_value=1),
             delete=AsyncMock(),
             flush=AsyncMock(),
             commit=AsyncMock(),
@@ -192,6 +191,7 @@ class AdminStageDeleteOrderTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=deleted_stage)),
+            patch.object(stage_service, "capture_owner_delete", AsyncMock(return_value=[])),
             patch.object(stage_service.stage_service.encounter_repo, "delete_for_stage", AsyncMock()),
             patch.object(stage_service.stage_service.standing_repo, "delete_for_stage", AsyncMock()),
             patch.object(stage_service.stage_service, "_publish_structure_changed", AsyncMock()),

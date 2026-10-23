@@ -18,26 +18,27 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from shared import models
 from shared.core.enums import DraftFormat, DraftPickStatus, DraftPlayerStatus, DraftStatus
 from shared.core.errors import ApiHTTPException
-from shared.domain.roster_shape import parse_roster_slots
-from shared.models.balancer.draft import DraftPick
+from shared.domain.roster_shape import RosterShape
+from shared.models.draft import DraftPick
 from shared.models.registration.registration import (
-    BalancerRegistration,
-    BalancerRegistrationIdentity,
-    BalancerRegistrationRole,
+    Registration,
+    RegistrationIdentity,
+    RegistrationRole,
 )
 from shared.models.tenancy.workspace import Workspace
 from shared.models.tournament import Tournament
+from shared.repository import CatalogRoleRepository
 from shared.testing import create_test_async_engine  # noqa: E402
-from src import models
 from src.domain.draft.entities import PoolSeat
 from src.services.draft import lifecycle, selection
 
 # The 5-slot roster these tests draft for, replacing `rounds=4, team_size=5`:
 # `role_targets_for_team_size(5)` resolved to 1 tank / 2 damage / 2 support, and
 # `draft_rounds` derives the same 4 rounds.
-_SHAPE = parse_roster_slots({"tank": 1, "damage": 2, "support": 2})
+_SHAPE = RosterShape(entries=tuple({"tank": 1, "damage": 2, "support": 2}.items()))
 
 
 _UNIQUE = 0
@@ -64,6 +65,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
                 name=f"T {self._suffix}",
                 slug=f"t-{self._suffix}",
                 status="draft",
+                team_formation="draft",
             )
             s.add(tourn)
             await s.flush()
@@ -80,7 +82,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
             await self.engine.dispose()
             return
         async with self.Session() as s:
-            from shared.models.balancer.draft import DraftSession
+            from shared.models.draft import DraftSession
 
             ids = (
                 await s.scalars(sa.select(DraftSession.id).where(DraftSession.tournament_id == self.tournament_id))
@@ -95,8 +97,8 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
         await self.engine.dispose()
 
     async def _registration(self, s, *, tag: str, ranks: dict[str, int | None]) -> int:
-        """One approved, in-pool ``balancer.registration`` with its role rows."""
-        reg = BalancerRegistration(
+        """One approved, in-pool ``registration.registration`` with its role rows."""
+        reg = Registration(
             tournament_id=self.tournament_id,
             display_name=tag,
             status="approved",
@@ -105,7 +107,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
         s.add(reg)
         await s.flush()
         s.add(
-            BalancerRegistrationIdentity(
+            RegistrationIdentity(
                 registration_id=reg.id,
                 provider="battlenet",
                 position=0,
@@ -113,11 +115,13 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
                 handle_normalized=tag.lower(),
             )
         )
+        catalog_roles = await CatalogRoleRepository().rated_rows(s, discipline="overwatch", workspace_id=None)
         for priority, (role, rank) in enumerate(ranks.items()):
             s.add(
-                BalancerRegistrationRole(
+                RegistrationRole(
                     registration_id=reg.id,
-                    role=role,
+                    catalog_role=catalog_roles[role],
+                    dimension_id=catalog_roles[role].dimension_id,
                     is_primary=priority == 0,
                     priority=priority,
                     rank_value=rank,

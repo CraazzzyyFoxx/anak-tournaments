@@ -17,7 +17,7 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
 
-models = importlib.import_module("src.models")
+models = importlib.import_module("shared.models")
 schemas = importlib.import_module("src.schemas")
 
 division_service = importlib.import_module("src.services.division_grid.service")
@@ -89,7 +89,7 @@ def test_marketplace_import_requires_one_explicit_grid_and_version() -> None:
     assert request.source_grid_id == 22
     assert request.source_version_id == 33
     assert request.include_icons is True
-    assert request.include_ow_rank_mappings is True
+    assert request.include_native_rank_mappings is True
 
 
 def test_marketplace_import_rejects_legacy_set_default_switch() -> None:
@@ -196,7 +196,8 @@ def test_portable_document_has_versioned_round_trip_contract() -> None:
         mappings=[],
     )
 
-    assert document.schema_version == "division-grid/v1"
+    assert document.schema_version == "division-grid/v2"
+    assert document.discipline == "overwatch"
     assert document.versions[0].tiers[0].slug == "champion-1"
 
 
@@ -231,12 +232,13 @@ def test_draft_minor_edit_preserves_tier_ids_and_mapping_rules() -> None:
             icon_url="https://cdn.example/champion-1.png",
         )
         tier.id = 91
-        version = SimpleNamespace(id=11, status="draft", tiers=[tier])
+        version = SimpleNamespace(id=11, status="draft", tiers=[tier], grid=SimpleNamespace(discipline="overwatch"))
         session = SimpleNamespace(
             add=Mock(),
             delete=AsyncMock(),
             execute=AsyncMock(),
             flush=AsyncMock(),
+            expire=Mock(),
         )
         payload = schemas.DivisionGridVersionUpdate(
             tiers=[
@@ -274,7 +276,7 @@ def test_activation_readiness_requires_complete_mappings_from_used_versions() ->
         target = SimpleNamespace(
             id=30,
             status="published",
-            grid=SimpleNamespace(workspace_id=4),
+            grid=SimpleNamespace(workspace_id=4, discipline="overwatch"),
         )
         src10 = SimpleNamespace(
             id=10,
@@ -333,7 +335,7 @@ def test_activate_version_rejects_incomplete_mapping_readiness() -> None:
         target = SimpleNamespace(
             id=30,
             status="published",
-            grid=SimpleNamespace(workspace_id=4),
+            grid=SimpleNamespace(workspace_id=4, discipline="overwatch"),
         )
         readiness = schemas.DivisionGridActivationReadiness(
             target_version_id=30,
@@ -342,7 +344,9 @@ def test_activate_version_rejects_incomplete_mapping_readiness() -> None:
             missing_mapping_version_ids=[10],
             incomplete_mapping_version_ids=[],
         )
-        workspace = SimpleNamespace(id=4, default_division_grid_version_id=12)
+        workspace = SimpleNamespace(
+            id=4, default_division_grid_versions={"overwatch": 12}, disciplines_enabled=["overwatch"]
+        )
         with (
             patch.object(grid_service, "get_version", AsyncMock(return_value=target)),
             patch.object(
@@ -359,7 +363,7 @@ def test_activate_version_rejects_incomplete_mapping_readiness() -> None:
             )
 
         assert getattr(caught.value, "status_code", None) == 409
-        assert workspace.default_division_grid_version_id == 12
+        assert workspace.default_division_grid_versions == {"overwatch": 12}
 
     asyncio.run(run())
 
@@ -436,8 +440,8 @@ def test_source_fingerprint_is_deterministic_and_content_sensitive() -> None:
         rank_min=4900,
         rank_max=None,
         icon_url="https://cdn.example/champion-1.png",
-        ow_rank_min=4900,
-        ow_rank_max=5000,
+        native_rank_min=4900,
+        native_rank_max=5000,
     )
     version = SimpleNamespace(version=1, label="Season 1", status="published", tiers=[tier])
     grid = SimpleNamespace(slug="ow2", name="OW2", description=None, versions=[version])
@@ -448,8 +452,12 @@ def test_source_fingerprint_is_deterministic_and_content_sensitive() -> None:
     changed = marketplace.build_source_fingerprint([grid], [])
 
     assert first == second
-    assert len(first) == 64
+    # Historical marketplace payload: field renaming must not re-import an unchanged grid.
+    assert first == "cbe3808b54bac98d78ff9c17e518b349d5d954a2dfde7da362d4d694e011a255"
     assert changed != first
+    tier.rank_min = 4900
+    tier.native_rank_max = 5100
+    assert marketplace.build_source_fingerprint([grid], []) != first
 
 
 def test_s3_copy_object_uses_server_side_copy() -> None:
@@ -533,8 +541,8 @@ def test_marketplace_preflight_reports_conflicts_asset_policy_and_fingerprint() 
             rank_min=4900,
             rank_max=None,
             icon_url="https://minio.example/aqt/assets/divisions/champion-1.png",
-            ow_rank_min=4900,
-            ow_rank_max=5000,
+            native_rank_min=4900,
+            native_rank_max=5000,
         )
         external_tier = SimpleNamespace(
             id=2,
@@ -545,8 +553,8 @@ def test_marketplace_preflight_reports_conflicts_asset_policy_and_fingerprint() 
             rank_min=4500,
             rank_max=4899,
             icon_url="https://cdn.example/master-1.png",
-            ow_rank_min=4500,
-            ow_rank_max=4899,
+            native_rank_min=4500,
+            native_rank_max=4899,
         )
         version = SimpleNamespace(
             id=10,
@@ -589,8 +597,8 @@ def test_single_version_import_preflight_honors_selected_version_and_options() -
             rank_min=4500,
             rank_max=4899,
             icon_url="https://minio.example/aqt/assets/divisions/master-1.png",
-            ow_rank_min=4500,
-            ow_rank_max=4899,
+            native_rank_min=4500,
+            native_rank_max=4899,
         )
         second_tier = SimpleNamespace(
             id=2,
@@ -601,8 +609,8 @@ def test_single_version_import_preflight_honors_selected_version_and_options() -
             rank_min=4900,
             rank_max=None,
             icon_url="https://minio.example/aqt/assets/divisions/champion-1.png",
-            ow_rank_min=4900,
-            ow_rank_max=5000,
+            native_rank_min=4900,
+            native_rank_max=5000,
         )
         grid = SimpleNamespace(
             id=5,
@@ -625,7 +633,7 @@ def test_single_version_import_preflight_honors_selected_version_and_options() -
                 source_grids=[grid],
                 source_version_id=20,
                 include_icons=False,
-                include_ow_rank_mappings=True,
+                include_native_rank_mappings=True,
             )
 
         assert result.grids_count == 1
@@ -643,13 +651,13 @@ def test_single_version_import_request_has_only_explicit_options() -> None:
         source_grid_id=5,
         source_version_id=20,
         include_icons=True,
-        include_ow_rank_mappings=False,
+        include_native_rank_mappings=False,
     )
 
     assert request.source_grid_id == 5
     assert request.source_version_id == 20
     assert request.include_icons is True
-    assert request.include_ow_rank_mappings is False
+    assert request.include_native_rank_mappings is False
 
 
 def test_single_version_copy_import_creates_an_editable_draft() -> None:
@@ -678,8 +686,8 @@ def test_library_import_reuses_unchanged_import_without_writes() -> None:
             rank_min=4900,
             rank_max=None,
             icon_url="https://cdn.example/champion-1.png",
-            ow_rank_min=4900,
-            ow_rank_max=5000,
+            native_rank_min=4900,
+            native_rank_max=5000,
         )
         version = SimpleNamespace(
             id=10,
@@ -690,6 +698,7 @@ def test_library_import_reuses_unchanged_import_without_writes() -> None:
         )
         source_grid = SimpleNamespace(
             id=5,
+            discipline="overwatch",
             slug="ow2",
             name="OW2",
             description=None,
@@ -716,7 +725,7 @@ def test_library_import_reuses_unchanged_import_without_writes() -> None:
             result = await marketplace_service.import_division_grids(
                 session,
                 SimpleNamespace(),
-                target_workspace=SimpleNamespace(id=9),
+                target_workspace=SimpleNamespace(id=9, disciplines_enabled=["overwatch"]),
                 source_workspace=SimpleNamespace(id=3),
                 source_grids=[source_grid],
                 mode="library",
@@ -746,7 +755,7 @@ def test_import_job_creation_is_idempotent_and_durable() -> None:
                 source_grid_id=5,
                 source_version_id=20,
                 include_icons=True,
-                include_ow_rank_mappings=False,
+                include_native_rank_mappings=False,
                 source_fingerprint="a" * 64,
             )
             reused = await import_jobs_service.create_import_job(
@@ -757,7 +766,7 @@ def test_import_job_creation_is_idempotent_and_durable() -> None:
                 source_grid_id=5,
                 source_version_id=20,
                 include_icons=True,
-                include_ow_rank_mappings=False,
+                include_native_rank_mappings=False,
                 source_fingerprint="a" * 64,
             )
 
@@ -766,7 +775,7 @@ def test_import_job_creation_is_idempotent_and_durable() -> None:
             "source_grid_id": 5,
             "source_version_id": 20,
             "include_icons": True,
-            "include_ow_rank_mappings": False,
+            "include_native_rank_mappings": False,
             "source_fingerprint": "a" * 64,
         }
         assert created.requested_by_user_id == 42
@@ -799,7 +808,7 @@ def test_import_job_creation_requeues_a_failed_job() -> None:
                 source_grid_id=5,
                 source_version_id=20,
                 include_icons=True,
-                include_ow_rank_mappings=True,
+                include_native_rank_mappings=True,
                 source_fingerprint="a" * 64,
             )
 
@@ -819,6 +828,7 @@ def test_marketplace_import_rejects_source_changes_after_preflight() -> None:
     async def run() -> None:
         source_grid = SimpleNamespace(
             id=5,
+            discipline="overwatch",
             slug="ow2",
             name="OW2",
             description=None,
@@ -834,7 +844,7 @@ def test_marketplace_import_rejects_source_changes_after_preflight() -> None:
             await marketplace_service.import_division_grids(
                 SimpleNamespace(),
                 SimpleNamespace(),
-                target_workspace=SimpleNamespace(id=9),
+                target_workspace=SimpleNamespace(id=9, disciplines_enabled=["overwatch"]),
                 source_workspace=SimpleNamespace(id=3),
                 source_grids=[source_grid],
                 expected_source_fingerprint=reviewed_fingerprint,
@@ -919,8 +929,8 @@ def test_portable_export_uses_version_and_tier_slugs_instead_of_database_ids() -
         rank_min=4900,
         rank_max=None,
         icon_url="https://cdn.example/champion-1.png",
-        ow_rank_min=4900,
-        ow_rank_max=5000,
+        native_rank_min=4900,
+        native_rank_max=5000,
     )
     tier_two = SimpleNamespace(
         id=202,
@@ -931,14 +941,14 @@ def test_portable_export_uses_version_and_tier_slugs_instead_of_database_ids() -
         rank_min=4500,
         rank_max=4899,
         icon_url="https://cdn.example/master-1.png",
-        ow_rank_min=4500,
-        ow_rank_max=4899,
+        native_rank_min=4500,
+        native_rank_max=4899,
     )
     versions = [
         SimpleNamespace(id=11, version=1, label="S1", status="published", tiers=[tier_one]),
         SimpleNamespace(id=22, version=2, label="S2", status="published", tiers=[tier_two]),
     ]
-    grid = SimpleNamespace(slug="ow2", name="OW2", description=None, versions=versions)
+    grid = SimpleNamespace(slug="ow2", name="OW2", description=None, discipline="overwatch", versions=versions)
     mapping = SimpleNamespace(
         source_version_id=11,
         target_version_id=22,
@@ -955,7 +965,8 @@ def test_portable_export_uses_version_and_tier_slugs_instead_of_database_ids() -
 
     document = portable.build_portable_document(grid, [mapping])
 
-    assert document.schema_version == "division-grid/v1"
+    assert document.schema_version == "division-grid/v2"
+    assert document.discipline == "overwatch"
     assert document.mappings[0].source_version == 1
     assert document.mappings[0].rules[0].source_tier_slug == "champion-1"
     assert document.mappings[0].rules[0].target_tier_slug == "master-1"
@@ -966,6 +977,7 @@ def test_archiving_workspace_default_grid_is_rejected() -> None:
         grid = SimpleNamespace(
             id=4,
             workspace_id=9,
+            discipline="overwatch",
             archived_at=None,
             versions=[SimpleNamespace(id=11), SimpleNamespace(id=12)],
         )

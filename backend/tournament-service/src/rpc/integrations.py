@@ -1,18 +1,11 @@
 """Integration endpoints over typed RPC: Challonge, registration Google Sheets,
 and the public division-grid catalog.
 
-Each handler mirrors a route in ``src/routes/admin/challonge.py``,
-``src/routes/admin/registration_sheet.py``, or ``src/routes/division_grid.py``
-EXACTLY: it rehydrates the gateway-injected identity (only where the route is
-authed), runs the SAME imperative permission check the route's dependency
-performed, validates the SAME body schema, calls the SAME service function with
-the SAME args, and serializes the SAME way the route returned. None of these
-routes use ``response_model_exclude_none`` -> plain ``model_dump(mode="json")``;
-the custom dict-returning routes return their dicts verbatim.
-
 The gateway passes path params as ``data["<name>"]`` (and the primary id as
 ``data["id"]`` when the RouteSpec sets IDParam), query params as
 ``data["query"][key] = [values]``, and the JSON body as ``data["payload"]``.
+Responses are plain ``model_dump(mode="json")``; the custom dict-returning
+handlers return their dicts verbatim.
 
 Commit semantics:
   * Challonge: ``import_tournament`` / ``export_tournament`` / ``auto_push_on_confirm``
@@ -21,14 +14,13 @@ Commit semantics:
     internally; the get/catalog/suggest/preview/export functions are read-only.
   * Division grid: the WRITE service functions (create_grid, create_version,
     update_version, delete_version, publish_version, clone_version,
-    upsert_mapping, import_division_grids) do NOT commit internally — the HTTP
-    routes commit explicitly, so the matching handlers add ``await session.commit()``
-    in the SAME place. The read functions do not commit.
+    upsert_mapping, import_division_grids) do NOT commit internally, so the
+    matching handlers ``await session.commit()`` themselves. The reads do not
+    commit.
 
-S3 (division grid marketplace import): the route uses ``request.app.state.s3``;
-over RPC there is no request.app, so the client comes from ``src.rpc._s3.get_s3``
-— one lazily-started, process-wide ``S3Client`` shared with the other S3-using
-subscriber modules.
+S3 (division grid marketplace import): the client comes from
+``src.rpc._s3.get_s3`` — one lazily-started, process-wide ``S3Client`` shared
+with the other S3-using subscriber modules.
 """
 
 from __future__ import annotations
@@ -36,24 +28,18 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-import sqlalchemy as sa
 from faststream.rabbit.annotations import RabbitMessage
-from sqlalchemy.orm import selectinload
 
-from shared import quota
+from shared import models, quota
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.domain.roster import flex_role_mode
-from shared.repository import TournamentRepository, WorkspaceRepository
+from shared.repository import WorkspaceRepository
 from shared.rpc.identity import ensure_workspace_permission
 from shared.services.audit import record_admin_audit
 from shared.services.division_grid.access import (
-    get_effective_division_grid,
     require_grid_version_read_access,
     require_marketplace_source_access,
 )
-from shared.services.roster import roster_engine
-from shared.services.roster_shape_access import get_effective_roster_shape
-from src import models, schemas
+from src import schemas
 from src.clients.challonge import challonge_client
 from src.core import auth
 from src.rpc._helpers import _bool, _dump, _identity, _path_int, _payload, _q1, _require_id, _require_q1, _run
@@ -65,13 +51,18 @@ from src.services.division_grid import marketplace as division_grid_marketplace
 from src.services.division_grid import portable as division_grid_portable
 from src.services.division_grid.service import division_grid_service
 from src.services.registration import sheet_sync
+from src.services.registration.player_export import (
+    PLAYER_EXPORT_DEFAULT_FORMAT,
+    PLAYER_EXPORT_FORMATS,
+    player_export_service,
+)
 from src.services.registration.serializers import serialize_feed
 from src.services.tournament import flows as tournament_flows
 
 _workspace_repo = WorkspaceRepository()
 
 
-# --- division-grid route-local helpers (replicate division_grid.py verbatim) -
+# --- division-grid helpers ---------------------------------------------------
 
 
 async def _get_workspace_or_404(session: Any, workspace_id: int) -> models.Workspace:
@@ -91,6 +82,15 @@ async def require_workspace_permission(
     if not user.has_workspace_permission(workspace_id, "division_grid", action):
         raise HTTPException(status_code=403, detail=f"Permission denied: division_grid.{action} required")
     return await _get_workspace_or_404(session, workspace_id)
+
+
+def _version_read(version: Any, discipline: str | None = None) -> schemas.DivisionGridVersionRead:
+    """The version read, carrying its game when the grid is at hand (never a lazy load)."""
+    read = schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True)
+    if discipline is None and "grid" in vars(version):
+        discipline = version.grid.discipline
+    read.discipline = discipline
+    return read
 
 
 def _require_version_read_access(user: models.AuthUser, version: Any) -> None:
@@ -115,69 +115,14 @@ async def _get_source_workspace_or_404(
     return source_workspace
 
 
-# --- player pool export -------------------------------------------------------
-
-#: ``xv-1`` is the solver's own input contract (``player_data_file`` of
-#: ``POST /api/v1/balancer/jobs``) and is frozen; ``owt-1`` is our snapshot,
-#: a strict superset of it (see ``RosterEngine.full_export``).
-PLAYER_EXPORT_FORMATS: tuple[str, ...] = ("xv-1", "owt-1")
-PLAYER_EXPORT_DEFAULT_FORMAT = "xv-1"
-
-
-async def _owt_player_export(
-    session: Any,
-    tournament_id: int,
-    rosters: Any,
-    *,
-    include_private: bool,
-) -> dict[str, Any]:
-    """Assemble the ``owt-1`` document: rosters plus the context to replay them.
-
-    The roster shape is what makes a flex tournament exportable at all -- the
-    solver reads the flex slot count from the tournament, never from the file,
-    so a payload without it cannot be re-run anywhere else.
-    """
-    tournament = await TournamentRepository().get(session, tournament_id)
-    if tournament is None:
-        raise HTTPException(status_code=404, detail="Tournament not found")
-    workspace_id = tournament.workspace_id
-    shape = await get_effective_roster_shape(session, tournament_id=tournament_id, workspace_id=workspace_id)
-    form = await session.scalar(
-        sa.select(models.BalancerRegistrationForm)
-        # ``flex_role_mode`` reads the schema off the current version, which is
-        # never lazy-loadable in async code.
-        .options(selectinload(models.BalancerRegistrationForm.current_version))
-        .where(models.BalancerRegistrationForm.tournament_id == tournament_id)
-    )
-    grid = await get_effective_division_grid(session, workspace_id, tournament_id)
-    return roster_engine.full_export(
-        rosters,
-        shape=shape,
-        flex_role_mode=flex_role_mode(form),
-        grid=grid,
-        include_private=include_private,
-        source={
-            "tournament_id": tournament_id,
-            "tournament_name": tournament.name,
-            "workspace_id": workspace_id,
-            "scope": "pool",
-            "division_grid_version_id": grid.version_id,
-        },
-    )
-
-
-# --- envelope wrapper ---------------------------------------------------------
-
-
 def register(broker: Any, logger: Any) -> None:
     # ══ Challonge (admin) ════════════════════════════════════════════════════
-    # Prefix /challonge -> /api/v1/admin/challonge/...
 
     @broker.subscriber("rpc.tournament.challonge_fetch_tournament")
     async def _challonge_fetch_tournament(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = _identity(data)
-            # Route: Depends(require_permission("challonge", "read")) — global permission.
+            # A global permission, not a workspace one.
             if not user.has_permission("challonge", "read"):
                 raise HTTPException(status_code=403, detail="Permission denied: challonge.read required")
             tournament_slug = _q1(data, "tournament_slug")
@@ -218,7 +163,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             tournament_id = _require_id(data)
-            # Route: Depends(require_tournament_permission("challonge", "update")).
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="challonge", action="update"
             )
@@ -279,7 +223,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            # Route: Depends(require_encounter_permission("challonge", "update")).
             ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
             ensure_workspace_permission(user, ws_id, "challonge", "update")
             # auto_push_on_confirm commits internally.
@@ -303,7 +246,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             tournament_id = _require_id(data)
-            # Route: Depends(require_tournament_permission("challonge", "read")).
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="challonge", action="read"
             )
@@ -336,8 +278,6 @@ def register(broker: Any, logger: Any) -> None:
 
     @broker.subscriber("rpc.tournament.challonge_create_tournament")
     async def _challonge_create_tournament(data: dict, msg: RabbitMessage) -> dict:
-        # Bootstrap importer, formerly rpc.parser.tournament.create_with_groups.
-        # POST /api/v1/tournament/create/with_groups (query params) — workspace tournament.create.
         async def op(session: Any) -> Any:
             user = _identity(data)
             workspace_id = _require_q1(data, "workspace_id", int)
@@ -346,6 +286,8 @@ def register(broker: Any, logger: Any) -> None:
             start_date = _require_q1(data, "start_date", date.fromisoformat)
             end_date = _require_q1(data, "end_date", date.fromisoformat)
             challonge_slug = _require_q1(data, "challonge_slug")
+            # The game the imported tournament is played in: the caller's explicit choice, never a default.
+            discipline = _require_q1(data, "discipline")
             division_grid_version_id = _q1(data, "division_grid_version_id", int)
             # create_tournament_from_challonge commits, so the row is staged before
             # it: the tournament id does not exist yet, the request is the story.
@@ -359,6 +301,7 @@ def register(broker: Any, logger: Any) -> None:
                 entity_label=challonge_slug,
                 after={
                     "challonge_slug": challonge_slug,
+                    "discipline": discipline,
                     "is_league": is_league,
                     "start_date": start_date,
                     "end_date": end_date,
@@ -369,6 +312,7 @@ def register(broker: Any, logger: Any) -> None:
             tournament = await tournament_admin_service.tournament_service.create_tournament_from_challonge(
                 session,
                 workspace_id=workspace_id,
+                discipline=discipline,
                 is_league=is_league,
                 start_date=start_date,
                 end_date=end_date,
@@ -385,8 +329,6 @@ def register(broker: Any, logger: Any) -> None:
 
     @broker.subscriber("rpc.tournament.challonge_team_preview")
     async def _challonge_team_preview(data: dict, msg: RabbitMessage) -> dict:
-        # Bootstrap importer, formerly rpc.parser.teams.challonge_preview.
-        # GET /api/v1/teams/challonge/preview — challonge.read on the tournament's workspace.
         async def op(session: Any) -> Any:
             user = _identity(data)
             tournament_id = _require_q1(data, "tournament_id", int)
@@ -399,8 +341,6 @@ def register(broker: Any, logger: Any) -> None:
 
     @broker.subscriber("rpc.tournament.challonge_team_apply")
     async def _challonge_team_apply(data: dict, msg: RabbitMessage) -> dict:
-        # Bootstrap importer, formerly rpc.parser.teams.create_challonge.
-        # POST /api/v1/teams/create/challonge — challonge.update on the tournament's workspace.
         async def op(session: Any) -> Any:
             user = _identity(data)
             tournament_id = _require_q1(data, "tournament_id", int)
@@ -425,14 +365,12 @@ def register(broker: Any, logger: Any) -> None:
         return await _run(logger, op)
 
     # ══ Registration Google Sheets (admin) ═══════════════════════════════════
-    # Prefix /balancer -> /api/v1/admin/balancer/...
 
     @broker.subscriber("rpc.tournament.sheet_get")
     async def _sheet_get(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = _identity(data)
             tournament_id = _require_id(data)
-            # Route: Depends(require_tournament_permission("team", "read")).
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="team", action="read"
             )
@@ -448,7 +386,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             tournament_id = _require_id(data)
-            # Route: Depends(require_tournament_permission("team", "create")).
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="team", action="create"
             )
@@ -488,7 +425,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             tournament_id = _require_id(data)
-            # Route: Depends(require_tournament_permission("team", "create")).
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="team", action="create"
             )
@@ -529,7 +465,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             tournament_id = _require_id(data)
-            # Route: Depends(require_tournament_permission("team", "read")).
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="team", action="read"
             )
@@ -546,7 +481,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             tournament_id = _require_id(data)
-            # Route: Depends(require_tournament_permission("team", "read")).
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="team", action="read"
             )
@@ -568,7 +502,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             tournament_id = _require_id(data)
-            # Route: Depends(require_tournament_permission("team", "read")).
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="team", action="read"
             )
@@ -590,7 +523,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             tournament_id = _require_id(data)
-            # Route: Depends(require_tournament_permission("player", "read")).
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="player", action="read"
             )
@@ -607,30 +539,22 @@ def register(broker: Any, logger: Any) -> None:
             # client replays the balancer job's heaviest read on every call.
             # Charged after the format check so a malformed request costs nothing.
             await quota.charge(user, "tournament.sheet_players_export", workspace_id=ws_id)
-            # One payload, one source: the same rosters the balance job and the
-            # draft read, serialized by the engine rather than re-derived here.
-            rosters = await roster_engine.for_tournament(session, tournament_id, pool_only=True)
-            if export_format == "xv-1":
-                payload = roster_engine.balancer_input(rosters.values())
-            else:
-                payload = await _owt_player_export(
-                    session,
-                    tournament_id,
-                    rosters.values(),
-                    include_private=bool(_q1(data, "include_private", _bool, default=False)),
-                )
+            payload = await player_export_service.export(
+                session,
+                tournament_id,
+                export_format=export_format,
+                include_private=bool(_q1(data, "include_private", _bool, default=False)),
+            )
             return _dump(schemas.BalancerPlayerExportResponse(**payload))
 
         return await _run(logger, op)
 
     # ══ Division grids (PUBLIC — NOT under /admin) ════════════════════════════
-    # Prefix /division-grids -> /api/v1/division-grids/...
     #
-    # Auth split: every route here has Depends(auth.get_current_active_user) in
-    # the HTTP service, so ALL division-grid endpoints require an authenticated
-    # user. The two "open" reads (get_version, get_mapping) still require auth but
-    # NOT a workspace permission. The remaining reads/writes additionally enforce
-    # the division_grid.<action> workspace permission via require_workspace_permission.
+    # Auth split: every division-grid subject requires an authenticated user.
+    # The two "open" reads (get_version, get_mapping) need no workspace
+    # permission; the rest enforce division_grid.<action> via
+    # require_workspace_permission.
 
     @broker.subscriber("rpc.tournament.grid_workspace_list")
     async def _grid_workspace_list(data: dict, msg: RabbitMessage) -> dict:
@@ -639,7 +563,15 @@ def register(broker: Any, logger: Any) -> None:
             workspace_id = _path_int(data, "workspace_id")
             await require_workspace_permission(workspace_id, session=session, user=user, action="read")
             grids = await division_grid_service.get_workspace_grids(session, workspace_id)
-            return [_dump(schemas.DivisionGridRead.model_validate(grid, from_attributes=True)) for grid in grids]
+            counts = await division_grid_service.get_grid_tournament_counts(session, workspace_id)
+            return [
+                _dump(
+                    schemas.DivisionGridRead.model_validate(grid, from_attributes=True).model_copy(
+                        update={"tournament_count": counts.get(grid.id, 0)}
+                    )
+                )
+                for grid in grids
+            ]
 
         return await _run(logger, op)
 
@@ -662,7 +594,7 @@ def register(broker: Any, logger: Any) -> None:
                 entity_label=grid.name,
                 after={"slug": grid.slug, "name": grid.name, "description": grid.description},
             )
-            await session.commit()  # route commits explicitly (service does not).
+            await session.commit()
             return _dump(schemas.DivisionGridRead.model_validate(grid, from_attributes=True))
 
         return await _run(logger, op)
@@ -717,8 +649,8 @@ def register(broker: Any, logger: Any) -> None:
                 before={"name": grid_name},
                 after={"force": force},
             )
-            await session.commit()  # route commits explicitly (service does not).
-            return None  # route returns 204 (no body).
+            await session.commit()
+            return None
 
         return await _run(logger, op)
 
@@ -832,7 +764,7 @@ def register(broker: Any, logger: Any) -> None:
                     source_grids=source_grids,
                     source_version_id=body.source_version_id,
                     include_icons=body.include_icons,
-                    include_ow_rank_mappings=body.include_ow_rank_mappings,
+                    include_native_rank_mappings=body.include_native_rank_mappings,
                 )
             )
 
@@ -865,7 +797,7 @@ def register(broker: Any, logger: Any) -> None:
                 source_grids=source_grids,
                 source_version_id=body.source_version_id,
                 include_icons=body.include_icons,
-                include_ow_rank_mappings=body.include_ow_rank_mappings,
+                include_native_rank_mappings=body.include_native_rank_mappings,
             )
             job = await division_grid_import_jobs.import_jobs_service.create_import_job(
                 session,
@@ -875,7 +807,7 @@ def register(broker: Any, logger: Any) -> None:
                 source_grid_id=body.source_grid_id,
                 source_version_id=body.source_version_id,
                 include_icons=body.include_icons,
-                include_ow_rank_mappings=body.include_ow_rank_mappings,
+                include_native_rank_mappings=body.include_native_rank_mappings,
                 source_fingerprint=preflight.source_fingerprint,
             )
             await record_admin_audit(
@@ -891,7 +823,7 @@ def register(broker: Any, logger: Any) -> None:
                     "source_workspace_id": source_workspace.id,
                     "source_version_id": body.source_version_id,
                     "include_icons": body.include_icons,
-                    "include_ow_rank_mappings": body.include_ow_rank_mappings,
+                    "include_native_rank_mappings": body.include_native_rank_mappings,
                 },
             )
             await session.commit()
@@ -940,10 +872,7 @@ def register(broker: Any, logger: Any) -> None:
             grid = await division_grid_service.get_grid_by_id(session, grid_id)
             await require_workspace_permission(grid.workspace_id, session=session, user=user, action="read")
             versions = await division_grid_service.get_versions(session, grid.workspace_id, grid_id)
-            return [
-                _dump(schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True))
-                for version in versions
-            ]
+            return [_dump(_version_read(version, grid.discipline)) for version in versions]
 
         return await _run(logger, op)
 
@@ -972,8 +901,8 @@ def register(broker: Any, logger: Any) -> None:
                     "tier_count": len(body.tiers),
                 },
             )
-            await session.commit()  # route commits explicitly (service does not).
-            return _dump(schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True))
+            await session.commit()
+            return _dump(_version_read(version))
 
         return await _run(logger, op)
 
@@ -984,7 +913,7 @@ def register(broker: Any, logger: Any) -> None:
             version_id = _require_id(data)
             version = await division_grid_service.get_version(session, version_id)
             _require_version_read_access(user, version)
-            return _dump(schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True))
+            return _dump(_version_read(version))
 
         return await _run(logger, op)
 
@@ -1015,8 +944,8 @@ def register(broker: Any, logger: Any) -> None:
                     "tier_count": len(body.tiers) if body.tiers is not None else None,
                 },
             )
-            await session.commit()  # route commits explicitly (service does not).
-            return _dump(schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True))
+            await session.commit()
+            return _dump(_version_read(version))
 
         return await _run(logger, op)
 
@@ -1040,8 +969,8 @@ def register(broker: Any, logger: Any) -> None:
                 entity_label=label,
                 before={"label": label, "status": status},
             )
-            await session.commit()  # route commits explicitly (service does not).
-            return None  # route returns 204 (no body).
+            await session.commit()
+            return None
 
         return await _run(logger, op)
 
@@ -1065,8 +994,8 @@ def register(broker: Any, logger: Any) -> None:
                 entity_label=version.label,
                 after={"status": version.status, "published_at": version.published_at},
             )
-            await session.commit()  # route commits explicitly (service does not).
-            return _dump(schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True))
+            await session.commit()
+            return _dump(_version_read(version))
 
         return await _run(logger, op)
 
@@ -1116,7 +1045,7 @@ def register(broker: Any, logger: Any) -> None:
                 after={"grid_id": version.grid_id, "status": version.status},
             )
             await session.commit()
-            return _dump(schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True))
+            return _dump(_version_read(version))
 
         return await _run(logger, op)
 
@@ -1144,7 +1073,7 @@ def register(broker: Any, logger: Any) -> None:
                     "tier_count": len(body.tiers),
                 },
             )
-            await session.commit()  # route commits explicitly (service does not).
+            await session.commit()
             return _dump(
                 schemas.DivisionGridSaveResult(
                     mode=outcome.mode,
@@ -1177,8 +1106,8 @@ def register(broker: Any, logger: Any) -> None:
                 entity_label=cloned.label,
                 after={"source_version_id": version_id, "grid_id": cloned.grid_id, "label": cloned.label},
             )
-            await session.commit()  # route commits explicitly (service does not).
-            return _dump(schemas.DivisionGridVersionRead.model_validate(cloned, from_attributes=True))
+            await session.commit()
+            return _dump(_version_read(cloned))
 
         return await _run(logger, op)
 
@@ -1231,7 +1160,7 @@ def register(broker: Any, logger: Any) -> None:
                     "rule_count": len(body.rules),
                 },
             )
-            await session.commit()  # route commits explicitly (service does not).
+            await session.commit()
             return _dump(schemas.DivisionGridMappingRead.model_validate(mapping, from_attributes=True))
 
         return await _run(logger, op)

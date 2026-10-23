@@ -15,14 +15,14 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 from sqlalchemy.orm import configure_mappers  # noqa: E402
 
-import src.models  # noqa: E402,F401  (import registers all models)
-from shared.models.balancer import draft as draft_models  # noqa: E402
-from shared.models.balancer.draft import (  # noqa: E402
+import shared.models  # noqa: E402,F401  (import registers all models)
+from shared.models.draft import (  # noqa: E402
     DraftPick,
     DraftPlayer,
     DraftSession,
     DraftTeam,
 )
+from shared.models.draft import draft as draft_models  # noqa: E402
 from shared.models.tenancy.workspace import WorkspaceMember  # noqa: E402
 from src.domain.draft import rules  # noqa: E402
 
@@ -32,9 +32,9 @@ def test_mappers_configure_cleanly() -> None:
     configure_mappers()
 
 
-def test_tables_live_in_balancer_schema() -> None:
+def test_tables_live_in_draft_schema() -> None:
     for model in (DraftSession, DraftTeam, DraftPlayer, DraftPick):
-        assert model.__table__.schema == "balancer"
+        assert model.__table__.schema == "draft"
 
 
 def test_session_has_partial_unique_active_index() -> None:
@@ -83,7 +83,7 @@ def test_draft_audit_event_keeps_private_before_after_reason() -> None:
     if DraftAuditEvent is None:
         pytest.fail("DraftAuditEvent model is not implemented")
     table = DraftAuditEvent.__table__
-    assert table.schema == "balancer"
+    assert table.schema == "draft"
     assert {
         "session_id",
         "actor_auth_user_id",
@@ -124,7 +124,7 @@ def test_unique_constraints_present() -> None:
 # row is draft state plus the FK, and these DB-free tests pin exactly that, so
 # a re-added column cannot pass unnoticed.
 # --------------------------------------------------------------------------- #
-def test_seat_is_anchored_on_a_registration_and_carries_no_roles_or_ranks() -> None:
+def test_seat_is_anchored_on_a_registration_or_a_member_and_carries_no_roles_or_ranks() -> None:
     columns = set(DraftPlayer.__table__.columns.keys())
 
     assert columns == {
@@ -139,11 +139,14 @@ def test_seat_is_anchored_on_a_registration_and_carries_no_roles_or_ranks() -> N
         "drafted_by_team_id",
         # Draft state, not a copy: which of the captain's OWN roles the
         # organizer seated them on. The ranks stay on the registration.
-        "captain_role",
+        "captain_role_id",
+        "dimension_id",
         "version",
     }
     registration_id = DraftPlayer.__table__.c.registration_id
-    assert registration_id.nullable is False
+    # A mix seat has no registration (spec §9.1): its member is the anchor, and a seat names at least one of the two.
+    assert registration_id.nullable is True
+    assert "ck_draft_player_identity" in {c.name for c in DraftPlayer.__table__.constraints}
     # RESTRICT: a registration is soft-deleted, so a hard delete is somebody
     # erasing a row a draft depends on. Refusing beats dropping draft history.
     assert registration_id.foreign_keys.pop().ondelete == "RESTRICT"
@@ -158,7 +161,7 @@ def test_draft_player_role_tables_are_gone() -> None:
     # The draft's roles snapshot is what went stale; nothing may reintroduce it.
     assert not hasattr(draft_models, "DraftPlayerRole")
     assert not hasattr(draft_models, "DraftPlayerRoleHero")
-    assert "draft_player_role" not in {table.name for table in DraftPlayer.metadata.tables.values()}
+    assert "draft.player_role" not in DraftPlayer.metadata.tables
 
 
 def test_seat_resolves_its_domain_player_through_its_member() -> None:

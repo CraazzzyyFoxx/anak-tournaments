@@ -4,11 +4,13 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     String,
     Text,
@@ -21,6 +23,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from shared.core import db
 
 if TYPE_CHECKING:
+    from shared.models.catalog.role import CatalogRole
     from shared.models.identity.auth_user import AuthUser
     from shared.models.tenancy.workspace import Workspace
     from shared.models.tournament.tournament import Tournament
@@ -73,10 +76,8 @@ class WorkspaceBalancerConfig(db.TimeStampIntegerMixin):
 class UserBalancerConfig(db.TimeStampIntegerMixin):
     """One account's own mix settings, applied to every mix it hosts.
 
-    These used to sit on the mix (``custom_game.*``), which made a host re-enter
-    the same preferences every pickup session -- they describe how this person
-    runs their mixes, not what happened in one lobby, so they belong to the
-    account. ``config_json`` is exactly the solver-override blob the mix engine
+    They describe how this person runs their mixes, not what happened in one
+    lobby, so they belong to the account. ``config_json`` is exactly the solver-override blob the mix engine
     reads (``mix_comfort_tilt``, ``role_settings.<role>.mix_weight``, ``max_result_variants``),
     so it reaches the solver untouched; a knob the user never set is an absent
     key, never an explicit null, and an untouched account stores ``{}``.
@@ -91,19 +92,6 @@ class UserBalancerConfig(db.TimeStampIntegerMixin):
 
     user_id: Mapped[int] = mapped_column(ForeignKey("auth.user.id", ondelete="CASCADE"), index=True)
     config_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}", default=dict)
-    # Columns of their own, deliberately NOT keys inside ``config_json``: that
-    # blob is handed to the solver verbatim as overrides, and neither of these
-    # is one. The roster shape is the shape of the thing being built -- the
-    # runtime applies it *after* the overrides so a saved config can never
-    # contradict it (``_prepare_balance_context``) -- and the points knob never
-    # reaches the solver at all: it moves the host's rank book once a match is
-    # recorded. Folding either into the blob would smuggle a non-override key
-    # into the engine's input.
-    #
-    # Normalized on write (``normalize_roster_slots``), so the stored map can
-    # never hold a zero count; NULL means "no shape of my own", which falls
-    # through to the workspace default and then the built-in Overwatch 5v5.
-    role_slots_json: Mapped[dict[str, int] | None] = mapped_column(JSONB, nullable=True)
     # How far a decided match moves both teams' ranks in this host's own book.
     # NULL (the wire's ``0`` or ``null``) means recording a match touches no
     # ranks at all.
@@ -112,6 +100,12 @@ class UserBalancerConfig(db.TimeStampIntegerMixin):
     # recorded. ``ranker`` ignores ``points_per_win`` (kept, so switching back
     # restores it) and balances this host's mixes on the effective rating.
     rating_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="points", server_default="points")
+    # ``{discipline code: preset code}``: the hero ban preset a new mix of that game starts with (spec §4.3).
+    hero_ban_presets: Mapped[dict[str, str]] = mapped_column(JSONB, nullable=False, server_default="{}", default=dict)
+    # ``{discipline code: {"team_formation": ..., "draft_pick_seconds": ...}}``: how a new mix of that game forms teams.
+    formation_defaults: Mapped[dict[str, dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, server_default="{}", default=dict
+    )
 
 
 class BalancerBalance(db.TimeStampIntegerMixin):
@@ -197,17 +191,32 @@ class BalancerTeamSlot(db.TimeStampIntegerMixin):
     """One player's slot in a balanced team (replaces roster_json)."""
 
     __tablename__ = "team_slot"
-    __table_args__ = ({"schema": "balancer"},)
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["role_id", "dimension_id"],
+            ["catalog.role.id", "catalog.role.dimension_id"],
+            name="fk_team_slot_role",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+        {"schema": "balancer"},
+    )
 
     team_id: Mapped[int] = mapped_column(ForeignKey("balancer.team.id", ondelete="CASCADE"), index=True)
     # Durable identity link to the balanced player. Registrations are mutable and
     # tournament-scoped, so a saved historical balance keeps the normalized battle
     # tag rather than a hard FK; resolve to a registration at query time if needed.
     battle_tag_normalized: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
-    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    dimension_id: Mapped[int | None] = mapped_column(BigInteger)
+    role_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    role_row: Mapped[CatalogRole | None] = relationship(lazy="joined", foreign_keys=[role_id])
     assigned_rank: Mapped[int] = mapped_column(Integer(), nullable=False)
     discomfort: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
     is_captain: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     sort_order: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
 
     team: Mapped[BalancerTeam] = relationship(back_populates="slots")
+
+    @property
+    def role(self) -> str | None:
+        return self.role_row.code if self.role_row is not None else None

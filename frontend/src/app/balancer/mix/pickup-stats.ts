@@ -1,17 +1,18 @@
-import type { MixMemberStats } from "@/services/custom-game.service";
+import type { MixMemberStats, MixOutcome, MixRoleTally, MixStatsResponse } from "@/services/custom-game.service";
 
 /**
- * The leaderboard's own arithmetic, apart from the component that renders it:
- * which window is being read, who is eligible to appear, and how a record
- * reads as one string. Nothing here touches the server -- the counting itself
- * is the endpoint's job.
+ * The scoreboard's own arithmetic, apart from the components that render it:
+ * which window is being read, how one person's records from several
+ * communities become one row, and how a record reads as one string. The
+ * counting itself is the endpoint's job; only the cross-community join is
+ * done here, because each community is read on its own.
  */
 
 /** The windows a reader can put the record in, widest first. */
 export const STATS_PERIODS = [
-  { key: "all", label: "All time", days: null },
-  { key: "30d", label: "30 days", days: 30 },
-  { key: "7d", label: "7 days", days: 7 },
+  { key: "all", days: null },
+  { key: "30d", days: 30 },
+  { key: "7d", days: 7 },
 ] as const;
 
 export type StatsPeriodKey = (typeof STATS_PERIODS)[number]["key"];
@@ -29,28 +30,138 @@ export function sinceFor(period: StatsPeriodKey, now: Date): string | null {
 /** Below this a record is noise — one lucky night would top the board. */
 export const LEADERBOARD_MIN_GAMES = 3;
 
-/**
- * The rows worth ranking. Server order is kept as-is: the endpoint already
- * sorted by wins, then win rate, then games, and re-sorting here would only
- * risk disagreeing with it.
- */
-export function leaderboardRows(members: MixMemberStats[], minGames: number): MixMemberStats[] {
-  return members.filter((member) => member.games >= minGames);
+/** The server sends at most this many results per member; a merged form keeps the same window. */
+const FORM_LIMIT = 10;
+
+/** One person on the scoreboard: a player's records from every community read, added up. */
+export type RatedPlayer = {
+  /** `p:<player id>`, or `m:<workspace>:<member>` for a member who can no longer be resolved to a player. */
+  key: string;
+  playerId: number | null;
+  /** Their game handle where any community knows it, else the nickname of the community they played most in. */
+  name: string;
+  games: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  /** `wins / games` as a share. */
+  winRate: number;
+  /** `+n` wins / `-n` losses in a row from the newest match, 0 after a draw. */
+  streak: number;
+  /** The run fills the whole merged form window: it is at least `streak` long, maybe longer. */
+  streakOpen: boolean;
+  /** Newest first, at most `FORM_LIMIT`. */
+  form: MixOutcome[];
+  lastPlayedAt: string | null;
+  /** Summed per-role split; `null` across games, where role codes of different games are different roles. */
+  byRole: Record<string, MixRoleTally> | null;
+};
+
+export type StatsSource = { workspaceId: number; stats: MixStatsResponse };
+
+function run(form: readonly MixOutcome[]): number {
+  const newest = form[0];
+  if (newest === undefined || newest === "draw") return 0;
+  let length = 0;
+  while (length < form.length && form[length] === newest) length += 1;
+  return newest === "win" ? length : -length;
 }
 
-/** `W3`/`L2`, or nothing at all: a streak of zero is a state, not a badge. */
-export function formatStreak(streak: number): string | null {
+function addRoles(
+  into: Record<string, MixRoleTally> | null,
+  from: Record<string, MixRoleTally> | null
+): Record<string, MixRoleTally> | null {
+  if (into === null || from === null) return into ?? from;
+  const out = { ...into };
+  for (const [role, tally] of Object.entries(from)) {
+    const known = out[role];
+    out[role] = known
+      ? {
+          games: known.games + tally.games,
+          wins: known.wins + tally.wins,
+          losses: known.losses + tally.losses,
+          draws: known.draws + tally.draws,
+        }
+      : tally;
+  }
+  return out;
+}
+
+/**
+ * Every community's scoreboard joined into one, best record first.
+ *
+ * Members are joined by `player_id`: a membership is per community, the player
+ * behind it is global. Totals add up; the form is the newest `FORM_LIMIT`
+ * results across all of them, by when each was recorded (match ids only break a
+ * tie: a match's id is fixed when it starts). A one-community player keeps the server's exact
+ * form and streak; a joined one counts it from the merged form, which is exact unless
+ * the run fills the whole window -- then it is only known to be at least that
+ * long (`streakOpen`).
+ */
+export function mergeMixStats(sources: readonly StatsSource[]): RatedPlayer[] {
+  const groups = new Map<string, MixMemberStats[]>();
+  for (const { workspaceId, stats } of sources) {
+    for (const member of stats.members) {
+      const key =
+        member.player_id != null ? `p:${member.player_id}` : `m:${workspaceId}:${member.workspace_member_id}`;
+      const group = groups.get(key);
+      if (group) group.push(member);
+      else groups.set(key, [member]);
+    }
+  }
+
+  const players: RatedPlayer[] = [];
+  for (const [key, members] of groups) {
+    const byGames = [...members].sort((a, b) => b.games - a.games);
+    const games = members.reduce((sum, member) => sum + member.games, 0);
+    const wins = members.reduce((sum, member) => sum + member.wins, 0);
+    const single = members.length === 1;
+    // One community's form is already in the server's exact recording order; only a merge re-sorts.
+    // ponytail: Date.parse keeps milliseconds, so two communities' results recorded in the same millisecond fall
+    // back to match id (Start order); send a server-side sort key if that ever matters.
+    const entries = (
+      single
+        ? members[0].form
+        : members
+            .flatMap((member) => member.form)
+            .sort((a, b) => Date.parse(b.recorded_at) - Date.parse(a.recorded_at) || b.match_id - a.match_id)
+    ).slice(0, FORM_LIMIT);
+    const form = entries.map((entry) => entry.outcome);
+    const streak = single ? members[0].streak : run(form);
+    players.push({
+      key,
+      playerId: members[0].player_id,
+      name:
+        byGames.find((member) => member.identity?.handle)?.identity?.handle ??
+        byGames.find((member) => member.display_name)?.display_name ??
+        `#${byGames[0].workspace_member_id}`,
+      games,
+      wins,
+      losses: members.reduce((sum, member) => sum + member.losses, 0),
+      draws: members.reduce((sum, member) => sum + member.draws, 0),
+      winRate: games > 0 ? wins / games : 0,
+      streak,
+      streakOpen: !single && Math.abs(streak) === FORM_LIMIT && games > FORM_LIMIT,
+      form,
+      lastPlayedAt: entries[0]?.played_at ?? byGames[0].last_played_at,
+      byRole: members.reduce<Record<string, MixRoleTally> | null>((roles, member) => addRoles(roles, member.by_role), null),
+    });
+  }
+
+  // The server's own order: most wins, then the better win rate, then the bigger sample, then a stable key.
+  return players.sort(
+    (a, b) => b.wins - a.wins || b.winRate - a.winRate || b.games - a.games || a.key.localeCompare(b.key)
+  );
+}
+
+/** `W3`/`L2`, `W10+` for a run longer than the window shows, or nothing at all: a streak of zero is a state. */
+export function formatStreak(streak: number, open = false): string | null {
   if (streak === 0) return null;
-  return streak > 0 ? `W${streak}` : `L${-streak}`;
+  return `${streak > 0 ? "W" : "L"}${Math.abs(streak)}${open ? "+" : ""}`;
 }
 
 /** Wins–losses, with draws appended only when there are any to report. */
-export function formatRecord(member: MixMemberStats): string {
+export function formatRecord(member: Pick<MixMemberStats, "wins" | "losses" | "draws">): string {
   const record = `${member.wins}–${member.losses}`;
   return member.draws > 0 ? `${record}–${member.draws}` : record;
-}
-
-/** The roster name if the member is still on it, their battletag if not, the raw id as a last resort. */
-export function memberLabel(member: MixMemberStats): string {
-  return member.display_name ?? member.battle_tag ?? `#${member.workspace_member_id}`;
 }

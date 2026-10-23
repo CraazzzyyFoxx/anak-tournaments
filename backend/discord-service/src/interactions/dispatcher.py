@@ -4,8 +4,7 @@ Two RPCs, in order: ``rpc.identity.discord_identity`` turns the clicking
 Discord user into the linked account's identity payload (the same shape the
 gateway injects for a signed-in request), then the action's own subject runs
 with it. No link, no call: an unlinked clicker is told how to link and nothing
-else happens. There is no identity cache here on purpose, so an unlink or a
-deactivation bites on the very next click.
+else happens.
 
 ``perform`` knows nothing about Discord responses, so a slash command can call
 it as is; ``handle`` is the button's glue: acknowledge, perform, answer the
@@ -29,14 +28,21 @@ from discord import app_commands
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from shared.domain.discord_ui import AMBER, BLUE, GREEN, RED, emoji
 from shared.messaging.rpc import request_rpc
 from shared.repository import CustomGameRepository, WorkspaceRepository
-from shared.schemas.events import DiscordActionButton, DiscordButton, DiscordCard, DiscordLinkButton
 from src.core.broker import optional_broker
 from src.interactions import copy
-from src.interactions.actions import ACTIONS, parse_setup_target, parse_voice_target, setup_target, voice_target
+from src.interactions.actions import (
+    ACTIONS,
+    parse_setup_target,
+    parse_voice_target,
+    role_letters,
+    setup_target,
+    voice_target,
+)
 from src.interactions.cards import card_view, seat_modal, settle
+from src.render.card import DiscordActionButton, DiscordButton, DiscordCard, DiscordLinkButton
+from src.ui import AMBER, BLUE, GREEN, RED, emoji
 
 __all__ = ("IDENTITY_SUBJECT", "MIX_CURRENT_SUBJECT", "MIX_HOSTED_SUBJECT", "ActionDispatcher", "Outcome")
 
@@ -50,11 +56,10 @@ MIX_HOSTED_SUBJECT = "rpc.balancer.custom.hosted_active"
 _TRANSIENT = frozenset({"unavailable", "internal", "rate_limited"})
 
 #: How long a *successful* identity answer is reused for the same Discord user.
-#: A mix panel is a chain of clicks -- open, edit roles, submit, leave -- and
-#: each one asked identity-service again for the same unchanging answer. The
-#: price: an unlink or a deactivation now bites within 30 s instead of on the
-#: very next click. Nothing destructive happens in that window that the
-#: platform call itself would not refuse on its own authorisation.
+#: A mix panel is a chain of clicks -- open, edit roles, submit, leave -- that
+#: all need the same answer. An unlink or a deactivation bites within this
+#: window; nothing destructive happens in it that the platform call itself
+#: would not refuse on its own authorisation.
 #: ponytail: per-process memory, like every other window in this service.
 IDENTITY_CACHE_TTL = 30.0
 IDENTITY_CACHE_SIZE = 2048
@@ -290,7 +295,9 @@ class ActionDispatcher:
         target = str(state.get("custom_game_id"))
 
         buttons: list[DiscordButton] = []
-        if policy.get("can_edit_roles"):
+        discipline = str(state.get("discipline") or "")
+        # A one-role game has no role form at all (spec §12.1 R3-1).
+        if policy.get("can_edit_roles") and role_letters(discipline) is not None:
             roles = seat.get("roles") if seat else None
             buttons.append(
                 DiscordActionButton(
@@ -300,7 +307,8 @@ class ActionDispatcher:
                     # opens it needs no lookup -- Discord takes no other answer.
                     target=setup_target(
                         target,
-                        roles if isinstance(roles, list) else None,
+                        discipline,
+                        [role["role"] for role in roles] if isinstance(roles, list) else None,
                         bool(seat and seat.get("is_flex")),
                     ),
                     emoji="edit",
@@ -376,8 +384,8 @@ class ActionDispatcher:
         if action_name == _SEAT_SETUP:
             # A modal is only ever the first answer to a click: no defer, no
             # lookup, nothing between the press and the form.
-            game_id, roles, is_flex = parse_setup_target(target)
-            await interaction.response.send_modal(seat_modal(locale, game_id, roles, is_flex))
+            game_id, discipline, roles, is_flex = parse_setup_target(target)
+            await interaction.response.send_modal(seat_modal(locale, game_id, discipline, roles, is_flex))
             return
         # Acknowledge first: Discord fails a click left unanswered for three
         # seconds, and two RPCs can take longer. For a button this is a silent

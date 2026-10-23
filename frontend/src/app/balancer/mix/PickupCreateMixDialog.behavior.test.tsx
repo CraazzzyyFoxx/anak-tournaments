@@ -25,6 +25,7 @@ function sampleGame(id: number, name: string): CustomGame {
   return {
     id,
     workspace_id: 1,
+    discipline: "overwatch",
     host_user_id: 10,
     co_hosts: [],
     host_display_name: "HostGuy#1234",
@@ -67,9 +68,15 @@ async function mount(
   games: CustomGame[] = [],
   props: {
     creating?: boolean;
-    onCreate?: (name: string, cloneFromGameId: number | null, workspaceId: number) => Promise<unknown>;
+    onCreate?: (
+      name: string,
+      cloneFromGameId: number | null,
+      workspaceId: number,
+      discipline: string
+    ) => Promise<unknown>;
     onClose?: () => void;
     scopedWorkspaceId?: number | null;
+    fixedDiscipline?: string | null;
   } = {}
 ) {
   const container = document.createElement("div");
@@ -85,7 +92,15 @@ async function mount(
         <Dialog open={true}>
           <PickupCreateMixDialog
             games={games}
-            workspaces={[{ id: 1, name: "Alpha" }, { id: 2, name: "Beta" }]}
+            workspaces={[
+              { id: 1, name: "Alpha", disciplines_enabled: ["overwatch", "lol"] },
+              { id: 2, name: "Beta", disciplines_enabled: ["overwatch"] }
+            ]}
+            disciplines={[
+              { code: "overwatch", name: "Overwatch" },
+              { code: "lol", name: "League of Legends" }
+            ]}
+            fixedDiscipline={props.fixedDiscipline === undefined ? "overwatch" : props.fixedDiscipline}
             scopedWorkspaceId={props.scopedWorkspaceId === undefined ? 1 : props.scopedWorkspaceId}
             creating={props.creating ?? false}
             onCreate={onCreate}
@@ -116,6 +131,20 @@ async function submit(scope: HTMLElement) {
   });
 }
 
+/** Opens the combobox behind `triggerId` and picks the option labelled `label`. */
+async function pick(scope: HTMLElement, triggerId: string, label: string) {
+  await act(async () => {
+    (scope.querySelector(`#${triggerId}`) as HTMLButtonElement).click();
+  });
+  const option = [...scope.querySelectorAll<HTMLElement>("[cmdk-item]")].find(
+    (node) => node.textContent?.trim() === label
+  );
+  if (!option) throw new Error(`Expected option ${label}`);
+  await act(async () => {
+    option.click();
+  });
+}
+
 describe("PickupCreateMixDialog", () => {
   it("prevents submission when the name is blank and focuses the input", async () => {
     const { scope, onCreate } = await mount([]);
@@ -137,7 +166,7 @@ describe("PickupCreateMixDialog", () => {
     await typeInto(input, "Friday Scrim");
     await submit(scope);
 
-    expect(onCreate).toHaveBeenCalledWith("Friday Scrim", null, 1);
+    expect(onCreate).toHaveBeenCalledWith("Friday Scrim", null, 1, "overwatch");
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -145,7 +174,7 @@ describe("PickupCreateMixDialog", () => {
     const game = sampleGame(12, "Old Scrim");
     const { scope, onCreate } = await mount([game]);
 
-    const radios = scope.querySelectorAll('input[type="radio"]');
+    const radios = scope.querySelectorAll('[role="radio"]');
     expect(radios.length).toBe(2);
 
     await act(async () => {
@@ -167,7 +196,7 @@ describe("PickupCreateMixDialog", () => {
     await typeInto(input, "Kept Name");
     await submit(scope);
 
-    expect(onCreate).toHaveBeenCalledWith("Kept Name", null, 1);
+    expect(onCreate).toHaveBeenCalledWith("Kept Name", null, 1, "overwatch");
     expect(onClose).not.toHaveBeenCalled();
     const keptInput = scope.querySelector('input[name="name"]') as HTMLInputElement;
     expect(keptInput.value).toBe("Kept Name");
@@ -180,26 +209,70 @@ describe("PickupCreateMixDialog", () => {
     const { scope, onCreate } = await mount([alpha, beta], { scopedWorkspaceId: null });
     await submit(scope);
     expect(onCreate).not.toHaveBeenCalled();
-    const select = scope.querySelector("#pickup-workspace") as HTMLSelectElement;
-    expect(select.getAttribute("aria-invalid")).toBe("true");
+    const trigger = scope.querySelector("#pickup-workspace") as HTMLButtonElement;
+    expect(trigger.getAttribute("aria-invalid")).toBe("true");
+    await pick(scope, "pickup-workspace", "Beta");
+    expect(trigger.getAttribute("aria-invalid")).toBeNull();
     await act(async () => {
-      select.value = "2";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    await act(async () => {
-      scope.querySelectorAll('input[type="radio"]')[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      scope.querySelectorAll('[role="radio"]')[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await act(async () => {
       (scope.querySelector("#pickup-clone-from") as HTMLButtonElement).click();
     });
     expect(scope.textContent).toContain("Beta mix");
     expect(scope.textContent).not.toContain("Alpha mix");
-    await act(async () => {
-      select.value = "1";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    await pick(scope, "pickup-workspace", "Alpha");
     expect(scope.querySelector("#pickup-clone-from")).toBeNull();
     await submit(scope);
-    expect(onCreate).toHaveBeenCalledWith(expect.any(String), null, 1);
+    expect(onCreate).toHaveBeenCalledWith(expect.any(String), null, 1, "overwatch");
+  });
+
+  it("names the directory's game and offers no other", async () => {
+    const { scope, onCreate } = await mount([], { fixedDiscipline: "lol" });
+    expect(scope.querySelector('#pickup-discipline[role="combobox"]')).toBeNull();
+    expect(scope.querySelector("#pickup-discipline")?.textContent).toBe("League of Legends");
+    await submit(scope);
+    expect(onCreate).toHaveBeenCalledWith(expect.any(String), null, 1, "lol");
+  });
+
+  it("refuses a directory game the community has not enabled", async () => {
+    const { scope, onCreate } = await mount([], { fixedDiscipline: "lol", scopedWorkspaceId: 2 });
+    expect(scope.textContent).toContain("This community has not enabled this game.");
+    await submit(scope);
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  it("makes the host name the game under all games and copies only from a mix of that game", async () => {
+    const owMix = sampleGame(12, "OW mix");
+    const lolMix = { ...sampleGame(14, "LoL mix"), discipline: "lol" };
+    const { scope, onCreate } = await mount([owMix, lolMix], { fixedDiscipline: null });
+    const trigger = scope.querySelector("#pickup-discipline") as HTMLButtonElement;
+    expect(trigger.textContent).toBe("Choose a game");
+    await act(async () => {
+      trigger.click();
+    });
+    expect([...scope.querySelectorAll("[cmdk-item]")].map((option) => option.textContent)).toEqual([
+      "Overwatch",
+      "League of Legends"
+    ]);
+    await act(async () => {
+      trigger.click();
+    });
+
+    await submit(scope);
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(trigger.getAttribute("aria-invalid")).toBe("true");
+    expect(scope.textContent).toContain("Choose the game this mix is for.");
+
+    await pick(scope, "pickup-discipline", "League of Legends");
+    expect(trigger.textContent).toBe("League of Legends");
+    await act(async () => {
+      scope.querySelectorAll('[role="radio"]')[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      (scope.querySelector("#pickup-clone-from") as HTMLButtonElement).click();
+    });
+    expect(scope.textContent).toContain("LoL mix");
+    expect(scope.textContent).not.toContain("OW mix");
   });
 });

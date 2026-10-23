@@ -22,7 +22,7 @@ groups:
           description: >-
             Последний успешный снимок ранга старше 30 минут, хотя сбор включён.
             Обычная причина — недоступный OverFast (см. CircuitBreakerOpen) или
-            вставший воркер parser-svc. Проверить: /admin/collectors/rank.
+            вставший stats-worker. Проверить: /admin/collectors/rank.
 
       - alert: RankCollectionNeverSucceeded
         # Отдельно от staleness: гейдж 0 означает «успеха не было никогда»,

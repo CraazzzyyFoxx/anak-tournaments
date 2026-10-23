@@ -2,10 +2,11 @@ from collections.abc import Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import TournamentLinkRepository
-from src import models, schemas
+from src import schemas
 
 _CONFLICT_DETAIL = "Tournament link with this kind and url already exists for this tournament."
 

@@ -9,8 +9,8 @@ This module is the single source of truth for:
 * row **disposition** classification (create / update / skip) used by the preview;
 * type-aware coercion of sheet values into **custom fields**.
 
-It is intentionally pure: no FastAPI, no SQLAlchemy, no network. Everything here
-is unit-testable without a database, mirroring the existing registration tests.
+It is intentionally pure -- no SQLAlchemy, no network -- so everything here is
+unit-testable without a database.
 """
 
 from __future__ import annotations
@@ -28,8 +28,6 @@ from src.domain.registration.utils import (
     parse_integer,
 )
 
-ROLE_CODES = ("tank", "damage", "support")
-
 #: Targets that are FORM ANSWERS: they reach the registration through the
 #: answer pipeline instead of straight onto a column. Everything else a sheet
 #: can map -- ``display_name``, ``admin_notes``, ``submitted_at`` and the
@@ -46,7 +44,8 @@ ANSWER_TARGET_KEYS: tuple[str, ...] = (
 #: Data, not branches: a new provider in ``IDENTITY_PROVIDERS`` only needs a row
 #: here to become mappable (and is mappable without one, minus the suggester).
 _IDENTITY_HEADERS: dict[str, tuple[str, tuple[str, ...]]] = {
-    SocialProvider.BATTLENET: ("Battle tag", ("battle tag", "battletag", "ваш battle tag", "smurf", "alt", "смурф")),
+    SocialProvider.BATTLENET: ("Battle.net", ("battle tag", "battletag", "ваш battle tag", "smurf", "alt", "смурф")),
+    SocialProvider.RIOT: ("Riot ID", ("riot id", "riotid")),
     SocialProvider.DISCORD: ("Discord", ("discord", "дискорд", "дискор")),
     SocialProvider.TWITCH: ("Twitch", ("twitch", "твич")),
     SocialProvider.BOOSTY: ("Boosty", ("boosty", "бусти")),
@@ -54,7 +53,7 @@ _IDENTITY_HEADERS: dict[str, tuple[str, tuple[str, ...]]] = {
     SocialProvider.YOUTUBE: ("YouTube", ("youtube", "ютуб")),
 }
 
-# Parser identifiers understood by ``parse_target_value`` in admin.py.
+# Parser identifiers understood by ``parse_target_value`` in sheet_parsing.py.
 PARSER_STRING = "string"
 PARSER_BATTLE_TAG = "battle_tag"
 PARSER_BATTLE_TAG_LIST = "battle_tag_list"
@@ -84,8 +83,8 @@ class ParserSpec:
 
 PARSER_CATALOG: tuple[ParserSpec, ...] = (
     ParserSpec(PARSER_STRING, "Text", "single", "string"),
-    ParserSpec(PARSER_BATTLE_TAG, "Battle tag", "single", "string"),
-    ParserSpec(PARSER_BATTLE_TAG_LIST, "Battle tag list", "multi", "list"),
+    ParserSpec(PARSER_BATTLE_TAG, "Battle.net", "single", "string"),
+    ParserSpec(PARSER_BATTLE_TAG_LIST, "Game handle list", "multi", "list"),
     ParserSpec(PARSER_BOOLEAN, "Yes / No", "single", "bool"),
     ParserSpec(PARSER_INTEGER, "Number", "single", "int"),
     ParserSpec(PARSER_DATETIME, "Date / time", "single", "datetime"),
@@ -122,16 +121,12 @@ class MappingTargetSpec:
     aliases: tuple[str, ...] = ()
 
 
-def _role_label(role_code: str) -> str:
-    return {"tank": "Tank", "damage": "Damage", "support": "Support"}[role_code]
-
-
 def _identity_specs() -> list[MappingTargetSpec]:
     """One mappable target per identity provider the form can ask about.
 
     A GAME provider's answer is a list of handles -- main first, smurfs after --
-    so its target takes several columns and parses each as a battle tag. The
-    others are single handles.
+    so its target takes several columns and parses handles for that provider.
+    The others are single handles.
     """
     specs: list[MappingTargetSpec] = []
     for provider in IDENTITY_PROVIDERS:
@@ -153,7 +148,7 @@ def _identity_specs() -> list[MappingTargetSpec]:
     return specs
 
 
-def _build_builtin_specs() -> tuple[MappingTargetSpec, ...]:
+def _build_builtin_specs(role_codes: tuple[str, ...]) -> tuple[MappingTargetSpec, ...]:
     specs: list[MappingTargetSpec] = [
         MappingTargetSpec(
             key="source_record_key",
@@ -252,8 +247,8 @@ def _build_builtin_specs() -> tuple[MappingTargetSpec, ...]:
         ),
     ]
 
-    for role_code in ROLE_CODES:
-        label = _role_label(role_code)
+    for role_code in role_codes:
+        label = role_code.replace("_", " ").title()
         specs.append(
             MappingTargetSpec(
                 key=f"roles.{role_code}.rank_value",
@@ -291,23 +286,18 @@ def _build_builtin_specs() -> tuple[MappingTargetSpec, ...]:
                 default_parser=PARSER_INTEGER,
             )
         )
-        if role_code != "tank":
-            specs.append(
-                MappingTargetSpec(
-                    key=f"roles.{role_code}.subrole",
-                    label=f"{label} sub-role",
-                    group="roles",
-                    accepted_parsers=(PARSER_SUBROLE_TOKEN,),
-                    default_parser=PARSER_SUBROLE_TOKEN,
-                )
+        specs.append(
+            MappingTargetSpec(
+                key=f"roles.{role_code}.subrole",
+                label=f"{label} sub-role",
+                group="roles",
+                accepted_parsers=(PARSER_SUBROLE_TOKEN,),
+                default_parser=PARSER_SUBROLE_TOKEN,
             )
+        )
 
     return tuple(specs)
 
-
-#: Every builtin target the engine knows HOW to parse. Not what a given
-#: tournament may bind: see :func:`builtin_target_specs`.
-_ALL_BUILTIN_SPECS: tuple[MappingTargetSpec, ...] = _build_builtin_specs()
 
 _CUSTOM_FIELD_PARSER_BY_TYPE: dict[str, str] = {
     "text": PARSER_STRING,
@@ -355,7 +345,7 @@ def schema_custom_fields(schema: FormSchema | None) -> list[FormField]:
     return [field_def for field_def in schema.fields() if not field_def.is_builtin] if schema is not None else []
 
 
-def builtin_target_specs(schema: FormSchema | None) -> tuple[MappingTargetSpec, ...]:
+def builtin_target_specs(schema: FormSchema | None, *, role_codes: tuple[str, ...]) -> tuple[MappingTargetSpec, ...]:
     """The builtin targets THIS form can receive, in catalog order.
 
     An answer target (:data:`ANSWER_TARGET_KEYS`) is offered only when the
@@ -371,16 +361,20 @@ def builtin_target_specs(schema: FormSchema | None) -> tuple[MappingTargetSpec, 
     pipeline never touches.
     """
     declared = {field_def.key for field_def in schema.fields()} if schema is not None else set()
-    return tuple(spec for spec in _ALL_BUILTIN_SPECS if spec.key not in ANSWER_TARGET_KEYS or spec.key in declared)
+    return tuple(
+        spec for spec in _build_builtin_specs(role_codes) if spec.key not in ANSWER_TARGET_KEYS or spec.key in declared
+    )
 
 
-def build_target_specs(schema: FormSchema | None = None) -> tuple[MappingTargetSpec, ...]:
+def build_target_specs(
+    schema: FormSchema | None = None, *, role_codes: tuple[str, ...]
+) -> tuple[MappingTargetSpec, ...]:
     """Every target this form can bind: its builtins plus its custom questions."""
-    return builtin_target_specs(schema) + custom_field_target_specs(schema_custom_fields(schema))
+    return builtin_target_specs(schema, role_codes=role_codes) + custom_field_target_specs(schema_custom_fields(schema))
 
 
-def target_spec_map(schema: FormSchema | None = None) -> dict[str, MappingTargetSpec]:
-    return {spec.key: spec for spec in build_target_specs(schema)}
+def target_spec_map(schema: FormSchema | None = None, *, role_codes: tuple[str, ...]) -> dict[str, MappingTargetSpec]:
+    return {spec.key: spec for spec in build_target_specs(schema, role_codes=role_codes)}
 
 
 # ---------------------------------------------------------------------------
@@ -469,7 +463,7 @@ class MappingValidationIssue:
     column: str | None = None
 
 
-IDENTITY_TARGETS = ("source_record_key", identity_key(SocialProvider.BATTLENET))
+IDENTITY_TARGETS = ("source_record_key", *(identity_key(provider) for provider in GAME_PROVIDERS))
 
 
 def _target_is_mapped(target_config: dict[str, Any] | None) -> bool:
@@ -615,7 +609,7 @@ def validate_mapping_config(
         issues.append(
             MappingValidationIssue(
                 code="missing_identity_target",
-                message="Map either 'Battle tag' or 'Record key' so rows can be matched.",
+                message="Map a game identity or 'Record key' so rows can be matched.",
             )
         )
 

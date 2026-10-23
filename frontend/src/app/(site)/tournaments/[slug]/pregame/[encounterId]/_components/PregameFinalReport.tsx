@@ -8,16 +8,19 @@ import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { MatchReportForm, matchReportDraftKey } from "@/components/tournaments/MatchReportForm";
 import { PickBanItemThumb } from "@/components/pick-ban/PickBanItemThumb";
+import type { PregameCharacterRound } from "@/disciplines/types";
 import type { Encounter } from "@/types/encounter.types";
 
-import { PregameHeroBans, type PregameHeroRound } from "./PregameHeroBans";
+import { PregameCharacterBans } from "./PregameCharacterBans";
+import type { RoomMetadata } from "./usePregameRoomData";
 
 interface PregameFinalReportProps {
   encounter: Encounter;
-  /** Null for anyone who captains neither side: the report is per-team. */
-  viewerSide: "home" | "away" | null;
+  /** The participation the viewer captains; null for anyone who captains none: the report is per-team. */
+  viewerTeamId: number | null;
   /**
    * Whether a series report exists to be filed at all. False for a scrim room:
    * it publishes no result, and the form is built from a per-tournament config
@@ -31,10 +34,11 @@ interface PregameFinalReportProps {
    * under, and a captain filing the report (or an organizer reading a dispute)
    * would otherwise have to reopen a grid that is already complete.
    */
-  heroRounds?: PregameHeroRound[];
-  /** Side names for the hero blocks, resolved by the room (it owns the fallbacks). */
-  homeName?: string;
-  awayName?: string;
+  heroRounds?: PregameCharacterRound[];
+  /**
+   * The room's game's metadata, as the bans' module slot needs it: loading, failed (with a retry) or ready.
+   */
+  metadata: RoomMetadata;
   header: ReactNode;
   /** Where the room hands the viewer back — the page they opened it from. */
   returnTo: string;
@@ -47,7 +51,7 @@ interface PregameFinalReportProps {
  * and whatever custom fields the organizer configured.
  *
  * Anyone with nothing to file — a spectator, an admin who captains neither
- * side, or a scrim captain — gets only the header and the series' ban record.
+ * team, or a scrim captain — gets only the header and the series' ban record.
  *
  * Filing it returns the viewer to `returnTo` rather than the encounter page —
  * mid-tournament the room is opened from the bracket, and that is where the
@@ -55,11 +59,10 @@ interface PregameFinalReportProps {
  */
 export function PregameFinalReport({
   encounter,
-  viewerSide,
+  viewerTeamId,
   reportable = true,
   heroRounds = [],
-  homeName,
-  awayName,
+  metadata,
   header,
   returnTo
 }: Readonly<PregameFinalReportProps>) {
@@ -67,12 +70,12 @@ export function PregameFinalReport({
   const router = useRouter();
 
   // Captains may still file reports after the official result is confirmed.
-  const settled = viewerSide == null || !reportable;
+  const settled = viewerTeamId == null || !reportable;
 
   const back = (
-    <Button variant="outline" asChild className="h-10 px-5 font-semibold">
+    <Button variant="outline" size="lg" asChild>
       <Link href={returnTo}>
-        <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
+        <ArrowLeft aria-hidden />
         {t("back")}
       </Link>
     </Button>
@@ -135,9 +138,7 @@ export function PregameFinalReport({
                         size={60}
                       />
                       <div className="flex min-w-0 flex-col">
-                        <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-                          {t("round.label", { n: block.round })}
-                        </span>
+                        <Eyebrow>{t("round.label", { n: block.round })}</Eyebrow>
                         <span
                           title={block.mapName}
                           className="truncate font-onest text-sm font-semibold"
@@ -147,12 +148,11 @@ export function PregameFinalReport({
                       </div>
                     </div>
                   )}
-                  <PregameHeroBans
+                  <PregameCharacterBans
+                    encounterId={encounter.id}
+                    metadata={metadata}
                     board={block}
-                    homeName={homeName ?? t("side.home")}
-                    awayName={awayName ?? t("side.away")}
-                    homeTeam={encounter.home_team ?? null}
-                    awayTeam={encounter.away_team ?? null}
+                    teams={encounter.teams}
                     eyebrow={null}
                     hint={null}
                   />

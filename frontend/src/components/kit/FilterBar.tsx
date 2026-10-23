@@ -2,19 +2,14 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
-import { ChevronLeft, ListFilter, Plus, X } from "lucide-react";
+import { ChevronLeft, Plus, X } from "lucide-react";
 import { useDebounce } from "use-debounce";
 
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList
-} from "@/components/ui/command";
+import { Button } from "@/components/ui/button";
+import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
+import { CommandGroup, CommandItem } from "@/components/ui/command";
 import { FilterChip } from "@/components/ui/filter-chip";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchField } from "@/components/ui/search-field";
 import {
   isFilterActive,
@@ -23,16 +18,11 @@ import {
   type FilterOption,
   type FilterValue
 } from "@/components/kit/useFilters";
-import { cn } from "@/lib/utils";
 
 export interface FilterBarProps {
   defs: FilterDef[];
   filters: FilterState;
   search?: { placeholder: string; value: string; onChange: (value: string) => void };
-  /** Chips the screen owns and the user cannot remove — the tournament inside a hub. */
-  pinned?: { key: string; label: string }[];
-  /** Saved combinations. Applied in one URL write, so they cannot half-apply. */
-  presets?: { label: string; values: Record<string, unknown> }[];
   trailing?: ReactNode;
 }
 
@@ -50,6 +40,11 @@ function optionLabel(def: FilterDef, value: string): string {
   return value;
 }
 
+/** The "no value" item of an inline select: Radix forbids an empty item value. */
+const INLINE_ALL = "__all__";
+
+type InlineDef = Extract<FilterDef, { kind: "single" }> & { inline: { allLabel: string } };
+
 /**
  * The one filter surface for the admin panel: search + removable chips + a
  * "+ Filter" popover holding everything not yet applied.
@@ -63,15 +58,14 @@ export function FilterBar({
   defs,
   filters,
   search,
-  pinned,
-  presets,
   trailing
 }: Readonly<FilterBarProps>) {
   const t = useTranslations("kit.actions");
   const [open, setOpen] = useState(false);
   const [pickerKey, setPickerKey] = useState<string | null>(null);
-  const [entityQuery, setEntityQuery] = useState("");
-  const [debouncedEntityQuery] = useDebounce(entityQuery, 250);
+  /** The picker's search field, shared by both levels; reset whenever the level changes. */
+  const [query, setQuery] = useState("");
+  const [debouncedEntityQuery] = useDebounce(query, 250);
   const [entityResults, setEntityResults] = useState<FilterOption[]>([]);
   /**
    * Labels for entity values, learnt when the user picks one. The URL carries
@@ -80,8 +74,23 @@ export function FilterBar({
    */
   const [entityLabels, setEntityLabels] = useState<Record<string, string>>({});
 
-  const pinnedKeys = new Set((pinned ?? []).map((chip) => chip.key));
-  const available = defs.filter((def) => !pinnedKeys.has(def.key));
+  /**
+   * A filter is offered only when it is a choice: a toggle, a search, or a
+   * list with two or more options. An option nobody holds is not offered.
+   */
+  const offered = defs
+    .map((def) =>
+      def.kind === "single" || def.kind === "multi"
+        ? { ...def, options: def.options.filter((option) => option.count !== 0) }
+        : def
+    )
+    .filter((def) => def.kind === "toggle" || def.kind === "entity" || def.options.length > 1);
+  // An inline filter is its own select, so it is neither a chip nor a "+ Filter" entry.
+  const inline = offered.filter(
+    (def): def is InlineDef => def.kind === "single" && def.inline !== undefined
+  );
+  const inlineKeys = new Set(inline.map((def) => def.key));
+  const available = offered.filter((def) => !inlineKeys.has(def.key));
   const picker = available.find((def) => def.key === pickerKey) ?? null;
 
   useEffect(() => {
@@ -95,15 +104,28 @@ export function FilterBar({
     };
   }, [picker, debouncedEntityQuery]);
 
+  const openLevel = (key: string | null) => {
+    setPickerKey(key);
+    setQuery("");
+  };
+
   const closePicker = () => {
     setOpen(false);
-    setPickerKey(null);
-    setEntityQuery("");
+    openLevel(null);
     setEntityResults([]);
   };
 
+  const write = (def: FilterDef, value: FilterValue | null) => {
+    const dropped = def.resets?.(value) ?? [];
+    if (dropped.length === 0) filters.set(def.key, value);
+    else filters.setMany({ ...Object.fromEntries(dropped.map((key) => [key, null])), [def.key]: value });
+  };
+
+  // Every def, not only the offered ones: a value already in the URL must
+  // stay removable even when its filter has no second option to offer.
   const chips: ActiveChip[] = [];
-  for (const def of available) {
+  for (const def of defs) {
+    if (inlineKeys.has(def.key)) continue;
     const value = filters.values[def.key];
     if (!isFilterActive(value)) continue;
 
@@ -113,8 +135,8 @@ export function FilterBar({
           id: `${def.key}:${item}`,
           label: `${def.label}: ${optionLabel(def, item)}`,
           onRemove: () =>
-            filters.set(
-              def.key,
+            write(
+              def,
               value.filter((other) => other !== item)
             )
         });
@@ -130,25 +152,36 @@ export function FilterBar({
               ? (entityLabels[`${def.key}:${value}`] ?? String(value))
               : optionLabel(def, String(value))
           }`;
-    chips.push({ id: def.key, label: shown, onRemove: () => filters.set(def.key, null) });
+    chips.push({ id: def.key, label: shown, onRemove: () => write(def, null) });
   }
 
   const selectOption = (def: FilterDef, option: FilterOption) => {
     if (def.kind === "multi") {
+      // The picker stays open: every option shows whether it is on, and a
+      // click flips just that one.
       const current = filters.values[def.key];
       const list = Array.isArray(current) ? current : [];
-      filters.set(def.key, list.includes(option.value) ? list : [...list, option.value]);
-    } else {
-      if (def.kind === "entity") {
-        setEntityLabels((previous) => ({
-          ...previous,
-          [`${def.key}:${option.value}`]: option.label
-        }));
-      }
-      filters.set(def.key, option.value);
+      write(
+        def,
+        list.includes(option.value)
+          ? list.filter((value) => value !== option.value)
+          : [...list, option.value]
+      );
+      return;
     }
+    if (def.kind === "entity") {
+      setEntityLabels((previous) => ({
+        ...previous,
+        [`${def.key}:${option.value}`]: option.label
+      }));
+    }
+    write(def, option.value);
     closePicker();
   };
+
+  const pickerValue = picker ? filters.values[picker.key] : undefined;
+  const isPicked = (option: FilterOption) =>
+    Array.isArray(pickerValue) && pickerValue.includes(option.value);
 
   /** Options for the second popover level. A `toggle` never reaches it. */
   const pickerOptions: FilterOption[] =
@@ -170,16 +203,33 @@ export function FilterBar({
         />
       ) : null}
 
-      <div role="group" aria-label={t("activeFilters")} className="flex flex-wrap items-center gap-2">
-        {(pinned ?? []).map((chip) => (
-          <span
-            key={chip.key}
-            className="aqt-filter-chip active pointer-events-none"
-            data-pinned-filter={chip.key}
+      {inline.map((def) => {
+        const value = filters.values[def.key];
+        return (
+          <Select
+            key={def.key}
+            value={typeof value === "string" && value !== "" ? value : INLINE_ALL}
+            onValueChange={(next) => write(def, next === INLINE_ALL ? null : next)}
           >
-            {chip.label}
-          </span>
-        ))}
+            <SelectTrigger size="sm" aria-label={def.label} className="w-auto min-w-36 gap-2">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={INLINE_ALL}>{def.inline.allLabel}</SelectItem>
+              {def.options.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  <span className="flex items-center gap-2">
+                    {option.icon}
+                    {option.label}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
+      })}
+
+      <div role="group" aria-label={t("activeFilters")} className="flex flex-wrap items-center gap-2">
 
         {chips.map((chip) => (
           <FilterChip
@@ -193,109 +243,88 @@ export function FilterBar({
           </FilterChip>
         ))}
 
-        <Popover
-          open={open}
-          onOpenChange={(next) => (next ? setOpen(true) : closePicker())}
-        >
-          <PopoverTrigger asChild>
-            <button type="button" className="aqt-filter-chip" aria-label={t("addFilter")}>
-              <Plus aria-hidden className="size-3" />
-              {t("filter")}
-            </button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-72 p-0">
-            {picker === null ? (
-              <Command>
-                <CommandInput placeholder={t("filterBy")} />
-                <CommandList>
-                  <CommandEmpty>{t("noFilters")}</CommandEmpty>
-                  <CommandGroup>
-                    {available.map((def) => (
-                      <CommandItem
-                        key={def.key}
-                        value={def.label}
-                        onSelect={() => {
-                          if (def.kind === "toggle") {
-                            filters.set(def.key, true);
-                            closePicker();
-                            return;
-                          }
-                          setPickerKey(def.key);
-                        }}
-                      >
-                        <ListFilter aria-hidden className="mr-2 size-3.5" />
-                        {def.label}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            ) : (
-              <Command shouldFilter={picker.kind !== "entity"}>
+        {available.length > 0 ? (
+          <Combobox
+            open={open}
+            onOpenChange={(next) => (next ? setOpen(true) : closePicker())}
+            trigger={
+              // A menu trigger, not a toggle: drop the chip's `aria-pressed`.
+              <FilterChip aria-label={t("addFilter")} aria-pressed={undefined}>
+                <Plus aria-hidden className="size-3" />
+                {t("filter")}
+              </FilterChip>
+            }
+            header={
+              picker === null ? null : (
                 <div className="flex items-center gap-1 border-b border-border/60 px-2 py-1.5">
-                  <button
+                  <Button
                     type="button"
-                    onClick={() => setPickerKey(null)}
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => openLevel(null)}
                     aria-label={t("backToFilterList")}
-                    className="flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
+                    className="text-muted-foreground"
                   >
-                    <ChevronLeft aria-hidden className="size-4" />
-                  </button>
+                    <ChevronLeft aria-hidden />
+                  </Button>
                   <span className="text-xs font-medium text-foreground">{picker.label}</span>
                 </div>
-                <CommandInput
-                  placeholder={t("searchPicker", { label: picker.label.toLowerCase() })}
-                  value={picker.kind === "entity" ? entityQuery : undefined}
-                  onValueChange={picker.kind === "entity" ? setEntityQuery : undefined}
-                />
-                <CommandList>
-                  <CommandEmpty>{t("nothingMatchesShort")}</CommandEmpty>
-                  <CommandGroup>
-                    {pickerOptions.map((option) => (
-                      <CommandItem
-                        key={option.value}
-                        value={option.label}
-                        onSelect={() => selectOption(picker, option)}
-                      >
-                        <span className="truncate">{option.label}</span>
-                        {option.count !== undefined ? (
-                          <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-                            {option.count}
-                          </span>
-                        ) : null}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            )}
-          </PopoverContent>
-        </Popover>
-
-        {(presets ?? []).map((preset) => (
-          <button
-            key={preset.label}
-            type="button"
-            className="aqt-filter-chip"
-            onClick={() =>
-              filters.setMany(preset.values as Record<string, FilterValue | null>)
+              )
             }
+            searchValue={query}
+            onSearchValueChange={setQuery}
+            searchPlaceholder={
+              picker === null ? t("filterBy") : t("searchPicker", { label: picker.label.toLowerCase() })
+            }
+            emptyMessage={picker === null ? t("noFilters") : t("nothingMatchesShort")}
+            shouldFilter={picker?.kind !== "entity"}
           >
-            {preset.label}
-          </button>
-        ))}
+            <CommandGroup>
+              {picker === null
+                ? available.map((def) => (
+                    <CommandItem
+                      key={def.key}
+                      value={def.label}
+                      onSelect={() => {
+                        if (def.kind === "toggle") {
+                          write(def, true);
+                          closePicker();
+                          return;
+                        }
+                        openLevel(def.key);
+                      }}
+                    >
+                      {def.label}
+                    </CommandItem>
+                  ))
+                : pickerOptions.map((option) => (
+                    <CommandItem
+                      key={option.value}
+                      value={option.label}
+                      onSelect={() => selectOption(picker, option)}
+                    >
+                      {option.icon}
+                      <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                      {option.count !== undefined ? (
+                        <span className="text-xs tabular-nums text-muted-foreground">{option.count}</span>
+                      ) : null}
+                      {picker.kind === "multi" ? <ComboboxCheck selected={isPicked(option)} /> : null}
+                    </CommandItem>
+                  ))}
+            </CommandGroup>
+          </Combobox>
+        ) : null}
 
-        {chips.length > 0 ? (
-          <button
+        {chips.length > 1 ? (
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={filters.clear}
-            className={cn(
-              "rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors",
-              "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            )}
+            className="text-muted-foreground"
           >
             {t("clearAll")}
-          </button>
+          </Button>
         ) : null}
       </div>
 

@@ -1,3 +1,4 @@
+import { duelSeats, duelWinner } from "@/lib/encounter/seats";
 import type { Encounter } from "@/types/encounter.types";
 
 /**
@@ -31,12 +32,8 @@ export function isEncounterCompleted(encounter: Pick<Encounter, "status">): bool
   return COMPLETED_STATUSES[encounter.status] === true;
 }
 
-export function isEncounterLive(
-  encounter: Pick<Encounter, "status" | "started_at" | "ended_at">
-): boolean {
-  return (
-    !isEncounterCompleted(encounter) && Boolean(encounter.started_at) && !encounter.ended_at
-  );
+export function isEncounterLive(encounter: Pick<Encounter, "is_live">): boolean {
+  return encounter.is_live;
 }
 
 export function getEncounterState(encounter: Encounter, now = new Date()): EncounterState {
@@ -48,9 +45,20 @@ export function getEncounterState(encounter: Encounter, now = new Date()): Encou
   return "Open";
 }
 
-/** Winner side, or `null` while the series is unfinished or drawn. */
-export function getEncounterWinner(encounter: Encounter): "home" | "away" | null {
+/**
+ * Slot (1 or 2) of the seat that won the duel, or `null` while the series is
+ * unfinished or drawn. A seat's `placement` decides when the writer set one;
+ * otherwise the higher standing does.
+ */
+export function getEncounterWinner(encounter: {
+  status: string;
+  teams: readonly { slot: number; score: number; placement?: number | null }[];
+}): 1 | 2 | null {
   if (!isEncounterCompleted(encounter)) return null;
-  if (encounter.score.home === encounter.score.away) return null;
-  return encounter.score.home > encounter.score.away ? "home" : "away";
+  const [one, two] = duelSeats(encounter.teams);
+  if (one == null || two == null) return null;
+  if (one.placement != null && two.placement != null && one.placement !== two.placement) {
+    return one.placement < two.placement ? 1 : 2;
+  }
+  return duelWinner({ one: one.score, two: two.score });
 }

@@ -16,32 +16,35 @@ import type { FieldRendererContext } from "@/components/forms/types";
 import { SaveBar } from "@/components/kit/SaveBar";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { SortableGrip, useSortableRow } from "@/components/kit/SortableRows";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { registrationRenderers } from "@/components/registration/registrationRenderers";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import { RowButton } from "@/components/ui/row-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useDragSensors } from "@/hooks/useDragSensors";
 import { defaultFormSchema } from "@/lib/forms/default-schema";
 import { fieldErrorsFrom } from "@/lib/forms/form-errors";
 import { makeUniqueFieldKey } from "@/lib/forms/keys";
 import { notify } from "@/lib/notify";
 import { toRegistrationFormUpsert } from "@/lib/registration/form-upsert";
-import { ROLES, canonicalToRegistrationRole } from "@/lib/roster/roles";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import balancerAdminService from "@/services/balancer-admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { AdminRegistrationForm } from "@/types/balancer-admin.types";
+import type { DisciplineMetadata } from "@/types/discipline.types";
 import type { FieldKind, FormField, FormSchema } from "@/types/forms.types";
 
 import { AddFieldMenu, newBuiltinField, newCustomField } from "./_components/AddFieldMenu";
 import { FieldEditor } from "./_components/FieldEditor";
-import type { CatalogEntry, SubroleCatalogByRole } from "./_components/RolesParamsEditor";
+import type { SubroleCatalogByRole } from "./_components/RolesParamsEditor";
 import { FIELD_DRAG_PREFIX, SECTION_DRAG_PREFIX, SectionList } from "./_components/SectionList";
 import { TemplateMenu } from "./_components/TemplateMenu";
 import {
@@ -85,18 +88,24 @@ function FieldRow({
   const tKinds = useTranslations("registrationFormAdmin.kinds");
   const { ref, style, handleProps, isDragging } = useSortableRow(`${FIELD_DRAG_PREFIX}${field.key}`);
 
+  // One owner for the row's states, as in `SectionList`: the select button
+  // covers the row, the grip and the delete button sit above it.
   return (
     <li
       ref={ref}
       style={style}
       className={cn(
-        "flex items-center gap-2 rounded-lg border px-2 py-1.5",
-        selected ? "border-primary/40 bg-primary/10" : "border-border/60",
+        "relative flex items-center gap-2 rounded-lg border px-2 py-1.5",
+        selected ? "border-primary/40" : "border-border/60",
         invalid && "border-destructive/50 bg-destructive/5",
         isDragging && "opacity-90"
       )}
     >
-      <SortableGrip handleProps={handleProps} label={t("reorderField", { field: label })} />
+      <SortableGrip
+        className="relative z-10"
+        handleProps={handleProps}
+        label={t("reorderField", { field: label })}
+      />
       {/* The save bar says "fix the highlighted questions", so the highlight
           cannot be a border tint alone — colour is never the only cue. */}
       {invalid && (
@@ -106,13 +115,17 @@ function FieldRow({
           className="size-3.5 shrink-0 text-destructive"
         />
       )}
-      <button
-        type="button"
+      <RowButton
         onClick={onSelect}
         aria-current={selected ? "true" : undefined}
-        className="min-w-0 flex-1 text-left"
+        className="absolute inset-0 rounded-[inherit]"
       >
-        <span className="block truncate text-sm font-medium">{label}</span>
+        <span className="sr-only">{label}</span>
+      </RowButton>
+      <span className="pointer-events-none relative min-w-0 flex-1">
+        <span aria-hidden className="block truncate text-sm font-medium">
+          {label}
+        </span>
         <span className="flex flex-wrap items-center gap-1.5 pt-0.5">
           <span className="font-mono text-xs text-muted-foreground">{field.key}</span>
           {field.kind === "builtin" ? null : (
@@ -124,11 +137,11 @@ function FieldRow({
           )}
           {field.visible_when && <Badge variant="outline">{t("conditionalBadge")}</Badge>}
         </span>
-      </button>
+      </span>
       <Button
         variant="ghost"
         size="icon"
-        className="size-7 shrink-0"
+        className="relative z-10 size-7 shrink-0"
         aria-label={t("deleteField", { field: label })}
         onClick={onDelete}
       >
@@ -149,6 +162,8 @@ export interface SchemaEditorProps {
   fieldErrors: Record<string, string>;
   /** Template menu, save-as, anything the owning screen puts above the tabs. */
   toolbar?: ReactNode;
+  /** The owner game's scoped metadata, for the preview's role blocks; `null` until the owner resolves. */
+  metadata?: DisciplineMetadata | null;
 }
 
 /**
@@ -171,7 +186,8 @@ export function SchemaEditor({
   subroleCatalog,
   catalogLoading = false,
   fieldErrors,
-  toolbar
+  toolbar,
+  metadata = null
 }: Readonly<SchemaEditorProps>) {
   const t = useTranslations("registrationFormAdmin.builder");
   const tBuiltins = useTranslations("registrationFormAdmin.builtins");
@@ -318,11 +334,12 @@ export function SchemaEditor({
       accounts: [],
       subroleCatalog,
       heroes: [],
+      metadata,
       lockedRole: null,
       subscription: null,
       t: tFormErrors
     }),
-    [subroleCatalog, tFormErrors]
+    [subroleCatalog, metadata, tFormErrors]
   );
 
   return (
@@ -360,7 +377,7 @@ export function SchemaEditor({
               onDelete={deleteSection}
             />
 
-            <div className="min-w-0 flex-1 rounded-xl border border-border bg-card p-4">
+            <Card variant="flat" className="min-w-0 flex-1 p-4">
               {section ? (
                 <div className="grid gap-4">
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -393,7 +410,7 @@ export function SchemaEditor({
                   </div>
 
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className={cn(EYEBROW_CLASS, "flex flex-wrap items-baseline gap-x-2")}>
+                    <h3 className={cn(eyebrowClass("muted"), "flex flex-wrap items-baseline gap-x-2")}>
                       {t("questions")}
                       <span className="font-normal normal-case tracking-normal">
                         {t("fieldCount", { count: section.fields.length })}
@@ -456,6 +473,7 @@ export function SchemaEditor({
                         keyLocked={!unlockedKeys.has(field.key)}
                         serverError={fieldErrors[field.key] ?? null}
                         catalog={subroleCatalog}
+                        ontology={metadata}
                         catalogLoading={catalogLoading}
                         onChange={(next) => commit(replaceField(schema, field.key, next))}
                         onCommitKey={commitKey}
@@ -464,13 +482,13 @@ export function SchemaEditor({
                   )}
                 </div>
               ) : null}
-            </div>
+            </Card>
           </div>
         </DndContext>
       </TabsContent>
 
       <TabsContent value="preview" className="m-0">
-        <div className="grid gap-3 rounded-xl border border-border bg-card p-4">
+        <Card variant="flat" className="grid gap-3 p-4">
           <p className="text-xs text-muted-foreground">{t("previewNote")}</p>
           <SchemaForm
             readOnly
@@ -504,7 +522,7 @@ export function SchemaEditor({
               </div>
             )}
           />
-        </div>
+        </Card>
       </TabsContent>
     </Tabs>
   );
@@ -516,22 +534,17 @@ export function SchemaEditor({
 
 /** The workspace sub-role catalog, grouped the way both the params editor and
  *  the preview renderers want it. */
-export function useSubroleCatalog(workspaceId: number | null) {
+export function useSubroleCatalog(workspaceId: number | null, discipline: string | null) {
   const catalogQuery = useQuery({
-    queryKey: adminQueryKeys.playerSubRoles(workspaceId),
-    queryFn: () => adminService.getPlayerSubRoles({ workspace_id: workspaceId as number }),
-    enabled: workspaceId !== null
+    queryKey: adminQueryKeys.playerSubRoles(workspaceId, discipline),
+    queryFn: ({ signal }) => adminService.getPlayerSubRoles({ workspace_id: workspaceId as number, discipline: discipline! }, signal),
+    enabled: workspaceId !== null && discipline !== null
   });
 
   const catalog = useMemo<SubroleCatalogByRole>(() => {
-    const grouped: SubroleCatalogByRole = Object.fromEntries(
-      ROLES.map((role) => [role.code, [] as CatalogEntry[]])
-    );
+    const grouped: SubroleCatalogByRole = {};
     for (const row of catalogQuery.data ?? []) {
-      const code = canonicalToRegistrationRole(row.role);
-      if (code && grouped[code]) {
-        grouped[code].push({ id: row.id, slug: row.slug, label: row.label });
-      }
+      (grouped[row.role] ??= []).push({ id: row.id, slug: row.slug, label: row.label });
     }
     return grouped;
   }, [catalogQuery.data]);
@@ -552,9 +565,15 @@ export function useSubroleCatalog(workspaceId: number | null) {
  * policy fields are echoed back from `toRegistrationFormUpsert`.
  */
 export default function RegistrationFormBuilder({
-  tournamentId
+  tournamentId,
+  identityProvider,
+  identityProviderError,
+  onRetryIdentityProvider
 }: Readonly<{
   tournamentId: number | null;
+  identityProvider?: string;
+  identityProviderError?: Error | null;
+  onRetryIdentityProvider?: () => void;
 }>) {
   const t = useTranslations("registrationFormAdmin.page");
   const tBuilder = useTranslations("registrationFormAdmin.builder");
@@ -581,25 +600,37 @@ export default function RegistrationFormBuilder({
   // The form's own workspace wins: a superuser may be looking at a tournament
   // that is not in the workspace their sidebar has selected.
   const workspaceId = formQuery.data?.workspace_id ?? currentWorkspaceId ?? null;
-  const { catalog, loading: catalogLoading } = useSubroleCatalog(workspaceId);
+  const owner = useQuery({
+    queryKey: adminQueryKeys.tournament(tournamentId),
+    queryFn: ({ signal }) => adminService.getTournament(tournamentId!, signal),
+    enabled: tournamentId !== null
+  });
+  const { catalog, loading: catalogLoading } = useSubroleCatalog(workspaceId, owner.data?.discipline ?? null);
+  const metadata = useDisciplineMetadata(
+    workspaceId ?? "all",
+    workspaceId !== null ? (owner.data?.discipline ?? null) : null
+  );
 
-  // A tournament with no form row yet has no schema to render, and the upsert
-  // that creates it needs one; the server would have built exactly this.
-  const serverSchema = useMemo<FormSchema>(
-    () => formQuery.data?.form_schema ?? defaultFormSchema(),
-    [formQuery.data]
+  // A known tournament's default must wait for its owner metadata. A saved
+  // questionnaire is already authoritative and does not need that lookup.
+  const serverSchema = useMemo(
+    () =>
+      formQuery.data?.form_schema ??
+      (formQuery.isSuccess && identityProvider ? defaultFormSchema(identityProvider) : null),
+    [formQuery.data, formQuery.isSuccess, identityProvider]
   );
   const schema = draft ?? serverSchema;
-  const blocked = useMemo(() => blockedFieldKeys(schema), [schema]);
+  const blocked = useMemo(() => (schema ? blockedFieldKeys(schema) : new Set<string>()), [schema]);
 
   const saveMutation = useMutation({
     mutationFn: (payload: FormSchema) => {
       if (!tournamentId) throw new Error(t("noTournamentError"));
+      if (!serverSchema) throw new Error(t("loadError.fallback"));
       return balancerAdminService.upsertRegistrationForm(tournamentId, {
         // The upsert is a full replace, so the policy fields this page no
         // longer shows travel back untouched from the saved form. Editing a
         // question must not reset the admission rules.
-        ...toRegistrationFormUpsert(formQuery.data),
+        ...toRegistrationFormUpsert(formQuery.data, identityProvider),
         form_schema: payload
       });
     },
@@ -640,20 +671,21 @@ export default function RegistrationFormBuilder({
     );
   }
 
-  if (formQuery.isError) {
+  const loadError = formQuery.error ?? (!serverSchema ? identityProviderError : null);
+  if (loadError) {
     return (
       <PageStateCard
         state="error"
         title={t("loadError.title")}
-        description={(formQuery.error as Error)?.message ?? t("loadError.fallback")}
-        onAction={() => void formQuery.refetch()}
+        description={loadError.message || t("loadError.fallback")}
+        onAction={formQuery.isError ? () => void formQuery.refetch() : onRetryIdentityProvider}
       />
     );
   }
 
   // Avoid flashing the default questionnaire while the saved one is loading —
   // skeletons in the editor's own shape, so nothing jumps when it arrives.
-  if (formQuery.isLoading) {
+  if (!schema) {
     return (
       <div role="status" className="flex flex-col gap-4 md:flex-row md:items-start">
         <span className="sr-only">{t("loading")}</span>
@@ -673,10 +705,15 @@ export default function RegistrationFormBuilder({
         onChange={setDraft}
         subroleCatalog={catalog}
         catalogLoading={catalogLoading}
+        metadata={metadata.data ?? null}
         fieldErrors={fieldErrors}
         toolbar={
           <div className="flex flex-wrap items-center gap-2">
-            {saved && <Badge variant="outline">{tBuilder("version", { number: saved.version_number })}</Badge>}
+            {saved && (
+              <Badge variant="outline">
+                {tBuilder("version", { number: saved.version_number })}
+              </Badge>
+            )}
             {stale > 0 && (
               <Badge tone="warning" title={tBuilder("staleHint")}>
                 {tBuilder("stale", { count: stale })}
@@ -688,6 +725,7 @@ export default function RegistrationFormBuilder({
             <TemplateMenu
               workspaceId={workspaceId}
               tournamentId={tournamentId}
+              discipline={owner.data?.discipline ?? null}
               dirty={draft !== null}
               onLoad={setDraft}
             />
@@ -702,9 +740,7 @@ export default function RegistrationFormBuilder({
       <SaveBar
         dirty={draft !== null || saved === null}
         guardNavigation={draft !== null}
-        summary={
-          blocked.size > 0 ? tBuilder("blocked") : draft !== null ? t("unsavedChanges") : ""
-        }
+        summary={blocked.size > 0 ? tBuilder("blocked") : draft !== null ? t("unsavedChanges") : ""}
         saving={saveMutation.isPending}
         primaryLabel={saved ? t("saveChanges") : t("createForm")}
         onDiscard={() => {

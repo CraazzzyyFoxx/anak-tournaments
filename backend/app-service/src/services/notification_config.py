@@ -18,8 +18,8 @@ from typing import Any
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository.notification import NotificationWorkspaceConfigRepository
+from shared.services.discord_errors import DiscordError
 from shared.services.notifications import BROADCASTABLE_KINDS
-from shared.services.subscriptions.providers.discord_role import DiscordError
 from src import schemas
 
 __all__ = ("DEFAULT_BROADCAST_KINDS", "read_config", "repository", "write_config")

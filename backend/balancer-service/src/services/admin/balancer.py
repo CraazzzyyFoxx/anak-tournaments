@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any
 
-import sqlalchemy as sa
+from sqlalchemy import Row
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import DISCIPLINES
 from shared.models.balancer import WorkspaceBalancerConfig
 from shared.repository import (
     BalancerBalanceRepository,
@@ -18,22 +20,46 @@ from shared.repository import (
     TournamentRepository,
     WorkspaceBalancerConfigRepository,
 )
-from shared.services.balancer_realtime import BALANCER_BALANCE_SAVED, BALANCER_CONFIG_CHANGED
-from shared.services.team_export import ExportPlan, sync_player_ranks, team_materialization
-from src import models, schemas
-from src.schemas.team import InternalBalancerTeamsPayload
-from src.services.admin.balancer_dual_write import BalancerVariantService, balancer_variant_service
-from src.services.balancer.config.provider import normalize_tournament_config_payload
-from src.services.balancer.config.public_contract import (
+from shared.services.balancer_realtime import BALANCER_BALANCE_SAVED, BALANCER_CONFIG_CHANGED, BALANCER_TEAMS_CHANGED
+from shared.services.discord_errors import DiscordError
+from shared.services.roster import roster_engine
+from src import schemas
+from src.domain.balancer.config.public_contract import (
     normalize_balance_response_payload,
     normalize_config_payload,
 )
-from src.services.balancer.realtime import emit_balancer_data
+from src.schemas.team import InternalBalancerTeamsPayload
+from src.services.admin.balancer_variant import BalancerVariantService, balancer_variant_service
+from src.services.balancer.config.provider import normalize_tournament_config_payload
+from src.services.balancer.realtime import emit_balancer_data, stage_export_invalidation
 from src.services.team import to_materialization_teams
+from src.services.team_export import ExportPlan, refuse_missing_handles, sync_player_ranks, team_materialization
 
 __all__ = ("BalancerAdminService", "balancer_admin_service", "materialize_balance_teams")
 
 logger = logging.getLogger(__name__)
+
+#: The workspace guild's channel listing (``DiscordClient.guild_channels``),
+#: passed in by the RPC layer, which holds the broker.
+ChannelReader = Callable[[str], Awaitable[list[dict[str, Any]]]]
+
+
+def _newly_set_discord_ids(
+    stored: Mapping[str, Any], channel: str | None, category: str | None, generals: list[str]
+) -> set[tuple[str, str]]:
+    """``(id, channel type)`` of every Discord id this write changes to a value.
+
+    An unchanged or cleared value is not asked about, so saving the pool knobs
+    beside an untouched channel -- or clearing one -- never needs Discord.
+    """
+    wanted: set[tuple[str, str]] = set()
+    if channel and channel != str(stored.get("mix_discord_channel_id") or ""):
+        wanted.add((channel, "text"))
+    if category and category != str(stored.get("mix_voice_category_id") or ""):
+        wanted.add((category, "category"))
+    if generals != [str(v) for v in stored.get("mix_general_voice_channel_ids") or []]:
+        wanted.update((voice, "voice") for voice in generals)
+    return wanted
 
 
 def materialize_balance_teams(
@@ -80,20 +106,14 @@ class BalancerAdminService:
         if not await self.tournaments.exists(session, id=tournament_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
-    async def get_tournament_row(self, session: AsyncSession, tournament_id: int) -> sa.Row:
+    async def get_tournament_row(self, session: AsyncSession, tournament_id: int) -> Row:
         """Minimal tournament projection (id/name/status) for the summary RPC.
 
         Deliberately NO ``is_hidden`` filter: the summary powers the staff-facing
         balancer tool context, and hidden (preview) tournaments must stay
         resolvable for callers who already passed the workspace ``team.read`` gate.
         """
-        row = (
-            await session.execute(
-                sa.select(models.Tournament.id, models.Tournament.name, models.Tournament.status).where(
-                    models.Tournament.id == tournament_id
-                )
-            )
-        ).one_or_none()
+        row = await self.tournaments.get_summary_row(session, tournament_id)
         if row is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
         return row
@@ -163,8 +183,39 @@ class BalancerAdminService:
         mix_voice_category_id: str | None,
         mix_general_voice_channel_ids: list[str],
         updated_by: int | None,
+        *,
+        list_channels: ChannelReader,
     ) -> WorkspaceBalancerConfig:
+        """Store the blob after proving every newly set Discord id is this workspace's guild's.
+
+        Without the check an admin of workspace A could point the bot at a
+        channel of guild B (the bot sits in both). Same rule and codes as
+        app-service's notification channel: 409 ``discord_guild_not_linked``,
+        422 ``discord_channel_not_in_guild``, 503 ``discord_unavailable`` --
+        never a silent accept of an id nobody checked.
+        """
         config = await self.get_workspace_balancer_config(session, workspace_id)
+        wanted = _newly_set_discord_ids(
+            (config.config_json or {}) if config is not None else {},
+            mix_discord_channel_id,
+            mix_voice_category_id,
+            mix_general_voice_channel_ids,
+        )
+        if wanted:
+            row = await self.workspace_configs.config_with_guild(session, workspace_id)
+            guild_id = row[1] if row is not None else None
+            if not guild_id:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="discord_guild_not_linked")
+            try:
+                channels = await list_channels(str(guild_id))
+            except DiscordError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="discord_unavailable"
+                ) from exc
+            if not wanted <= {(str(c.get("id")), c.get("type")) for c in channels}:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="discord_channel_not_in_guild"
+                )
         payload: dict[str, Any] = {
             "rank_delta_threshold": rank_delta_threshold,
             "rank_delta_hide_from_pool": rank_delta_hide_from_pool,
@@ -242,13 +293,32 @@ class BalancerAdminService:
         # no refetch needed.
         return balance
 
-    async def export_balance(self, session: AsyncSession, balance_id: int) -> tuple[models.BalancerBalance, int, int]:
+    async def export_balance(
+        self, session: AsyncSession, balance_id: int, *, actor_user_id: int
+    ) -> tuple[models.BalancerBalance, int, int, list[str]]:
         balance = await self.balances.get_for_export(session, balance_id)
         if balance is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balance not found")
 
         payload = InternalBalancerTeamsPayload.model_validate(normalize_balance_response_payload(balance.result_json))
+        tournament = await self.tournaments.get(session, balance.tournament_id)
+        dimension = DISCIPLINES[tournament.discipline].rated_dimension.code
         linked_team_ids = [team.exported_team_id for team in balance.teams if team.exported_team_id is not None]
+        # A tournament balance seats registrations by id (an uploaded one may carry other uuids: resolved by name only).
+        registration_ids = sorted(
+            {
+                int(player.uuid)
+                for team in payload.teams
+                for players in team.roster.values()
+                for player in players
+                if str(player.uuid).isdigit()
+            }
+        )
+        refuse_missing_handles(
+            (
+                await roster_engine.for_tournament(session, balance.tournament_id, registration_ids=registration_ids)
+            ).values()
+        )
 
         def _unlink() -> None:
             for team in balance.teams:
@@ -277,7 +347,7 @@ class BalancerAdminService:
             session,
             ExportPlan(
                 tournament_id=balance.tournament_id,
-                teams=to_materialization_teams([team.to_balancer_team() for team in payload.teams]),
+                teams=to_materialization_teams([team.to_balancer_team(dimension) for team in payload.teams]),
                 prior_team_ids=linked_team_ids,
                 on_unresolved="skip",
                 unlink=_unlink,
@@ -285,29 +355,37 @@ class BalancerAdminService:
                 on_failure=_on_failure,
             ),
         )
-        return balance, outcome.removed_teams, outcome.imported_teams
+        await emit_balancer_data(session, balance.tournament_id, BALANCER_TEAMS_CHANGED, actor_user_id=actor_user_id)
+        await stage_export_invalidation(session, balance.tournament_id)
+        return balance, outcome.removed_teams, outcome.imported_teams, outcome.materialization.advisories
 
-    async def export_balance_ranks(self, session: AsyncSession, balance_id: int) -> tuple[models.BalancerBalance, int]:
+    async def export_balance_ranks(
+        self, session: AsyncSession, balance_id: int, *, actor_user_id: int
+    ) -> tuple[models.BalancerBalance, int]:
         """Push the saved balance's ranks onto the already-exported players.
 
         Non-destructive counterpart to :meth:`export_balance`: no team is removed
         or created, so a bracket built on those teams survives. Returns the balance
         and how many player ranks actually changed.
 
-        Does NOT commit: the caller stages the staleness this causes and commits
-        both together, so no client can be told about ranks that a later failure
-        rolls back.
+        Does NOT commit: the staleness is staged beside the rank writes and the
+        caller commits both together, so no client can be told about ranks that
+        a later failure rolls back.
         """
         balance = await self.balances.get_for_export(session, balance_id)
         if balance is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balance not found")
 
         payload = InternalBalancerTeamsPayload.model_validate(normalize_balance_response_payload(balance.result_json))
+        tournament = await self.tournaments.get(session, balance.tournament_id)
+        dimension = DISCIPLINES[tournament.discipline].rated_dimension.code
         updated = await sync_player_ranks(
             session,
             balance.tournament_id,
-            to_materialization_teams([team.to_balancer_team() for team in payload.teams]),
+            to_materialization_teams([team.to_balancer_team(dimension) for team in payload.teams]),
         )
+        await emit_balancer_data(session, balance.tournament_id, BALANCER_TEAMS_CHANGED, actor_user_id=actor_user_id)
+        await stage_export_invalidation(session, balance.tournament_id)
         return balance, updated
 
 

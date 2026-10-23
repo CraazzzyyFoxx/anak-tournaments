@@ -4,6 +4,7 @@ import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "r
 import { useTranslations } from "next-intl";
 
 import { isSlotRearrangeable, type BracketMatch } from "@/lib/bracket/view";
+import { tint } from "@/lib/colors";
 import { cn } from "@/lib/utils";
 import type { StreamEntry } from "@/types/stream.types";
 
@@ -186,7 +187,7 @@ export function BracketCanvas({
                     onPath
                       ? "var(--aqt-teal)"
                       : edge.isCompleted
-                        ? "color-mix(in srgb, var(--aqt-teal) 55%, transparent)"
+                        ? tint("var(--aqt-teal)", 55)
                         : "hsl(0 0% 100% / 0.12)"
                   }
                   strokeWidth={onPath ? 3 : 2}
@@ -212,8 +213,8 @@ export function BracketCanvas({
                 role="group"
                 aria-label={t("bracket.matchAria", {
                   label: node.data.matchLabel,
-                  home: node.data.homeName === "TBD" ? t("common.tbd") : node.data.homeName,
-                  away: node.data.awayName === "TBD" ? t("common.tbd") : node.data.awayName
+                  first: node.data.seats.one.name === "TBD" ? t("common.tbd") : node.data.seats.one.name,
+                  second: node.data.seats.two.name === "TBD" ? t("common.tbd") : node.data.seats.two.name
                 })}
                 tabIndex={match.id === focusedId ? 0 : -1}
                 onFocus={() => setFocusedId(match.id)}
@@ -227,8 +228,10 @@ export function BracketCanvas({
               >
                 <MatchCard
                   node={node}
-                  homeHighlighted={node.data.homeTeamId !== null && node.data.homeTeamId === hoveredTeamId}
-                  awayHighlighted={node.data.awayTeamId !== null && node.data.awayTeamId === hoveredTeamId}
+                  highlighted={{
+                    one: node.data.seats.one.teamId !== null && node.data.seats.one.teamId === hoveredTeamId,
+                    two: node.data.seats.two.teamId !== null && node.data.seats.two.teamId === hoveredTeamId
+                  }}
                   onHoverTeam={onHoverTeam}
                   returnTo={returnTo}
                   liveTeamStreams={liveTeamStreams}

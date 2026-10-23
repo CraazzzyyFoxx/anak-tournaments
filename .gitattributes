@@ -1,2 +1,5 @@
 * text=auto
 *.sh text eol=lf
+# Golden/parity fixtures are compared by SHA-256 of their bytes: never let autocrlf rewrite them.
+backend/*/tests/fixtures/** text eol=lf
+frontend/src/disciplines/*/__fixtures__/** text eol=lf

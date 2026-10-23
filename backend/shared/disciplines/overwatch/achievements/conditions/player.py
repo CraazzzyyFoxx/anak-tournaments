@@ -1,0 +1,239 @@
+"""Player-level conditions: is_captain, is_newcomer, tournament_type, tournament_count.
+
+Grain varies by condition.
+"""
+
+from __future__ import annotations
+
+import datetime
+from typing import Any
+
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from shared import models
+from shared.domain.achievements.context import EvalContext
+from shared.models.achievements.achievement import AchievementGrain
+
+from . import ResultSet, register
+from .stat_threshold import OPERATORS
+
+
+@register(
+    "is_captain",
+    grain=AchievementGrain.user_tournament,
+    description="The player captained their team",
+    depends_on=("tournament.player", "tournament.team"),
+)
+async def execute_is_captain(
+    session: AsyncSession,
+    params: dict[str, Any],
+    context: EvalContext,
+) -> ResultSet:
+    """Grain: user_tournament."""
+    query = (
+        sa.select(models.WorkspaceMember.player_id, models.Player.tournament_id)
+        .select_from(models.Player)
+        .join(
+            models.WorkspaceMember,
+            models.WorkspaceMember.id == models.Player.workspace_member_id,
+        )
+        .join(models.Team, models.Team.id == models.Player.team_id)
+        .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
+        .where(
+            models.Team.captain_id == models.WorkspaceMember.player_id,
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
+        )
+    )
+    if context.tournament:
+        query = query.where(models.Player.tournament_id == context.tournament.id)
+
+    result = await session.execute(query)
+    return {(row[0], row[1]) for row in result}
+
+
+@register(
+    "is_newcomer",
+    grain=AchievementGrain.user_tournament,
+    description="First tournament ever, or a count of newcomer entries",
+    optional=("op", "value"),
+    depends_on=("tournament.player",),
+    subcondition_ok=True,
+    grain_for=lambda params: (
+        AchievementGrain.user
+        if params.get("op") is not None and params.get("value") is not None
+        else AchievementGrain.user_tournament
+    ),
+)
+async def execute_is_newcomer(
+    session: AsyncSession,
+    params: dict[str, Any],
+    context: EvalContext,
+) -> ResultSet:
+    """Check newcomer status.
+
+    Without params or with empty params: simple boolean check (is_newcomer=True),
+    grain ``user_tournament``.
+    With op/value: count tournaments where the user was a newcomer, grain ``user``.
+      e.g. {"op": ">=", "value": 2} — was newcomer in 2+ tournaments.
+    """
+    op = params.get("op")
+    value = params.get("value")
+
+    if op and value is not None:
+        # Count-based: how many tournaments user was a newcomer in. This mode is
+        # user-grain — never narrow to the triggering tournament.
+        op_fn = OPERATORS[op]
+        query = (
+            sa.select(models.WorkspaceMember.player_id)
+            .select_from(models.Player)
+            .join(
+                models.WorkspaceMember,
+                models.WorkspaceMember.id == models.Player.workspace_member_id,
+            )
+            .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
+            .where(
+                models.Player.is_newcomer.is_(True),
+                models.Player.is_substitution.is_(False),
+                sa.and_(
+                    models.Tournament.workspace_id == context.workspace_id,
+                    models.Tournament.discipline == context.discipline,
+                ),
+            )
+            .group_by(models.WorkspaceMember.player_id)
+            .having(op_fn(sa.func.count(models.Player.tournament_id.distinct()), value))
+        )
+
+        result = await session.execute(query)
+        return {(row[0],) for row in result}
+
+    # Simple boolean: user is newcomer in tournament
+    query = (
+        sa.select(models.WorkspaceMember.player_id, models.Player.tournament_id)
+        .select_from(models.Player)
+        .join(
+            models.WorkspaceMember,
+            models.WorkspaceMember.id == models.Player.workspace_member_id,
+        )
+        .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
+        .where(
+            models.Player.is_newcomer.is_(True),
+            models.Player.is_substitution.is_(False),
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
+        )
+    )
+    if context.tournament:
+        query = query.where(models.Player.tournament_id == context.tournament.id)
+
+    result = await session.execute(query)
+    return {(row[0], row[1]) for row in result}
+
+
+@register(
+    "tournament_type",
+    grain=AchievementGrain.user_tournament,
+    description="Tournament flavour (league vs regular)",
+    optional=("is_league",),
+    depends_on=("tournament.player",),
+)
+async def execute_tournament_type(
+    session: AsyncSession,
+    params: dict[str, Any],
+    context: EvalContext,
+) -> ResultSet:
+    """Filter by tournament type. Grain: user_tournament.
+
+    is_league: true/false/null. null = any tournament (no filter).
+    """
+    is_league = params.get("is_league")
+
+    query = (
+        sa.select(models.WorkspaceMember.player_id, models.Player.tournament_id)
+        .select_from(models.Player)
+        .join(
+            models.WorkspaceMember,
+            models.WorkspaceMember.id == models.Player.workspace_member_id,
+        )
+        .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
+        .where(
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
+            models.Player.is_substitution.is_(False),
+        )
+    )
+
+    if is_league is not None:
+        query = query.where(models.Tournament.is_league.is_(is_league))
+
+    if context.tournament:
+        query = query.where(models.Player.tournament_id == context.tournament.id)
+
+    result = await session.execute(query)
+    return {(row[0], row[1]) for row in result}
+
+
+@register(
+    "tournament_count",
+    grain=AchievementGrain.user,
+    description="How many tournaments the player entered",
+    required=("op", "value"),
+    optional=("is_league", "start_after", "start_before"),
+    depends_on=("tournament.player",),
+)
+async def execute_tournament_count(
+    session: AsyncSession,
+    params: dict[str, Any],
+    context: EvalContext,
+) -> ResultSet:
+    """Number of tournaments played. Grain: user (global).
+
+    Optional filters narrow which tournaments are counted:
+        is_league: bool | None — filter Tournament.is_league
+        start_after / start_before: str (ISO date) — filter Tournament.start_date
+            (start_after is inclusive >=, start_before is strict <; e.g.
+            start_before="2022-10-04" for OW1, start_after="2022-10-04" for OW2)
+    """
+    op = params["op"]
+    value = params["value"]
+    op_fn = OPERATORS[op]
+
+    is_league = params.get("is_league")
+    start_after = params.get("start_after")
+    start_before = params.get("start_before")
+
+    where_clauses = [
+        sa.and_(
+            models.Tournament.workspace_id == context.workspace_id, models.Tournament.discipline == context.discipline
+        ),
+        models.Player.is_substitution.is_(False),
+    ]
+    if is_league is not None:
+        where_clauses.append(models.Tournament.is_league.is_(is_league))
+    if start_after is not None:
+        where_clauses.append(models.Tournament.start_date >= datetime.date.fromisoformat(start_after))
+    if start_before is not None:
+        where_clauses.append(models.Tournament.start_date < datetime.date.fromisoformat(start_before))
+
+    query = (
+        sa.select(models.WorkspaceMember.player_id)
+        .select_from(models.Player)
+        .join(
+            models.WorkspaceMember,
+            models.WorkspaceMember.id == models.Player.workspace_member_id,
+        )
+        .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
+        .where(*where_clauses)
+        .group_by(models.WorkspaceMember.player_id)
+        .having(op_fn(sa.func.count(models.Player.tournament_id.distinct()), value))
+    )
+
+    result = await session.execute(query)
+    return {(row[0],) for row in result}

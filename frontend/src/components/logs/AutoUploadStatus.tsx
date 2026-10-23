@@ -17,13 +17,15 @@ const TONE_BY_STATE: Record<"idle" | "watching" | "permission" | "error", Tone> 
 /**
  * The live line of the automatic upload: what the watcher is doing right now.
  * `idle` is the context's own sentence for "no watcher in this tab" — another
- * tab on a tournament page, or no tournament page open at all.
+ * tab on a tournament page, or no tournament page open at all. `framed={false}`
+ * drops its box where it is already a row inside a card (DESIGN §5).
  */
 export function AutoUploadStatus({
   folder,
   idle,
-  target
-}: Readonly<{ folder: string; idle: string; target?: string }>) {
+  target,
+  framed = true
+}: Readonly<{ folder: string; idle: string; target?: string; framed?: boolean }>) {
   const t = useTranslations("accountSettings.logDirectory");
   const { holder, status, error, grant } = useLogAutoUploadStore();
   const state = holder == null ? "idle" : status;
@@ -35,7 +37,14 @@ export function AutoUploadStatus({
   }[state];
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-3.5 py-3">
+    <div
+      className={cn(
+        "flex items-center gap-3",
+        framed
+          ? "rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-3.5 py-3"
+          : "py-3 first:pt-0 last:pb-0"
+      )}
+    >
       <span aria-hidden className={cn("relative flex size-2.5 shrink-0", TONE_TEXT[TONE_BY_STATE[state]])}>
         {state === "watching" ? (
           <span className="absolute inline-flex size-full animate-ping rounded-full bg-current opacity-60 motion-reduce:hidden" />

@@ -1,14 +1,14 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint, text
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
 
 if TYPE_CHECKING:
-    from shared.models.division_grid.division_grid import DivisionGridVersion
+    from shared.models.division_grid.division_grid import DivisionGridVersion, WorkspaceDivisionGridDefault
     from shared.models.identity.user import User
 
 __all__ = (
@@ -78,10 +78,9 @@ class Workspace(db.TimeStampIntegerMixin):
     # same one. String, not BigInteger: there is no arithmetic, no range query and
     # no FK, while both consumers (DiscordRoleResolver, the HTTP boundary) want
     # `str` -- a numeric column would only buy a conversion at every edge.
-    # UNIQUE since the self-service workspace-verification design (2026-08-26):
-    # a guild is claimed by proof of Discord ownership
+    # UNIQUE: a guild is claimed by proof of Discord ownership
     # (``rpc.app.workspaces.discord_guild_verify``), never free text, so two
-    # workspaces can no longer point at the same guild.
+    # workspaces cannot point at the same guild.
     discord_guild_id: Mapped[str | None] = mapped_column(String(32), unique=True, nullable=True)
     # Who proved ownership of ``discord_guild_id`` and when — same audit shape
     # as ``custom_domain_verified_at``/``custom_domain_verification_token``
@@ -104,7 +103,7 @@ class Workspace(db.TimeStampIntegerMixin):
     owner_id: Mapped[int | None] = mapped_column(
         ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    # Self-service trust tier (workspace self-service design §4.2). Plain
+    # Self-service trust tier. Plain
     # string, not a Postgres enum -- same "stay flexible" precedent as
     # ``newcomer_scope`` below: a fourth tier is a data change, not a
     # migration. ``unverified`` (default for every self-service creation)
@@ -114,11 +113,6 @@ class Workspace(db.TimeStampIntegerMixin):
     # superuser moves a workspace between tiers
     # (``rpc.app.workspaces.verification_set``) -- there is no automatic path.
     verification_status: Mapped[str] = mapped_column(String(16), server_default="unverified", nullable=False)
-    default_division_grid_version_id: Mapped[int | None] = mapped_column(
-        ForeignKey("division_grid_version.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
     # Explicit plan assignment, overriding the tier axis above. NULL means
     # "use the plan whose slug is ``verification_status``", which is how every
     # workspace runs by default; a non-NULL value is how one tenant gets a
@@ -130,11 +124,12 @@ class Workspace(db.TimeStampIntegerMixin):
         nullable=True,
         index=True,
     )
-    # Workspace-wide default per-team roster shape, e.g.
-    # ``{"tank": 1, "damage": 2, "support": 2}``. NULL means "inherit the built-in
-    # 5v5 default", NOT "an empty roster" — the resolution chain lives in
-    # ``shared.domain.roster_shape.resolve_roster_shape``.
-    default_roster_slots_json: Mapped[dict[str, int] | None] = mapped_column(JSONB, nullable=True)
+    #: Which disciplines this workspace may create tournaments and mixes in, in priority order: ``[0]`` is the
+    #: default when nothing names a game. Codes are checked in code against ``shared.disciplines``; a workspace
+    #: admin (``workspace.update``) edits the list, and disabling a game only refuses NEW tournaments and mixes.
+    disciplines_enabled: Mapped[list[str]] = mapped_column(
+        ARRAY(String(32)), nullable=False, default=lambda: ["overwatch"], server_default=text("'{overwatch}'")
+    )
     # Scope used to decide "has this identity played before" when a new
     # ``Player`` row is created: ``"global"`` counts any workspace's
     # tournaments, ``"workspace"`` counts only this workspace's. Plain string,
@@ -144,10 +139,19 @@ class Workspace(db.TimeStampIntegerMixin):
     # ``branding_enabled``.
     newcomer_scope: Mapped[str] = mapped_column(String(16), server_default="global", nullable=False)
     members: Mapped[list[WorkspaceMember]] = relationship(back_populates="workspace", passive_deletes=True)
-    default_division_grid_version: Mapped[DivisionGridVersion | None] = relationship(
-        foreign_keys=[default_division_grid_version_id],
-        lazy="selectin",
+    division_grid_defaults: Mapped[list[WorkspaceDivisionGridDefault]] = relationship(
+        cascade="all, delete-orphan", passive_deletes=True, lazy="selectin"
     )
+
+    @property
+    def default_division_grid_versions(self) -> dict[str, int]:
+        """Explicit assignments only; effective native/system fallbacks are not persisted choices."""
+        return {default.discipline: default.version_id for default in self.division_grid_defaults}
+
+    @property
+    def effective_division_grid_versions(self) -> dict[str, DivisionGridVersion]:
+        """Public version payloads loaded in a batch by WorkspaceRepository, never lazy IO."""
+        return self.__dict__.get("_effective_grid_versions", {})
 
 
 class WorkspaceMember(db.TimeStampIntegerMixin):
@@ -163,6 +167,14 @@ class WorkspaceMember(db.TimeStampIntegerMixin):
     # Workspace-local nickname, when the workspace calls somebody by a name
     # other than their global ``players.user.name``. Falls back to that name.
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Soft removal: the roster snapshots in ``encounter.team_member`` are
+    # anchored on this row and must not lose it, so ``remove_member`` strips the
+    # roles and the access and stamps this instead of deleting. NULL = active.
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Anchor created by a stats observation (ingest), never admitted: it carries observations and roster history only.
+    # Every membership/visibility read and the link-time role autofill skip it; a real admission
+    # (``get_or_create_workspace_member``) clears it. Independent of ``removed_at`` and of account linkage.
+    observed_only: Mapped[bool] = mapped_column(Boolean(), server_default="false", nullable=False, default=False)
 
     workspace: Mapped[Workspace] = relationship(back_populates="members")
     player: Mapped[User] = relationship()

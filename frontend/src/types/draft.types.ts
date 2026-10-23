@@ -1,7 +1,9 @@
 // Live Draft types — mirror the balancer-service DTOs (src/schemas/draft.py).
 
-import type { RosterRoleSlotCode, RosterShape, RosterSlotCode } from "@/lib/roster/shape";
+import type { RosterShape, SlotCode } from "@/lib/roster/shape";
 import type { FormField } from "@/types/forms.types";
+import type { RoleRef } from "@/lib/roster/role-ref";
+import type { PlayerIdentity } from "@/types/identity.types";
 
 export type DraftStatus = "setup" | "ready" | "live" | "paused" | "completed" | "cancelled";
 
@@ -18,14 +20,23 @@ export interface DraftFormatSettings {
 }
 type DraftPoolSource = "balancer_balance" | "manual";
 export type DraftAutopickStrategy = "best_fit" | "best_available" | "role_need";
-export type DraftRole = RosterRoleSlotCode;
+/** A role code of the session's owner game (its rated dimension): the vocabulary is the game's, never a fixed list. */
+export type DraftRole = string;
 type DraftPlayerStatus = "available" | "picked" | "removed";
 export type DraftPickStatus = "upcoming" | "on_clock" | "completed" | "skipped" | "autopicked";
 
+/** A session's lifecycle verbs, for a tournament's draft and a mix lobby's alike. */
+export type DraftLifecycleAction = "start" | "pause" | "resume" | "cancel" | "rollback";
+
 export interface DraftSession {
   id: number;
-  tournament_id: number;
+  tournament_id: number | null;
+  /** The mix owning this draft and its lobby (0 = A); both null for a tournament's draft (spec §9.1). */
+  custom_game_id: number | null;
+  lobby_index: number | null;
   workspace_id: number;
+  /** The owner's discipline (owner context for catalog/ontology/identity reads). */
+  discipline: string;
   status: DraftStatus;
   blocked_reason: string | null;
   format: DraftFormat;
@@ -52,6 +63,10 @@ export interface DraftSession {
   created_at: string | null;
 }
 
+export interface DraftExportResponse extends DraftSession {
+  advisories: string[];
+}
+
 export interface DraftTeam {
   id: number;
   session_id: number;
@@ -74,20 +89,24 @@ interface DraftPlayerCustomField {
 }
 
 /** Where a role's resolved rank came from — mirrors `shared.domain.roster.RankSource`. */
-export type DraftRankSource = "registration" | "workspace" | "ow" | "none";
+type DraftRankSource = "author" | "registration" | "workspace" | "native" | "none";
 
 export interface DraftPlayer {
   id: number;
   session_id: number;
-  registration_id: number;
+  /** null for a mix seat */
+  registration_id: number | null;
   user_id: number | null;
-  battle_tag: string | null;
+  /** The workspace member this seat is: set on every mix seat (the room ties it to its lineup seat), null otherwise. */
+  workspace_member_id?: number | null;
+  identity: PlayerIdentity | null;
+  /** The player's canonical unique name: every `/users/<name>` link is built from it, never from a game handle. */
+  player_name: string | null;
   /**
    * `null` when the player has no playable role left — an organizer can strip
    * every rank mid-draft. Render that as "no role", never as a default one.
    */
-  primary_role: DraftRole | null;
-  sub_role: string | null;
+  primary_role: RoleRef | null;
   is_flex: boolean;
   /**
    * Server-resolved: the ONE rank that represents this player in THIS draft.
@@ -104,12 +123,12 @@ export interface DraftPlayer {
    * playable, else their lead role. `null` for everyone else — their roster
    * role is the pick's `target_role`.
    */
-  captain_role: DraftRole | null;
-  secondary_roles: string[];
+  captain_role: RoleRef | null;
+  secondary_roles: RoleRef[];
   role_ranks: Record<string, number>;
   /** Per-role provenance of `role_ranks`, keyed the same way. */
   role_sources: Record<string, DraftRankSource>;
-  role_top_heroes: Record<string, Array<string | { slug: string; image_path: string | null }>>;
+  role_top_characters: Record<string, Array<{ entity_id: number | null; slug: string; image_path: string | null }>>;
   /** Sub-role per playable role (hitscan, main heal…), keyed like `role_ranks`; absent when none. */
   role_sub_roles: Record<string, string>;
   notes: string | null;
@@ -124,7 +143,7 @@ export interface DraftPick {
   round_no: number;
   pick_in_round: number;
   draft_team_id: number;
-  target_role: DraftRole | null;
+  target_role: RoleRef | null;
   target_rank_value: number | null;
   status: DraftPickStatus;
   picked_player_id: number | null;
@@ -152,18 +171,16 @@ export interface DraftBoard {
   last_event_id: number | null;
 }
 
-// The server declares `slot_code` as a plain string, but the value set is closed:
-// `shared.domain.roster_shape` rejects anything outside `ROSTER_SLOT_CODES`. The
-// narrower type is what lets these codes index role-keyed lookups and message
-// keys without a cast.
+// A slot code is a role code of the owner game's rated dimension, or the open-slot sentinel (`flex`); the shape
+// the session was created with is the closed set, and names come from the scoped ontology.
 interface DraftSlot {
   team_id: number;
-  slot_code: RosterSlotCode;
+  slot_code: SlotCode;
   ordinal: number;
 }
 
 interface DraftSlotDeficit {
-  slot_code: RosterSlotCode;
+  slot_code: SlotCode;
   unmatched_slots: number;
   eligible_players: number;
 }
@@ -180,7 +197,7 @@ export interface DraftFeasibility {
 
 export interface DraftPickOption {
   player_id: number;
-  role: DraftRole;
+  role: RoleRef;
   is_safe: boolean;
   reason_code: string | null;
   unmatched_slots: DraftSlot[];
@@ -198,7 +215,7 @@ export interface DraftPickOptionsResponse {
 export interface DraftTeamFitScore {
   player_id: number;
   /** `null` under an all-flex shape: nobody is seated on a role. */
-  role: DraftRole | null;
+  role: RoleRef | null;
   score: number;
 }
 
@@ -211,7 +228,7 @@ export interface DraftTeamFitResponse {
 /** What the autopick would take for the team on the clock right now. */
 export interface DraftAutopickPreview {
   player_id: number;
-  role: DraftRole | null;
+  role: RoleRef | null;
   /** `queue`: the first safe player of the captain's list; `fit`: the strategy's best fit. */
   source: "queue" | "fit";
 }
@@ -249,7 +266,7 @@ export interface DraftJournalEntry {
   pick_no: number | null;
   team_id: number | null;
   player_id: number | null;
-  role: DraftRole | null;
+  role: RoleRef | null;
   seconds: number | null;
 }
 
@@ -282,7 +299,7 @@ export interface DraftEventData {
   blocked_reason?: string;
   /** Why an autopick fired, on `draft.autopicked`. Informational. */
   autopick_reason?: string;
-  target_role?: DraftRole | null;
+  target_role?: RoleRef | null;
   target_rank_value?: number | null;
   pick_version?: number;
   player_id?: number;
@@ -308,7 +325,7 @@ interface DraftPoolCaptainInput {
   registration_id: number;
   name?: string | null;
   /** The role the captain is seated on; omitted/null = their lead role. */
-  role?: DraftRole | null;
+  role?: RoleRef | null;
 }
 
 export type DraftCaptainOrder = "manual" | "weakest_first" | "strongest_first" | "random";
@@ -345,7 +362,7 @@ export interface DraftSeedResponse {
 }
 
 export interface DraftRoleEditRequest {
-  role: DraftRole;
+  role: RoleRef;
   /**
    * REQUIRED and positive. A rankless role is not playable, so adding one used
    * to create a role the draft would never offer; the server dropped the
@@ -359,7 +376,7 @@ export interface DraftRoleEditRequest {
 
 export interface DraftRoleEditResponse {
   player_id: number;
-  role: DraftRole;
+  role: RoleRef;
   player_version: number;
   committed: boolean;
   before: DraftFeasibility;

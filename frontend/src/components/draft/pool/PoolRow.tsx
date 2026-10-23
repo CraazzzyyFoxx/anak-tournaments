@@ -1,12 +1,15 @@
 "use client";
 
-import type { CSSProperties, MouseEvent, ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Check, ChevronDown, ChevronUp, Crown, Heart } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import DivisionIcon from "@/components/DivisionIcon";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { getImpactColor } from "@/lib/colors";
+import { RankCrest } from "@/components/RankCrest";
+import { Button } from "@/components/ui/button";
+import { RowButton } from "@/components/ui/row-button";
+import { getImpactColor, tint } from "@/lib/colors";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import {
   bestSeatRole,
@@ -23,7 +26,8 @@ import {
   type DraftPoolRoleFilter,
   type DraftPoolTab
 } from "@/lib/draft/workspace-model";
-import { getRoleIconName, ROLE_ACCENT } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { roleTint, showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { DraftPickOptionsResponse, DraftPlayer, DraftRole } from "@/types/draft.types";
 import type { DivisionGrid } from "@/types/workspace.types";
@@ -37,13 +41,7 @@ import { formatSubRoleLabel, getHeroIconUrl } from "@/lib/player";
 export const POOL_GRID =
   "grid grid-cols-[minmax(0,1fr)_56px_32px] gap-x-2 sm:grid-cols-[minmax(128px,0.7fr)_minmax(0,var(--pool-roles))_56px_32px]";
 
-export const tint = (role: DraftRole, pct: number) =>
-  `color-mix(in srgb, ${ROLE_ACCENT[role]} ${pct}%, transparent)`;
-export const teal = (pct: number) => `color-mix(in srgb, var(--aqt-teal) ${pct}%, transparent)`;
-
 const PRIORITY_KEYS = ["primary", "second", "third"] as const;
-
-const stop = (event: MouseEvent) => event.stopPropagation();
 
 interface PoolRowProps {
   player: DraftPlayer;
@@ -63,6 +61,8 @@ interface PoolRowProps {
   options: DraftPickOptionsResponse | null;
   safetyRequired: boolean;
   divisionGrid: DivisionGrid;
+  /** The session owner's role dictionary: names, glyphs and colours of every role cell. */
+  ontology: RoleOntology | null;
   /** Unique per mounted pool: prefixes the reason ids role buttons point at. */
   idPrefix: string;
   onSelect: (playerId: number, role: DraftRole) => void;
@@ -86,13 +86,15 @@ export function PoolRow({
   options,
   safetyRequired,
   divisionGrid,
+  ontology,
   idPrefix,
   onSelect,
   onOpenProfile,
   onPrefetchCard
 }: Readonly<PoolRowProps>) {
   const t = useTranslations("draftRedesign");
-  const name = player.battle_tag ?? `#${player.id}`;
+  const slotLabel = useSlotLabel(ontology);
+  const name = player.identity?.handle ?? `#${player.id}`;
   const roles = playerRoles(player);
   const available = player.status === "available";
   // The team this row selects for; `null` → every role is a read-only chip.
@@ -109,7 +111,7 @@ export function PoolRow({
   const note = blocked
     ? actor.full
       ? t("pool.note.full", { team: actor.team.name })
-      : t("pool.note.noSlot", { roles: roles.map((role) => t(`roles.${role}`)).join(", ") })
+      : t("pool.note.noSlot", { roles: roles.map((role) => slotLabel(role)).join(", ") })
     : !available && tab !== "available"
       ? t("pool.note.taken", { team: takenTeam?.team.name ?? t("unknownTeam") })
       : null;
@@ -129,7 +131,7 @@ export function PoolRow({
       title={clickRole != null ? t("pool.row.select") : t("pool.row.open")}
       style={
         {
-          "--row-bg": selected ? teal(9) : isProfile ? "var(--aqt-overlay-3)" : "transparent",
+          "--row-bg": selected ? tint("var(--aqt-teal)", 9) : isProfile ? "var(--aqt-overlay-3)" : "transparent",
           boxShadow: selected
             ? "inset 3px 0 0 var(--aqt-teal)"
             : isProfile
@@ -145,27 +147,28 @@ export function PoolRow({
       )}
     >
       <div className={cn("min-w-0", dimmed && "opacity-55")}>
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2 text-body">
           {tab === "shortlist" && queued && (
             <span className="shrink-0 text-caption font-semibold tabular-nums text-[color:var(--aqt-teal)]">
               #{queueIndex + 1}
             </span>
           )}
           {/* The name always opens the card; the row and role cells are what pick. */}
-          <button
-            type="button"
+          <Button
+            variant="link"
+            size="inline"
             onClick={(event) => {
-              stop(event);
+              event.stopPropagation();
               onOpenProfile(player.id);
             }}
             aria-label={t("openProfile", { player: name })}
             // Focus target when the pick card closes and its opener is gone.
             data-player-name={player.id}
             title={name}
-            className="min-w-0 truncate rounded text-left text-body font-semibold text-[color:var(--aqt-fg)] outline-hidden hover:text-[color:var(--aqt-teal)] hover:underline focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+            className="min-w-0 font-semibold text-[color:var(--aqt-fg)] hover:text-[color:var(--aqt-teal)]"
           >
-            {name}
-          </button>
+            <span className="truncate">{name}</span>
+          </Button>
           {player.is_captain && (
             <Crown className="h-[15px] w-[15px] shrink-0 text-[color:var(--aqt-warm)]" role="img" aria-label={t("captain")} />
           )}
@@ -210,6 +213,7 @@ export function PoolRow({
               options={options}
               safetyRequired={safetyRequired}
               divisionGrid={divisionGrid}
+              ontology={ontology}
               reasonId={`${idPrefix}-${player.id}-${role}-reason`}
               onSelect={onSelect}
             />
@@ -225,6 +229,7 @@ export function PoolRow({
           actingTeam={actingTeam}
           takenTeam={takenTeam}
           fit={fit}
+          ontology={ontology}
         />
         {tab === "shortlist" && queueEditable && queued && queue && (
           <div className="mt-[3px] flex justify-end gap-0.5">
@@ -247,21 +252,22 @@ export function PoolRow({
       </div>
 
       {queueEditable && queue && available ? (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon"
           aria-label={queued ? t("pool.queueRemove") : t("pool.queueAdd")}
           aria-pressed={queued}
           onClick={(event) => {
-            stop(event);
+            event.stopPropagation();
             queue.toggle(player.id);
           }}
           className={cn(
-            "flex h-11 w-11 items-center justify-center justify-self-end rounded-lg outline-hidden hover:bg-[color:var(--aqt-overlay-3)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] sm:h-8 sm:w-8",
+            "size-11 justify-self-end rounded-lg sm:size-8",
             queued ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg-faint)]"
           )}
         >
-          <Heart className={cn("h-[18px] w-[18px]", queued && "fill-current")} aria-hidden="true" />
-        </button>
+          <Heart className={cn(queued && "fill-current")} aria-hidden="true" />
+        </Button>
       ) : (
         <span />
       )}
@@ -276,18 +282,19 @@ function MoveButton({
   children
 }: Readonly<{ label: string; disabled: boolean; onClick: () => void; children: ReactNode }>) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="icon"
       aria-label={label}
       disabled={disabled}
       onClick={(event) => {
-        stop(event);
+        event.stopPropagation();
         onClick();
       }}
-      className="flex h-11 w-11 items-center justify-center rounded-md text-[color:var(--aqt-fg-muted)] outline-hidden hover:bg-[color:var(--aqt-overlay-3)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] disabled:opacity-40 sm:h-6 sm:w-7"
+      className="size-11 text-[color:var(--aqt-fg-muted)] sm:h-6 sm:w-7"
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -297,7 +304,8 @@ function RightCell({
   blocked,
   actingTeam,
   takenTeam,
-  fit
+  fit,
+  ontology
 }: Readonly<{
   player: DraftPlayer;
   available: boolean;
@@ -305,19 +313,22 @@ function RightCell({
   actingTeam: TeamView | null;
   takenTeam: TeamView | null;
   fit: PlayerFit | undefined;
+  ontology: RoleOntology | null;
 }>) {
   const t = useTranslations("draftRedesign");
+  const slotLabel = useSlotLabel(ontology);
+  const named = showsRoles(ontology);
   const main = "truncate text-body font-semibold";
 
   if (!available) {
     const cell = takenTeam?.cells.find((entry) => entry.player?.id === player.id);
     // The team is already under the name ("Already on {team}"); this narrow
     // column only has room for what that line lacks — the seat they took.
-    if (!player.is_captain && cell?.role) {
-      const label = `${t(`roles.${cell.role}`)}${cell.offRole ? ` · ${t("pool.right.offRole")}` : ""}`;
+    if (!player.is_captain && cell?.role && named) {
+      const label = `${slotLabel(cell.role)}${cell.offRole ? ` · ${t("pool.right.offRole")}` : ""}`;
       return (
         <div className={cn("flex justify-end", cell.offRole && "opacity-60 grayscale")} title={label}>
-          <PlayerRoleIcon role={getRoleIconName(cell.role)} size={22} color={ROLE_ACCENT[cell.role]} label={label} />
+          <PlayerRoleIcon role={cell.role} ontology={ontology} size={22} label={label} />
         </div>
       );
     }
@@ -335,9 +346,9 @@ function RightCell({
   // up-green is kept apart from the support role's green.
   const color = getImpactColor(fit.score);
   const title =
-    fit.role == null
+    fit.role == null || !named
       ? t("pool.fitTitleAny", { team: actingTeam.team.name })
-      : t("pool.fitTitle", { team: actingTeam.team.name, role: t(`roles.${fit.role}`) });
+      : t("pool.fitTitle", { team: actingTeam.team.name, role: slotLabel(fit.role) });
   return (
     <div title={title}>
       <div className={cn(main, "tabular-nums")} style={{ color }}>
@@ -363,6 +374,7 @@ function RoleCell({
   options,
   safetyRequired,
   divisionGrid,
+  ontology,
   reasonId,
   onSelect
 }: Readonly<{
@@ -378,12 +390,16 @@ function RoleCell({
   options: DraftPickOptionsResponse | null;
   safetyRequired: boolean;
   divisionGrid: DivisionGrid;
+  ontology: RoleOntology | null;
   reasonId: string;
   onSelect: (playerId: number, role: DraftRole) => void;
 }>) {
   const t = useTranslations("draftRedesign");
+  const slotLabel = useSlotLabel(ontology);
   const primary = index === 0;
-  const roleLabel = t(`roles.${role}`);
+  const roleLabel = slotLabel(role);
+  // One role: the cell is the player's rank and pick -- no priority, no glyph, no role in its name.
+  const named = showsRoles(ontology);
   // The role's OWN rank: spending a support main on tank is a different number.
   const rank = player.role_ranks[role] ?? null;
   const division = resolveDivisionFromRank(divisionGrid, rank);
@@ -392,7 +408,7 @@ function RoleCell({
   const heroes = roleTopHeroes(player, role).slice(0, 3);
   const prioTitle = t("pool.cell.priority", { n: index + 1, total });
   const summary = [
-    `${roleLabel}${primary ? ` (${t("pool.cell.primaryMark")})` : ""}`,
+    named ? `${roleLabel}${primary ? ` (${t("pool.cell.primaryMark")})` : ""}` : null,
     rank ?? "—",
     divisionLabel
   ]
@@ -401,34 +417,30 @@ function RoleCell({
 
   const body = (
     <>
-      <span
-        title={prioTitle}
-        className={cn(
-          "pointer-events-none absolute -top-[7px] left-[7px] whitespace-nowrap bg-[color:var(--aqt-card)] px-1 text-label font-semibold leading-none",
-          primary ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-muted)]"
-        )}
-      >
-        {t(`pool.cell.${PRIORITY_KEYS[index] ?? "third"}`)}
-      </span>
-      <span className={cn("inline-flex h-[22px] w-[22px] shrink-0", !primary && "opacity-60 grayscale")}>
-        <PlayerRoleIcon
-          role={getRoleIconName(role)}
-          size={22}
-          color={ROLE_ACCENT[role]}
-          decorative={actor != null}
-          label={roleLabel}
-        />
-      </span>
-      <span className="ml-0.5 mr-1 inline-flex h-[22px] w-[22px] shrink-0" title={divisionLabel ?? undefined}>
-        {division != null && (
-          <DivisionIcon
-            division={division}
-            tournamentGrid={divisionGrid}
-            width={22}
-            height={22}
-            className="h-[22px] w-[22px] object-contain"
+      {named && (
+        <span
+          title={prioTitle}
+          className={cn(
+            "pointer-events-none absolute -top-[7px] left-[7px] whitespace-nowrap bg-[color:var(--aqt-card)] px-1 text-label font-semibold leading-none",
+            primary ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-muted)]"
+          )}
+        >
+          {t(`pool.cell.${PRIORITY_KEYS[index] ?? "third"}`)}
+        </span>
+      )}
+      {named && (
+        <span className={cn("inline-flex h-[22px] w-[22px] shrink-0", !primary && "opacity-60 grayscale")}>
+          <PlayerRoleIcon
+            role={role}
+            ontology={ontology}
+            size={22}
+            decorative={actor != null}
+            label={roleLabel}
           />
-        )}
+        </span>
+      )}
+      <span className="ml-0.5 mr-1 inline-flex h-[22px] w-[22px] shrink-0">
+        <RankCrest division={division} grid={divisionGrid} tooltip={false} />
       </span>
       <span className="flex min-w-0 flex-auto flex-col gap-0.5 text-left" title={subRole ?? undefined}>
         <span className="whitespace-nowrap text-body font-semibold leading-tight tabular-nums">{rank ?? "—"}</span>
@@ -439,23 +451,14 @@ function RoleCell({
           query on the cell, so it tracks the panel width, not the viewport). */}
       {heroes.length > 0 && (
         <span className="hidden shrink-0 @[176px]/cell:flex">
-          {heroes.map((hero, heroIndex) => {
-            const heroName = hero.slug.replace(/-/g, " ");
-            return (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={hero.slug}
-                src={getHeroIconUrl(hero.slug, hero.imagePath)}
-                alt={heroName}
-                title={heroName}
-                width={26}
-                height={26}
-                loading="lazy"
-                className="h-[26px] w-[26px] shrink-0 rounded-full border-2 border-[color:var(--aqt-card)] object-cover capitalize"
-                style={{ marginLeft: heroIndex ? -15 : 0 }}
-              />
-            );
-          })}
+          {heroes.map((hero, heroIndex) => (
+            <CatalogEntityImage
+              key={hero.slug}
+              entity={{ name: hero.slug.replace(/-/g, " "), image_path: getHeroIconUrl(hero.slug, hero.imagePath) }}
+              size={26}
+              className={cn("border-2 border-[color:var(--aqt-card)]", heroIndex > 0 && "-ml-[15px]")}
+            />
+          ))}
         </span>
       )}
     </>
@@ -496,16 +499,15 @@ function RoleCell({
       : null;
 
   return (
-    <button
-      type="button"
-      aria-label={t("pickAs", { player: name, role: roleLabel })}
+    <RowButton
+      aria-label={named ? t("pickAs", { player: name, role: roleLabel }) : t("island.tile.selectPlayer", { player: name })}
       aria-pressed={on}
       // aria-disabled, not `disabled`: the reason stays reachable and announced.
       aria-disabled={!usable || undefined}
       aria-describedby={reason ? reasonId : undefined}
       title={reason ? `${summary} — ${reason}` : summary}
       onClick={(event) => {
-        stop(event);
+        event.stopPropagation();
         if (usable) onSelect(player.id, role);
       }}
       style={
@@ -513,14 +515,20 @@ function RoleCell({
           "--cell-border": on
             ? "var(--aqt-teal)"
             : usable && primary
-              ? tint(role, 55)
+              ? tint(roleTint(ontology, role), 55)
               : "var(--aqt-border-2)",
-          background: on ? teal(18) : usable ? (primary ? tint(role, 9) : "var(--aqt-overlay-2)") : "transparent"
+          background: on
+            ? tint("var(--aqt-teal)", 18)
+            : usable
+              ? primary
+                ? tint(roleTint(ontology, role), 9)
+                : "var(--aqt-overlay-2)"
+              : "transparent"
         } as CSSProperties
       }
       className={cn(
         shell,
-        "border-[color:var(--cell-border)] outline-hidden transition-colors focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
+        "border-[color:var(--cell-border)]",
         // A cell that cannot be taken must not invite the click, and must stay
         // legible: dim foreground, not opacity over the whole cell.
         usable ? "cursor-pointer" : "cursor-default border-dashed [&_img]:grayscale [&_svg]:grayscale",
@@ -539,6 +547,6 @@ function RoleCell({
           <Check className="h-[11px] w-[11px] text-[color:var(--aqt-bg)]" strokeWidth={3} aria-hidden="true" />
         </span>
       )}
-    </button>
+    </RowButton>
   );
 }

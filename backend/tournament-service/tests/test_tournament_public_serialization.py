@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,10 +14,10 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
-from src import models, schemas  # noqa: E402
-from src.core import enums  # noqa: E402
+from shared import models
+from shared.core import enums  # noqa: E402
+from src import schemas  # noqa: E402
 from src.services.team import service as team_service  # noqa: E402
 from src.services.tournament import flows, service  # noqa: E402
 
@@ -42,6 +41,7 @@ def _tournament() -> models.Tournament:
         allow_late_registration=False,
         discord_broadcasts_enabled=True,
         discord_dms_enabled=True,
+        logs_official=False,
         win_points=1.0,
         draw_points=0.5,
         loss_points=0.0,
@@ -49,7 +49,7 @@ def _tournament() -> models.Tournament:
         division_grid_version_id=5,
         # Serialized as plain columns: an unset attribute on a detached
         # instance would trigger a refresh instead of reading NULL.
-        roster_slots_json=None,
+        discipline="overwatch",
         draft_format_json=None,
         rules=None,
         cover_image_url=None,

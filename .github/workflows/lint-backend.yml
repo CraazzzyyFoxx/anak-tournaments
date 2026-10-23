@@ -36,9 +36,10 @@ jobs:
       - name: OpenAPI manifest is up to date
         run: bash scripts/export_openapi_schemas.sh --check
         working-directory: backend
-      # The OW ladder is written down once in shared/domain/ow_ladder.py; the
-      # frontend reads a generated artifact (frontend/src/lib/ow-ladder.generated.json)
-      # because its default division grid must resolve synchronously during SSR.
+      # The OW ladder is written down once in shared/disciplines/overwatch/ladder.py;
+      # the Overwatch frontend module reads a generated artifact
+      # (frontend/src/disciplines/overwatch/ladder/ow-ladder.generated.json) because the
+      # default grid and the OverFast rank history must resolve synchronously during SSR.
       # Without this gate a rebase of the ladder ships a frontend that renders the
       # previous one.
       - name: OW ladder artifact is up to date
@@ -61,4 +62,27 @@ jobs:
       # custom-game API — i.e. undocumented public endpoints. This closes that.
       - name: Every routed RPC subject is documented
         run: uv run python scripts/check_rpc_docs.py
+        working-directory: backend
+      # D83/D99: core reaches a discipline module only through the registry
+      # (shared.disciplines). The services' own `src` trees are covered by
+      # tests/test_discipline_module_boundary.py in the test workflow.
+      - name: Discipline import boundaries
+        run: uv run lint-imports --config .importlinter
+        working-directory: backend
+      # The 5-layer rule inside each service (backend/ARCHITECTURE.md): no SQL in
+      # rpc/, no session in domain/, services never import rpc.
+      - name: Per-service import layering
+        run: |
+          for svc in *-service; do
+            [ -f "$svc/.importlinter" ] || continue
+            (cd "$svc" && uv run --project .. lint-imports)
+          done
+        working-directory: backend
+      # D99: a game's vocabulary (codes, roles, catalog labels, identity, stat
+      # codes, asset folders) is written only inside its module, across the
+      # Python, TS/TSX, Go and JSON runtime roots. Every deliberate exception is
+      # exact (path, token, context, count) with an owner and removal event in
+      # scripts/discipline_literal_exceptions.json; a new occurrence fails.
+      - name: Discipline literals stay in their module
+        run: uv run python scripts/check_discipline_literals.py
         working-directory: backend

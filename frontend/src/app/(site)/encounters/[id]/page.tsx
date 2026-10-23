@@ -3,10 +3,12 @@ import Link from "next/link";
 import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
 import { getTranslations } from "next-intl/server";
 import { getFormatter } from "@/lib/datetime/server";
-import { ArrowLeft, MessageSquare } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { BackLink } from "@/components/site/BackLink";
 import { HeroCoord, HeroStamp, PageHero } from "@/components/site/PageHero";
+import { Button } from "@/components/ui/button";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
 import { EntityWorkspace } from "@/components/workspace/EntityWorkspace";
 import { SITE_NAME, SITE_URL } from "@/config/site";
@@ -16,17 +18,19 @@ import pickBanService from "@/services/pickBan.service";
 import captainService from "@/services/captain.service";
 import FfaLobbyTable from "@/components/ffa/FfaLobbyTable";
 import type { Encounter } from "@/types/encounter.types";
+import { duelSeats, isLobby } from "@/lib/encounter/seats";
 import type { PickBanState } from "@/types/tournament.types";
 import { getEncounterState } from "@/lib/encounter/status";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import EncounterHeader, { type EncounterHeaderFact } from "./components/EncounterHeader";
 import EncounterMapRow from "./components/EncounterMapRow";
+import EncounterHistory from "./components/EncounterHistory";
 import EncounterRosterPanel from "@/components/match/EncounterRosterPanel";
 import EncounterSeriesStats from "./components/EncounterSeriesStats";
 import EncounterCaptainReports from "./components/EncounterCaptainReports";
 import EncounterPregamePanel from "./components/EncounterPregamePanel";
 import { PregameRoomLink } from "./components/PregameRoomLink";
-import { Pill } from "@/components/match/EncounterAtoms";
+import { Badge } from "@/components/ui/badge";
 import { acceptedScore } from "@/components/pick-ban/pick-ban-model";
 import {
   buildSeriesSlots,
@@ -35,30 +39,27 @@ import {
   formatSeriesClock,
   getSeriesSeconds
 } from "@/lib/encounter/detail";
+import { mapWithModeName } from "@/lib/catalog/mode";
 import styles from "@/components/match/EncounterDetail.module.css";
-
-export const dynamic = "force-dynamic";
 
 export async function generateMetadata(props: {
   params: Promise<{ id: number }>;
 }): Promise<Metadata> {
   const params = await props.params;
-  const encounter = await encounterService.getEncounter(params.id);
-  const t = await getTranslations();
+  const [encounter, t] = await Promise.all([encounterService.getEncounter(params.id), getTranslations()]);
 
-  // Both sides are nullable until the bracket resolves them, so never reach
+  // Both seats are empty until the bracket resolves them, so never reach
   // straight into `.name` here — this route is crawled. A lobby has no two
-  // sides to name at all: its own name is the title.
-  const home = encounter.home_team?.name ?? t("common.tbd");
-  const away = encounter.away_team?.name ?? t("common.tbd");
-  const isLobby = encounter.format === "ffa";
-  const metaTitle = isLobby
-    ? encounter.name
-    : t("encounters.detail.metaTitle", { home, away });
+  // seats to name at all: its own name is the title.
+  const [seatOne, seatTwo] = duelSeats(encounter.teams);
+  const first = seatOne?.name ?? t("common.tbd");
+  const second = seatTwo?.name ?? t("common.tbd");
+  const lobby = isLobby(encounter);
+  const metaTitle = lobby ? encounter.name : t("encounters.detail.metaTitle", { first, second });
   const title = `${metaTitle} | ${SITE_NAME}`;
-  const description = isLobby
+  const description = lobby
     ? t("ffa.metaDescription", { lobby: encounter.name, siteName: SITE_NAME })
-    : t("encounters.detail.metaDescription", { home, away, siteName: SITE_NAME });
+    : t("encounters.detail.metaDescription", { first, second, siteName: SITE_NAME });
 
   return {
     title,
@@ -116,33 +117,41 @@ const EncounterPage = async (props: {
   searchParams: Promise<{ tab?: string | string[] }>;
 }) => {
   const [params, searchParams] = await Promise.all([props.params, props.searchParams]);
-  const encounter = await encounterService.getEncounter(params.id);
-  const t = await getTranslations();
-  const format = await getFormatter();
+  const queryClient = new QueryClient();
+  // The pre-game prefetch needs only the id, so it runs alongside the
+  // encounter read rather than after it; a lobby page discards it.
+  const [encounter, t, format, hasPregame] = await Promise.all([
+    encounterService.getEncounter(params.id),
+    getTranslations(),
+    getFormatter(),
+    prefetchPregame(queryClient, Number(params.id))
+  ]);
 
   // A lobby is not a duel with more teams: it has no per-map scoreboard, no
   // rosters to compare side by side and no captain reports. Its whole result
   // is the lobby table, so the FFA format gets its own page rather than a
   // duel page with most of its sections rendering nothing.
-  if (encounter.format === "ffa") {
+  if (isLobby(encounter)) {
     return <FfaLobbyPage encounter={encounter} />;
   }
 
-  const queryClient = new QueryClient();
-  const hasPregame = await prefetchPregame(queryClient, encounter.id);
-
-  const homeName = encounter.home_team?.name ?? t("common.tbd");
-  const awayName = encounter.away_team?.name ?? t("common.tbd");
+  const [seatOne, seatTwo] = duelSeats(encounter.teams);
+  const names = {
+    one: seatOne?.name ?? t("common.tbd"),
+    two: seatTwo?.name ?? t("common.tbd")
+  };
   const tournamentGrid = encounter.tournament?.division_grid_version ?? null;
   const stageLabel =
     encounter.stage_item?.name ?? encounter.stage?.name ?? t("common.unassignedStage");
 
+  const observations = encounter.matches ?? [];
+  const hasUnboundHistory = observations.some((match) => match.map_index == null);
   const slots = buildSeriesSlots(encounter);
   // A position counts as played once it has a RESULT or a parsed log: a scrim
   // writes no `Match` rows at all, and a log can land before the captains
   // confirm.
   const playedSlots = slots.filter(
-    (slot) => slot.match != null || acceptedScore(slot.game) != null
+    (slot) => slot.match != null || acceptedScore(slot.game, encounter.teams) != null
   );
   // The map on air gets its row even before anything is recorded on it; every
   // other empty position is one line under the list, not a ghost row each.
@@ -158,27 +167,25 @@ const EncounterPage = async (props: {
   const seriesSeconds = getSeriesSeconds(encounter);
   const seriesClock = formatSeriesClock(seriesSeconds, clockUnits);
   const averageClock =
-    seriesSeconds != null && playedSlots.length > 0
-      ? formatSeriesClock(seriesSeconds / playedSlots.length, clockUnits)
+    seriesSeconds != null && observations.length > 0
+      ? formatSeriesClock(seriesSeconds / observations.length, clockUnits)
       : null;
   const closeness = formatCloseness(encounter.closeness);
-  const logs = playedSlots
-    .filter((slot) => slot.match?.log_name)
-    .map((slot) => ({
-      matchId: slot.match!.id,
-      label: slot.match!.map?.name ?? undefined
-    }));
-  const withStats = encounter.has_logs && playedSlots.some((slot) => slot.match != null);
+  const logs = observations.map((match) => ({
+    matchId: match.id,
+    label: `${mapWithModeName(match.map, match.mode) ?? t("encounters.match.mapAlt")} · #${match.id}`,
+    rawAvailable: match.raw_available
+  }));
+  const withStats = observations.length > 0;
 
   const visible: Record<EncounterTab, boolean> = {
-    overview: listedSlots.length > 0,
-    players: encounter.home_team != null || encounter.away_team != null,
+    overview: listedSlots.length > 0 || hasUnboundHistory,
+    players: withStats || seatOne?.team != null || seatTwo?.team != null,
     pregame: hasPregame
   };
   const tabs = TABS.filter((tab) => visible[tab]);
   const requested = Array.isArray(searchParams.tab) ? searchParams.tab[0] : searchParams.tab;
-  const active: EncounterTab | undefined =
-    tabs.find((tab) => tab === requested) ?? tabs[0];
+  const active: EncounterTab | undefined = tabs.find((tab) => tab === requested) ?? tabs[0];
   const tabHref = (tab: EncounterTab) =>
     tab === tabs[0] ? `/encounters/${encounter.id}` : `/encounters/${encounter.id}?tab=${tab}`;
 
@@ -201,15 +208,15 @@ const EncounterPage = async (props: {
   );
   // A stat with nothing to say is left out rather than printed as a dash.
   const facts: EncounterHeaderFact[] = [
-    ...(playedSlots.length > 0
+    ...(playedSlots.length > 0 || withStats
       ? [
           {
-            label: t("encounters.detail.statMaps"),
-            value: String(playedSlots.length),
+            label: t(hasUnboundHistory ? "encounters.detail.statObservations" : "encounters.detail.statMaps"),
+            value: String(hasUnboundHistory ? observations.length : playedSlots.length),
             sub: t("encounters.detail.statMapsSub", {
               format: t("encounters.bestOfShort", { count: encounter.best_of }),
-              home: mapWins.home,
-              away: mapWins.away
+              one: mapWins.one,
+              two: mapWins.two
             })
           }
         ]
@@ -237,16 +244,13 @@ const EncounterPage = async (props: {
 
   return (
     <div className={styles.surface}>
-      <EntityWorkspace workspaceId={encounter.tournament?.workspace_id} />
+      <EntityWorkspace workspaceId={encounter.tournament?.workspace_id} discipline={encounter.discipline} />
       <HydrationBoundary state={dehydrate(queryClient)}>
         <EncounterHeader
           encounter={encounter}
           crumbs={
             <>
-              <Link href="/encounters" className={cn(styles.crumbLink, "inline-flex items-center gap-1.5")}>
-                <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
-                {t("encounters.detail.back")}
-              </Link>
+              <BackLink href="/encounters">{t("encounters.detail.back")}</BackLink>
               <span className="inline-flex flex-wrap items-center gap-2">
                 <Link href={`/tournaments/${encounter.tournament_id}`} className={styles.crumbLink}>
                   {encounter.tournament?.name ?? t("common.tournament")}
@@ -271,7 +275,9 @@ const EncounterPage = async (props: {
               <PregameRoomLink
                 encounterId={encounter.id}
                 tournamentId={encounter.tournament_id}
-                className={styles.button}
+                workspaceId={encounter.workspace_id}
+                discipline={encounter.discipline}
+                liveGames={(encounter.games ?? []).filter((game) => game.state !== "cancelled").length}
               />
               {logs.length > 0 ? (
                 <MatchLogIndicator hasLogs logs={logs} className={styles.iconButton} />
@@ -282,14 +288,15 @@ const EncounterPage = async (props: {
             state === "Live" || openResult ? (
               <>
                 {state === "Live" ? (
-                  <Pill tone="danger" live>
+                  <Badge palette="aqt" shape="pill" tone="danger">
+                    <span aria-hidden className={styles.livePulse} />
                     {t(`encounters.state.${STATE_KEY[state]}` as never)}
-                  </Pill>
+                  </Badge>
                 ) : null}
                 {openResult ? (
-                  <Pill tone={encounter.result_status === "disputed" ? "danger" : "warn"}>
+                  <Badge palette="aqt" shape="pill" tone={encounter.result_status === "disputed" ? "danger" : "warning"}>
                     {t(`encounters.result.${RESULT_KEY[encounter.result_status]}` as never)}
-                  </Pill>
+                  </Badge>
                 ) : null}
               </>
             ) : null
@@ -331,21 +338,22 @@ const EncounterPage = async (props: {
                   <EncounterMapRow
                     key={slot.index}
                     slot={slot}
-                    homeName={homeName}
-                    awayName={awayName}
-                    tournamentGrid={tournamentGrid}
+                    names={names}
+                    teams={encounter.teams}
                     clockUnits={clockUnits}
                   />
                 ))}
                 {unplayedCount > 0 ? (
                   <p className={styles.mapRowNote}>
-                    {t("encounters.detail.mapsUnplayed", { count: unplayedCount })}
+                    {t(hasUnboundHistory ? "encounters.history.slotsWithoutBinding" : "encounters.detail.mapsUnplayed", { count: unplayedCount })}
                   </p>
                 ) : null}
               </div>
             </section>
 
-            {playedSlots.length > 0 ? (
+            <EncounterHistory matches={observations} />
+
+            {playedSlots.length > 0 || withStats ? (
               <section aria-label={t("encounters.detail.seriesStats")}>
                 <div className={styles.sectionHead}>
                   <h2 className={styles.sectionTitle}>{t("encounters.detail.seriesStats")}</h2>
@@ -353,10 +361,7 @@ const EncounterPage = async (props: {
                 {withStats ? (
                   <EncounterSeriesStats
                     view="overview"
-                    matchIds={playedSlots.flatMap((slot) => (slot.match ? [slot.match.id] : []))}
-                    homeTeamId={encounter.home_team_id}
-                    awayTeamId={encounter.away_team_id}
-                    tournamentGrid={tournamentGrid}
+                    matchIds={observations.map((match) => match.id)}
                   />
                 ) : (
                   <div className={styles.card}>
@@ -375,23 +380,22 @@ const EncounterPage = async (props: {
             <section aria-label={t("encounters.detail.tabs.players")}>
               <EncounterSeriesStats
                 view="players"
-                matchIds={playedSlots.flatMap((slot) => (slot.match ? [slot.match.id] : []))}
-                homeTeamId={encounter.home_team_id}
-                awayTeamId={encounter.away_team_id}
-                tournamentGrid={tournamentGrid}
+                matchIds={observations.map((match) => match.id)}
               />
             </section>
           ) : (
             <section aria-label={t("encounters.detail.rosters")}>
               <div className={styles.rosterGrid}>
                 <EncounterRosterPanel
-                  team={encounter.home_team}
-                  side="home"
+                  team={seatOne?.team ?? null}
+                  slot={1}
+                  discipline={encounter.tournament.discipline}
                   tournamentGrid={tournamentGrid}
                 />
                 <EncounterRosterPanel
-                  team={encounter.away_team}
-                  side="away"
+                  team={seatTwo?.team ?? null}
+                  slot={2}
+                  discipline={encounter.tournament.discipline}
                   tournamentGrid={tournamentGrid}
                 />
               </div>
@@ -401,18 +405,8 @@ const EncounterPage = async (props: {
 
         {active === "pregame" ? (
           <>
-            <EncounterPregamePanel
-              encounterId={encounter.id}
-              homeName={homeName}
-              awayName={awayName}
-            />
-            <EncounterCaptainReports
-              encounterId={encounter.id}
-              homeTeamId={encounter.home_team_id}
-              awayTeamId={encounter.away_team_id}
-              homeName={homeName}
-              awayName={awayName}
-            />
+            <EncounterPregamePanel encounterId={encounter.id} teams={encounter.teams} />
+            <EncounterCaptainReports encounterId={encounter.id} teams={encounter.teams} />
           </>
         ) : null}
       </HydrationBoundary>
@@ -440,19 +434,13 @@ const FfaLobbyPage = async ({ encounter }: Readonly<{ encounter: Encounter }>) =
 
   return (
     <div className={styles.surface}>
-      <EntityWorkspace workspaceId={encounter.tournament?.workspace_id} />
+      <EntityWorkspace workspaceId={encounter.tournament?.workspace_id} discipline={encounter.discipline} />
       <PageHero
         align="start"
         titleClassName="text-[clamp(1.35rem,2.4vw,2rem)]"
         eyebrow={
           <>
-            <Link
-              href="/encounters"
-              className="inline-flex items-center gap-1.5 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)] transition-colors hover:text-[color:var(--aqt-teal)]"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
-              {t("encounters.detail.back")}
-            </Link>
+            <BackLink href="/encounters">{t("encounters.detail.back")}</BackLink>
             <HeroCoord className="inline-flex flex-wrap items-center gap-2">
               <Link href={`/tournaments/${encounter.tournament_id}`} className={styles.crumbLink}>
                 {encounter.tournament?.name ?? t("common.tournament")}
@@ -467,31 +455,33 @@ const FfaLobbyPage = async ({ encounter }: Readonly<{ encounter: Encounter }>) =
         title={lobby.name}
         meta={
           <>
-            <Pill
+            <Badge
+              palette="aqt"
+              shape="pill"
               tone={
                 state === "Live"
                   ? "danger"
                   : state === "Final"
-                    ? "good"
+                    ? "success"
                     : state === "Upcoming"
-                      ? "warn"
+                      ? "warning"
                       : "neutral"
               }
-              live={state === "Live"}
             >
+              {state === "Live" ? <span aria-hidden className={styles.livePulse} /> : null}
               {/* "Final" is a duel's word and reads as the bracket's final here. */}
               {state === "Final"
                 ? t("ffa.lobbyCompleted")
                 : t(`encounters.state.${STATE_KEY[state]}` as never)}
-            </Pill>
-            <Pill>
+            </Badge>
+            <Badge palette="aqt" shape="pill" tone="neutral">
               <span className={styles.label}>{t("ffa.gamesPerLobby")}</span>
               <span className={styles.mono}>{lobby.best_of}</span>
-            </Pill>
+            </Badge>
             {encounter.result_status !== "none" ? (
-              <Pill tone={encounter.result_status === "confirmed" ? "good" : "warn"}>
+              <Badge palette="aqt" shape="pill" tone={encounter.result_status === "confirmed" ? "success" : "warning"}>
                 {t(`encounters.result.${RESULT_KEY[encounter.result_status]}` as never)}
-              </Pill>
+              </Badge>
             ) : null}
           </>
         }
@@ -501,13 +491,12 @@ const FfaLobbyPage = async ({ encounter }: Readonly<{ encounter: Encounter }>) =
         })}
         actions={
           <div className={styles.heroActions}>
-            <Link
-              href={`/tournaments/${encounter.tournament_id}/pregame/${encounter.id}`}
-              className={styles.button}
-            >
-              <MessageSquare className="h-4 w-4" aria-hidden />
-              {t("ffa.openRoom")}
-            </Link>
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/tournaments/${encounter.tournament_id}/pregame/${encounter.id}`}>
+                <MessageSquare aria-hidden />
+                {t("ffa.openRoom")}
+              </Link>
+            </Button>
           </div>
         }
         stamp={
@@ -535,6 +524,7 @@ const FfaLobbyPage = async ({ encounter }: Readonly<{ encounter: Encounter }>) =
           )}
         </div>
       </section>
+      <EncounterHistory matches={encounter.matches ?? []} />
     </div>
   );
 };

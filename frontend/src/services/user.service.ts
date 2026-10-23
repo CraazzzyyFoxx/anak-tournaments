@@ -1,10 +1,11 @@
 import {
+  CharacterWithUserStats,
   EncounterWithUserStats,
   LobbyLeaderboard,
   UserCatalogResponse,
+  UserCharacterCompareResponse,
   UserCompareBaselineMode,
   UserCompareResponse,
-  UserHeroCompareResponse,
   User,
   UserBestTeammate,
   UserMatchesSummary,
@@ -15,16 +16,19 @@ import {
   UserDraftCard,
   UserProfile,
   MinimizedUser,
-  UserRoleType,
-  UserTournament,
+  UserTournamentList,
   UserTournamentWithStats
 } from "@/types/user.types";
 import { PaginatedResponse, SearchPaginationParams } from "@/types/pagination.types";
-import { HeroWithUserStats } from "@/types/hero.types";
 import { AchievementRarity } from "@/types/achievement.types";
-import { LogStatsName } from "@/types/stats.types";
 import { apiFetch } from "@/lib/api/fetch";
 import { scopeQuery, type StatsScope } from "@/lib/site/stats-scope";
+import type { RoleRef } from "@/lib/roster/role-ref";
+
+// A rated role of the read's game; `null` selects players with no rated assignment; omission means no filter.
+function roleQuery(role: RoleRef | null | undefined): string | undefined {
+  return role === undefined ? undefined : JSON.stringify(role);
+}
 
 // Public, workspace-scoped profile reads are cached in the Next Data Cache for
 // this long (seconds) when fetched server-side. Tagged for on-demand
@@ -61,23 +65,28 @@ export default class userService {
     const apiName = name.replace("#", "-");
     return apiFetch(`/api/v1/users/${encodeURIComponent(apiName)}`, {
       query: {
-        entities: ["twitch", "discord", "battle_tag"]
+        entities: ["social_accounts"]
       },
       next: { revalidate: USER_TTL_SECONDS, tags: ["users"] }
     }).then((res) => res.json());
   }
-  static async getUserProfile(id: number, scope?: StatsScope): Promise<UserProfile> {
+  /** A player's profile in one game, or across every game (`discipline: null`, spec §6.6). */
+  static async getUserProfile(id: number, discipline: string | null, scope?: StatsScope): Promise<UserProfile> {
     return apiFetch(`/api/v1/users/${id}/profile`, {
-      query: scopeQuery(scope),
+      query: { ...scopeQuery(scope), discipline: discipline ?? undefined },
       next: { revalidate: USER_TTL_SECONDS, tags: [`user:${id}`] }
     }).then((res) => res.json());
   }
-  /** The draft room's player card: career totals, per-role and per-hero maps,
+  /** The draft room's player card in one game: career totals, per-role and per-character maps,
    *  last five events. `workspaceId` pins the scope — `"all"` for the players
    *  index on the platform apex, where rows span every workspace. */
-  static async getDraftCard(id: number, workspaceId?: number | "all" | null): Promise<UserDraftCard> {
+  static async getDraftCard(
+    id: number,
+    discipline: string,
+    workspaceId?: number | "all" | null
+  ): Promise<UserDraftCard> {
     return apiFetch(`/api/v1/users/${id}/draft-card`, {
-      query: workspaceId != null ? { workspace_id: workspaceId } : undefined,
+      query: { discipline, ...(workspaceId != null ? { workspace_id: workspaceId } : {}) },
       next: { revalidate: USER_TTL_SECONDS, tags: [`user:${id}`] }
     }).then((res) => res.json());
   }
@@ -99,13 +108,15 @@ export default class userService {
         return null;
       });
   }
-  /** `workspaceId` pins the read: a number/`null` behaves as before, `"all"`
-   *  reads every workspace (platform apex only). */
+  /** A player's tournaments: one game's, or every game's when `discipline` is `null` (each row names its own), with
+   *  once each the grid versions the rows name. `workspaceId` pins the read: a number/`null` behaves as before,
+   *  `"all"` reads every workspace (platform apex only). */
   static async getUserTournaments(
     id: number,
+    discipline: string | null,
     workspaceId?: number | "all" | null
-  ): Promise<UserTournament[]> {
-    const query = workspaceId !== undefined && workspaceId !== null ? { workspace_id: workspaceId } : undefined;
+  ): Promise<UserTournamentList> {
+    const query = { discipline, ...(workspaceId != null ? { workspace_id: workspaceId } : {}) };
     const skipWorkspace = workspaceId === null;
     return apiFetch(`/api/v1/users/${id}/tournaments`, {
       query,
@@ -129,6 +140,7 @@ export default class userService {
   }
   static async getUserMaps(
     id: number,
+    discipline: string,
     {
       page = 1,
       perPage = 15,
@@ -136,7 +148,7 @@ export default class userService {
       order = "desc",
       query = "",
       minCount,
-      gamemodeId,
+      modeId,
       tournamentId,
       scope
     }: {
@@ -146,13 +158,11 @@ export default class userService {
       order?: string;
       query?: string;
       minCount?: number;
-      gamemodeId?: number | null;
+      modeId?: number | null;
       tournamentId?: number | null;
       scope?: StatsScope;
     } = {}
   ): Promise<PaginatedResponse<UserMapRead>> {
-    const entities = ["gamemode", "hero_stats"];
-
     return apiFetch(`/api/v1/users/${id}/maps`, {
       query: {
         page,
@@ -162,9 +172,10 @@ export default class userService {
         query,
         fields: ["name"],
         min_count: minCount,
-        gamemode_id: gamemodeId,
+        mode_id: modeId,
         tournament_id: tournamentId,
-        entities,
+        entities: ["parent", "character_stats"],
+        discipline,
         ...scopeQuery(scope)
       }
     }).then((res) => res.json());
@@ -172,16 +183,17 @@ export default class userService {
 
   static async getUserMapsSummary(
     id: number,
+    discipline: string,
     {
       query = "",
       minCount,
-      gamemodeId,
+      modeId,
       tournamentId,
       scope
     }: {
       query?: string;
       minCount?: number;
-      gamemodeId?: number | null;
+      modeId?: number | null;
       tournamentId?: number | null;
       scope?: StatsScope;
     } = {}
@@ -191,29 +203,23 @@ export default class userService {
         query,
         fields: ["name"],
         min_count: minCount,
-        gamemode_id: gamemodeId,
+        mode_id: modeId,
         tournament_id: tournamentId,
-        entities: ["gamemode"],
+        entities: ["parent"],
+        discipline,
         ...scopeQuery(scope)
       }
     }).then((res) => res.json());
   }
+  /** A player's encounters: one game's, or every game's when `discipline` is `null` (each row names its own). */
   static async getUserEncounters(
     id: number,
+    discipline: string | null,
     page: number,
     perPage: number = 10,
     sort: string = "played_at",
     order: string = "desc",
-    entities: string[] = [
-      "tournament",
-      "stage",
-      "stage_item",
-      "home_team",
-      "home_team.players",
-      "away_team",
-      "away_team.players",
-      "matches.map"
-    ],
+    entities: string[],
     filters?: {
       result?: "win" | "loss" | "draw";
       stage?: "group" | "playoffs" | "finals";
@@ -235,26 +241,30 @@ export default class userService {
         mvp1: filters?.mvp1 ? true : undefined,
         has_logs: filters?.hasLogs ? true : undefined,
         opponent: filters?.opponent || undefined,
+        discipline,
         ...scopeQuery(scope)
       },
       next: { revalidate: USER_TTL_SECONDS, tags: [`user:${id}:encounters`] }
     }).then((res) => res.json());
   }
-  static async getUserHeroes(
+  /** Every character the player has eligible play on in one game, with the requested stat codes. */
+  static async getUserCharacters(
     id: number,
-    stats?: LogStatsName[],
-    tournamentId?: number,
-    scope?: StatsScope
-  ): Promise<PaginatedResponse<HeroWithUserStats>> {
-    return apiFetch(`/api/v1/users/${id}/heroes`, {
+    discipline: string,
+    { stats, tournamentId, scope, signal }: { stats?: string[]; tournamentId?: number; scope?: StatsScope; signal?: AbortSignal } = {}
+  ): Promise<PaginatedResponse<CharacterWithUserStats>> {
+    return apiFetch(`/api/v1/users/${id}/characters`, {
+      signal,
       query: {
         per_page: -1,
         sort: "id",
         order: "asc",
         stats,
         tournament_id: tournamentId,
+        discipline,
         ...scopeQuery(scope)
-      }
+      },
+      next: { revalidate: USER_TTL_SECONDS, tags: [`user:${id}`] }
     }).then((res) => res.json());
   }
   static async getUserAchievements(
@@ -263,26 +273,35 @@ export default class userService {
       tournamentId,
       withoutTournament,
       includeLocked,
-      scope
+      scope,
+      discipline,
+      entities = ["tournaments", "matches"]
     }: {
       tournamentId?: number;
       withoutTournament?: boolean;
       includeLocked?: boolean;
       scope?: StatsScope;
+      /** One game's rules only (earned and locked); omitted = every game's (the admin person hub). */
+      discipline?: string;
+      /** The links each achievement carries (where it was earned); `[]` reads none. */
+      entities?: ("tournaments" | "matches")[];
     } = {}
   ): Promise<AchievementRarity[]> {
     return apiFetch(`/api/v1/achievements/user/${id}`, {
       query: {
-        entities: ["tournaments", "matches"],
+        entities,
         tournament_id: tournamentId,
         without_tournament: withoutTournament,
         include_locked: includeLocked,
+        discipline,
         ...scopeQuery(scope)
-      }
+      },
+      next: { revalidate: USER_TTL_SECONDS, tags: [`user:${id}`] }
     }).then((res) => res.json());
   }
   static async getUserBestTeammates(
     id: number,
+    discipline: string,
     perPage: number = 5,
     scope?: StatsScope
   ): Promise<PaginatedResponse<UserBestTeammate>> {
@@ -291,14 +310,15 @@ export default class userService {
         per_page: perPage,
         sort: "winrate",
         order: "desc",
+        discipline,
         ...scopeQuery(scope)
       },
       next: { revalidate: USER_TTL_SECONDS, tags: [`user:${id}`] }
     }).then((res) => res.json());
   }
-  static async getUserMatchesSummary(id: number, scope?: StatsScope): Promise<UserMatchesSummary> {
+  static async getUserMatchesSummary(id: number, discipline: string, scope?: StatsScope): Promise<UserMatchesSummary> {
     return apiFetch(`/api/v1/users/${id}/matches/summary`, {
-      query: scopeQuery(scope),
+      query: { ...scopeQuery(scope), discipline },
       next: { revalidate: USER_TTL_SECONDS, tags: [`user:${id}:encounters`] }
     }).then((res) => res.json());
   }
@@ -314,15 +334,13 @@ export default class userService {
   }
   static async searchUsers(query: string, signal?: AbortSignal): Promise<MinimizedUser[]> {
     return apiFetch(`/api/v1/users/search`, {
-      query: {
-        query: query,
-        fields: ["battle_tag"]
-      },
+      query: { query },
       signal
     }).then((res) => res.json());
   }
 
   static async getUsersOverview({
+    discipline,
     page = 1,
     perPage = 20,
     sort = "name",
@@ -332,8 +350,11 @@ export default class userService {
     divisions,
     hasLogs,
     minEncounters,
-    workspaceId
+    workspaceId,
+    signal
   }: {
+    /** One game, or `null` for every game of the scope (the game-bound `role`/`divisions` must then be omitted). */
+    discipline: string | null;
     page?: number;
     perPage?: number;
     sort?:
@@ -346,7 +367,7 @@ export default class userService {
       | "best_placement";
     order?: "asc" | "desc";
     query?: string;
-    role?: UserRoleType;
+    role?: RoleRef | null;
     /** Division numbers; a player matches when any (filtered) role sits in the set. */
     divisions?: number[];
     /** Only players with parsed match logs. */
@@ -355,8 +376,10 @@ export default class userService {
     minEncounters?: number;
     /** A workspace id, or `"all"` for every workspace (platform apex only). */
     workspaceId?: number | "all" | null;
-  } = {}): Promise<UserOverviewResponse> {
+    signal?: AbortSignal;
+  }): Promise<UserOverviewResponse> {
     return apiFetch("/api/v1/users/overview", {
+      signal,
       query: {
         page,
         per_page: perPage,
@@ -364,40 +387,49 @@ export default class userService {
         order,
         query,
         fields: ["name"],
-        role,
+        role: roleQuery(role),
         divisions,
         has_logs: hasLogs || undefined,
         min_encounters: minEncounters,
+        discipline: discipline ?? undefined,
         workspace_id: workspaceId ?? undefined
       }
     }).then((res) => res.json());
   }
 
   static async getUsersOverviewStats({
+    discipline,
     query,
     role,
     divisions,
     hasLogs,
-    workspaceId
+    workspaceId,
+    signal
   }: {
+    /** One game, or `null` for every game of the scope (the game-bound `role`/`divisions` must then be omitted). */
+    discipline: string | null;
     query?: string;
-    role?: UserRoleType;
+    role?: RoleRef | null;
     divisions?: number[];
     hasLogs?: boolean;
     workspaceId?: number | "all" | null;
-  } = {}): Promise<UserOverviewStats> {
+    signal?: AbortSignal;
+  }): Promise<UserOverviewStats> {
     return apiFetch("/api/v1/users/overview/stats", {
+      signal,
       query: {
         query,
-        role,
+        role: roleQuery(role),
         divisions,
         has_logs: hasLogs || undefined,
+        discipline: discipline ?? undefined,
         workspace_id: workspaceId ?? undefined
       }
     }).then((res) => res.json());
   }
 
   static async getUsersCatalog({
+    discipline,
     query,
     role,
     divisions,
@@ -405,26 +437,32 @@ export default class userService {
     letter,
     perLetter = 12,
     maxLetters = 27,
-    workspaceId
+    workspaceId,
+    signal
   }: {
+    /** One game, or `null` for every game of the scope (the game-bound `role`/`divisions` must then be omitted). */
+    discipline: string | null;
     query?: string;
-    role?: UserRoleType;
+    role?: RoleRef | null;
     divisions?: number[];
     hasLogs?: boolean;
     letter?: string;
     perLetter?: number;
     maxLetters?: number;
     workspaceId?: number | "all" | null;
-  } = {}): Promise<UserCatalogResponse> {
+    signal?: AbortSignal;
+  }): Promise<UserCatalogResponse> {
     return apiFetch("/api/v1/users/overview/catalog", {
+      signal,
       query: {
         query,
-        role,
+        role: roleQuery(role),
         divisions,
         has_logs: hasLogs || undefined,
         letter,
         per_letter: perLetter,
         max_letters: maxLetters,
+        discipline: discipline ?? undefined,
         workspace_id: workspaceId ?? undefined
       }
     }).then((res) => res.json());
@@ -433,6 +471,7 @@ export default class userService {
   static async getUserCompare(
     userId: number,
     {
+      discipline,
       baseline = "global",
       targetUserId,
       role,
@@ -442,37 +481,40 @@ export default class userService {
       workspaceId,
       signal
     }: {
+      discipline: string;
       baseline?: UserCompareBaselineMode;
       targetUserId?: number;
-      role?: UserRoleType;
+      role?: RoleRef;
       divMin?: number;
       divMax?: number;
       tournamentId?: number;
       workspaceId?: number | "all";
       signal?: AbortSignal;
-    } = {}
+    }
   ): Promise<UserCompareResponse> {
     return apiFetch(`/api/v1/users/${userId}/compare`, {
       signal,
       query: {
         baseline,
         target_user_id: targetUserId,
-        role,
+        role: roleQuery(role),
         div_min: divMin,
         div_max: divMax,
         tournament_id: tournamentId,
+        discipline,
         workspace_id: workspaceId
       }
     }).then((res) => res.json());
   }
 
-  static async getUserHeroCompare(
+  static async getUserCharacterCompare(
     userId: number,
     {
+      discipline,
       baseline = "global",
       targetUserId,
-      leftHeroId,
-      rightHeroId,
+      leftEntityId,
+      rightEntityId,
       mapId,
       role,
       divMin,
@@ -482,32 +524,34 @@ export default class userService {
       stats,
       signal
     }: {
+      discipline: string;
       baseline?: UserCompareBaselineMode;
       targetUserId?: number;
-      leftHeroId?: number;
-      rightHeroId?: number;
+      leftEntityId?: number;
+      rightEntityId?: number;
       mapId?: number;
-      role?: UserRoleType;
+      role?: RoleRef;
       divMin?: number;
       divMax?: number;
       tournamentId?: number;
       workspaceId?: number | "all";
-      stats?: LogStatsName[];
+      stats?: string[];
       signal?: AbortSignal;
     }
-  ): Promise<UserHeroCompareResponse> {
-    return apiFetch(`/api/v1/users/${userId}/compare/heroes`, {
+  ): Promise<UserCharacterCompareResponse> {
+    return apiFetch(`/api/v1/users/${userId}/compare/characters`, {
       signal,
       query: {
         baseline,
         target_user_id: targetUserId,
-        left_hero_id: leftHeroId,
-        right_hero_id: rightHeroId,
+        left_entity_id: leftEntityId,
+        right_entity_id: rightEntityId,
         map_id: mapId,
-        role,
+        role: roleQuery(role),
         div_min: divMin,
         div_max: divMax,
         tournament_id: tournamentId,
+        discipline,
         workspace_id: workspaceId,
         stats
       }

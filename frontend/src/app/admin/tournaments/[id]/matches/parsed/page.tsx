@@ -20,11 +20,11 @@ export default function ParsedViewPage() {
 
   return (
     <MatchesView tournamentId={tournamentId}>
-      {({ workspaceId, tournamentName }) => (
+      {({ workspaceId, discipline }) => (
         <ParsedMatchesBrowser
           tournamentId={tournamentId}
+          discipline={discipline}
           workspaceId={workspaceId}
-          tournamentName={tournamentName}
         />
       )}
     </MatchesView>

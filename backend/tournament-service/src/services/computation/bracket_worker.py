@@ -4,7 +4,7 @@ import sqlalchemy as sa
 from faststream.exceptions import RejectMessage
 from loguru import logger
 
-from src import models
+from shared import models
 from src.core import db
 from src.services.admin.stage import stage_service
 from src.services.computation.jobs import failure_message, is_refusal, jobs_service

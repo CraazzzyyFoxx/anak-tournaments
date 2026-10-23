@@ -6,14 +6,14 @@ import { Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { PermissionGate } from "@/components/admin/PermissionGate";
 import { AnnouncementForm } from "@/components/admin/announcements/AnnouncementForm";
 import { AnnouncementsTable } from "@/components/admin/announcements/AnnouncementsTable";
 import type { AnnouncementAudience } from "@/components/admin/announcements/announcement-draft";
 import { LinkTabs } from "@/components/kit/LinkTabs";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { notificationQueryKeys } from "@/lib/notifications/query-keys";
@@ -115,90 +115,83 @@ export default function AdminAnnouncementsPage() {
     },
   });
 
-  if (!isLoaded) return <Skeleton className="h-64 w-full rounded-xl" />;
-
   // Nothing picked and no platform scope to fall back on: there is no feed to
-  // ask for yet, and "unauthorized" would be the wrong thing to say to someone
-  // who has simply chosen no workspace.
-  if (!isSuperuser && workspaceId == null) {
-    return (
-      <div className="space-y-6">
+  // ask for yet, and "no access" would be the wrong thing to say to someone who
+  // has simply chosen no workspace. That is the only way past the gate with no
+  // audience, so `audience === null` below means exactly that case.
+  const needsScope = !isSuperuser && workspaceId == null;
+
+  return (
+    <PermissionGate
+      loaded={isLoaded}
+      allowed={needsScope || audience !== null}
+      description={t("notifications.admin.unauthorized.description")}
+    >
+      <div className="space-y-4">
         <AdminPageHeader
           title={t("notifications.admin.title")}
           description={t("notifications.admin.description")}
+          actions={
+            canPublish ? (
+              <Button size="sm" data-field="compose" onClick={() => setComposerOpen(true)}>
+                <Plus aria-hidden className="size-4" />
+                {t("notifications.admin.form.title")}
+              </Button>
+            ) : undefined
+          }
+          /* Read and write are separate grants: without the second one the
+             toolbar simply has no compose button, and this line is the only
+             place that says why. */
+          footer={
+            canPublish || audience === null ? undefined : (
+              <p className="text-sm text-muted-foreground">{t("notifications.admin.readOnly")}</p>
+            )
+          }
         />
-        <EmptyNote className="text-center">{t("notifications.admin.pickWorkspace")}</EmptyNote>
+
+        {audience === null ? (
+          <EmptyNote className="text-center">{t("notifications.admin.pickWorkspace")}</EmptyNote>
+        ) : (
+          <>
+            {/* The two feeds are two screens, not a filter over one. One scope
+                draws no tab row, so the wrapper collapses rather than add a gap. */}
+            <div data-field="audience" className="empty:hidden">
+              <LinkTabs
+                ariaLabel={t("notifications.admin.audienceLabel")}
+                activeKey={audience}
+                items={audiences.map((option) => ({
+                  key: option,
+                  label: t(`notifications.admin.audience.${option}`),
+                  href: `/admin/announcements?${SCOPE_PARAM}=${option}`,
+                }))}
+              />
+            </div>
+
+            {list.isError ? (
+              <PageStateCard state="error" onAction={() => void list.refetch()} />
+            ) : (
+              <AnnouncementsTable
+                rows={list.data ?? []}
+                isLoading={list.isLoading}
+                onRetire={canRetire ? (row) => retire.mutate(row) : undefined}
+                isRetiring={retire.isPending}
+              />
+            )}
+
+            {canPublish ? (
+              <AnnouncementForm
+                key={`${audience}-${formGeneration}`}
+                open={composerOpen}
+                onOpenChange={setComposerOpen}
+                audience={audience}
+                workspaceId={workspaceId}
+                isPublishing={create.isPending}
+                onPublish={(body) => create.mutate(body)}
+              />
+            ) : null}
+          </>
+        )}
       </div>
-    );
-  }
-
-  if (audience === null) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("notifications.admin.unauthorized.title")}</CardTitle>
-          <CardDescription>{t("notifications.admin.unauthorized.description")}</CardDescription>
-        </CardHeader>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <AdminPageHeader
-        title={t("notifications.admin.title")}
-        description={t("notifications.admin.description")}
-        actions={
-          canPublish ? (
-            <Button size="sm" data-field="compose" onClick={() => setComposerOpen(true)}>
-              <Plus aria-hidden className="size-4" />
-              {t("notifications.admin.form.title")}
-            </Button>
-          ) : undefined
-        }
-        /* Read and write are separate grants: without the second one the
-           toolbar simply has no compose button, and this line is the only
-           place that says why. */
-        footer={
-          canPublish ? undefined : (
-            <p className="text-xs text-muted-foreground">{t("notifications.admin.readOnly")}</p>
-          )
-        }
-      />
-
-      {/* One row of tabs, the admin's own — the two feeds are two screens, not
-          a filter over one. Rendered even at a single tab so the platform
-          admin's row does not appear only after they gain the second scope. */}
-      <div data-field="audience">
-        <LinkTabs
-          ariaLabel={t("notifications.admin.audienceLabel")}
-          activeKey={audience}
-          items={audiences.map((option) => ({
-            key: option,
-            label: t(`notifications.admin.audience.${option}`),
-            href: `/admin/announcements?${SCOPE_PARAM}=${option}`,
-          }))}
-        />
-      </div>
-
-      <AnnouncementsTable
-        rows={list.data ?? []}
-        isLoading={list.isLoading}
-        onRetire={canRetire ? (row) => retire.mutate(row) : undefined}
-        isRetiring={retire.isPending}
-      />
-
-      {canPublish ? (
-        <AnnouncementForm
-          key={`${audience}-${formGeneration}`}
-          open={composerOpen}
-          onOpenChange={setComposerOpen}
-          audience={audience}
-          workspaceId={workspaceId}
-          isPublishing={create.isPending}
-          onPublish={(body) => create.mutate(body)}
-        />
-      ) : null}
-    </div>
+    </PermissionGate>
   );
 }

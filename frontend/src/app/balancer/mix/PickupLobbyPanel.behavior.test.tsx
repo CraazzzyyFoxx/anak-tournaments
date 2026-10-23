@@ -21,10 +21,13 @@
 //     sheet over the lineup the host was reading;
 //  7. a read-only viewer gets no write controls, no drag source and no drop
 //     target, but can still read the setup.
+import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import en from "@/i18n/messages/en.json";
+import ru from "@/i18n/messages/ru.json";
 import type {
   CustomGamePlayer,
   CustomGamePlayerPatch,
@@ -32,6 +35,8 @@ import type {
 } from "@/services/custom-game.service";
 
 import { PickupLobbyPanel } from "./PickupLobbyPanel";
+import { DEADLOCK_OWNER, LOL_OWNER, OW_OWNER } from "./mix-owner.fixture";
+import type { MixOwner } from "./pickup-lineup";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -43,7 +48,6 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 } as unknown as typeof ResizeObserver;
 
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));
 // Drag itself is not what this pins, and dnd-kit resolves its own React copy
@@ -92,7 +96,7 @@ function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
     id: 1,
     workspace_member_id: 7,
     display_name: null,
-    battle_tag: "Aria#1111",
+    identity: { provider: "battlenet", handle: "Aria#1111" },
     sort_order: 0,
     participation: "pool",
     roles: null,
@@ -117,27 +121,32 @@ async function mount(
     rotation?: RotationRecommendation[];
     applyingHints?: boolean;
     lobbyCount?: number;
+    owner?: MixOwner;
+    locale?: "en" | "ru";
   } = {},
 ) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   await act(async () => {
     createRoot(container).render(
-      <PickupLobbyPanel
-        canWrite={props.canWrite ?? true}
-        hasMix={props.hasMix ?? true}
-        rows={rows}
-        lobbyCount={props.lobbyCount ?? 1}
-        rotation={props.rotation}
-        savingPlayerId={null}
-        clearing={false}
-        onPatchPlayer={onPatchPlayer}
-        onClear={onClear}
-        onRemovePlayer={onRemovePlayer}
-        onOpenPlayer={onOpenPlayer}
-        onApplyRotationHints={onApplyRotationHints}
-        applyingHints={props.applyingHints ?? false}
-      />,
+      <NextIntlClientProvider locale={props.locale ?? "en"} messages={props.locale === "ru" ? ru : en}>
+        <PickupLobbyPanel
+          canWrite={props.canWrite ?? true}
+          hasMix={props.hasMix ?? true}
+          rows={rows}
+          lobbyCount={props.lobbyCount ?? 1}
+          owner={props.owner ?? OW_OWNER}
+          rotation={props.rotation}
+          savingPlayerId={null}
+          clearing={false}
+          onPatchPlayer={onPatchPlayer}
+          onClear={onClear}
+          onRemovePlayer={onRemovePlayer}
+          onOpenPlayer={onOpenPlayer}
+          onApplyRotationHints={onApplyRotationHints}
+          applyingHints={props.applyingHints ?? false}
+        />
+      </NextIntlClientProvider>,
     );
   });
   await act(async () => {
@@ -198,8 +207,8 @@ describe("PickupLobbyPanel columns", () => {
   it("splits players into must-play, pool and benched columns", async () => {
     const scope = await mount([
       row({ participation: "must_play" }),
-      row({ id: 2, workspace_member_id: 8, battle_tag: "Borys#2222" }),
-      row({ id: 3, workspace_member_id: 9, battle_tag: "Cora#3333", participation: "benched" }),
+      row({ id: 2, workspace_member_id: 8, identity: { provider: "battlenet", handle: "Borys#2222" } }),
+      row({ id: 3, workspace_member_id: 9, identity: { provider: "battlenet", handle: "Cora#3333" }, participation: "benched" }),
     ]);
 
     expect(byLabel(scope, "Must play")?.textContent).toContain("Aria#1111");
@@ -216,7 +225,7 @@ describe("PickupLobbyPanel columns", () => {
 
 describe("PickupLobbyPanel drag and drop", () => {
   it("wires every row as a drag source for a host who can write", async () => {
-    await mount([row(), row({ id: 2, workspace_member_id: 8, battle_tag: "Borys#2222" })]);
+    await mount([row(), row({ id: 2, workspace_member_id: 8, identity: { provider: "battlenet", handle: "Borys#2222" } })]);
 
     expect(dndSpies.useDraggable).toHaveBeenCalledTimes(2);
     for (const call of dndSpies.useDraggable.mock.calls) {
@@ -283,7 +292,7 @@ describe("PickupLobbyPanel rotation hints", () => {
         {
           workspace_member_id: 7,
           status: "must_play",
-          reason: "Sat 1 map(s) in a row \u2014 owed a seat",
+          reason: "owed_seat",
           consecutive_sat: 1,
           consecutive_played: 0,
           games_played: 2,
@@ -291,7 +300,7 @@ describe("PickupLobbyPanel rotation hints", () => {
       ],
     });
 
-    const badge = scope.querySelector('[aria-label="Sat 1 map(s) in a row \u2014 owed a seat"]');
+    const badge = scope.querySelector('[aria-label="Sat out 1 map in a row — next to play"]');
     expect(badge?.getAttribute("role")).toBe("img");
   });
 
@@ -301,7 +310,7 @@ describe("PickupLobbyPanel rotation hints", () => {
         {
           workspace_member_id: 7,
           status: "should_rest",
-          reason: "Played 3 map(s) in a row",
+          reason: "played_streak",
           consecutive_sat: 0,
           consecutive_played: 3,
           games_played: 3,
@@ -309,7 +318,7 @@ describe("PickupLobbyPanel rotation hints", () => {
       ],
     });
 
-    expect(scope.querySelector('[aria-label="Played 3 map(s) in a row"]')).not.toBeNull();
+    expect(scope.querySelector('[aria-label="Played 3 maps in a row"]')).not.toBeNull();
   });
 
   it("renders no hint for a row already pinned must_play -- the Pin already says it", async () => {
@@ -318,7 +327,7 @@ describe("PickupLobbyPanel rotation hints", () => {
         {
           workspace_member_id: 7,
           status: "must_play",
-          reason: "Закреплён хостом (must_play)",
+          reason: "pinned",
           consecutive_sat: 0,
           consecutive_played: 2,
           games_played: 2,
@@ -326,7 +335,7 @@ describe("PickupLobbyPanel rotation hints", () => {
       ],
     });
 
-    expect(scope.querySelector('[aria-label="Закреплён хостом (must_play)"]')).toBeNull();
+    expect(scope.querySelector('[aria-label="Pinned by the host"]')).toBeNull();
   });
 
   it("renders no hint for a neutral verdict or when no rotation data has loaded", async () => {
@@ -335,17 +344,17 @@ describe("PickupLobbyPanel rotation hints", () => {
         {
           workspace_member_id: 7,
           status: "neutral",
-          reason: "Seats cover the whole pool",
+          reason: "pool_fits",
           consecutive_sat: 0,
           consecutive_played: 0,
           games_played: 0,
         },
       ],
     });
-    expect(neutral.textContent).not.toContain("Seats cover the whole pool");
+    expect(neutral.querySelector('[aria-label="Seats cover the whole pool"]')).toBeNull();
 
     const noData = await mount([row()]);
-    expect(noData.querySelector('[aria-label*="owed a seat"]')).toBeNull();
+    expect(noData.querySelector('[role="img"][aria-label^="Sat out"]')).toBeNull();
   });
 });
 
@@ -361,7 +370,7 @@ describe("PickupLobbyPanel apply hints button", () => {
         {
           workspace_member_id: 7,
           status: "neutral",
-          reason: "",
+          reason: "default",
           consecutive_sat: 0,
           consecutive_played: 0,
           games_played: 0,
@@ -379,7 +388,7 @@ describe("PickupLobbyPanel apply hints button", () => {
         {
           workspace_member_id: 7,
           status: "must_play",
-          reason: "Owed a seat",
+          reason: "owed_seat",
           consecutive_sat: 1,
           consecutive_played: 0,
           games_played: 2,
@@ -411,23 +420,23 @@ describe("PickupLobbyPanel", () => {
 
     await click(byLabel(scope, "Tank for Aria#1111, first choice, 2400 points"));
 
-    expect(patchOf(7)).toEqual({ roles: ["damage", "support"] });
+    expect(patchOf(7)).toEqual({ roles: ["damage", "support"].map((role) => ({ dimension: "player_role", role })) });
   });
 
   it("appends a switched-on role to the end of the stored order, not by its rank", async () => {
     // Support (2500) outranks the already-selected tank (2400), but turning it
     // on must not jump it in front — the host's order for tank is left alone.
-    const scope = await mount([row({ roles: ["tank"] })]);
+    const scope = await mount([row({ roles: [{ dimension: "player_role", role: "tank" }] })]);
 
     await click(byLabel(scope, "Support for Aria#1111, off, 2500 points"));
 
-    expect(patchOf(7)).toEqual({ roles: ["tank", "support"] });
+    expect(patchOf(7)).toEqual({ roles: ["tank", "support"].map((role) => ({ dimension: "player_role", role })) });
   });
 
   it("names which role the balancer will seat first from the stored order, not the rank", async () => {
     // The order was stored tank-damage-support; ranks say damage is strongest, but
     // the rail shows what the host set, not what the ranks would pick.
-    const scope = await mount([row({ roles: ["tank", "damage", "support"] })]);
+    const scope = await mount([row({ roles: ["tank", "damage", "support"].map((role) => ({ dimension: "player_role", role })) })]);
 
     expect(byLabel(scope, "Tank for Aria#1111, first choice, 2400 points")).not.toBeNull();
     expect(byLabel(scope, "Damage for Aria#1111, also plays, 2600 points")).not.toBeNull();
@@ -436,8 +445,8 @@ describe("PickupLobbyPanel", () => {
 
   it("freezes the role rail for a benched row, but not for pool or must-play", async () => {
     const scope = await mount([
-      row({ roles: ["tank"] }),
-      row({ id: 2, workspace_member_id: 8, battle_tag: "Borys#2222", roles: ["tank"], participation: "benched" }),
+      row({ roles: [{ dimension: "player_role", role: "tank" }] }),
+      row({ id: 2, workspace_member_id: 8, identity: { provider: "battlenet", handle: "Borys#2222" }, roles: [{ dimension: "player_role", role: "tank" }], participation: "benched" }),
     ]);
 
     expect(
@@ -452,22 +461,54 @@ describe("PickupLobbyPanel", () => {
     // Tank is selected but unranked, so it is not supply: 5v5 wants 2 tanks and
     // this lineup can seat none.
     const scope = await mount([
-      row({ roles: ["tank", "damage"], ranks: { damage: 2600 } }),
+      row({ roles: ["tank", "damage"].map((role) => ({ dimension: "player_role", role })), ranks: { damage: 2600 } }),
       row({
         id: 2,
         workspace_member_id: 8,
-        battle_tag: "Borys#2222",
-        roles: ["damage"],
+        identity: { provider: "battlenet", handle: "Borys#2222" },
+        roles: [{ dimension: "player_role", role: "damage" }],
         ranks: { damage: 2500 },
       }),
     ]);
 
-    expect(scope.textContent).toContain("0 of 2 · short 2");
-    expect(scope.textContent).toContain("2 of 4");
+    expect(scope.textContent).toContain("0 · short 2");
+    expect(scope.textContent).toContain("2 · short 2");
+  });
+
+  it("reads League's five positions and their two-seat demand from the mix's own roster shape", async () => {
+    const scope = await mount(
+      [
+        row({
+          roles: [{ dimension: "position", role: "jungle" }],
+          ranks: { jungle: 2200 },
+        }),
+      ],
+      { owner: LOL_OWNER },
+    );
+
+    // One entry per position of the game, in its declared order, each wanting two seats.
+    expect(scope.textContent).toContain("1 · short 1");
+    expect(scope.textContent?.match(/\d · (short|need) \d/g)).toHaveLength(5);
+    expect(scope.textContent).toContain("Jungle");
+    expect(scope.textContent).not.toContain("Tank");
+    // The rail toggles League's positions, written in League's own dimension.
+    expect(byLabel(scope, "Jungle for Aria#1111, first choice, 2200 points")).not.toBeNull();
+    expect(byLabel(scope, "Top for Aria#1111, off, no rank")).not.toBeNull();
+  });
+
+  it("gives a one-role game no role rail and no supply strip", async () => {
+    const scope = await mount(
+      [row({ identity: { provider: "steam", handle: "206464648" }, ranks: { agent: 2900 }, rank_sources: { agent: "native" } })],
+      { owner: DEADLOCK_OWNER },
+    );
+
+    expect(scope.querySelector('[aria-label^="Roles for"]')).toBeNull();
+    expect(scope.textContent).not.toMatch(/· (short|need) \d/);
+    expect(scope.textContent).toContain("2900");
   });
 
   it("warns once every selected role of an active player is unranked", async () => {
-    const scope = await mount([row({ roles: ["tank"], ranks: { damage: 2600 } })]);
+    const scope = await mount([row({ roles: [{ dimension: "player_role", role: "tank" }], ranks: { damage: 2600 } })]);
 
     expect(scope.textContent).toContain("1 player has no ranked role");
   });
@@ -484,12 +525,23 @@ describe("PickupLobbyPanel", () => {
     expect(onPatchPlayer).toHaveBeenCalled();
   });
 
+  it("opens the player sheet once from the name, the row's keyboard route", async () => {
+    const scope = await mount([row()]);
+
+    const name = byLabel(scope, "Advanced settings for Aria#1111");
+    expect(name?.tagName).toBe("BUTTON");
+    await click(name);
+
+    expect(onOpenPlayer).toHaveBeenCalledTimes(1);
+    expect(onOpenPlayer).toHaveBeenCalledWith(7);
+  });
+
   it("keeps the player sheet shut for a read-only viewer", async () => {
-    // The sheet only writes, so a viewer gets a visibly inert control instead
-    // of a drawer full of disabled fields.
+    // The sheet only writes, so a viewer reads the name as plain text instead
+    // of a control into a drawer full of disabled fields.
     const scope = await mount([row()], { canWrite: false });
 
-    expect(byName(scope, "Advanced settings for Aria#1111")?.hasAttribute("disabled")).toBe(true);
+    expect(byLabel(scope, "Advanced settings for Aria#1111")).toBeNull();
     await click(byLabel(scope, "In the pool")?.querySelector("li"));
     expect(onOpenPlayer).not.toHaveBeenCalled();
   });
@@ -497,7 +549,7 @@ describe("PickupLobbyPanel", () => {
   it("confirms before emptying the lobby", async () => {
     const scope = await mount([
       row(),
-      row({ id: 2, workspace_member_id: 8, battle_tag: "Borys#2222" }),
+      row({ id: 2, workspace_member_id: 8, identity: { provider: "battlenet", handle: "Borys#2222" } }),
     ]);
 
     await click(byName(scope, "Empty the lobby"));
@@ -555,10 +607,10 @@ describe("PickupLobbyPanel", () => {
   it("says which lobby each player is in once the mix runs more than one", async () => {
     const scope = await mount(
       [
-        row({ workspace_member_id: 1, battle_tag: "Aria#1111", current_lobby: 0 }),
-        row({ workspace_member_id: 2, battle_tag: "Bex#2222", current_lobby: 1 }),
-        row({ workspace_member_id: 3, battle_tag: "Cy#3333", current_lobby: 5 }),
-        row({ workspace_member_id: 4, battle_tag: "Dez#4444", current_lobby: null }),
+        row({ workspace_member_id: 1, identity: { provider: "battlenet", handle: "Aria#1111" }, current_lobby: 0 }),
+        row({ workspace_member_id: 2, identity: { provider: "battlenet", handle: "Bex#2222" }, current_lobby: 1 }),
+        row({ workspace_member_id: 3, identity: { provider: "battlenet", handle: "Cy#3333" }, current_lobby: 5 }),
+        row({ workspace_member_id: 4, identity: { provider: "battlenet", handle: "Dez#4444" }, current_lobby: null }),
       ],
       { lobbyCount: 6 },
     );
@@ -577,11 +629,35 @@ describe("PickupLobbyPanel", () => {
 
   it("asks for twice the roles once two lobbies have to be filled", async () => {
     const rows = Array.from({ length: 3 }, (_, index) =>
-      row({ workspace_member_id: index + 1, roles: ["tank"], ranks: { tank: 2400 } }),
+      row({ workspace_member_id: index + 1, roles: [{ dimension: "player_role", role: "tank" }], ranks: { tank: 2400 } }),
     );
     const scope = await mount(rows, { lobbyCount: 2 });
 
     // One lobby needs 2 tanks, two lobbies need 4 -- three volunteers are short one.
-    expect(scope.textContent).toContain("3 of 4 \u00B7 short 1");
+    expect(scope.textContent).toContain("3 \u00B7 short 1");
+  });
+});
+
+describe("PickupLobbyPanel in Russian", () => {
+  it("names its empty states in the reader's language", async () => {
+    const withoutMix = await mount([], { hasMix: false, locale: "ru" });
+    expect(withoutMix.textContent).toContain("Микс не выбран");
+    expect(withoutMix.textContent).not.toContain("No mix selected");
+
+    document.body.innerHTML = "";
+    const empty = await mount([], { locale: "ru" });
+    expect(empty.textContent).toContain("Состав пуст");
+    expect(empty.textContent).not.toContain("Lineup is empty");
+  });
+
+  it("labels the columns and the row controls in Russian", async () => {
+    const scope = await mount([row()], { locale: "ru" });
+
+    expect(byLabel(scope, "В пуле")?.textContent).toContain("Aria#1111");
+    expect(byName(scope, "Очистить лобби")).not.toBeNull();
+    expect(byName(scope, "Убрать Aria#1111 из микса")).not.toBeNull();
+    expect(scope.textContent).toContain("В балансе: 1");
+    expect(scope.textContent).not.toContain("in the balance");
+    expect(byName(scope, "Empty the lobby")).toBeNull();
   });
 });

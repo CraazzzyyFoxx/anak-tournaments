@@ -1,0 +1,159 @@
+{
+ "capture_command": "cd backend/parser-service && export POSTGRES_DB=anak_test POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=55432 POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres && P5_CAPTURE_OW_REFERENCE=1 uv run pytest tests/test_ow_decoder_reference_capture.py -k capture -s",
+ "cases": {
+  "baselines": {
+   "file": "baselines.json",
+   "sha256": "01c1de332ba741d5a51287428c7135ba895c1a50fae3ad5601d5acf5f59254a7"
+  },
+  "capture_command": "cd backend/parser-service && export POSTGRES_DB=anak_test POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=55432 POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres && P5_CAPTURE_OW_REFERENCE=extra uv run pytest tests/test_ow_decoder_reference_capture.py -k extra -s",
+  "items": {
+   "echo_substitution": {
+    "counts": {
+     "events": 15,
+     "facts": 2819,
+     "players": 7
+    },
+    "expected": {
+     "file": "cases/echo_substitution.expected.json",
+     "sha256": "1d060c91da6fb23aa489d1e83c0c24a41fd8974dbb5c5852609a719eee597dc6"
+    },
+    "ranks": {
+     "IngestA0": 1200,
+     "IngestA1": 1200,
+     "IngestA2": 1200,
+     "IngestH0": 500
+    },
+    "raw": {
+     "bytes": 6666,
+     "file": "cases/echo_substitution.csv",
+     "sha256": "ba917537de7b301f8bbee44803fbe2a38f436d21e71f48b4e5a51a9f85e629dd"
+    },
+    "users": [
+     {
+      "name": "IngestH3",
+      "rank": 800,
+      "team": 0
+     },
+     {
+      "name": "IngestSub",
+      "team": null
+     }
+    ]
+   },
+   "impact": {
+    "counts": {
+     "events": 17,
+     "facts": 1739,
+     "players": 7
+    },
+    "expected": {
+     "file": "cases/impact.expected.json",
+     "sha256": "8af9932dfb7ac84194b882da1c5b9cc48ad6afcb2d56583012b12271302db470"
+    },
+    "ranks": {
+     "IngestA0": 1200,
+     "IngestH0": 500,
+     "IngestH1": 950
+    },
+    "raw": {
+     "bytes": 4315,
+     "file": "workshop.csv",
+     "sha256": "28373a918287feaf4ef0bb614809481385efae19acd996111381f78501614318"
+    },
+    "users": []
+   },
+   "no_killfeed": {
+    "counts": {
+     "events": 11,
+     "facts": 1691,
+     "players": 7
+    },
+    "expected": {
+     "file": "cases/no_killfeed.expected.json",
+     "sha256": "9e25dde26843755c55044f3f495ff2f69402aedc7cac0ca09e7e5bff00c25f70"
+    },
+    "ranks": {
+     "IngestA1": 1200,
+     "IngestH2": 600
+    },
+    "raw": {
+     "bytes": 3684,
+     "file": "cases/no_killfeed.csv",
+     "sha256": "bac46d8fe0527c12883e5ddd1d7525c7743b91f6f9649296e2a09213e6fbc336"
+    },
+    "users": []
+   },
+   "performance_ties": {
+    "counts": {
+     "events": 18,
+     "facts": 1622,
+     "players": 7
+    },
+    "expected": {
+     "file": "cases/performance_ties.expected.json",
+     "sha256": "87b0bdf30aacb8cfcdfbae1adef6c4c8232538c550f181a95efd479c2c3097b8"
+    },
+    "ranks": {},
+    "raw": {
+     "bytes": 4114,
+     "file": "cases/performance_ties.csv",
+     "sha256": "97f5bb8e29ab12a6c0ce8a26f1a3d82bd517b428872c53d5a0ecfa6392e20d5d"
+    },
+    "users": [],
+    "source_head": "74c17977b6c29116d3ec19361de7f749d24168dc"
+   }
+  },
+  "second_catalog_hero": {
+   "attrs": {
+    "class": "damage"
+   },
+   "name": "Ingest Reaper",
+   "slug": "ingest-reaper"
+  },
+  "source_head": "fb6db96a3686b047b4d24a6e24c99e53c1b60feb",
+  "uncommitted_paths_at_capture": [
+   " M backend/parser-service/src/schemas/__init__.py",
+   " M backend/parser-service/src/services/match_logs/log_records.py",
+   " M backend/parser-service/src/services/match_logs/reaper.py",
+   " M backend/parser-service/src/services/match_logs/retention.py",
+   " M backend/parser-service/src/services/match_logs/uploads.py",
+   " M backend/shared/messaging/config.py",
+   " M backend/shared/models/tournament/tournament.py",
+   " M backend/shared/rbac/catalog.py",
+   " M backend/shared/repository/stats.py",
+   " M backend/shared/rpc/common.py",
+   " M backend/shared/schemas/events.py",
+   "?? backend/parser-service/src/rpc/ingest.py",
+   "?? backend/parser-service/src/schemas/ingest.py",
+   "?? backend/parser-service/src/services/ingest/jobs.py",
+   "?? backend/shared/tests/test_rbac_catalog_stats_ingest.py"
+  ]
+ },
+ "counts": {
+  "events": 17,
+  "facts": 1685,
+  "players": 7
+ },
+ "expected": {
+  "file": "expected.json",
+  "sha256": "cf1be267cdc50dc8ad3056af0b9a70eee0d77519231ca999dc17c6cf2a531895"
+ },
+ "parser_path": "src.services.match_logs.flows.process_match_log -> MatchLogProcessor.start",
+ "raw": {
+  "bytes": 4315,
+  "file": "workshop.csv",
+  "sha256": "28373a918287feaf4ef0bb614809481385efae19acd996111381f78501614318"
+ },
+ "second_catalog_hero": {
+  "attrs": {
+   "class": "damage"
+  },
+  "name": "Ingest Reaper",
+  "slug": "ingest-reaper"
+ },
+ "source_head": "d3010dd989e781eb0fd9ecd515c32fd654099df6",
+ "uncommitted_paths_at_capture": [
+  " M backend/shared/models/catalog/alias_miss.py",
+  " M backend/shared/repository/catalog.py"
+ ]
+}

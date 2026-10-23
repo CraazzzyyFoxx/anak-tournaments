@@ -122,7 +122,6 @@ const ROUTES = {
   hub: [
     "/admin",
     "/admin/tournaments",
-    "/admin/tournaments/new",
     "/admin/tournaments/14/overview",
     "/admin/tournaments/14/registration/entries",
     "/admin/tournaments/14/teams/roster",
@@ -148,6 +147,7 @@ const ROUTES = {
     "/admin/audit",
   ],
   workspace: [
+    "/admin/settings",
     "/admin/settings/general",
     "/admin/settings/branding",
     "/admin/settings/visibility",

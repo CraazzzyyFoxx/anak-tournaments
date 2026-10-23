@@ -6,20 +6,16 @@ have, and for how a raw handle is canonicalized for matching / uniqueness
 (``username_normalized``).
 
 Everything a provider "is" lives in exactly one :class:`ProviderSpec` row of
-:data:`PROVIDERS`. Before this catalog, the BattleTag grammar alone existed in
-five places in three mutually incompatible spellings (two service settings, two
-frontend defaults and a sheet scanner), so the same handle was accepted by one
-service and refused by the next. Adding a sixth spelling is now impossible: the
-set, the grammar, the normalizer, the OAuth field shapes and the display label
-are all read off the same row, and the frontend is served that row rather than
-keeping its own copy.
+:data:`PROVIDERS`: the set, the grammar, the normalizer, the OAuth field shapes
+and the display label are all read off the same row, and the frontend is served
+that row rather than keeping its own copy.
 
 **Patterns match the NORMALIZED handle, never the raw input.** That is what lets
 a grammar be written once: ``discord`` may say ``[a-z0-9_.]`` without refusing
 ``CoolGuy``, because by the time the pattern runs the value is already
 ``coolguy`` — the same string that will be stored in ``username_normalized`` and
 matched against. A pattern written against raw input would have to re-encode the
-normalizer's rules, which is how the two drifted apart in the first place.
+normalizer's rules.
 """
 
 from __future__ import annotations
@@ -49,6 +45,8 @@ __all__ = (
     "oauth_handle",
     "oauth_handle_candidates",
     "social_provider_for_oauth",
+    "steam_account_id",
+    "steam_id64",
 )
 
 
@@ -66,6 +64,8 @@ class SocialProvider:
     BOOSTY = "boosty"
     VK = "vk"
     YOUTUBE = "youtube"
+    RIOT = "riot"
+    STEAM = "steam"
 
 
 #: How a raw handle becomes its canonical matching form.
@@ -75,7 +75,9 @@ class SocialProvider:
 #: - ``battletag`` — additionally collapse ``#``-separator spacing and strip
 #:   every remaining space, because a BattleTag pasted out of a chat client
 #:   routinely arrives as ``Player # 1234``.
-NormalizeRule = Literal["casefold", "battletag"]
+#: - ``riot_id`` — collapse spacing around ``#`` only; game names may contain spaces.
+#: - ``steam_id`` — any accepted SteamID spelling becomes the decimal account id (:func:`steam_account_id`).
+NormalizeRule = Literal["casefold", "battletag", "riot_id", "steam_id"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,8 +99,6 @@ class ProviderSpec:
     handle_error_key: str
     normalize: NormalizeRule = "casefold"
 
-    #: Whether a handle may be typed in by hand.
-    supports_text: bool = True
     #: Whether ownership can be proven by OAuth login/linking.
     supports_oauth: bool = False
     #: Whether ownership of a handle can be proven (``social_account.is_verified``),
@@ -107,9 +107,7 @@ class ProviderSpec:
     #: provider and proving a nickname are different facts, and a future proof
     #: path (challenge code) needs no OAuth at all.
     can_be_verified: bool = False
-    #: Whether a paid subscription on this provider can be resolved.
-    supports_subscription: bool = False
-    #: Whether this is a GAME account (Battle.net now; Steam, Riot later). A
+    #: Whether this is a GAME account (Battle.net, Riot, Steam). A
     #: game handle identifies the player: registration finds or creates the
     #: domain player by it. Every other provider only ever attaches to a player
     #: found that way, never creates one.
@@ -119,10 +117,6 @@ class ProviderSpec:
     #: carry. Five for BattleNet — smurfs are a normal Overwatch fact — one
     #: everywhere else. A form field's ``max_count`` param overrides it.
     default_max_count: int = 1
-
-    #: ``str.format`` template for a public profile URL, or None when the
-    #: provider has no addressable profile.
-    profile_url: str | None = None
 
     #: Keys of the OAuth provider's raw response that may CARRY the canonical
     #: handle, in preference order. Consulted before falling back to the
@@ -165,7 +159,6 @@ PROVIDERS: Final[dict[str, ProviderSpec]] = {
             handle_error_key="identity.discord.format",
             supports_oauth=True,
             can_be_verified=True,
-            supports_subscription=True,
             oauth_alias_fields=("username", "global_name"),
         ),
         ProviderSpec(
@@ -176,8 +169,6 @@ PROVIDERS: Final[dict[str, ProviderSpec]] = {
             handle_error_key="identity.twitch.format",
             supports_oauth=True,
             can_be_verified=True,
-            supports_subscription=True,
-            profile_url="https://twitch.tv/{handle}",
             oauth_alias_fields=("login",),
         ),
         ProviderSpec(
@@ -190,8 +181,6 @@ PROVIDERS: Final[dict[str, ProviderSpec]] = {
             # OAuth, and neither viable proof path (Discord roles, challenge
             # code) reveals the handle. What gets verified is the SUBSCRIPTION,
             # never the nickname.
-            supports_subscription=True,
-            profile_url="https://boosty.to/{handle}",
         ),
         ProviderSpec(
             id=SocialProvider.VK,
@@ -199,7 +188,6 @@ PROVIDERS: Final[dict[str, ProviderSpec]] = {
             order=4,
             handle_pattern=r"[a-z0-9_.]{3,32}",
             handle_error_key="identity.vk.format",
-            profile_url="https://vk.com/{handle}",
         ),
         ProviderSpec(
             id=SocialProvider.YOUTUBE,
@@ -207,7 +195,36 @@ PROVIDERS: Final[dict[str, ProviderSpec]] = {
             order=5,
             handle_pattern=r"@?[a-z0-9_.\-]{3,30}",
             handle_error_key="identity.youtube.format",
-            profile_url="https://youtube.com/{handle}",
+        ),
+        ProviderSpec(
+            id=SocialProvider.RIOT,
+            label="Riot ID",
+            order=6,
+            # Game name 3-16 characters, spaces allowed, then a 3-5 character alphanumeric tag. Riot Sign-On proves it:
+            # the OAuth subject is the PUUID, the stored handle the Riot ID the provider reports as ``username``.
+            handle_pattern=r"[^#]{3,16}#[0-9a-z]{3,5}",
+            handle_error_key="identity.riot.format",
+            normalize="riot_id",
+            supports_oauth=True,
+            can_be_verified=True,
+            is_game_provider=True,
+        ),
+        ProviderSpec(
+            id=SocialProvider.STEAM,
+            label="Steam",
+            order=7,
+            # The decimal SteamID3 account id (deadlock-api's ``account_id``), 1..2^32-1 spelled out digit by digit;
+            # ``steam_id`` normalization turns every other accepted spelling into it. Steam OpenID proves it: the
+            # claimed SteamID64 is the OAuth subject.
+            handle_pattern=(
+                r"(?:[1-9]\d{0,8}|[1-3]\d{9}|4[01]\d{8}|42[0-8]\d{7}|429[0-3]\d{6}|4294[0-8]\d{5}|42949[0-5]\d{4}"
+                r"|429496[0-6]\d{3}|4294967[01]\d{2}|42949672[0-8]\d|429496729[0-5])"
+            ),
+            handle_error_key="identity.steam.format",
+            normalize="steam_id",
+            supports_oauth=True,
+            can_be_verified=True,
+            is_game_provider=True,
         ),
     )
 }
@@ -233,6 +250,12 @@ MAX_HANDLE_PATTERN_LENGTH: Final = 256
 
 _BATTLE_TAG_HASH = re.compile(r"\s*#\s*")
 
+_STEAM_ID64_BASE: Final = 76561197960265728
+_STEAM_ACCOUNT_MAX: Final = 2**32 - 1
+_STEAM_PROFILE_URL = re.compile(r"https?://steamcommunity\.com/profiles/(\d{17})/?", re.IGNORECASE)
+_STEAM_ID3 = re.compile(r"\[U:1:(\d{1,10})\]", re.IGNORECASE)
+_STEAM_ID2 = re.compile(r"STEAM_[0-5]:([01]):(\d{1,10})", re.IGNORECASE)
+
 
 class InvalidHandlePattern(ValueError):
     """An organizer-supplied handle pattern is unusable (too long or not a regex).
@@ -245,6 +268,34 @@ class InvalidHandlePattern(ValueError):
 
 def get_provider(provider: str) -> ProviderSpec | None:
     return PROVIDERS.get(provider)
+
+
+def steam_account_id(text: str) -> str | None:
+    """The decimal SteamID3 account id ``text`` names, or None.
+
+    Accepts the account id itself, a SteamID64, ``[U:1:N]``, ``STEAM_X:Y:Z`` and a
+    ``steamcommunity.com/profiles/<id64>`` link. A vanity ``/id/<name>`` link names
+    nothing resolvable offline, so it is None like any other text.
+    """
+    value = (text or "").strip()
+    if match := _STEAM_PROFILE_URL.fullmatch(value):
+        value = match.group(1)
+    if match := _STEAM_ID3.fullmatch(value):
+        account = int(match.group(1))
+    elif match := _STEAM_ID2.fullmatch(value):
+        account = int(match.group(2)) * 2 + int(match.group(1))
+    elif re.fullmatch(r"\d{17}", value):
+        account = int(value) - _STEAM_ID64_BASE
+    elif re.fullmatch(r"[1-9]\d{0,9}", value):
+        account = int(value)
+    else:
+        return None
+    return str(account) if 0 < account <= _STEAM_ACCOUNT_MAX else None
+
+
+def steam_id64(account_id: str | int) -> str:
+    """The SteamID64 of a SteamID3 account id (what ``/profiles/<id64>`` links use)."""
+    return str(_STEAM_ID64_BASE + int(account_id))
 
 
 def is_oauth_provider(provider: str) -> bool:
@@ -274,19 +325,26 @@ def normalize_social_handle(provider: str, username: str | None) -> str:
     spec = PROVIDERS.get(provider)
     if spec is not None and spec.normalize == "battletag":
         text = _BATTLE_TAG_HASH.sub("#", text).replace(" ", "").strip()
+    elif spec is not None and spec.normalize == "riot_id":
+        text = _BATTLE_TAG_HASH.sub("#", text)
+    elif spec is not None and spec.normalize == "steam_id":
+        text = steam_account_id(text) or text
     return text.casefold()
 
 
 def display_social_handle(provider: str, username: str | None) -> str:
     """The handle as STORED for display: trimmed, casing kept.
 
-    A BattleTag additionally loses the spacing a human types around ``#``
-    (``Player # 1234`` -> ``Player#1234``); everything else is only trimmed.
+    A BattleTag or Riot ID additionally loses spacing around ``#``
+    (``Player # 1234`` -> ``Player#1234``); a SteamID in any accepted spelling becomes
+    the account id; everything else is only trimmed.
     """
     text = (username or "").strip()
     spec = PROVIDERS.get(provider)
-    if spec is not None and spec.normalize == "battletag":
+    if spec is not None and spec.normalize in ("battletag", "riot_id"):
         text = _BATTLE_TAG_HASH.sub("#", text)
+    elif spec is not None and spec.normalize == "steam_id":
+        text = steam_account_id(text) or text
     return text
 
 
@@ -367,6 +425,10 @@ def oauth_handle_candidates(
     any field naming it is proof.
     """
     spec = PROVIDERS.get(provider)
+    if spec is not None and spec.normalize == "steam_id":
+        # The handle IS the subject's account id, carried as ``username``. A persona name is free text the
+        # ``steam_id`` rule would read as somebody else's SteamID64, so it proves nothing.
+        return {normalize_social_handle(provider, username)} if username else set()
     data = provider_data or {}
     raw: set[str | None] = {username, display_name}
     if spec is not None:

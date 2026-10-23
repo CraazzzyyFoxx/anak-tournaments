@@ -29,7 +29,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 
-from shared.domain.roster_shape import ROSTER_SLOT_CODES, RosterShape, RosterShapeError
+from shared.domain.roster_shape import RosterShape, RosterShapeError
 
 __all__ = ("RosterMember", "RosterOccupancy")
 
@@ -43,11 +43,6 @@ class RosterMember:
 
 
 def _validate_slot(shape: RosterShape, slot_code: str) -> None:
-    if slot_code not in ROSTER_SLOT_CODES:
-        raise RosterShapeError(
-            "roster_slots_unknown_code",
-            f"Unknown roster slot code {slot_code!r}; valid codes are {', '.join(ROSTER_SLOT_CODES)}",
-        )
     if slot_code not in shape.slots:
         raise RosterShapeError(
             "slot_not_in_shape",
@@ -79,11 +74,6 @@ class RosterOccupancy:
         )
 
     # ── starters ──────────────────────────────────────────────────────────────
-
-    @property
-    def filled_slots(self) -> dict[str, int]:
-        """Accepted starters per slot, in canonical order."""
-        return {code: self._accepted_starters.get(code, 0) for code in self.shape.slots}
 
     @property
     def open_slots(self) -> dict[str, int]:

@@ -1,9 +1,9 @@
 """Read and write a workspace member's ranks, in layers.
 
-One service replaces ``WorkspacePlayerService`` (canon) and ``HostBookService``
-(per-host book). The two differed only in which columns keyed the row, so they
-are now one write method taking ``author_user_id`` and one resolver taking the
-layer order it should honour.
+Workspace canon (``author_user_id`` ``None``) and a host's per-host book
+(``author_user_id`` set) differ only in which columns key the row: one write
+method takes ``author_user_id`` and one resolver takes the layer order it should
+honour.
 """
 
 from __future__ import annotations
@@ -16,22 +16,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.division_grid import DivisionGrid
+from shared.disciplines import discipline as discipline_spec
+from shared.division_grid import DivisionGrid, normalize_native_ranks_to_grid
 from shared.domain.member_rank import RankScope, ResolvedRank, pick_rank
-from shared.repository import WorkspaceMemberRepository
+from shared.repository import CatalogRoleRepository, WorkspaceMemberRepository
 from shared.repository.member_rank import MemberRankRepository
-from shared.services.rank_snapshots import fetch_latest_ow_ranks_by_account, normalize_ow_ranks_to_grid
 
 __all__ = ("MemberRankService", "member_rank_service")
 
-#: Layer order for a pickup mix: the host's own book, then the workspace, then OW.
-MIX_ORDER: tuple[RankScope, ...] = ("author", "workspace", "ow")
+#: Layer order for a pickup mix: the host's own book, then the workspace, then the game's native ladder.
+MIX_ORDER: tuple[RankScope, ...] = ("author", "workspace", "native")
 
 #: Layer order for a tournament: the registration's own number (what the
-#: organiser set), then the workspace canon, then OW. An empty
+#: organiser set), then the workspace canon, then the game's native ladder. An empty
 #: ``registration_role.rank_value`` therefore *inherits* rather than reading as
-#: "unranked" -- which is what it used to do before the resolver was stubbed out.
-TOURNAMENT_ORDER: tuple[RankScope, ...] = ("registration", "workspace", "ow")
+#: "unranked".
+TOURNAMENT_ORDER: tuple[RankScope, ...] = ("registration", "workspace", "native")
 
 
 class MemberRankService:
@@ -40,9 +40,20 @@ class MemberRankService:
         *,
         ranks: MemberRankRepository = MemberRankRepository(),
         members: WorkspaceMemberRepository = WorkspaceMemberRepository(),
+        roles: CatalogRoleRepository = CatalogRoleRepository(),
     ) -> None:
         self.ranks = ranks
         self.members = members
+        self.roles = roles
+
+    async def _dimension_id(self, session: AsyncSession, discipline: str) -> int:
+        """The discipline's rated dimension: the axis every rank is held on."""
+        dimension_id = await self.roles.rated_dimension_id(session, discipline=discipline)
+        if dimension_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"discipline_has_no_ranks: {discipline!r}"
+            )
+        return dimension_id
 
     async def member_in_workspace(
         self, session: AsyncSession, *, workspace_id: int, workspace_member_id: int
@@ -58,6 +69,7 @@ class MemberRankService:
         session: AsyncSession,
         *,
         workspace_id: int,
+        discipline: str,
         workspace_member_id: int,
         ranks: Mapping[str, int],
         clear: Sequence[str] = (),
@@ -68,13 +80,22 @@ class MemberRankService:
         Deleting rather than zeroing is what keeps inheritance working: an absent
         row falls through to the next layer, a row holding ``0`` would not. An
         omitted role is left alone, so saving one role never disturbs the others.
+        A code outside the discipline's rated module roles -- ``flex`` included -- is refused.
         """
         await self.member_in_workspace(session, workspace_id=workspace_id, workspace_member_id=workspace_member_id)
+        catalog = await self.roles.rated_rows(session, discipline=discipline, workspace_id=None)
+        unknown = sorted({*ranks, *clear} - set(catalog))
+        if unknown or not catalog:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"unknown_role: {unknown or discipline}"
+            )
+        dimension_id = next(iter(catalog.values())).dimension_id
         existing = {
             row.role: row
             for row in await self.ranks.list_layer(
                 session,
                 workspace_id=workspace_id,
+                dimension_id=dimension_id,
                 member_id=workspace_member_id,
                 author_user_id=author_user_id,
             )
@@ -92,7 +113,8 @@ class MemberRankService:
                 workspace_id=workspace_id,
                 workspace_member_id=workspace_member_id,
                 author_user_id=author_user_id,
-                role=role,
+                catalog_role=catalog[role],
+                dimension_id=dimension_id,
                 rank_value=value,
             )
             try:
@@ -106,6 +128,7 @@ class MemberRankService:
                     for other in await self.ranks.list_layer(
                         session,
                         workspace_id=workspace_id,
+                        dimension_id=dimension_id,
                         member_id=workspace_member_id,
                         author_user_id=author_user_id,
                     )
@@ -123,6 +146,7 @@ class MemberRankService:
         session: AsyncSession,
         *,
         workspace_id: int,
+        discipline: str,
         member_ids: Sequence[int],
         author_user_id: int | None = None,
     ) -> dict[tuple[int, str], int]:
@@ -130,6 +154,7 @@ class MemberRankService:
         rows = await self.ranks.list_layers(
             session,
             workspace_id=workspace_id,
+            dimension_id=await self._dimension_id(session, discipline),
             member_ids=member_ids,
             author_user_id=author_user_id,
             include_canon=author_user_id is None,
@@ -141,21 +166,21 @@ class MemberRankService:
         session: AsyncSession,
         *,
         workspace_id: int,
+        discipline: str,
         member_ids: Sequence[int],
         author_user_id: int | None = None,
     ) -> Sequence[models.MemberRank]:
         """Canon + one author's own layer, raw rows, in one round trip.
 
-        Exactly the fetch ``resolve`` makes internally to build its ``canon``/
-        ``author`` buckets. A caller that also needs the author-only rows
-        un-mixed with canon (to show the host's own book verbatim) would
-        otherwise pay for that same query twice -- once here, once inside
-        ``resolve``. Feed the result back into ``resolve(layers=...)`` to make
-        it skip its own fetch and reuse these rows instead.
+        The same fetch ``resolve`` makes internally. A caller that also needs the
+        author-only rows un-mixed with canon (to show the host's own book
+        verbatim) feeds the result back into ``resolve(layers=...)`` so the query
+        runs once.
         """
         return await self.ranks.list_layers(
             session,
             workspace_id=workspace_id,
+            dimension_id=await self._dimension_id(session, discipline),
             member_ids=member_ids,
             author_user_id=author_user_id,
             include_canon=True,
@@ -172,6 +197,7 @@ class MemberRankService:
         session: AsyncSession,
         *,
         workspace_id: int,
+        discipline: str,
         members: Mapping[int, int | None],
         roles: Sequence[str],
         order: Sequence[RankScope],
@@ -183,7 +209,7 @@ class MemberRankService:
         """Effective rank per ``(workspace_member_id, role)``.
 
         ``members`` maps a member id to its ``players.user`` id (``None`` when the
-        member has no player rows to carry an Overwatch snapshot). ``order`` names
+        member has no player to carry a native rank). ``order`` names
         the layers to consult, strongest first; a layer not named is not queried,
         so a tournament never pays for the author book and a mix never pays for
         the registration join.
@@ -206,6 +232,7 @@ class MemberRankService:
                 else await self.ranks.list_layers(
                     session,
                     workspace_id=workspace_id,
+                    dimension_id=await self._dimension_id(session, discipline),
                     member_ids=list(members),
                     author_user_id=author_user_id if wants_author else None,
                     include_canon=wants_canon,
@@ -221,10 +248,11 @@ class MemberRankService:
             "workspace": canon,
         }
 
-        ow_by_user: dict[int, dict[str, int]] = {}
-        if "ow" in order:
-            # Pay for the snapshot join only where a cheaper layer left a hole.
-            cheaper = [scope for scope in order if scope != "ow"]
+        native_by_user: dict[int, dict[str, int]] = {}
+        native = discipline_spec(discipline).native_ranks
+        if "native" in order and native is not None:
+            # Pay for the native read only where a cheaper layer left a hole.
+            cheaper = [scope for scope in order if scope != "native"]
             need = {
                 player_id
                 for member_id, player_id in members.items()
@@ -232,33 +260,21 @@ class MemberRankService:
                 and any(all(stored[scope].get((member_id, role)) is None for scope in cheaper) for role in roles)
             }
             if need:
-                collapsed = _max_ow_by_user(await fetch_latest_ow_ranks_by_account(session, sorted(need)))
-                ow_by_user = normalize_ow_ranks_to_grid(collapsed, grid) if grid is not None else collapsed
+                raw = await native(session, sorted(need))
+                native_by_user = normalize_native_ranks_to_grid(raw, grid) if grid is not None else raw
 
         out: dict[tuple[int, str], ResolvedRank] = {}
         for member_id, player_id in members.items():
-            ow_roles = ow_by_user.get(player_id, {}) if player_id is not None else {}
+            native_roles = native_by_user.get(player_id, {}) if player_id is not None else {}
             for role in roles:
                 key = (member_id, role)
                 out[key] = pick_rank(
-                    [(scope, ow_roles.get(role) if scope == "ow" else stored[scope].get(key)) for scope in order]
+                    [
+                        (scope, native_roles.get(role) if scope == "native" else stored[scope].get(key))
+                        for scope in order
+                    ]
                 )
         return out
-
-
-def _max_ow_by_user(accounts: dict[int, dict[str, dict[str, int]]]) -> dict[int, dict[str, int]]:
-    """Collapse per-account snapshots to the best rank per role, per user."""
-    out: dict[int, dict[str, int]] = {}
-    for user_id, by_tag in accounts.items():
-        by_role: dict[str, int] = {}
-        for ranks in by_tag.values():
-            for role, value in ranks.items():
-                previous = by_role.get(role)
-                if previous is None or value > previous:
-                    by_role[role] = value
-        if by_role:
-            out[user_id] = by_role
-    return out
 
 
 member_rank_service = MemberRankService()

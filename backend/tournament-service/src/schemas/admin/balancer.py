@@ -5,12 +5,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from shared.domain.roster_shape import RegistrationRoleCode
+from shared.schemas.identity import PlayerIdentityRead
+from shared.schemas.role import RoleRef
 from src.schemas.admission import AdmissionRead
 from src.schemas.base import BaseRead
 from src.schemas.registration import SubroleOption
 
-BalancerRoleSubtype = str
 RegistrationStatus = str
 BalancerStatus = str
 StatusScope = Literal["registration", "balancer"]
@@ -35,7 +35,7 @@ RankAutofillOwValue = Literal["composite", "current", "peak"]
 # Priority chains for rank autofill:
 #   ow_first       -> OW (week composite) -> balancer (division history) -> analytics (past tournaments)
 #   balancer_first -> balancer -> analytics -> OW
-# Legacy presets; superseded by an explicit ``stages`` chain when one is supplied.
+# Presets; an explicit ``stages`` chain supersedes them when one is supplied.
 RankAutofillMode = Literal["ow_first", "balancer_first"]
 
 __all__ = (
@@ -209,7 +209,7 @@ class BalancerGoogleSheetMappingPreviewResponse(BaseModel):
     create_count: int = 0
     update_count: int = 0
     skip_count: int = 0
-    # Back-compat single-row fields (populated from the first preview row).
+    # The first preview row's fields, for single-row consumers.
     sample_raw_row: dict[str, str] = Field(default_factory=dict)
     parsed_fields: dict[str, Any] = Field(default_factory=dict)
 
@@ -248,12 +248,11 @@ class BalancerGoogleSheetMappingCatalogResponse(BaseModel):
 
 
 class BalancerRegistrationRoleRead(BaseModel):
-    role: RegistrationRoleCode
-    subrole: BalancerRoleSubtype | None = None
+    role: RoleRef
     priority: int = 0
     is_primary: bool = False
     rank_value: int | None = None
-    rank_source: Literal["registration", "workspace", "ow", "none"] = "none"
+    rank_source: Literal["registration", "workspace", "native", "none"] = "none"
     #: Playability, not the checkbox: the role is active AND the rank resolver
     #: found a number for it. This is exactly what the balancer and the draft
     #: act on -- the one predicate, reported once.
@@ -261,20 +260,19 @@ class BalancerRegistrationRoleRead(BaseModel):
     #: The raw ``registration_role.is_active`` column: what the registrant (or
     #: the sheet, or the editor) declared. The role editor toggles THIS.
     is_declared_active: bool = True
-    top_heroes: list[str] = Field(default_factory=list)  # ordered hero slugs (read-only display)
+    top_characters: list[str] = Field(default_factory=list)  # ordered character slugs (read-only display)
     # Latest OW2 rank for this role, normalised to the workspace grid. Injected from
     # UserRankSnapshot at list time; None when no snapshot maps to a grid tier.
     ow_rank_value: int | None = None
 
 
 class BalancerRegistrationRoleInput(BaseModel):
-    role: RegistrationRoleCode
-    subrole: BalancerRoleSubtype | None = None
+    role: RoleRef
     priority: int = 0
     is_primary: bool = False
     rank_value: int | None = None
     is_active: bool = True
-    top_heroes: list[str] | None = None
+    top_characters: list[str] | None = None
 
 
 class BalancerRankAutofillStage(BaseModel):
@@ -299,7 +297,7 @@ class BalancerRegistrationRankAutofillRequest(BaseModel):
     # Apply found role ranks even when other active roles have no parsed rank (otherwise the whole
     # registration is skipped). Never clears an existing rank — unfilled roles are left untouched.
     allow_partial: bool = False
-    # Legacy preset; only used when ``stages`` is not supplied.
+    # Preset chain; only used when ``stages`` is not supplied.
     mode: RankAutofillMode = "ow_first"
     # Explicit ordered priority chain. When non-empty it supersedes ``mode``; disabled stages are
     # dropped and duplicate sources are de-duplicated, preserving order.
@@ -307,7 +305,7 @@ class BalancerRegistrationRankAutofillRequest(BaseModel):
 
 
 class BalancerRegistrationRankAutofillRole(BaseModel):
-    role: RegistrationRoleCode
+    role: RoleRef
     current_rank_value: int | None = None
     parsed_rank_value: int | None = None
     action: RankAutofillRoleAction
@@ -329,7 +327,7 @@ class BalancerRegistrationRankAutofillRole(BaseModel):
 class BalancerRegistrationRankAutofillPlayer(BaseModel):
     registration_id: int
     display_name: str | None = None
-    battle_tag: str | None = None
+    identity: PlayerIdentityRead | None = None
     status: RankAutofillPlayerStatus
     reason: str | None = None
     will_add_to_balancer: bool = False
@@ -359,7 +357,7 @@ class BalancerRegistrationRankAutofillResponse(BaseModel):
 class BalancerRegistrationRankHistoryEntry(BaseModel):
     tournament_id: int
     tournament_name: str | None = None
-    role: RegistrationRoleCode
+    role: RoleRef
     rank_value: int
 
 
@@ -381,7 +379,7 @@ class StatusMetaRead(BaseModel):
     name: str
     description: str | None = None
     # Whether a registration currently holding this status counts as part of
-    # the balancer pool -- see shared.balancer_registration_statuses.StatusMeta.
+    # the balancer pool -- see shared.registration_statuses.StatusMeta.
     excludes_from_balancer: bool = False
     # Whether a registration currently holding this status is blocked from
     # counting as "ready", independent of excludes_from_balancer.
@@ -432,9 +430,9 @@ class BalancerRegistrationRead(BaseRead):
     workspace_id: int
     user_id: int | None = None
     display_name: str | None = None
-    #: Primary handle of the registration's first GAME identity (battlenet
-    #: today). Every battlenet handle, smurfs included, is in
-    #: ``answers["identity_battlenet"]``.
+    #: Primary handle of the registration's first GAME identity: the owning
+    #: tournament's identity provider, position zero. Every handle of that provider,
+    #: extra accounts included, is in ``answers["identity_<provider>"]``.
     primary_handle: str | None = None
     source: RegistrationSource
     source_record_key: str | None = None
@@ -465,8 +463,7 @@ class BalancerRegistrationRead(BaseRead):
     reviewed_by_username: str | None = None
     balancer_profile_overridden_at: datetime | None = None
     # The single admission answer, computed server-side and byte-identical to the
-    # one the public participants read carries for the same registration -- that
-    # equality is the point, and there is a test pinning it.
+    # one the public participants read carries for the same registration.
     #
     # Resolved by the LIST read only. Single-registration mutation responses
     # carry ``AdmissionRead.unknown()`` rather than ``None``: the table
@@ -483,8 +480,8 @@ class BalancerRegistrationRead(BaseRead):
     subscription_outcome: str | None = None
     #: The player's strongest playable rank -- what a role-less slot is worth and
     #: what the pool sorts by. ``None`` when no role of theirs is playable at all.
-    #: Server-side because it is the engine's own answer: the admin table used to
-    #: re-derive it with a ``Math.max`` over the active roles' ranks.
+    #: Server-side because it is the engine's own answer; the client must not
+    #: re-derive it from the active roles' ranks.
     best_rank: int | None = None
     roles: list[BalancerRegistrationRoleRead] = Field(default_factory=list)
 
@@ -499,13 +496,13 @@ class BalancerRegistrationCreateRequest(BaseModel):
     #: When ``answers["roles"]`` and ``roles`` are both sent, ``roles`` WINS: only
     #: the admin rows can carry ``rank_value``/``is_active``.
     answers: dict[str, Any] = Field(default_factory=dict)
-    # Review state chosen in the admin editor. ``None`` keeps the historical
-    # "manual rows land approved" default.
+    # Review state chosen in the admin editor. ``None`` = approved, the default
+    # for a manual row.
     status: RegistrationStatus | None = None
     balancer_status: BalancerStatus | None = None
     roles: list[BalancerRegistrationRoleInput] = Field(default_factory=list)
     # Site account to anchor this manual registration on (its player/member).
-    # None = unlinked (the historical behavior).
+    # None = unlinked.
     auth_user_id: int | None = None
 
 

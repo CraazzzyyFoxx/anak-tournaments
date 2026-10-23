@@ -1,27 +1,20 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useParams, usePathname, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
-import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
+import type { LinkTabItem } from "@/components/kit/LinkTabs";
 import { usePermissions } from "@/hooks/usePermissions";
 import adminService from "@/services/admin.service";
 import { getTournamentWorkspaceQueryKeys } from "@/lib/tournament/workspace-query-keys";
 import { useHubTournamentQuery } from "../hubQueries";
-import { MATCHES_SUB_TABS, type MatchesSubTabKey } from "../tab-guards";
+import { SubTabShell, useSubTabSegment } from "../sub-tabs";
+import { MATCHES_SUB_TABS } from "../tab-guards";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { PREGAME_ROOMS_REFETCH_MS } from "@/components/admin/pregame-rooms/model";
 import { useTranslations } from "next-intl";
-
-const SUB_TAB_LABEL_KEYS: Record<MatchesSubTabKey, "encounters" | "rooms" | "reports" | "parsed" | "logs"> = {
-  encounters: "encounters",
-  rooms: "rooms",
-  reports: "reports",
-  parsed: "parsed",
-  logs: "logs"
-};
 
 /**
  * Scope params the Matches views share. Carried across a tab switch so
@@ -43,15 +36,12 @@ const SHARED_SCOPE_PARAMS = ["stage", "group"] as const;
 export default function MatchesLayout({ children }: Readonly<{ children: ReactNode }>) {
   const params = useParams<{ id: string }>();
   const tournamentId = Number(params.id);
-  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { canAccessPermission } = usePermissions();
   const t = useTranslations("adminTournament.matches");
 
   const basePath = `/admin/tournaments/${tournamentId}/matches`;
-  const segment = pathname.startsWith(basePath)
-    ? (pathname.slice(basePath.length).split("/").find(Boolean) ?? MATCHES_SUB_TABS[0])
-    : MATCHES_SUB_TABS[0];
+  const { segment } = useSubTabSegment(basePath, MATCHES_SUB_TABS, MATCHES_SUB_TABS[0]);
 
   const tournamentQuery = useHubTournamentQuery(tournamentId);
   const workspaceId = tournamentQuery.data?.workspace_id ?? null;
@@ -73,12 +63,12 @@ export default function MatchesLayout({ children }: Readonly<{ children: ReactNo
     enabled: canReadMatch
   });
 
-  // Same key and interval as the view itself, so the two never disagree and
-  // mounting the bar beside it costs no second request.
+  // Same key and interval as the rooms view, so the two never disagree. Polled
+  // only while that view is open; elsewhere one fetch feeds the badge.
   const roomsQuery = useQuery({
     queryKey: adminQueryKeys.pregameRooms(tournamentId),
     queryFn: () => adminService.getPregameRooms(tournamentId),
-    refetchInterval: PREGAME_ROOMS_REFETCH_MS,
+    refetchInterval: segment === "rooms" ? PREGAME_ROOMS_REFETCH_MS : false,
     enabled: canReadMatch
   });
 
@@ -99,7 +89,7 @@ export default function MatchesLayout({ children }: Readonly<{ children: ReactNo
 
   const items: LinkTabItem[] = MATCHES_SUB_TABS.map((key) => ({
     key,
-    label: t(`tabs.${SUB_TAB_LABEL_KEYS[key]}`),
+    label: t(`tabs.${key}`),
     href: scopeQuery ? `${basePath}/${key}?${scopeQuery}` : `${basePath}/${key}`,
     badge:
       key === "reports"
@@ -112,9 +102,8 @@ export default function MatchesLayout({ children }: Readonly<{ children: ReactNo
   }));
 
   return (
-    <div className="space-y-4">
-      <LinkTabs items={items} activeKey={segment} level={2} ariaLabel={t("ariaLabel")} />
+    <SubTabShell items={items} activeKey={segment} ariaLabel={t("ariaLabel")} allowed>
       {children}
-    </div>
+    </SubTabShell>
   );
 }

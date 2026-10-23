@@ -3,22 +3,20 @@
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
-import { HeroStrip } from "@/components/hero/HeroImage";
+import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
+import { PlayerAvatar } from "@/components/PlayerAvatar";
+import PlayerName from "@/components/PlayerName";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { PlaceBadge } from "@/components/ui/place-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { UserCatalogEntry, UserOverviewRow } from "@/types/user.types";
-import type { DivisionGridVersion } from "@/types/workspace.types";
+import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
 
-import {
-  CompareCheckbox,
-  LastActive,
-  PlayerAvatar,
-  PlayerName,
-  RolesCrests,
-  WinrateCell
-} from "./users-index.atoms";
+import { CompareCheckbox, GameMarks, LastActive, RolesCrests, WinrateCell } from "./users-index.atoms";
 import { ALPHABET } from "./users-index.model";
 import type { CompareSelection } from "./UsersCompareBar";
 import type { UsersIndexData } from "./useUsersIndexData";
@@ -31,63 +29,81 @@ import type { UsersIndexParamControls } from "./useUsersIndexParams";
 export function PlayerCard({
   user,
   grids,
+  divisionGrid,
+  game,
   minEncounters,
-  compare
+  compare,
+  onSelectGame
 }: Readonly<{
   user: UserCatalogEntry | UserOverviewRow;
   grids: DivisionGridVersion[] | undefined;
+  /** The read's grid, for a role naming no version in `grids`. */
+  divisionGrid: DivisionGrid;
+  /** The index's game and its role dictionary. */
+  game: Pick<UsersIndexData, "discipline" | "ontology">;
   minEncounters: number;
   compare: CompareSelection;
+  /** Narrows the scope to a game (a card's mark under "all games"). */
+  onSelectGame: (code: string) => void;
 }>) {
   const t = useTranslations();
   const selected = compare.isSelected(user.id);
 
   return (
-    <article className="flex flex-col gap-3 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-3">
-      <div className="flex items-start gap-2.5">
-        <PlayerAvatar user={user} size={40} />
-        <div className="min-w-0 flex-1">
-          <PlayerName name={user.name} className="block" />
-          <LastActive at={user.last_active_at} className="mt-0.5" />
+    <Card asChild variant="flat">
+      <article className="flex flex-col gap-3 p-3">
+        <div className="flex items-start gap-2.5">
+          <PlayerAvatar user={user} size={40} />
+          <div className="min-w-0 flex-1">
+            <PlayerName player={{ name: user.name }} />
+            <LastActive at={user.last_active_at} className="mt-0.5" />
+          </div>
+          <CompareCheckbox
+            user={user}
+            selected={selected}
+            disabled={compare.isFull && !selected}
+            onToggle={() => compare.toggle(user)}
+          />
         </div>
-        <CompareCheckbox
-          user={user}
-          selected={selected}
-          disabled={compare.isFull && !selected}
-          onToggle={() => compare.toggle(user)}
-        />
-      </div>
 
-      <div className="flex items-center justify-between gap-2">
-        <RolesCrests roles={user.roles} grids={grids} size={26} />
-        <HeroStrip heroes={user.top_heroes.slice(0, 3).map((entry) => entry.hero)} limit={3} />
-      </div>
-
-      <div className="grid grid-cols-3 gap-2 border-t border-[color:var(--aqt-border)] pt-2.5">
-        <div className="flex flex-col items-center gap-0.5">
-          <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-            {t("users.list.table.tournaments")}
-          </span>
-          <span className="font-semibold tabular-nums">{user.tournaments_count}</span>
-        </div>
-        <div className="flex flex-col items-center gap-0.5">
-          <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-            {t("users.list.table.winrate")}
-          </span>
-          <WinrateCell user={user} minEncounters={minEncounters} />
-        </div>
-        <div className="flex flex-col items-center gap-0.5">
-          <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-            {t("users.list.table.bestPlacement")}
-          </span>
-          {user.best_placement ? (
-            <PlaceBadge place={user.best_placement} />
+        <div className="flex items-center justify-between gap-2">
+          {game.discipline === null ? (
+            <GameMarks codes={user.disciplines} onSelect={onSelectGame} />
           ) : (
-            <span className="text-[color:var(--aqt-fg-faint)]">-</span>
+            <>
+              <RolesCrests
+                roles={user.roles}
+                grids={grids}
+                divisionGrid={divisionGrid}
+                discipline={game.discipline}
+                ontology={game.ontology}
+                size={26}
+              />
+              <CatalogEntityStrip entities={user.top_characters.slice(0, 3).map((entry) => entry.character)} limit={3} />
+            </>
           )}
         </div>
-      </div>
-    </article>
+
+        <div className="grid grid-cols-3 gap-2 border-t border-[color:var(--aqt-border)] pt-2.5">
+          <div className="flex flex-col items-center gap-0.5">
+            <Eyebrow>{t("users.list.table.tournaments")}</Eyebrow>
+            <span className="font-semibold tabular-nums">{user.tournaments_count}</span>
+          </div>
+          <div className="flex flex-col items-center gap-0.5">
+            <Eyebrow>{t("users.list.table.winrate")}</Eyebrow>
+            <WinrateCell user={user} minEncounters={minEncounters} record={game.discipline === null} />
+          </div>
+          <div className="flex flex-col items-center gap-0.5">
+            <Eyebrow>{t("users.list.table.bestPlacement")}</Eyebrow>
+            {user.best_placement ? (
+              <PlaceBadge place={user.best_placement} />
+            ) : (
+              <span className="text-[color:var(--aqt-fg-faint)]">-</span>
+            )}
+          </div>
+        </div>
+      </article>
+    </Card>
   );
 }
 
@@ -95,11 +111,14 @@ export function PlayerCard({
 export function UsersCatalogView({
   controls,
   data,
-  compare
+  compare,
+  onSelectGame
 }: Readonly<{
   controls: UsersIndexParamControls;
   data: UsersIndexData;
   compare: CompareSelection;
+  /** Narrows the scope to a game (a card's mark under "all games"). */
+  onSelectGame: (code: string) => void;
 }>) {
   const t = useTranslations();
   const { letter, minEncounters } = controls.params;
@@ -107,30 +126,27 @@ export function UsersCatalogView({
 
   return (
     <section className="space-y-4">
-      <nav
-        aria-label={t("users.list.catalog.jumpTo")}
-        className="flex flex-wrap items-center gap-1 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-2"
-      >
-        <span className="mr-1 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-          {t("users.list.catalog.jumpTo")}
-        </span>
-        <LetterButton active={!letter} onClick={() => controls.setLetter(null)}>
-          {t("common.all")}
-        </LetterButton>
-        {ALPHABET.map((alpha) => {
-          const available = availableLetters.has(alpha);
-          return (
-            <LetterButton
-              key={alpha}
-              active={letter === alpha}
-              disabled={!available && !catalogQuery.isPending}
-              onClick={() => controls.setLetter(alpha)}
-            >
-              {alpha}
-            </LetterButton>
-          );
-        })}
-      </nav>
+      <Card asChild variant="flat">
+        <nav aria-label={t("users.list.catalog.jumpTo")} className="flex flex-wrap items-center gap-1 p-2">
+          <Eyebrow className="mr-1">{t("users.list.catalog.jumpTo")}</Eyebrow>
+          <LetterButton active={!letter} onClick={() => controls.setLetter(null)}>
+            {t("common.all")}
+          </LetterButton>
+          {ALPHABET.map((alpha) => {
+            const available = availableLetters.has(alpha);
+            return (
+              <LetterButton
+                key={alpha}
+                active={letter === alpha}
+                disabled={!available && !catalogQuery.isPending}
+                onClick={() => controls.setLetter(alpha)}
+              >
+                {alpha}
+              </LetterButton>
+            );
+          })}
+        </nav>
+      </Card>
 
       {catalogQuery.isError ? (
         <PageStateCard
@@ -160,21 +176,20 @@ export function UsersCatalogView({
                     key={entry.id}
                     user={entry}
                     grids={catalogQuery.data?.division_grids}
+                    divisionGrid={controls.divisionGrid}
+                    game={data}
                     minEncounters={minEncounters}
                     compare={compare}
+                    onSelectGame={onSelectGame}
                   />
                 ))}
               </div>
               {bucket.users.length < bucket.count ? (
-                <button
-                  type="button"
-                  onClick={() => controls.setLetter(bucket.letter)}
-                  className="aqt-filter-chip"
-                >
+                <Button variant="outline" size="sm" onClick={() => controls.setLetter(bucket.letter)}>
                   {t("users.list.catalog.showMore", {
                     count: bucket.count - bucket.users.length
                   })}
-                </button>
+                </Button>
               ) : null}
             </div>
           ))}
@@ -208,21 +223,20 @@ function LetterButton({
   children: ReactNode;
 }>) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="icon-sm"
       disabled={disabled}
       onClick={onClick}
       aria-current={active ? "true" : undefined}
       className={cn(
-        "inline-flex h-7 min-w-7 items-center justify-center rounded-[6px] px-1.5 text-caption outline-none transition-colors",
-        "focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
+        "w-auto min-w-7 px-1.5",
         active
           ? "bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] text-[color:var(--aqt-teal)]"
-          : "text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-2)] hover:text-[color:var(--aqt-fg)]",
-        disabled && "cursor-not-allowed opacity-30 hover:bg-transparent"
+          : "text-[color:var(--aqt-fg-muted)]"
       )}
     >
       {children}
-    </button>
+    </Button>
   );
 }

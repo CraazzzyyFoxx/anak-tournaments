@@ -1,0 +1,63 @@
+{
+  "format": 1,
+  "provenance": {
+    "capture": "condition-operands-1.frozen.json",
+    "capture_sha256": "1c6a4d54e2da8a3fc90ea8e41617555b6aa6155940a886d1d6057d1179223944",
+    "golden_sha256": "eeb470343be6737ba1fece18e4cad30ee2ece23a202ab51e88532badf5861da7",
+    "rank_source_sha256": "e4d518ecf2d23ae94283f31ac6b41fe6b8693749256291c5acf6155aba63d8d2",
+    "fixture_sha256": "0ebe4417fd15db9c9266317362f6aee470c127720aa780949bef3a8119a649a7",
+    "membership_source": "Frozen workspace_member query by the actual condition workspace and global player; no active-roster filter",
+    "participant_source": "Frozen seed_legacy ids/owners/games mapping: (encounter, team_home) -> encounter_team_home; (encounter, team_away) -> encounter_team_away, including reversed and OTP games. No native-query-derived identity.",
+    "all_frozen_outputs_match_golden": true,
+    "all_frozen_probes_faithful": true,
+    "all_frozen_sequences_reconstruct_original": true
+  },
+  "participant_owners": [
+    {"encounter_id": 910000, "tournament_team_id": 910000, "encounter_team_id": 910000},
+    {"encounter_id": 910000, "tournament_team_id": 910001, "encounter_team_id": 910001}
+  ],
+  "operands": [
+    [910000, 910000, 910000, 910000, 910000, "kd", "hero_time_played", "0x1.8020c49ba5e35p+1", "0x1.c200000000000p+12", "0x1.519cccccccccdp+14", 910000],
+    [910001, 910000, 910000, 910000, 910000, "kd", "hero_time_played", "0x1.803126e978d50p+1", "0x0.0p+0", "0x0.0p+0", 910000],
+    [910010, 910000, 910000, 910000, 910000, "kd", "hero_time_played", "0x1.800d1b71758e2p+1", "0x1.2c00000000000p+9", "0x1.c20f5c28f5c29p+10", 910000],
+    [910011, 910000, 910000, 910000, 910000, "kd", "hero_time_played", "0x1.8010624dd2f1bp+1", "0x1.2c00000000000p+9", "0x1.c213333333334p+10", 910000],
+    [910012, 910000, 910000, 910000, 910000, "kd", "hero_time_played", "0x1.8013a92a30553p+1", "0x1.2c00000000000p+9", "0x1.c2170a3d70a3dp+10", 910000],
+    [910013, 910000, 910000, 910000, 910000, "kd", "hero_time_played", "0x1.8016f0068db8cp+1", "0x1.2c00000000000p+9", "0x1.c21ae147ae148p+10", 910000],
+    [910000, 910001, 910001, 910001, 910000, "kd", "hero_time_played", "0x1.804189374bc6ap+1", "0x1.c200000000000p+12", "0x1.51b9999999999p+14", 910001],
+    [910001, 910001, 910001, 910001, 910000, "kd", "hero_time_played", "0x1.8051eb851eb85p+1", "0x1.5180000000000p+12", "0x1.faac000000000p+13", 910001],
+    [910010, 910001, 910001, 910001, 910000, "kd", "hero_time_played", "0x1.802de00d1b717p+1", "0x1.2c00000000000p+9", "0x1.c235c28f5c28fp+10", 910001],
+    [910011, 910001, 910001, 910001, 910000, "kd", "hero_time_played", "0x1.803126e978d50p+1", "0x1.2c00000000000p+9", "0x1.c23999999999ap+10", 910001],
+    [910012, 910001, 910001, 910001, 910000, "kd", "hero_time_played", "0x1.80346dc5d6388p+1", "0x1.2c00000000000p+9", "0x1.c23d70a3d70a3p+10", 910001],
+    [910013, 910001, 910001, 910001, 910000, "kd", "hero_time_played", "0x1.8037b4a2339c1p+1", "0x1.2c00000000000p+9", "0x1.c24147ae147aep+10", 910001]
+  ],
+  "groups": [
+    {
+      "scope": "tournament", "user_id": 910000, "tournament_id": 910000,
+      "operand_indices": [0, 1, 2, 3, 4, 5],
+      "numerator_hex": "0x1.c222147ae147cp+14",
+      "denominator_hex": "0x1.2c00000000000p+13",
+      "metric_hex": "0x1.801d14e3bcd37p+1"
+    },
+    {
+      "scope": "tournament", "user_id": 910001, "tournament_id": 910000,
+      "operand_indices": [6, 7, 8, 9, 10, 11],
+      "numerator_hex": "0x1.5fcf3d70a3d6fp+15",
+      "denominator_hex": "0x1.d4c0000000000p+13",
+      "metric_hex": "0x1.8045132f87acfp+1"
+    },
+    {
+      "scope": "workspace", "user_id": 910000, "tournament_id": 910000,
+      "operand_indices": [4, 5, 1, 2, 3, 0],
+      "numerator_hex": "0x1.c222147ae147bp+14",
+      "denominator_hex": "0x1.2c00000000000p+13",
+      "metric_hex": "0x1.801d14e3bcd36p+1"
+    },
+    {
+      "scope": "workspace", "user_id": 910001, "tournament_id": 910000,
+      "operand_indices": [6, 7, 8, 9, 10, 11],
+      "numerator_hex": "0x1.5fcf3d70a3d6fp+15",
+      "denominator_hex": "0x1.d4c0000000000p+13",
+      "metric_hex": "0x1.8045132f87acfp+1"
+    }
+  ]
+}

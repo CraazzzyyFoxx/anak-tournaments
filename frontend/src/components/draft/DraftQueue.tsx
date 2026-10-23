@@ -4,12 +4,15 @@ import { ArrowRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useMemo, useRef, useState } from "react";
 
-import { splitBattleTag } from "@/components/balancer/balancer-page-helpers";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { Button } from "@/components/ui/button";
 import { useDraftLayerPad } from "@/hooks/useDraftLayerPad";
 import { usePickCountdown } from "@/hooks/usePickCountdown";
-import { DRAFT_ROLES, pickHistory, type TeamView } from "@/lib/draft/room-model";
-import { getRoleIconName, ROLE_ACCENT } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { pickHistory, type TeamView } from "@/lib/draft/room-model";
+import { splitHandle } from "@/lib/player";
+import { showsRoles, type RoleOntology } from "@/lib/roster/ontology";
+import { roleOf } from "@/lib/roster/role-ref";
 import type { DraftBoard, DraftPick } from "@/types/draft.types";
 
 interface DraftQueueProps {
@@ -19,6 +22,8 @@ interface DraftQueueProps {
   remaining: readonly DraftPick[];
   myTeamId: number | null;
   clockColor: string;
+  /** The session owner's role dictionary: names and glyphs of the roles a team still needs. */
+  ontology: RoleOntology | null;
 }
 
 const UPCOMING_COUNT = 10;
@@ -27,8 +32,10 @@ const HISTORY_COUNT = 12;
 const headingClass =
   "m-0 flex items-center gap-2 px-[18px] pb-2 text-caption font-semibold text-[color:var(--aqt-fg-muted)]";
 
-export function DraftQueue({ board, teamViews, remaining, myTeamId, clockColor }: Readonly<DraftQueueProps>) {
+export function DraftQueue({ board, teamViews, remaining, myTeamId, clockColor, ontology }: Readonly<DraftQueueProps>) {
   const t = useTranslations("draftRedesign");
+  const slotLabel = useSlotLabel(ontology);
+  const named = showsRoles(ontology);
   const [showAll, setShowAll] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   useDraftLayerPad(scrollRef);
@@ -54,7 +61,7 @@ export function DraftQueue({ board, teamViews, remaining, myTeamId, clockColor }
           // A flex slot seats any role, so it reads as "any role" rather than a list of three.
           const needs = view
             ? [
-                ...DRAFT_ROLES.filter((role) => (view.openRoles.get(role) ?? 0) > 0).map((role) => t(`roles.${role}`)),
+                ...(named ? [...view.openRoles.keys()].map((role) => slotLabel(role)) : []),
                 ...(view.openFlex > 0 ? [t("teams.anyRole")] : [])
               ]
             : [];
@@ -107,7 +114,7 @@ export function DraftQueue({ board, teamViews, remaining, myTeamId, clockColor }
       <ol>
         {shownHistory.map((pick) => {
           const player = pick.picked_player_id == null ? null : playerById.get(pick.picked_player_id);
-          const tag = player?.battle_tag ?? (player ? `#${player.id}` : "—");
+          const tag = player?.identity?.handle ?? (player ? `#${player.id}` : "—");
           return (
             <li
               key={pick.id}
@@ -122,15 +129,11 @@ export function DraftQueue({ board, teamViews, remaining, myTeamId, clockColor }
                 </span>
                 <ArrowRight aria-hidden className="h-[13px] w-[13px] flex-none text-[color:var(--aqt-fg-faint)]" />
                 <span className="truncate font-semibold" title={tag}>
-                  {splitBattleTag(tag).name}
+                  {splitHandle(tag).name}
                 </span>
-                {pick.target_role && (
-                  <span className="flex-none" title={t(`roles.${pick.target_role}`)}>
-                    <PlayerRoleIcon
-                      role={getRoleIconName(pick.target_role)}
-                      size={18}
-                      color={ROLE_ACCENT[pick.target_role]}
-                    />
+                {pick.target_role && named && (
+                  <span className="flex-none" title={slotLabel(roleOf(pick.target_role))}>
+                    <PlayerRoleIcon role={roleOf(pick.target_role)} ontology={ontology} size={18} />
                   </span>
                 )}
               </div>
@@ -156,15 +159,17 @@ export function DraftQueue({ board, teamViews, remaining, myTeamId, clockColor }
         })}
       </ol>
       {history.length > HISTORY_COUNT && (
-        <div className="px-[18px] py-3">
-          <button
+        <div className="px-[18px] py-3 text-body">
+          <Button
             type="button"
+            variant="link"
+            size="inline"
             aria-expanded={showAll}
             onClick={() => setShowAll((value) => !value)}
-            className="rounded text-body font-medium text-[color:var(--aqt-teal)] outline-hidden hover:underline focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] max-sm:min-h-11"
+            className="text-[color:var(--aqt-teal)] max-sm:min-h-11"
           >
             {showAll ? t("teams.history.collapse") : t("teams.history.showAll", { count: history.length })}
-          </button>
+          </Button>
         </div>
       )}
     </div>

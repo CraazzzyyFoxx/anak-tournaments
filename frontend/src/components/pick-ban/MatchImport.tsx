@@ -1,0 +1,167 @@
+"use client";
+
+import { useId, useState } from "react";
+import { AlertTriangle, CheckCircle2, Hourglass } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
+import { ApiError } from "@/lib/api/error";
+import { encounterQueryKeys } from "@/lib/encounters/query-keys";
+import { notify } from "@/lib/notify";
+import pickBanService from "@/services/pickBan.service";
+import type { MatchImport as MatchImportRow } from "@/types/encounter.types";
+
+/** Refusals a submitter can act on (the match-import routes); anything else is the generic failure. */
+const IMPORT_ERROR_CODES = [
+  "invalid_external_id",
+  "match_already_imported",
+  "unsupported_ingestor",
+  "match_import_tournament_only"
+] as const;
+type ImportErrorCode = (typeof IMPORT_ERROR_CODES)[number];
+
+const STATUS_ICON = { pending: Hourglass, done: CheckCircle2, failed: AlertTriangle } as const;
+/** A pending import is retried by the stats worker every minute or so; poll while one is. */
+const PENDING_POLL_MS = 30_000;
+
+/**
+ * Files a game's match by its id in the game's own records, and lists what was filed: the stats worker fetches it
+ * (retrying until the game's API has it) and imports it like an uploaded log. Rendered only for a tournament game of
+ * a discipline that declares a match fetcher (`capabilities.match_fetch`). `games` are the positions it may be filed
+ * for: one (a captain's report) hides the picker. `admin` uses the organizer routes, whose rows carry the warnings
+ * (anonymous participants dropped, a banned character played).
+ */
+export function MatchImport({
+  encounterId,
+  games,
+  admin = false
+}: Readonly<{ encounterId: number; games: ReadonlyArray<{ id: number; position: number }>; admin?: boolean }>) {
+  const t = useTranslations("pickBan.room.matchImport");
+  const inputId = useId();
+  const queryClient = useQueryClient();
+  const [picked, setPicked] = useState<number | null>(null);
+  const [externalId, setExternalId] = useState("");
+  const gameId = games.find((game) => game.id === picked)?.id ?? games[0]?.id ?? null;
+  const key = encounterQueryKeys.matchImports(encounterId, gameId, admin);
+
+  const imports = useQuery({
+    queryKey: key,
+    queryFn: () => pickBanService.listMatchImports(encounterId, gameId as number, admin),
+    enabled: gameId != null,
+    refetchInterval: (query) =>
+      query.state.data?.some((row) => row.status === "pending") ? PENDING_POLL_MS : false
+  });
+
+  const submit = useMutation({
+    mutationFn: () => pickBanService.importMatch(encounterId, gameId as number, externalId.trim(), admin),
+    onSuccess: () => {
+      setExternalId("");
+      notify.success(t("submitted"));
+    },
+    onError: (error) => {
+      const code =
+        error instanceof ApiError
+          ? error.details
+              .map((detail) => detail.code)
+              .find((value): value is ImportErrorCode => IMPORT_ERROR_CODES.some((known) => known === value))
+          : undefined;
+      if (code != null) notify.error(t("failed"), { description: t(`errors.${code}`) });
+      else notify.apiError(error, { title: t("failed") });
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: key })
+  });
+
+  if (gameId == null) return null;
+  const rows = imports.data ?? [];
+
+  return (
+    <section className="flex flex-col gap-2">
+      <form
+        className="flex flex-col gap-1.5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          submit.mutate();
+        }}
+      >
+        <Label htmlFor={inputId}>{t("label")}</Label>
+        <div className="flex flex-wrap gap-2">
+          {games.length > 1 ? (
+            <Select value={String(gameId)} onValueChange={(value) => setPicked(Number(value))}>
+              <SelectTrigger size="sm" className="w-auto" aria-label={t("gameLabel")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {games.map((game) => (
+                  <SelectItem key={game.id} value={String(game.id)}>
+                    {t("game", { position: game.position })}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+          <Input
+            id={inputId}
+            size="sm"
+            autoComplete="off"
+            className="min-w-0 flex-1"
+            value={externalId}
+            onChange={(event) => setExternalId(event.target.value)}
+          />
+          <Button type="submit" size="sm" variant="outline" disabled={externalId.trim() === "" || submit.isPending}>
+            {submit.isPending ? <Spinner className="mr-2" /> : null}
+            {t("submit")}
+          </Button>
+        </div>
+        <p className="text-caption text-[color:var(--aqt-fg-muted)]">{t("hint")}</p>
+      </form>
+
+      {imports.isError ? (
+        <p className="text-caption text-[color:var(--aqt-fg-muted)]">{t("loadFailed")}</p>
+      ) : rows.length > 0 ? (
+        <ul className="flex flex-col gap-1.5" aria-label={t("listLabel")}>
+          {rows.map((row) => (
+            <ImportRow key={row.id} row={row} />
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
+/** One filed id: its state, its attempts while it is not done, why it failed, and the organizer's warnings. */
+function ImportRow({ row }: Readonly<{ row: MatchImportRow }>) {
+  const t = useTranslations("pickBan.room.matchImport");
+  const Icon = STATUS_ICON[row.status];
+  // A failed fetch is the row's own state and `last_error`; its warning would say it twice.
+  const warnings = (row.warnings ?? []).filter((warning) => warning.code !== "fetch_failed");
+  return (
+    <li className="flex flex-col gap-0.5 text-caption">
+      <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-[color:var(--aqt-fg-muted)]">
+        <Icon aria-hidden className="h-3.5 w-3.5 shrink-0" />
+        <span className="aqt-tnum font-medium text-[color:var(--aqt-fg)]">{row.external_id}</span>
+        <span aria-hidden className="text-[color:var(--aqt-fg-dim)]">·</span>
+        {t(`status.${row.status}`)}
+        {row.status !== "done" && row.attempts > 0 ? (
+          <>
+            <span aria-hidden className="text-[color:var(--aqt-fg-dim)]">·</span>
+            {t("attempts", { count: row.attempts })}
+          </>
+        ) : null}
+      </span>
+      {row.last_error ? <span className="text-[color:var(--aqt-fg-dim)]">{row.last_error}</span> : null}
+      {warnings.map((warning) => (
+        <span key={warning.code} className="flex items-start gap-1.5 text-[color:var(--aqt-amber)]">
+          <AlertTriangle aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          {warning.code === "participants_dropped"
+            ? t("warnings.participants_dropped", { count: warning.count ?? 0 })
+            : t("warnings.banned_character_played", { characters: (warning.characters ?? []).join(", ") })}
+        </span>
+      ))}
+    </li>
+  );
+}

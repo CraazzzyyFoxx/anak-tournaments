@@ -1,11 +1,11 @@
 
-import Image from "next/image";
+import Image from "@/components/ui/image";
 
 import { cn } from "@/lib/utils";
 
 /**
  * Minimal team-like shape accepted by `TeamName`. Compatible with `Team`,
- * `TeamWithStats`, `Encounter["home_team"]` and the admin team reads.
+ * `EncounterTeam["team"]`, participation snapshots and the admin team reads.
  */
 export interface TeamNameInput {
   name: string;

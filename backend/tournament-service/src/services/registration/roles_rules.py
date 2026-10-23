@@ -1,32 +1,26 @@
-"""Role composition, sub-role and top-hero rules for the ``roles`` builtin.
+"""Role composition, sub-role and top-character rules for the ``roles`` builtin.
 
 The schema pipeline (``shared/domain/forms/validate.py``) can coerce a roles
 answer structurally, but not judge it: the rules need the workspace sub-role
-catalog and the hero catalog, both of which come from the database. So they
+catalog and the discipline's character catalog, both of which come from the database. So they
 live here, as the tournament-service plugin the pipeline calls after
 normalisation.
 
 Every rule RETURNS a :class:`FieldError` instead of raising, and every rule
 runs: a registrant sees the whole verdict on one round trip rather than the
-first complaint. The order of the collected errors is the order the old
-first-failure validator would have raised them in.
+first complaint.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 from typing import Any
 
-from shared.core import enums
 from shared.domain.forms.builtins import RolesParams
 from shared.domain.forms.schema import FormField
 from shared.domain.forms.validate import ErrorCode, FieldError
-from shared.domain.player_sub_roles import (
-    REGISTRATION_ROLE_CODES,
-    REGISTRATION_TO_CANONICAL,
-    normalize_sub_role,
-)
+from shared.domain.player_sub_roles import normalize_sub_role
 from shared.hero_catalog import DEFAULT_MAX_TOP_HEROES, HeroCatalog
 
 __all__ = ("SubroleCatalog", "is_flex_submission", "role_value", "validate_roles")
@@ -34,12 +28,6 @@ __all__ = ("SubroleCatalog", "is_flex_submission", "role_value", "validate_roles
 #: The one field key these errors are reported against.
 FIELD = "roles"
 
-_ROLE_LABELS = {"tank": "Tank", "damage": "DPS", "support": "Support"}
-_HERO_CLASS_BY_CANONICAL = {
-    "tank": enums.HeroClass.tank,
-    "damage": enums.HeroClass.damage,
-    "support": enums.HeroClass.support,
-}
 
 SubroleCatalog = dict[str, list[Any]]
 
@@ -52,7 +40,7 @@ def role_value(role: Any, key: str, default: Any = None) -> Any:
     """One submitted role row's field.
 
     Rows arrive as dicts from the answer pipeline; ``serializers.py`` reads the
-    same shape off ORM ``BalancerRegistrationRole`` objects through
+    same shape off ORM ``RegistrationRole`` objects through
     ``is_flex_submission``, so attribute rows are read too.
     """
     if isinstance(role, Mapping):
@@ -82,7 +70,7 @@ def _allowed_subroles(
     the ``roles`` field wins; otherwise fall back to the workspace catalog.
     Returns ``None`` when nothing is configured anywhere (lenient — nothing to
     validate against). A configured *empty* list is a constraint, not an
-    absence: it allows nothing, exactly as the pre-schema config did.
+    absence: it allows nothing.
     """
     configured = params.subroles.get(role_code)
     if configured is not None:
@@ -114,12 +102,13 @@ def _role_errors(
     *,
     params: RolesParams,
     catalog: SubroleCatalog | None,
+    role_codes: Sequence[str],
 ) -> list[FieldError]:
     """Role codes and sub-roles, one verdict per submitted row."""
     errors: list[FieldError] = []
     for role in roles:
         role_code = role_value(role, "role")
-        if role_code not in REGISTRATION_ROLE_CODES:
+        if role_code not in role_codes:
             errors.append(_err("roles.unknown_role", f"Invalid role: {role_code}.", role=role_code))
             continue
 
@@ -147,18 +136,18 @@ def _hero_errors(
     params: RolesParams,
     hero_catalog: HeroCatalog,
 ) -> list[FieldError]:
-    """The optional ``top_heroes`` slugs submitted for each role.
+    """The optional ``top_heroes`` slugs (the persisted answer spelling) submitted for each role.
 
-    Enforces (per role): the configured max, no duplicates, existence in the
-    hero catalog, and — for non-flex registrations — that the hero's class
-    matches the role. Flex registrations accept heroes of any class.
+    Enforces (per role): the configured max, no duplicates and existence in the
+    owning discipline's character catalog. A character's class is display metadata
+    only -- no role is inferred from it, so any catalog character may be a pick for
+    any declared role.
     """
     if not params.top_heroes.enabled:
         return []
 
     errors: list[FieldError] = []
     max_heroes = _resolve_max_heroes(params)
-    is_flex = is_flex_submission(roles)
     any_selected = False
 
     for role in roles:
@@ -186,25 +175,9 @@ def _hero_errors(
                 )
             )
 
-        expected_class = None
-        if not is_flex:
-            canonical = REGISTRATION_TO_CANONICAL.get(role_code) if role_code else None
-            expected_class = _HERO_CLASS_BY_CANONICAL.get(canonical) if canonical else None
-
         for slug in slugs:
-            entry = hero_catalog.get(slug)
-            if entry is None:
+            if hero_catalog.get(slug) is None:
                 errors.append(_err(ErrorCode.INVALID_OPTION.value, f"Unknown hero: {slug}.", hero=slug))
-                continue
-            if expected_class is not None and entry.hero_class != expected_class:
-                errors.append(
-                    _err(
-                        "roles.hero_wrong_class",
-                        f"Hero '{slug}' is not a {_ROLE_LABELS.get(role_code, role_code)} hero.",
-                        role=role_code,
-                        hero=slug,
-                    )
-                )
 
     if params.top_heroes.required and not any_selected:
         errors.append(_err(ErrorCode.REQUIRED.value, "Select at least one top hero."))
@@ -218,6 +191,7 @@ def validate_roles(
     *,
     subrole_catalog: SubroleCatalog | None,
     hero_catalog: HeroCatalog | None,
+    role_codes: Sequence[str],
 ) -> list[FieldError]:
     """Every rule the ``roles`` builtin enforces, collected.
 
@@ -240,7 +214,7 @@ def validate_roles(
         if not covers_additional:
             errors.append(_err("roles.additional_required", "At least one additional role is required."))
 
-    errors.extend(_role_errors(roles, params=params, catalog=subrole_catalog))
+    errors.extend(_role_errors(roles, params=params, catalog=subrole_catalog, role_codes=role_codes))
 
     # Flex availability guard: when the organizer disabled the Flex role,
     # reject an all-primary (full-flex) submission.
@@ -254,7 +228,7 @@ def validate_roles(
     # which role the registrant meant.
     if params.flex_mode == "all_roles":
         primary_count = sum(1 for role in roles if role_value(role, "is_primary", False))
-        if primary_count not in (1, len(REGISTRATION_ROLE_CODES)):
+        if primary_count not in (1, len(role_codes)):
             errors.append(_err("roles.one_priority_or_flex", "Choose one priority role, or Flex."))
 
     if hero_catalog is not None:

@@ -36,7 +36,8 @@ flowchart TB
       APP["app-svc"]
       ID["identity-svc"]
       TOUR["tournament-svc"]
-      PARSE["parser-svc"]
+      PARSE["stats-svc (RPC)"]
+      STATSW["stats-worker (ingest, rank, schedules)"]
       BAL["balancer-svc"]
       ANARPC["analytics-svc (RPC)"]
       ANAW["analytics-worker (ML compute)"]
@@ -56,7 +57,7 @@ flowchart TB
     Nginx -- "pages, /bff/*, /_next/*" --> FE
     FE -- "SSR + route handlers" --> GW
     GW -- "rpc.<svc>.<method>" --> MQ
-    MQ --> APP & ID & TOUR & PARSE & BAL & ANARPC & STREAM
+    MQ --> APP & ID & TOUR & PARSE & STATSW & BAL & ANARPC & STREAM
     GW -- "read-only: ACL, replay, custom domains" --> PG
     GW -- "realtime bus + cache invalidation + active users" --> RD
     Workers --> PG
@@ -67,13 +68,15 @@ flowchart TB
     ID --> S3
     TOUR --> S3
     PARSE --> S3
+    STATSW --> S3
     MQ --> ANAW
     MQ --> DISC
 ```
 
 The Go gateway is the single API ingress. The Python services are headless workers driven
-entirely by RabbitMQ; the only one that runs as a plain process rather than an RPC worker is
-`discord-service`, a `discord.py` bot.
+entirely by RabbitMQ; the one that also holds a long-lived outside connection is
+`discord-service`, a `discord.py` bot that answers its `rpc.discord.*` subjects from the same
+process as its Discord gateway session.
 
 ## 2. Request flow
 
@@ -99,8 +102,8 @@ entirely by RabbitMQ; the only one that runs as a plain process rather than an R
    - validates JWTs locally with the shared HS256 secret; for RBAC-gated routes it
      revalidates and enriches the principal via `rpc.identity.validate_token`;
    - dispatches typed REST routes to workers as **RabbitMQ request/reply RPC**
-     (`rpc.app.*`, `rpc.identity.*`, `rpc.tournament.*`, `rpc.parser.*`, `rpc.balancer.*`,
-     `rpc.analytics.*`), carrying an `x-deadline-ms` budget;
+     (`rpc.app.*`, `rpc.identity.*`, `rpc.tournament.*`, `rpc.stats.*`, `rpc.balancer.*`,
+     `rpc.analytics.*`, `rpc.discord.*`), carrying an `x-deadline-ms` budget;
    - serves `/api/v1/realtime/ws` (and the legacy `/ws`, `/api/realtime/ws`) from an in-process
      **Redis → WebSocket hub**, replaying missed events from `realtime.workspace_event`;
    - caches anonymous public reads in-process (30 s TTL), invalidated by the workers' Redis
@@ -119,11 +122,24 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
   are dropped by `DeadlineDropMiddleware`; `prefetch_count` provides QoS backpressure;
   failures route to per-queue DLX/DLQ.
 - **Domain events + transactional outbox.** State changes write an `event_outbox` row in the
-  same DB transaction; a sweeper (in `tournament-svc`) drains it `FOR UPDATE SKIP LOCKED` and
-  publishes with retry/backoff. For example, tournament mutations emit `tournament.changed`
-  for cache invalidation and downstream workers.
+  same DB transaction; every service that writes rows drains them every second
+  (`FOR UPDATE SKIP LOCKED`, retry with backoff), so no service's events depend on another
+  service being up. The event map (`backend/shared/messaging/config.py`,
+  `backend/shared/schemas/events.py`): `tournament.events` carries `encounter.completed`,
+  `registration.approved` / `rank_check_requested`, `state.changed` (consumed by
+  analytics-worker to create the completed tournament's compute job, and by the discord bot to
+  refresh its watched channels), `standings.invalidated`, `encounter.challonge_push_requested`
+  (the Challonge push of a confirmed result, retried by the queue instead of swallowed in the
+  request); `cache.invalidation` fans `cache.invalidated.*` out to one queue per caching
+  service; `notifications` feeds app-service's Discord delivery (it claims `discord_message`
+  rows, the bot renders them); `pickup_mix_changed` is balancer (and tournament, when a mix
+  match's hero room settles) → the bot (re-render a mix's live cards); `match.ingested` is stats
+  → tournament's match layer; `workspace_member_changed` is app → identity (drop the cached RBAC
+  payload); `discord_member_changed` is the bot → stats (re-resolve a Boosty entitlement).
+  `backend/tests/test_messaging_config.py` fails on a queue nobody consumes or a DLQ nobody
+  declares.
 - **Long jobs.** Durable queues decouple minutes-long compute: `balancer_jobs`,
-  `analytics_job` / `analytics_train` / `analytics_infer`. Status/results live in Redis
+  `analytics_job`. Status/results live in Redis
   (balancer) or the `AnalyticsJob` table (analytics).
 - **Realtime.** Workers publish to Redis topics (`tournament:{id}:bracket`,
   `encounter:{id}:map-veto`, `tournament:{id}:balancer`, `workspace:{id}:analytics_jobs`,
@@ -142,33 +158,70 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
   the topic must equal the caller's own, and unlike every other rule it grants the platform
   superuser no bypass — an operator's blanket read right over workspace data is not a licence
   to watch one person's inbox arrive.
-- **Discord ingest.** The bot uploads match-log attachments as base64 to
-  `UPLOAD_MATCH_LOG_QUEUE`; parser results return over a fanout `MATCH_LOG_RESULT_EXCHANGE`
-  (per-replica exclusive queue) correlated by `ResultWaiter`.
+  `user:{id}:catalog-sync` carries a catalog sync's progress to the superuser who started it, under the same self-only
+  rule: one non-durable `catalog_sync.progress` per change (a stage, a mirrored image) with the whole snapshot, sent
+  straight from stats-service's RPC process (no transaction to wait for); a client that missed one reads the snapshot
+  over GET.
+- **Discord.** `discord-service` is the only process that talks to Discord — identity-service's
+  OAuth login is the one exception — and holds the platform's only `DISCORD_TOKEN`. Everyone
+  else reaches Discord through it over RabbitMQ:
+  - *Reads and voice.* `shared/services/discord_client.py`'s `DiscordClient` is RPC-only
+    (member roles, guild roles/channels/info, voice moves on the bot's `discord_*` queues) with
+    no REST fallback: a bot that does not answer is `DiscordUnavailable`, and a subscription
+    gate counts that as an outage, never as a pass.
+  - *Messages.* A publisher only *claims* a `discord_message` row — destination,
+    `subject`/`slot`/`kind`, and `payload_json` as render input — and queues a cardless
+    `send`/`delete` on `discord_commands`. The bot renders every card itself: notifications
+    from the row's `payload_json`, mix signup and lineup cards from balancer's
+    `rpc.balancer.custom.discord_view`. Edits are never commands: the bot consumes
+    `pickup_mix_changed` and re-renders the mix's live cards, coalescing bursts in process.
+  - *Gateway surface.* `rpc.discord.*` serves the workspace settings pickers (guild roles, text
+    channels, server status) and the per-tournament match-log channel binding
+    (`rpc.discord.channel.*`, the `stats.discord_channel` row the bot watches).
+  - *Match-log ingest.* The bot uploads attachments as base64 to `UPLOAD_MATCH_LOG_QUEUE`,
+    naming the Discord channel and message; stats answers on the `match_log_result` work queue
+    with those ids echoed, and the bot reacts on that message. No in-memory waiter, nothing lost
+    on a bot restart.
+
+  It runs as **exactly one replica**, on purpose: every replica would open its own gateway
+  session under the same token and receive the same events, and the edit coalescing lives in
+  process memory. Production pins `deploy.replicas: 1`; see
+  [`backend/discord-service/README.md`](../backend/discord-service/README.md).
 
 ## 4. Components
 
 | Component | Kind | Responsibility |
 | --- | --- | --- |
 | [`gateway`](../gateway/README.md) | Go, HTTP/WS | Sole API ingress: JWT, RPC dispatch, realtime hub, response cache, rate limit, docs, metrics |
-| [`app-service`](../backend/app-service/README.md) | RPC worker | Core read/data API (tournaments, players, teams, heroes, maps, matches, stats), workspace/user/metadata admin, binary assets, cache |
-| [`identity-service`](../backend/identity-service/README.md) | RPC worker | JWT auth, Discord OAuth, RBAC, workspace membership, custom domains/subdomains, API keys, player linking, service tokens, SSO |
-| [`tournament-service`](../backend/tournament-service/README.md) | RPC worker + scheduler | Tournament lifecycle, registration, brackets/standings, Challonge + Google Sheets sync, map veto, state machine, outbox sweeper |
-| [`parser-service`](../backend/parser-service/README.md) | RPC worker + scheduler | Match-log ingestion/parsing, OverFast rank fetch, achievement evaluation, MVP-impact backfill |
+| [`app-service`](../backend/app-service/README.md) | RPC worker | Game catalog, player identity (directory/search/name lookup, admin, merge), workspaces, notifications + their Discord delivery, audit, binary assets |
+| [`identity-service`](../backend/identity-service/README.md) | RPC worker | JWT auth, OAuth (Discord, Twitch, Battle.net, Riot) and Steam OpenID, RBAC, workspace membership, custom domains/subdomains, API keys, player linking, service tokens, SSO |
+| [`tournament-service`](../backend/tournament-service/README.md) | RPC worker + scheduler | Tournament lifecycle, registration, brackets/standings, Challonge + Google Sheets sync, map veto, state machine, Challonge push consumer, the organizer dashboard and tournament readiness (`rpc.tournament.{admin_dashboard,admin_dashboard_trends,tournament_readiness}`) |
+| [`stats-service`](../backend/stats-service/README.md) | RPC process (`stats-svc`) + worker (`stats-worker`), one image | Canonical match ingest and match-log parsing (`stats.ingest.<discipline>`), match import by external id (`stats.match_fetch`), native rank fetch (OverFast, Riot API, deadlock-api), achievement evaluation, MVP-impact backfill; the public statistics, `/users/*` player-statistics and achievement reads (`rpc.stats.{statistics,users,achievements}.*`), their read caches, the `cache.invalidated` consumer and the `stats.mv_entity_global_stats` refresh |
 | [`balancer-service`](../backend/balancer-service/README.md) | RPC worker | Genetic team balancing (native Rust `tournament_balancer`) + live draft + draft clock |
 | [`analytics-service`](../backend/analytics-service/README.md) | 2 workers | `analytics-svc` (RPC reads/mutations/job-control) + `analytics-worker` (heavy ML: v1 OpenSkill shifts, v2 ML pipeline) |
 | [`stream-service`](../backend/stream-service/README.md) | RPC worker + scheduler | Tournament stream live-status: Twitch Helix poll tick (app token), public `rpc.stream.*` reads. Owns no Postgres schema — live state is Redis-only |
-| [`discord-service`](../backend/discord-service/README.md) | bot | discord.py bot: match-log upload, notifications, commands |
+| [`discord-service`](../backend/discord-service/README.md) | bot, single replica | The only Discord client (OAuth aside): renders and sends every card, `rpc.discord.*` pickers + match-log channel binding, match-log upload, slash commands, voice moves |
 | [`shared`](../backend/shared/README.md) | library | Single-source ORM + cross-service kernel (models, repository, services, rpc, messaging, tenancy, rbac, observability, clients) |
 | [`frontend`](../frontend/README.md) | Next.js | User-facing app + white-label multidomain |
+
+**Achievements and analytics by discipline (P6).** The condition registry, evaluator and portable format are a shared
+kernel (`shared/domain/achievements`, `shared/domain/analytics`) that reaches a game only through
+`shared.disciplines` lazy hooks: Overwatch registers its conditions and owns its models
+(`shared/disciplines/overwatch/{achievements,analytics}`); LoL declares neither, so it has no conditions, no models and
+no fallback to Overwatch's. Every rule carries an immutable `discipline` (no column default since `achievement06`), the
+achievement wire is `discipline` + `entity_id` (portable format v2), and a tournament/match event evaluates only its own
+game's rules. Analytics resolves the module, rated role ids and declared algorithm from the tournament's discipline.
+Details: [P6 release note](./releases/2026-10-18-multi-game-p6-achievements-analytics.md).
 
 ## 5. Data model & multitenancy
 
 All services share **one PostgreSQL database** with **one SQLAlchemy metadata** defined in
 `backend/shared/core/db.py`. Domain boundaries are **Postgres schemas**: `auth`, `players`,
-`public`, `tournament`, `matches`, `overwatch`, `overwatch_rank`, `balancer`,
-`achievements`, `analytics`, `log_processing`, `realtime`. Full entity diagrams are in
-[`docs/database_erd.md`](./database_erd.md).
+`public`, `tournament`, `encounter`, `catalog`, `roster`, `stats`, `rank`,
+`balancer`, `registration`, `mix`, `draft`, `achievements`, `analytics`, `realtime`. The migration-only
+schemas the cutovers kept for their reconciles (`matches`, `log_processing`, `overwatch`, `casual`) and every other
+legacy table and column were dropped by `legacy01`.
+Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
 
 - **Multitenancy.** `public.workspace` is the tenant root. Nearly every business table
   carries `workspace_id` (directly or transitively via `tournament` / `workspace_member`);
@@ -179,16 +232,168 @@ All services share **one PostgreSQL database** with **one SQLAlchemy metadata** 
 - **Dual identity.** `auth.user` (login account, owned by identity-svc) is distinct from
   `players.user` (domain player, owned by app-svc), linked 1:0..1 via `auth_user_id`. A
   player can exist without a login ("shadow player"). Full reference: [`docs/users-identity.md`](./users-identity.md).
+- **Match layer (`encounter`) and disciplines (`catalog`).** A meeting of N participants is
+  one `encounter.encounter` whatever its owner or format: a duel is `slot_count = 2`, a lobby is
+  N, and the API returns `teams[]` with slot numbers, never home/away. An encounter has exactly
+  one owner — a tournament (`tournament_id`) or a pickup mix (`custom_game_id`, a recorded mix
+  round with result source `host`; its balancer facts are `mix.round` and
+  `mix.round_member`). Tournament code reads tournament-owned encounters only, through
+  `EncounterRepository`. Each seat is an
+  append-only participation (`encounter.team`) with a roster snapshot; games, per-participation
+  game results, game claims, series reports, the result journal, the scoring rule and the
+  pre-game pick/ban room hang off the encounter in the same schema. The bracket position
+  (stage, stage item, round) and the advancement edges stay in `tournament`
+  (`bracket_encounter`, `encounter_link`), so the match layer carries no tournament structure.
+  `catalog.discipline` lists the games the platform knows (`overwatch`, `lol` and `deadlock`); every tournament,
+  mix and encounter carries its `discipline`, and one composite foreign key keeps the copy from
+  disagreeing with its owner. Every result change goes through one writer,
+  `backend/shared/services/encounter/result.py`: one transaction, the encounter row locked,
+  `result_version` bumped, one `encounter.result_audit` row. Scoring is one engine,
+  `backend/shared/domain/encounter_scoring.py`, driven by the `encounter.scoring_rule` formulas.
+  The legacy columns and tables the old model used (home/away columns, `encounter_participant`,
+  `encounter_map_report`, `encounter_captain_report` and the rest) are gone (`legacy01`).
+  Vocabulary: [`glossary.md`](./glossary.md).
+- **Discipline catalog (`catalog`).** `catalog.entity` holds each discipline's `character`, `map`
+  and `mode` rows, with names, aliases, images and JSONB `attrs`; a map's `parent_id` is the mode it
+  belongs to, if any, and a character's class is `attrs.class`. A played match's mode is not read from
+  its map (Deadlock's Midtown hosts several): `stats.match.mode_entity_id` and `encounter.game.mode_id`
+  store it. Names and slugs are unique per discipline and kind.
+  Behaviour lives under `backend/shared/disciplines/<slug>/`, reached only through the
+  `shared.disciplines` registry: supported kinds and labels ("Hero", "Champion"), character classes,
+  sides, catalog sync, `native_ranks`, `native_ladder`, `native_rank_rows`, `identity_provider` and `match_fetchers`.
+  Overwatch declares its 45-tier ladder, OverFast native reader and `battlenet`; LoL declares its 31-tier league-v4
+  ladder, a Solo/Duo native reader and `riot`; Deadlock declares its 66-tier ladder (11 tiers × 6 subranks), a
+  per-account native reader, `steam` and the `deadlock_api` match fetcher; VALORANT declares its 25-tier ladder and
+  `riot`, with no native reader (organizers enter ranks). Catalog sources are OverFast, Data Dragon, deadlock-api and
+  valorant-api.com. Each game's rank collector (OverFast for Overwatch, the Riot API for LoL, deadlock-api for
+  Deadlock) runs as that module's jobs inside `stats-worker` and writes the shared `rank` schema, one `discipline` per
+  row. These declarations are not the complete LoL, Deadlock or VALORANT gameplay vertical.
+  Stats-service runs the module's sync (`rpc.stats.catalog.sync`) as a background job in its RPC process: one per
+  discipline (409 `catalog_sync_running` otherwise), its stage snapshot in Redis for `rpc.stats.catalog.sync_status`
+  and published to the starter's `user:{id}:catalog-sync` topic;
+  app-service provides generic admin CRUD by discipline and kind on `rpc.app.catalog.admin_*`.
+  `catalog.alias_miss` is the unresolved-name worklist, keyed by `(discipline, kind, raw_name)`.
+  Old hero/map/gamemode ids no longer resolve: `legacy01` dropped their `catalog.entity_legacy` mapping and
+  the old-link redirect with it. Runtime catalog reads and writes use `catalog.entity`, never `overwatch.*`.
+  App-service startup projects module-declared role dimensions and roles into
+  `catalog.role_dimension` / `catalog.role`; a removed module role is deactivated, not deleted.
+  Exactly one dimension per discipline is rated. Workspace sub-roles share that ontology, with
+  immutable parents and `<parent>_<slug>` codes. `CatalogRoleRepository` resolves an owner's
+  discipline, dimension and workspace; the RBAC `RoleRepository` is a different repository.
+  An assignment stores one leaf through `(role_id, dimension_id)`, never a separate parent
+  assignment. Responses use `RoleRef` (`dimension`, leaf `role`, derived `parent`); inputs ignore
+  `parent`. `flex` is an open-slot key only, never a catalog role.
+- **Team formats (`roster`).** `team_format`, `team_format_dimension` and `format_role_rule`
+  hold starter/substitute bounds, dimension modes and hard/recommended role quotas.
+  Tournaments own an editable copy of the workspace default or module preset; mixes freeze
+  their copy at creation (explicit preset, else clone format, else workspace default, else preset).
+  There is no live inheritance. The legacy slot-map and role columns and the reconciliation snapshots
+  (`roster.team_format_legacy`, `encounter.team_member_role_legacy`) are gone (`legacy01`).
+  `encounter.team_member_role (team_member_id, dimension_id, role_id)` stores snapshot leaves.
+  Composite assignment/quota FKs into `catalog.role` are `DEFERRABLE INITIALLY DEFERRED`.
+  Hard validation checks every active dimension for each starter; benches are excluded.
+  Only tournament/MOO sub-role rules with `recommended_max <= 1` gate the existing collision
+  penalty; other recommendations, and all mix recommendations, are post-solve advisories and
+  equal-objective tie-breakers. See the [P2 release and cutover guide](./multi-game-p2-roles-release.md).
+- **Ranks and division grids (P3).** `balancer.member_rank` and `member_hidden_rating` reference
+  catalog roles of the owner's rated dimension through `(role_id, dimension_id)`; identical codes
+  such as `support` in two games never share storage. Domain rank maps remain code-keyed within
+  that discipline. Registration/author overrides precede workspace canon and then the registry's
+  native reader; effective source values use `native`. Open slots hold no hidden rating or host-book
+  rank. `division_grid.discipline` scopes grids, mappings and fallback; tier native bounds are
+  `native_rank_min/max`. A game with a native ladder (Overwatch, LoL, Deadlock, VALORANT) falls back to it when it has no grid of its own;
+  a ladder-less game's creation/clone/runtime reads without a usable grid fail with 422 `division_grid_required`.
+  `public.workspace_division_grid_default` selects one version per `(workspace_id, discipline)`.
+  Activation and deletion affect only that game's assignment and preserve valid event pins.
+  `WorkspaceRead.default_division_grid_versions` contains explicit IDs;
+  `effective_division_grid_versions` contains persisted effective version/tier payloads, including
+  matching system fallback. Absent versions are omitted, not synthetic IDs. Only single-workspace reads
+  (`GET /workspaces/{id}`, `/workspaces/by-slug`) carry the effective map: `GET /workspaces` list rows
+  (`WorkspaceListItem`) omit it, so listing every workspace never loads every grid's tiers. Neither map is writable
+  through workspace create/update, and the old scalar fields are rejected. A valid event pin needs
+  no workspace activation. Known-owner UI consumers retain the pin and discipline; unresolved owners
+  expose no wrong-game controls. Legacy OW data explicitly chooses OW, and LoL grids show no OW native
+  ladder/crests. Open-ended tiers stay open-ended. The legacy physical workspace pointer and old rank
+  role columns are gone (`legacy01`).
+  See the [P3 release and cutover guide](./multi-game-p3-ranks-release.md).
+- **Statistics and ingestion (P4).** `stats.match` binds parsed observations to one
+  `encounter.game`, with direct workspace/discipline ownership. `match_team.source_position`
+  preserves decoder order; public duel fields use historical encounter slots. Facts have native
+  participant/member/entity/segment/stat grain; events preserve duplicate and nullable endpoints.
+  Observed scores remain separate from official game results. Discipline-qualified `stat_def`
+  and `event_type` projection never reuses a same-code definition from another game.
+  `stats.ingest_job` owns actual hash/raw-reference provenance and upload lifecycle, including
+  `awaiting_link`. Baselines and the entity global-statistics MV also live in `stats`.
+  A match stores its own mode (the document's `mode`, else the map's catalog parent); statistics,
+  map filters, achievements and Push/Clash detection read that column, never the map's parent.
+  Complete cutover receipts and narrow transaction-bound audit chains distinguish unchanged,
+  review-required and unexplained data. Membership creation is absent→present only; identity
+  changes require the original merge mapping. See the [cutover/operator notes](../backend/README.md#p4-statistics-cutover-stats01).
+- **Canonical ingest (P5).** One strict `owt.match/1` document (`shared/schemas/match_doc.py`) is the only input of
+  `stats-service`: producers post it with a workspace API key holding `stats.ingest` (`POST /api/v1/stats/matches`,
+  raw bytes relayed by the gateway), the Overwatch Workshop decoder is a module that emits the same document, and
+  `stats-worker` binds it to a game, replaces observations atomically and publishes `match.ingested`. A module with a
+  `match_fetchers` entry (Deadlock's `deadlock_api`) also lets a captain or organizer import a tournament game's match
+  by its external id: `stats.match_fetch` holds the request, and the worker retries the module's fetcher for up to
+  24 h, then stores and queues the bytes exactly like an upload. The
+  tournament process alone decides whether that evidence becomes an official result (`logs_official`, owner
+  policy, receipts on the encounter journal). `stats-svc` (RPC) and `stats-worker` (one ingest queue per selected
+  discipline) are separate processes of one image. See the
+  [P5 release guide](./releases/2026-10-15-multi-game-p5-ingest.md) and the
+  [Deadlock release note](./releases/2026-10-21-deadlock.md).
 - **Registration form schema.** What a tournament asks its registrants is one document:
   a versioned `FormSchema` of ordered sections of typed fields, modelled in
-  `backend/shared/domain/forms/`. `balancer.registration_form_version` keeps append-only
+  `backend/shared/domain/forms/`. `registration.form_version` keeps append-only
   snapshots, so a form edited after registrations exist does not orphan the answers
   already given — each registration records the version it answered. A schema is reusable
-  across a workspace's tournaments through `balancer.registration_form_template`. Answers
+  across a workspace's tournaments through `registration.form_template`. Answers
   are validated server-side in one place and stored typed: built-in fields in their own
-  registration columns and `balancer.registration_identity` rows, organizer-defined fields
-  in `registration.custom_fields_json`. Every field declares its visibility, which is what
+  registration columns and `registration.identity` rows, organizer-defined fields
+  in `registration.registration.custom_fields_json`. Every field declares its visibility, which is what
   keeps organizer-only answers off the public roster.
+  The module's provider chooses the default identity field, roster/chat handle and parser matching.
+  `TournamentRead.identity_provider` is computed from discipline; backend `default_schema(provider)`
+  requires it. Riot IDs preserve inner name spaces and match case-insensitively after normalization; a Steam
+  handle is normalized to the decimal SteamID3 account id from any accepted spelling.
+  Known-owner form loading/errors cannot create an implicit Battle.net default; loaded existing forms
+  remain intact. Optional admin game identities remain optional, with fresh registration relationships
+  initialized before flush and persisted reads still eagerly loaded. P7 owns primary-identity
+  reconciliation, provider-explicit workspace upsert and the complete generic identity wire/UI rename;
+  P8 consumes those contracts.
+- **Registration role ontology (P2).** `registration.role` stores a rated
+  `catalog.role` leaf through `(role_id, dimension_id)`, unique per registration
+  and leaf. Its top-level role and qualified sub-role code are derived, never
+  written to the legacy columns. Registration API roles use `RoleRef`
+  (`dimension`, leaf `role`, output-only `parent`); form answers deliberately
+  retain `{role, subrole?, is_primary, top_heroes?}` with an unprefixed sub-role
+  slug. Both writers resolve against the tournament discipline and owning
+  workspace. The roster engine uses module role codes rather than Overwatch enums.
+- **Mix role preferences (P2).** `mix.player_role` stores ordered
+  `(role_id, dimension_id)` references, restricted to module roles of the mix's
+  rated dimension. Host and self-service `roles` inputs and outputs now use
+  `RoleRef[]`, not strings (for example, `[{"dimension":"player_role","role":"tank"}]`).
+  `null` still means all ranked roles; `[]` means an explicit empty selection.
+  A foreign dimension returns 422 `role_dimension_mismatch`; unknown roles and
+  workspace sub-roles return 422 `unknown_role`, regardless of submitted `parent`.
+  Discord and the site use the same wire contract; rank maps remain code-keyed within the discipline,
+  while P3 stores ranks and hidden ratings by catalog role ID.
+- **Draft role references (P2 wire break).** Captain pins and pick assignments now
+  store `(role_id, dimension_id)` references to the tournament's rated module roles.
+  Open-slot picks store neither a role nor a dimension. Draft requests, boards,
+  pick options, suggestions, fit scores, queues, journal reads, and realtime role
+  fields use `RoleRef` instead of strings. Primary and secondary registration
+  roles carry leaf refs with a derived `parent`; the separate `sub_role` field is
+  removed. Code-keyed rank, source, sub-role, and hero maps are unchanged.
+  All role inputs resolve through the tournament's discipline: foreign dimensions
+  return 422 `role_dimension_mismatch`, and sub-roles cannot pin a captain or pick.
+  Submitted `parent` is ignored. The pure draft domain uses module codes, not enums.
+- **ML artifact roles (P2 wire break).** `analytics.ml_model_artifact` identifies
+  role-specific models through `(role_id, dimension_id)` in `catalog.role`;
+  all-role models keep both values `NULL`. Identity and activation are keyed by
+  role id. The registry remains
+  Overwatch-only until P6 and resolves only its rated module roles (no workspace
+  sub-roles). Artifact responses now expose `role` as `RoleRef | null`, for example
+  `{"dimension":"player_role","role":"tank","parent":null}`, instead of a string.
 - **RBAC.** Grant-only permission catalog + workspace system roles, with a
   `user_permission_deny` overlay. Bootstrapped from `backend/shared/rbac/`.
 - **Migrations.** A single Alembic project under `backend/migrations/`. `make migrate` runs
@@ -215,7 +420,8 @@ Shared substrate: **PostgreSQL** (optionally behind pgBouncer), **Redis** (cache
 bus + active-user counters), **RabbitMQ** (all RPC/events/jobs), **S3/MinIO** (avatars,
 icons, match-log files). Workers that call external APIs (Discord, Twitch, Challonge, S3)
 egress through the outbound `proxy` container (xray); the self-hosted OverFast runs on the
-production host and is called directly.
+production host and is called directly, and so are the Riot API (the LoL rank collector), deadlock-api (the
+Deadlock catalog, rank collector and match fetcher) and valorant-api.com (the VALORANT catalog).
 
 **Releases.** Pushing a `v*` tag is the whole ritual:
 
@@ -231,6 +437,10 @@ serve, recreates the stack (`make prod-up`), and finally publishes the GitHub Re
 notes rendered from the Conventional Commit subjects since the previous tag by
 [`ops/release/changelog.sh`](../ops/release/changelog.sh). The Release is written last on
 purpose: it means "this is what production is running", not "somebody clicked publish".
+
+The `stats01` maintenance cutover is an exception: this ordinary rolling sequence is insufficient.
+All writers must be drained for reviewed preparation, upgrade and immutable initial receipt capture;
+backup/restore rehearsal and the later deletion gate remain explicit release prerequisites.
 
 Nothing builds on the server and no self-hosted runner takes part. `workflow_dispatch`
 deploys a tag without the gates (an operator's call, and the only way out while CI is

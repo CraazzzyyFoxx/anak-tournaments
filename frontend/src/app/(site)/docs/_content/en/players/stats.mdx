@@ -25,11 +25,11 @@ The rank you enter a tournament with is looked up in order, and the first source
 
 1. The rank you typed into your application for that tournament.
 2. The rank your community keeps for you.
-3. The rank from your Overwatch profile, if your BattleTag is linked.
+3. Your game's own rank: for Overwatch the rank from your profile, if your BattleTag is linked; for League of Legends your Solo/Duo rank, if your Riot ID is linked; for Deadlock your rank, if your Steam account is linked. VALORANT has no such source: only the first two apply.
 
 An empty field in the application does not mean "unranked" — it simply falls through to the next source.
 
-**Rank history** is a chart built from snapshots of your Overwatch profile. Open it from a tournament's **Participants** list: expand a player's row (**Additional Details**). You can group the chart **By role** or **By battle.net** and change the granularity — **Daily**, **Hourly** or **All points**. With no linked BattleTag there is no history: **Rank history is unavailable because this BattleTag is not linked to a registered site account.**
+**Rank history** is a chart built from snapshots of your game profile. Open it from a tournament's **Participants** list: expand a player's row (**Additional Details**). For Overwatch you can group the chart **By role** or **By account** and change the granularity — **Daily**, **Hourly** or **All points**. For League of Legends it shows Solo/Duo and Flex: tier and division, LP and wins/losses per queue, and a chart of both. For Deadlock it shows your current rank with its emblem and a chart of it. With no linked account there is no history: **Rank history is unavailable because this account is not linked to a registered site account.**
 
 ## MVP and impact
 
@@ -44,18 +44,25 @@ A match where a player clearly went past their usual level is tagged **Above exp
 
 **Compare** (menu **Players → Compare**) puts two players side by side. Pick a **Selected user**, then name an opponent under **Compare against** — or leave it empty and you are compared against the all-players average. The **Compare scope** switch chooses between **Overall performance** and **Hero / map performance**, and the role and division filters narrow the baseline to a comparable cohort. The built-in **How it works** guide walks through the steps.
 
-**Heroes Leaderboard** (menu **Players → Heroes Leaderboard**) looks at it from the other side: pick a hero and get a table of everyone who has played them. Any column sorts the whole table, and the **Tournament scope** filter limits the sample to a single event.
+**Characters leaderboard** (menu **Players → Characters leaderboard**) looks at it from the other side and answers **Who plays it best?** Pick a hero on the portrait rail, one row per class; a game with more than 60 characters (League of Legends) keeps a searchable picker instead. Below come the hero card (**Players ranked**, time on the hero, the median games per player under **Typical sample**, and **Best K/D** with its player), a **Top 10** chart and the table, where a cell's tint shows how many ranked players that result beats (50, 75 or 90%, with a legend). The **Rank by** chips re-order both the table and the chart, a click on a column re-ranks the table, and **Find a player** looks a player up by name while they keep their rank on the whole board.
+
+Players with fewer games on the hero than **Min. games** are hidden by default: the floor is 5 games across all tournaments and 1 game when a single tournament is picked. The table's footer counts the hidden players, and **Show everyone** drops the floor to one game. The tournament filter (**All tournaments**) narrows the sample to one event. The page has no game tabs of its own: it shows the game picked in the site header's switcher, and under all games it takes the last game played and labels it with a "switch the game in the header" chip that opens that switcher.
 
 ## Matches and encounters
 
 Two entries in the **Matches** menu collect games from across the platform:
 
-- **Encounters** — series between teams. There are ready-made views for **Finals only**, **Close Bo5s**, **Upsets** and **With logs**, filters by tournament and series format, and sorting by date or closeness.
+- **Encounters** — head-to-heads between teams, split into live, upcoming and completed, with filters by tournament, format and closeness, search by team or player, and sorting by date or closeness. **Presets** narrow the list to finals, upsets, encounters with logs or your team's, and keep your own filter sets; **Summary** shows closeness, final scores, popular maps and the closest encounters under the same filters.
 - **Matches** — individual maps that were played. A match page has the **Tables**, **Comparison** and **Timeline** tabs, the last of which replays the kill feed when logs have been parsed.
 
 ## Platform statistics
 
-The **Statistics** page is the all-time summary: **Trends over time** (**Tournament activity** and **Average division by role**), **Leaderboards** (**Most championships**, **Top win rate**, **Most maps won**) and **Overall statistics** (**Tournaments Held**, **Teams Balanced**, **Players Participated**).
+The **Statistics** page is the all-time **Tournament almanac**. Its header carries the totals: **Tournaments**, **Players**, **Encounters**, **Maps**, **Hours played** and **Tournament days**. Below them:
+
+- **Players**: one table with the **Titles**, **Tournaments**, **Maps** (won and lost) and **Win rate** columns. Any column sorts it, titles by default; **Search players** looks a player up by name, and their rank does not change. A player with three tournaments or fewer has their win rate greyed out, and sorting by win rate keeps only those with more than three tournaments.
+- **Records**: **Longest win streak**, **Biggest upset**, **Underdog champion** and **Closest final**. With one game picked, single-map records **From match logs** join them: hero damage, healing, eliminations, damage blocked, solo kills, most MVPs and the longest map. A record with no data is simply not on the page.
+
+With one game picked, two more sections appear: **Characters** (each character's share of playtime, grouped by class; clicking a character opens the player leaderboard on it) and **Maps** (how many games each map saw, grouped by mode, with its share within the mode and its average length). At the bottom of the page, the **Encounter analytics** link leads to **Encounters**.
 
 ## Tournament analytics
 
@@ -67,7 +74,7 @@ The **Tournaments → Analytics** menu entry answers three questions: who surpri
 - **Flags** — automatic hints raised when results look unusual.
 
 <Callout>
-Nothing on this page is a verdict. The interface says so itself: **Flags are review hints, not verdicts.** The division call is still the organizer's. The **New here? Read the analytics in 30s** card explains every number, and any dotted term opens its plain-language definition.
+Nothing on this page is a verdict. A flag is raised automatically for review, not as a ruling, and the division call is still the organizer's. The **How this works** button in the header walks through reading the page step by step, and tapping the ⓘ next to a figure shows what it means.
 </Callout>
 
 Analytics is run by the organizer, so a tournament that just finished may not have it yet.

@@ -21,13 +21,15 @@ const (
 	// workspace_member.auth_user_id. The gateway only ever holds an auth user id
 	// (from the JWT), so it must bridge through players."user".auth_user_id —
 	// mirroring WorkspaceMemberRepository.get_member in
-	// backend/shared/repository/workspace.py. "user" is a reserved word, hence
+	// backend/shared/repository/workspace.py. An observed_only anchor (made by a stats
+	// observation, never admitted) is not a membership. "user" is a reserved word, hence
 	// the quoting.
 	isMemberSQL = `SELECT EXISTS(
 		SELECT 1
 		FROM workspace_member wm
 		JOIN players."user" u ON u.id = wm.player_id
-		WHERE u.auth_user_id = $1 AND wm.workspace_id = $2
+		WHERE u.auth_user_id = $1 AND wm.workspace_id = $2 AND wm.removed_at IS NULL
+		  AND wm.observed_only IS FALSE
 	)`
 	// Organizer staff of a workspace, as opposed to anyone on its roster. Mirror
 	// of AuthUser.has_admin_panel_access(workspace_id) on the REST side: a role
@@ -63,37 +65,69 @@ const (
 	// existing member/superuser/preview-allowlist check already covers the wider
 	// "any member" audience the workspace dimension needs, so no other change
 	// is required here.
-	tournamentHiddenSQL    = `SELECT t.is_hidden OR w.is_hidden FROM tournament.tournament t JOIN workspace w ON w.id = t.workspace_id WHERE t.id = $1`
-	previewAllowedSQL      = `SELECT EXISTS(SELECT 1 FROM tournament.tournament_preview_access WHERE tournament_id = $1 AND auth_user_id = $2)`
-	encounterTournamentSQL = `SELECT tournament_id FROM tournament.encounter WHERE id = $1`
+	tournamentHiddenSQL = `SELECT t.is_hidden OR w.is_hidden FROM tournament.tournament t JOIN workspace w ON w.id = t.workspace_id WHERE t.id = $1`
+	previewAllowedSQL   = `SELECT EXISTS(SELECT 1 FROM tournament.tournament_preview_access WHERE tournament_id = $1 AND auth_user_id = $2)`
+	// The encounter's owner: its tournament, or (tournament_id NULL) a pickup mix. found is false only for a missing
+	// encounter, so a mix room is "known, public" rather than "unknown, denied".
+	encounterOwnerSQL = `SELECT COALESCE(tournament_id, 0), custom_game_id IS NOT NULL FROM encounter.encounter WHERE id = $1`
+	// Inside a mix match's room (spec §4.4): a seated player -- the roster snapshot's live row, through its workspace
+	// member's player and that player's linked account -- or the mix's host or a co-host.
+	isMixRoomMemberSQL = `SELECT EXISTS(
+		SELECT 1
+		FROM encounter.encounter e
+		JOIN mix.custom_game g ON g.id = e.custom_game_id
+		WHERE e.id = $1
+		  AND (g.host_user_id = $2
+		    OR EXISTS (SELECT 1 FROM mix.co_host ch WHERE ch.custom_game_id = g.id AND ch.user_id = $2)
+		    OR EXISTS (
+		      SELECT 1
+		      FROM encounter.team_member tm
+		      JOIN workspace_member wm ON wm.id = tm.workspace_member_id
+		      JOIN players."user" u ON u.id = wm.player_id
+		      WHERE tm.encounter_id = e.id AND tm.active AND u.auth_user_id = $2))
+	)`
 	// Same players."user" bridge as isMemberSQL above, for the other direction:
 	// tournament.team.captain_id references players."user".id, while the gateway
-	// only ever holds an auth user id (from the JWT). An encounter's teams are
-	// its two sides for a duel and its participant rows for an ffa lobby; one of
-	// the two lists is always empty, and both are indexed lookups by encounter
-	// id, so the union costs one extra index probe
-	// (ix_tournament_team_captain_id still covers the captain side).
+	// only ever holds an auth user id (from the JWT). An encounter's participants
+	// are the LIVE rows of encounter.team (spec §13.3) -- one per seat, however
+	// many seats the card has, so a duel and an ffa lobby answer through the same
+	// lookup. A retired participation (active = false) is history and no longer
+	// captains anything; a seat whose source team was deleted (team_id IS NULL)
+	// has no captain to find. Both ends are indexed:
+	// uq_team_active_slot covers the encounter_id probe and
+	// ix_tournament_team_captain_id the captain side.
 	isEncounterCaptainSQL = `SELECT EXISTS(
 		SELECT 1
-		FROM tournament.team t
+		FROM encounter.team et
+		JOIN tournament.team t ON t.id = et.team_id
 		JOIN players."user" u ON u.id = t.captain_id
-		WHERE u.auth_user_id = $2
-		  AND t.id IN (
-			SELECT e.home_team_id FROM tournament.encounter e WHERE e.id = $1
-			UNION ALL SELECT e.away_team_id FROM tournament.encounter e WHERE e.id = $1
-			UNION ALL SELECT p.team_id FROM tournament.encounter_participant p WHERE p.encounter_id = $1
-		  )
+		WHERE et.encounter_id = $1
+		  AND et.active
+		  AND et.team_id IS NOT NULL
+		  AND u.auth_user_id = $2
 	)`
-	// The draft room's participants. balancer.draft_team carries the captain's
+	// The draft room's participants. draft.team carries the captain's
 	// AUTH id directly (captain_auth_user_id), so this needs no players."user"
 	// bridge, unlike isEncounterCaptainSQL above; a session has one row per team
-	// and ix_balancer_draft_team_captain_auth_user_id covers the predicate.
+	// and ix_draft_team_captain_auth_user_id covers the predicate.
 	isDraftSessionCaptainSQL = `SELECT EXISTS(
 		SELECT 1
-		FROM balancer.draft_team
+		FROM draft.team
 		WHERE session_id = $1 AND captain_auth_user_id = $2
 	)`
-	draftSessionTournamentSQL = `SELECT tournament_id FROM balancer.draft_session WHERE id = $1`
+	// The draft session's owner: its tournament, or (tournament_id NULL) one lobby of a pickup mix (spec §9.1).
+	// found is false only for a missing session, so a mix draft is "known, public" rather than "unknown, denied".
+	draftSessionOwnerSQL = `SELECT COALESCE(tournament_id, 0), custom_game_id IS NOT NULL FROM draft.session WHERE id = $1`
+	// Who runs a mix lobby's draft (U4): its mix's host or a co-host, as isMixRoomMemberSQL's host branch. A
+	// tournament's session has no mix, so nobody matches.
+	isDraftSessionMixHostSQL = `SELECT EXISTS(
+		SELECT 1
+		FROM draft.session s
+		JOIN mix.custom_game g ON g.id = s.custom_game_id
+		WHERE s.id = $1
+		  AND (g.host_user_id = $2
+		    OR EXISTS (SELECT 1 FROM mix.co_host ch WHERE ch.custom_game_id = g.id AND ch.user_id = $2))
+	)`
 	// Per-room chat settings (default schema, table chat_room_settings). The row
 	// is lazily materialized, so "no row" is not "no such room": it means the
 	// room still runs on its kind's default — see roomSpectatorReadDefault.
@@ -115,8 +149,8 @@ const (
 	) FROM workspace w WHERE w.id = $1`
 
 	tournamentCacheTTL = 5 * time.Minute
-	// Matches the auth-service RBAC cache TTL, so membership changes propagate
-	// within roughly the same window.
+	// A backstop only: identity-svc announces every membership/role change on
+	// realtime:user:{id}:rbac and EvictUser drops that user's answers at once.
 	membershipCacheTTL = 60 * time.Second
 	// Hidden flag + preview allowlist change when an admin toggles them; keep the
 	// window short so the WS gate reflects changes within roughly a minute.
@@ -140,7 +174,7 @@ const (
 	// the topic ACL for every live subscriber the moment that toggle is
 	// published — a re-check answered from a stale entry would leave the
 	// spectator it is meant to evict subscribed. The revoker invalidates this
-	// gateway's entry first (InvalidateRoomSpectatorRead); 15s only bounds how
+	// gateway's entry first (InvalidateRoomAccess); 15s only bounds how
 	// long ANOTHER gateway process can keep admitting new subscribes on the old
 	// answer.
 	roomSettingsCacheTTL = 15 * time.Second
@@ -161,10 +195,12 @@ type Store struct {
 	customDomains *ttlCache[string, bool]
 	hidden        *ttlCache[int64, bool]
 	preview       *ttlCache[previewKey, bool]
-	encTournament *ttlCache[int64, int64]
+	encOwner      *ttlCache[int64, encounterOwner]
+	mixMembers    *ttlCache[captainKey, bool]
 	captains      *ttlCache[captainKey, bool]
 	draftCaptains *ttlCache[draftCaptainKey, bool]
-	draftTourn    *ttlCache[int64, int64]
+	draftHosts    *ttlCache[draftCaptainKey, bool]
+	draftOwner    *ttlCache[int64, encounterOwner]
 	roomSettings  *ttlCache[roomKey, bool]
 	wsRPM         *ttlCache[int64, wsRPM]
 }
@@ -198,6 +234,11 @@ type wsRPM struct {
 	exists  bool
 }
 
+type encounterOwner struct {
+	tournamentID int64
+	mix          bool
+}
+
 // New returns a workspace Store backed by the given pool.
 func New(pool *pgxpool.Pool) *Store {
 	return &Store{
@@ -208,10 +249,12 @@ func New(pool *pgxpool.Pool) *Store {
 		customDomains: newBoundedTTLCache[string, bool](customDomainCacheTTL, customDomainCacheMaxEntries),
 		hidden:        newTTLCache[int64, bool](hiddenCacheTTL),
 		preview:       newTTLCache[previewKey, bool](previewCacheTTL),
-		encTournament: newTTLCache[int64, int64](tournamentCacheTTL),
+		encOwner:      newTTLCache[int64, encounterOwner](tournamentCacheTTL),
+		mixMembers:    newTTLCache[captainKey, bool](membershipCacheTTL),
 		captains:      newTTLCache[captainKey, bool](membershipCacheTTL),
 		draftCaptains: newTTLCache[draftCaptainKey, bool](membershipCacheTTL),
-		draftTourn:    newTTLCache[int64, int64](tournamentCacheTTL),
+		draftHosts:    newTTLCache[draftCaptainKey, bool](membershipCacheTTL),
+		draftOwner:    newTTLCache[int64, encounterOwner](tournamentCacheTTL),
 		roomSettings:  newTTLCache[roomKey, bool](roomSettingsCacheTTL),
 		wsRPM:         newBoundedTTLCache[int64, wsRPM](workspaceRPMCacheTTL, workspaceRPMCacheMaxEntries),
 	}
@@ -243,14 +286,27 @@ func (s *Store) IsWorkspaceMember(ctx context.Context, userID, workspaceID int64
 	if v, ok := s.members.get(key); ok {
 		return v, nil
 	}
+	gen := s.members.generation()
 
 	var member bool
 	if err := s.pool.QueryRow(ctx, isMemberSQL, userID, workspaceID).Scan(&member); err != nil {
 		return false, fmt.Errorf("membership lookup: %w", err)
 	}
 
-	s.members.set(key, member)
+	s.members.setIfCurrent(key, member, gen)
 	return member, nil
+}
+
+// EvictUser drops every cached membership and organizer answer of the auth
+// user, and keeps a lookup already in flight from storing its pre-change
+// answer. identity-svc publishes realtime:user:{id}:rbac after every change
+// to that user's memberships or roles; ws.TopicRevoker calls this before
+// re-checking the user's live subscriptions, so neither that re-check nor the
+// next subscribe is answered from the old entry.
+func (s *Store) EvictUser(userID int64) {
+	match := func(k memberKey) bool { return k.userID == userID }
+	s.members.evictWhere(match)
+	s.organizers.evictWhere(match)
 }
 
 // WorkspaceRequestsPerMinute returns the workspace-scope requests_per_minute
@@ -301,18 +357,19 @@ func (s *Store) IsWorkspaceOrganizer(ctx context.Context, userID, workspaceID in
 	if v, ok := s.organizers.get(key); ok {
 		return v, nil
 	}
+	gen := s.organizers.generation()
 
 	var organizer bool
 	if err := s.pool.QueryRow(ctx, isOrganizerSQL, userID, workspaceID).Scan(&organizer); err != nil {
 		return false, fmt.Errorf("organizer lookup: %w", err)
 	}
 
-	s.organizers.set(key, organizer)
+	s.organizers.setIfCurrent(key, organizer, gen)
 	return organizer, nil
 }
 
-// IsEncounterCaptain reports whether the auth user captains a team of the
-// encounter — either side of a duel, or any team seated in an ffa lobby.
+// IsEncounterCaptain reports whether the auth user captains one of the
+// encounter's live participations — any seat of the card, duel or lobby alike.
 // Both outcomes are cached like IsWorkspaceMember; on a query error
 // nothing is cached and the error is returned, so a transient DB failure is
 // never memoized as "allowed" (callers must treat an error as denied).
@@ -405,62 +462,90 @@ func (s *Store) IsPreviewAllowed(ctx context.Context, userID, tournamentID int64
 	return allowed, nil
 }
 
-// EncounterTournamentID returns the tournament that owns an encounter. found is
-// false when the encounter does not exist.
-func (s *Store) EncounterTournamentID(ctx context.Context, encounterID int64) (int64, bool, error) {
-	if v, ok := s.encTournament.get(encounterID); ok {
-		return v, true, nil
+// EncounterOwner returns who owns an encounter: its tournament, or mix=true for a pickup mix's match. found is false
+// when the encounter does not exist (callers must deny).
+func (s *Store) EncounterOwner(ctx context.Context, encounterID int64) (int64, bool, bool, error) {
+	if v, ok := s.encOwner.get(encounterID); ok {
+		return v.tournamentID, v.mix, true, nil
 	}
-
-	var tournamentID int64
-	err := s.pool.QueryRow(ctx, encounterTournamentSQL, encounterID).Scan(&tournamentID)
+	var owner encounterOwner
+	err := s.pool.QueryRow(ctx, encounterOwnerSQL, encounterID).Scan(&owner.tournamentID, &owner.mix)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, false, nil
+		return 0, false, false, nil
 	}
 	if err != nil {
-		return 0, false, fmt.Errorf("encounter tournament lookup: %w", err)
+		return 0, false, false, fmt.Errorf("encounter owner lookup: %w", err)
 	}
+	s.encOwner.set(encounterID, owner)
+	return owner.tournamentID, owner.mix, true, nil
+}
 
-	s.encTournament.set(encounterID, tournamentID)
-	return tournamentID, true, nil
+// IsMixRoomMember reports whether the auth user sits in the mix encounter or hosts its mix. Cached like
+// IsEncounterCaptain: both outcomes, nothing on a query error.
+func (s *Store) IsMixRoomMember(ctx context.Context, authUserID, encounterID int64) (bool, error) {
+	key := captainKey{userID: authUserID, encounterID: encounterID}
+	if v, ok := s.mixMembers.get(key); ok {
+		return v, nil
+	}
+	var inside bool
+	if err := s.pool.QueryRow(ctx, isMixRoomMemberSQL, encounterID, authUserID).Scan(&inside); err != nil {
+		return false, fmt.Errorf("mix room member lookup: %w", err)
+	}
+	s.mixMembers.set(key, inside)
+	return inside, nil
 }
 
 // IsDraftSessionCaptain reports whether the auth user captains one of the
-// session's draft teams. Cached exactly like IsEncounterCaptain: both outcomes
-// cached, nothing cached on a query error.
+// session's draft teams. Cached like IsEncounterCaptain: both outcomes cached,
+// nothing cached on a query error, and nothing cached from a lookup that
+// started before InvalidateRoomAccess dropped the session's answers.
 func (s *Store) IsDraftSessionCaptain(ctx context.Context, authUserID, sessionID int64) (bool, error) {
 	key := draftCaptainKey{userID: authUserID, sessionID: sessionID}
 	if v, ok := s.draftCaptains.get(key); ok {
 		return v, nil
 	}
+	gen := s.draftCaptains.generation()
 
 	var captain bool
 	if err := s.pool.QueryRow(ctx, isDraftSessionCaptainSQL, sessionID, authUserID).Scan(&captain); err != nil {
 		return false, fmt.Errorf("draft session captain lookup: %w", err)
 	}
 
-	s.draftCaptains.set(key, captain)
+	s.draftCaptains.setIfCurrent(key, captain, gen)
 	return captain, nil
 }
 
-// DraftSessionTournamentID returns the tournament a draft session belongs to.
-// found is false when the session does not exist (callers must deny).
-func (s *Store) DraftSessionTournamentID(ctx context.Context, sessionID int64) (int64, bool, error) {
-	if v, ok := s.draftTourn.get(sessionID); ok {
-		return v, true, nil
+// IsDraftSessionMixHost reports whether the auth user hosts or co-hosts the mix whose lobby the draft session forms.
+// Cached like IsDraftSessionCaptain: both outcomes, nothing on a query error.
+func (s *Store) IsDraftSessionMixHost(ctx context.Context, authUserID, sessionID int64) (bool, error) {
+	key := draftCaptainKey{userID: authUserID, sessionID: sessionID}
+	if v, ok := s.draftHosts.get(key); ok {
+		return v, nil
 	}
+	var host bool
+	if err := s.pool.QueryRow(ctx, isDraftSessionMixHostSQL, sessionID, authUserID).Scan(&host); err != nil {
+		return false, fmt.Errorf("draft session mix host lookup: %w", err)
+	}
+	s.draftHosts.set(key, host)
+	return host, nil
+}
 
-	var tournamentID int64
-	err := s.pool.QueryRow(ctx, draftSessionTournamentSQL, sessionID).Scan(&tournamentID)
+// DraftSessionOwner returns a draft session's owner: its tournament, or mix=true for a mix lobby's draft. found is
+// false when the session does not exist (callers must deny).
+func (s *Store) DraftSessionOwner(ctx context.Context, sessionID int64) (int64, bool, bool, error) {
+	if v, ok := s.draftOwner.get(sessionID); ok {
+		return v.tournamentID, v.mix, true, nil
+	}
+	var owner encounterOwner
+	err := s.pool.QueryRow(ctx, draftSessionOwnerSQL, sessionID).Scan(&owner.tournamentID, &owner.mix)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, false, nil
+		return 0, false, false, nil
 	}
 	if err != nil {
-		return 0, false, fmt.Errorf("draft session tournament lookup: %w", err)
+		return 0, false, false, fmt.Errorf("draft session owner lookup: %w", err)
 	}
-
-	s.draftTourn.set(sessionID, tournamentID)
-	return tournamentID, true, nil
+	s.draftOwner.set(sessionID, owner)
+	return owner.tournamentID, owner.mix, true, nil
 }
 
 // RoomSpectatorRead reports whether spectators may read a chat room. A missing
@@ -484,12 +569,16 @@ func (s *Store) RoomSpectatorRead(ctx context.Context, roomKind string, refID in
 	return canRead, nil
 }
 
-// InvalidateRoomSpectatorRead drops the cached setting for one room, so the
-// next RoomSpectatorRead re-reads it. ws.TopicRevoker calls this before
-// re-authorizing a room's live subscribers: the whole point of that pass is to
-// act on the value the organizer just wrote.
-func (s *Store) InvalidateRoomSpectatorRead(roomKind string, refID int64) {
+// InvalidateRoomAccess drops the cached answers a room's re-authorization must
+// not reuse: its spectator setting and, for a draft room, who captains the
+// session (a replaced captain is announced on the same event). ws.TopicRevoker
+// calls this before re-authorizing a room's live subscribers: the whole point
+// of that pass is to act on what was just written.
+func (s *Store) InvalidateRoomAccess(roomKind string, refID int64) {
 	s.roomSettings.del(roomKey{kind: roomKind, refID: refID})
+	if roomKind == "draft" {
+		s.draftCaptains.evictWhere(func(k draftCaptainKey) bool { return k.sessionID == refID })
+	}
 }
 
 // roomSpectatorReadDefault mirrors _SPECTATORS_CAN_READ_DEFAULT in

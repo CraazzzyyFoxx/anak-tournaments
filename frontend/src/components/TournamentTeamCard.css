@@ -28,12 +28,12 @@
   padding: 10px 14px 12px;
 }
 
-/* Encounter-bound cards: the side's colour along the top edge. */
-.team-card[data-side="home"] {
+/* Encounter-bound cards: the seat's colour along the top edge. */
+.team-card[data-slot="1"] {
   border-top: 3px solid var(--aqt-teal);
 }
 
-.team-card[data-side="away"] {
+.team-card[data-slot="2"] {
   border-top: 3px solid var(--aqt-rose);
 }
 

@@ -2,11 +2,13 @@
 
 import { useId, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
-import { AlertTriangle, Copy, RotateCcw } from "lucide-react";
+import { AlertTriangle, RotateCcw } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { FieldDescription } from "@/components/ui/field";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { SaveBar } from "@/components/kit/SaveBar";
 import {
@@ -26,6 +28,8 @@ import { usePreGameDraft } from "./usePreGameDraft";
 
 export interface PreGameEditorProps {
   tournamentId: number;
+  /** The tournament's own game: scopes the rules catalog (presets, item groups). */
+  discipline: string;
   scope: PreGameScope;
   kind: PickBanKind;
   step: PreGameStep;
@@ -67,6 +71,7 @@ export interface PreGameEditorProps {
  */
 export function PreGameEditor({
   tournamentId,
+  discipline,
   scope,
   kind,
   step,
@@ -84,7 +89,6 @@ export function PreGameEditor({
   onResetToInherited
 }: Readonly<PreGameEditorProps>) {
   const t = useTranslations("pickBan.admin");
-  const tAdmin = useTranslations("adminTournament.preGame");
   const ids = useId();
 
   const form = usePreGameDraft({ scope, kind, stages, encounters, configs });
@@ -106,6 +110,8 @@ export function PreGameEditor({
     () => new Map(catalogue.map((option) => [option.id, option])),
     [catalogue]
   );
+  // A mode in the pool restricts which logs count; a room never offers it, so slots and rules see maps only.
+  const roomCatalogue = useMemo(() => catalogue.filter((option) => !option.isMode), [catalogue]);
 
   const scopeLabel = describeScope({ stage_id: scope.stageId, round: scope.round });
   const inheritedLabel =
@@ -118,93 +124,96 @@ export function PreGameEditor({
   return (
     <div className="flex flex-col gap-4">
       {canManage ? null : <p className="text-sm text-muted-foreground">{t("readOnly")}</p>}
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+      <div className="flex flex-col gap-1">
         <h2 className="font-display text-base font-semibold">{scopeLabel}</h2>
-        <span className="text-xs text-muted-foreground">{t(`scopeState.${form.scopeState}`)}</span>
-      </div>
-
-      {draft.inheritedFrom != null ? (
-        <Alert>
-          <Copy aria-hidden className="size-4" />
-          <AlertDescription>
+        {draft.inheritedFrom != null ? (
+          <FieldDescription className="text-xs">
             {t("inheritedPrefill", {
               scope: describeScope({
                 stage_id: draft.inheritedFrom.stageId,
                 round: draft.inheritedFrom.round
               })
             })}
-          </AlertDescription>
-        </Alert>
-      ) : null}
+          </FieldDescription>
+        ) : null}
+        {/* Not a validation error: a pool-less scope saves fine, it just plays
+            nothing. Said up here because the save that stores it can be
+            pressed from any of the three steps. */}
+        {isRulesTemplate(draft) ? (
+          <FieldDescription className="text-xs">{t("rulesTemplate")}</FieldDescription>
+        ) : null}
+      </div>
 
-      <nav aria-label={t("stepsLabel")} className="flex flex-wrap gap-1">
-        {PRE_GAME_STEPS.map((key, index) => (
-          <Button
-            key={key}
-            type="button"
-            size="sm"
-            variant={key === step ? "default" : "ghost"}
-            aria-current={key === step ? "step" : undefined}
-            onClick={() => onStepChange(key)}
-          >
-            {tAdmin("stepLabel", { number: index + 1, step: t(`step.${key}`) })}
-          </Button>
-        ))}
-      </nav>
+      <Tabs value={step} onValueChange={(next) => onStepChange(next as PreGameStep)}>
+        <TabsList aria-label={t("stepsLabel")}>
+          {PRE_GAME_STEPS.map((key) => (
+            <TabsTrigger key={key} value={key}>
+              {t(`step.${key}`)}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-      <Card>
-        <CardContent className="flex flex-col gap-5 pt-6">
-          {step === "pool" ? (
-            <PoolStep
-              ids={ids}
-              draft={draft}
-              kind={kind}
-              slotCount={form.slotCount}
-              isStageScope={form.isStageScope}
-              roundsLoading={form.roundsLoading}
-              roundLabelFor={form.roundLabelFor}
-              patchRoundSlot={form.patchRoundSlot}
-              onModeChange={form.changeMode}
-              catalogue={catalogue}
-              catalogueById={catalogueById}
-              catalogueLoading={catalogueLoading}
-              canManage={canManage}
-              patch={form.patch}
-              patchSlot={form.patchSlot}
-              toggleItem={form.toggleItem}
-            />
-          ) : null}
+        <TabsContent value={step}>
+          <Card>
+            <CardContent className="flex flex-col gap-5 pt-6">
+              {step === "pool" ? (
+                <PoolStep
+                  ids={ids}
+                  draft={draft}
+                  kind={kind}
+                  slotCount={form.slotCount}
+                  isStageScope={form.isStageScope}
+                  roundsLoading={form.roundsLoading}
+                  roundLabelFor={form.roundLabelFor}
+                  patchRoundSlot={form.patchRoundSlot}
+                  onModeChange={form.changeMode}
+                  catalogue={catalogue}
+                  catalogueById={catalogueById}
+                  catalogueLoading={catalogueLoading}
+                  roomCatalogue={roomCatalogue}
+                  canManage={canManage}
+                  patch={form.patch}
+                  patchSlot={form.patchSlot}
+                  toggleItem={form.toggleItem}
+                />
+              ) : null}
 
-          {step === "rules" ? (
-            <RulesStep
-              tournamentId={tournamentId}
-              draft={draft}
-              kind={kind}
-              series={series}
-              issues={validation.issues}
-              validating={validation.pending}
-              inherited={form.inheritedDraft}
-              inheritedLabel={inheritedLabel}
-              catalogue={catalogue}
-              canManage={canManage}
-              patch={form.patch}
-            />
-          ) : null}
+              {step === "rules" ? (
+                <RulesStep
+                  tournamentId={tournamentId}
+                  discipline={discipline}
+                  draft={draft}
+                  kind={kind}
+                  series={series}
+                  issues={validation.issues}
+                  validating={validation.pending}
+                  inherited={form.inheritedDraft}
+                  inheritedLabel={inheritedLabel}
+                  catalogue={roomCatalogue}
+                  canManage={canManage}
+                  patch={form.patch}
+                />
+              ) : null}
 
-          {step === "sides" ? (
-            <SidesStep
-              ids={ids}
-              draft={draft}
-              inherited={form.inheritedDraft}
-              inheritedLabel={inheritedLabel}
-              canManage={canManage}
-              patch={form.patch}
-            />
-          ) : null}
-        </CardContent>
-      </Card>
+              {step === "sides" ? (
+                <SidesStep
+                  ids={ids}
+                  draft={draft}
+                  inherited={form.inheritedDraft}
+                  inheritedLabel={inheritedLabel}
+                  canManage={canManage}
+                  patch={form.patch}
+                />
+              ) : null}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
-      {form.issues.length > 0 ? (
+      {/* One blocking alert: the draft's own problems, and the engine's
+          rejections summarised outside the Rules step so the reason a save
+          does nothing is on screen wherever it was pressed. */}
+      {form.issues.length > 0 || (validation.errors.length > 0 && step !== "rules") ? (
         <Alert variant="destructive">
           <AlertTriangle aria-hidden className="size-4" />
           <AlertDescription>
@@ -215,29 +224,11 @@ export function PreGameEditor({
                   {t(`validation.${issue.key}`, issue.values)}
                 </li>
               ))}
+              {validation.errors.length > 0 && step !== "rules" ? (
+                <li>{t("rulesetInvalid", { count: validation.errors.length })}</li>
+              ) : null}
             </ul>
           </AlertDescription>
-        </Alert>
-      ) : null}
-
-      {/* The engine's rejections, summarised outside the Rules step so the
-          reason a save does nothing is on screen wherever it was pressed. */}
-      {validation.errors.length > 0 && step !== "rules" ? (
-        <Alert variant="destructive">
-          <AlertTriangle aria-hidden className="size-4" />
-          <AlertDescription>
-            {t("rulesetInvalid", { count: validation.errors.length })}
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
-      {/* Not a validation error: a pool-less scope saves fine, it just plays
-          nothing. Said here rather than in the pool step, because the save that
-          stores it can be pressed from any of the three. */}
-      {isRulesTemplate(draft) ? (
-        <Alert>
-          <Copy aria-hidden className="size-4" />
-          <AlertDescription>{t("rulesTemplate")}</AlertDescription>
         </Alert>
       ) : null}
 

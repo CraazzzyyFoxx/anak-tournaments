@@ -1,3 +1,4 @@
+import type { RoleRef } from "@/lib/roster/team-format";
 import { Player, Team } from "@/types/team.types";
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -118,7 +119,7 @@ export interface StandingsDistribution {
   position_histogram: Record<string, number>; // {"1": count, "2": count, ...}
 }
 
-export type AnomalyKind = "smurf" | "troll" | "throw" | "sandbag";
+type AnomalyKind = "smurf" | "troll" | "throw" | "sandbag";
 
 interface AnomalyFlag {
   player_id: number;
@@ -191,7 +192,7 @@ export interface MLArtifact {
   id: number;
   algorithm_id: number;
   model_kind: MLModelKind | string;
-  role: string | null;
+  role: RoleRef | null;
   version: string;
   storage_uri: string;
   feature_version: string;
@@ -201,12 +202,6 @@ export interface MLArtifact {
   is_active: boolean;
   created_at: string;
   updated_at: string | null;
-}
-
-export interface JobAcceptedResponse {
-  message: string;
-  job: "train" | "infer";
-  correlation_id: string;
 }
 
 // ────────────────────────────────────────────────────────────────────────────

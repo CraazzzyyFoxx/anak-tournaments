@@ -30,10 +30,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import discord  # noqa: E402
 
-from shared.schemas.events import DiscordCard  # noqa: E402
 from src.interactions.actions import ACTIONS  # noqa: E402
 from src.interactions.cards import card_view, seat_modal, settle  # noqa: E402
 from src.interactions.dispatcher import ActionDispatcher, Outcome  # noqa: E402
+from src.render.card import DiscordCard  # noqa: E402
 
 LAYOUTS = Path(__file__).parent / "layouts"
 SITE = "https://owt.example"
@@ -90,9 +90,12 @@ def _mix_state(**overrides: Any) -> dict[str, Any]:
         "name": "Пятничный микс",
         "status": "balanced",
         "lobby_count": 1,
+        "discipline": "overwatch",
+        "discipline_roles": [{"code": code, "label": code.title()} for code in ("tank", "damage", "support")],
+        "discipline_flex": True,
         "seat": {
             "participation": "pool",
-            "roles": ["tank", "support"],
+            "roles": [{"dimension": "player_role", "role": code} for code in ("tank", "support")],
             "is_flex": False,
             "ranks": {"tank": 3100, "damage": None, "support": None},
             "divisions": {"tank": {"name": "Gold 3", "slug": "gold-3"}, "damage": None, "support": None},
@@ -152,6 +155,12 @@ def _surfaces() -> dict[str, Any]:
     two_lobbies = _mix_state(lobby_count=2, seat=_seat(current_lobby=1))
     joinable = _mix_state(seat=None)
     joinable["policy"] = {"can_join": True, "can_leave": False, "can_edit_roles": False, "edit_blocker": None}
+    one_role = _mix_state(
+        discipline="deadlock",
+        discipline_roles=[{"code": "agent", "label": "Agent"}],
+        discipline_flex=False,
+        seat=_seat(roles=None, ranks={"agent": 4100}, divisions={"agent": None}),
+    )
 
     settled = settle(
         card_view(_invite_card()),
@@ -167,6 +176,7 @@ def _surfaces() -> dict[str, Any]:
         "seat_panel_not_seated": panel(joinable),
         "seat_panel_role_edit_locked": panel(locked),
         "seat_panel_two_lobbies": panel(two_lobbies),
+        "seat_panel_one_role": panel(one_role),
         # The one-sentence replies, one per outcome.
         "reply_ok": _view_shape(dispatcher.reply(Outcome("ok"), "check_in", LOCALE)),
         "reply_not_linked": _view_shape(dispatcher.reply(Outcome("not_linked"), "check_in", LOCALE)),
@@ -180,8 +190,9 @@ def _surfaces() -> dict[str, Any]:
         "notifications_mute_prompt": _view_shape(dispatcher.reply(Outcome("ok"), "notifications.menu", LOCALE)),
         "dm_card_settled": _view_shape(settled),
         # The seat form: its field ids and the values it may answer with.
-        "seat_modal": _modal_shape(seat_modal(LOCALE, 42, ["tank", "support"], False)),
-        "seat_modal_any_ranked": _modal_shape(seat_modal(LOCALE, 42, None, True)),
+        "seat_modal": _modal_shape(seat_modal(LOCALE, 42, "overwatch", ["tank", "support"], False)),
+        "seat_modal_any_ranked": _modal_shape(seat_modal(LOCALE, 42, "overwatch", None, True)),
+        "seat_modal_lol": _modal_shape(seat_modal(LOCALE, 42, "lol", ["mid", "top"], True)),
     }
 
 

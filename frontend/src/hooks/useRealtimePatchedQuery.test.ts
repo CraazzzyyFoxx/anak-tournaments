@@ -15,6 +15,12 @@ import { useRealtimePatchedQuery } from "@/hooks/useRealtimePatchedQuery";
 import { useRealtimeStore } from "@/stores/realtime.store";
 import type { RealtimeEventEnvelope } from "@/types/realtime.types";
 
+declare global {
+  var IS_REACT_ACT_ENVIRONMENT: boolean;
+}
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
 const applyResourcePatch = vi.fn();
 vi.mock("@/services/realtime-patch", () => ({
   applyResourcePatch: (...args: unknown[]) => applyResourcePatch(...args)

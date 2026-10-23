@@ -1,14 +1,5 @@
 "use client";
 
-import { createContext, useContext } from "react";
-
-/** The admin table's live search query, for custom cells that want to highlight their own text. */
-export const AdminTableSearchContext = createContext("");
-
-export function useAdminTableSearch() {
-  return useContext(AdminTableSearchContext);
-}
-
 /** `text` with every case-insensitive occurrence of `query` wrapped in `<mark>`. */
 export function HighlightMatch({ text, query }: Readonly<{ text: string; query: string }>) {
   const needle = query.trim().toLowerCase();

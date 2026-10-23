@@ -2,7 +2,6 @@
 
 import { useTranslations } from "next-intl";
 
-import { Badge } from "@/components/ui/badge";
 import { Field, FieldDescription, FieldLabel, FieldTitle } from "@/components/ui/field";
 import {
   Select,
@@ -11,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   PICK_BAN_MODES,
   type PickBanDraft,
@@ -32,6 +32,7 @@ export function PoolStep({
   catalogue,
   catalogueById,
   catalogueLoading,
+  roomCatalogue,
   canManage,
   patch,
   patchSlot,
@@ -53,6 +54,8 @@ export function PoolStep({
   catalogue: CatalogueItem[];
   catalogueById: Map<number, CatalogueItem>;
   catalogueLoading: boolean;
+  /** `catalogue` without its modes: what a group of one match may hold. */
+  roomCatalogue: CatalogueItem[];
   canManage: boolean;
   patch: (values: Partial<PickBanDraft>) => void;
   patchSlot: (index: number, slotPatch: Partial<PickBanDraftSlot>) => void;
@@ -104,9 +107,11 @@ export function PoolStep({
         <Field>
           <FieldTitle className="text-sm">
             {isHero ? t("poolHeroLabel") : t("poolMapLabel")}
-            <Badge variant="secondary">{t("poolCount", { count: draft.itemIds.length })}</Badge>
           </FieldTitle>
           <FieldDescription>{t("poolHint")}</FieldDescription>
+          {roomCatalogue.length < catalogue.length ? (
+            <FieldDescription>{t("poolModesHint")}</FieldDescription>
+          ) : null}
           <CatalogueChips
             itemIds={draft.itemIds}
             catalogue={catalogueById}
@@ -140,58 +145,58 @@ export function PoolStep({
           <FieldDescription>{t("roundGroupsHint")}</FieldDescription>
 
           {draft.roundSlots.map((section, roundIndex) => (
-            <div
-              key={section.round}
-              className="flex flex-col gap-2 rounded-xl border border-border bg-muted/20 p-3"
-            >
-              <FieldTitle className="text-sm">
-                {roundLabelFor(section.round)}
-                <Badge variant="outline">
-                  {t("roundGroupCount", { count: section.slots.length })}
-                </Badge>
-              </FieldTitle>
-
-              {section.slots.map((slot, index) => (
-                <SlotCard
-                  key={index}
-                  label={t("slotTitle", { n: index + 1 })}
-                  reserveLabel={t("slotReserveAria", { n: index + 1 })}
-                  slot={slot}
-                  kind={kind}
-                  catalogue={catalogue}
-                  catalogueById={catalogueById}
-                  catalogueLoading={catalogueLoading}
-                  canManage={canManage}
-                  onPatch={(slotPatch) => patchRoundSlot(roundIndex, index, slotPatch)}
-                />
-              ))}
-            </div>
+            <section key={section.round} className="flex flex-col">
+              <FieldTitle className="text-sm">{roundLabelFor(section.round)}</FieldTitle>
+              <div className="flex flex-col divide-y divide-border">
+                {section.slots.map((slot, index) => (
+                  <SlotCard
+                    key={index}
+                    label={t("slotTitle", { n: index + 1 })}
+                    reserveLabel={t("slotReserveAria", { n: index + 1 })}
+                    slot={slot}
+                    kind={kind}
+                    catalogue={roomCatalogue}
+                    catalogueById={catalogueById}
+                    catalogueLoading={catalogueLoading}
+                    canManage={canManage}
+                    onPatch={(slotPatch) => patchRoundSlot(roundIndex, index, slotPatch)}
+                  />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          <FieldDescription>
-            {roundsLoading
-              ? t("roundHintLoading")
-              : isStageScope
+        <div className="flex flex-col">
+          {roundsLoading ? (
+            <div role="status">
+              <span className="sr-only">{t("roundHintLoading")}</span>
+              <Skeleton aria-hidden className="h-4 w-64" />
+            </div>
+          ) : (
+            <FieldDescription>
+              {isStageScope
                 ? t("roundsUnknownStageWide")
                 : t("slotCountFromBracket", { maps: slotCount })}
-          </FieldDescription>
+            </FieldDescription>
+          )}
 
-          {draft.slots.map((slot, index) => (
-            <SlotCard
-              key={index}
-              label={t("slotTitle", { n: index + 1 })}
-              reserveLabel={t("slotReserveAria", { n: index + 1 })}
-              slot={slot}
-              kind={kind}
-              catalogue={catalogue}
-              catalogueById={catalogueById}
-              catalogueLoading={catalogueLoading}
-              canManage={canManage}
-              onPatch={(slotPatch) => patchSlot(index, slotPatch)}
-            />
-          ))}
+          <div className="flex flex-col divide-y divide-border">
+            {draft.slots.map((slot, index) => (
+              <SlotCard
+                key={index}
+                label={t("slotTitle", { n: index + 1 })}
+                reserveLabel={t("slotReserveAria", { n: index + 1 })}
+                slot={slot}
+                kind={kind}
+                catalogue={roomCatalogue}
+                catalogueById={catalogueById}
+                catalogueLoading={catalogueLoading}
+                canManage={canManage}
+                onPatch={(slotPatch) => patchSlot(index, slotPatch)}
+              />
+            ))}
+          </div>
         </div>
       )}
     </>
@@ -200,8 +205,8 @@ export function PoolStep({
 
 /**
  * One group: its candidates in play order, its reserve, and the pickers for
- * both. The same card whether it belongs to a single round's scope or to one
- * round of a stage screen — only where the patch lands differs.
+ * both. The same row whether it belongs to a single round's scope or to one
+ * round of a stage screen; only where the patch lands differs.
  */
 function SlotCard({
   label,
@@ -227,14 +232,9 @@ function SlotCard({
   const t = useTranslations("pickBan.admin");
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
+    <div className="flex flex-col gap-2 py-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <FieldTitle className="text-sm">
-          {label}
-          <Badge variant="secondary">
-            {t("slotCandidates", { count: slot.candidates.length })}
-          </Badge>
-        </FieldTitle>
+        <FieldTitle className="text-sm">{label}</FieldTitle>
         <CataloguePicker
           mode="single"
           kind={kind}

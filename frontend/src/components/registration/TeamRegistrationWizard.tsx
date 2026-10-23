@@ -5,14 +5,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 
 import { EditableAvatar } from "@/components/ui/editable-avatar";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { ApiError } from "@/lib/api/error";
 import { MAX_AVATAR_BYTES } from "@/lib/uploads";
 import { notify } from "@/lib/notify";
 import { translateRegistrationTeamError } from "@/lib/registration/team-errors";
-import { isRoleSlotCode, type RosterSlotCode } from "@/lib/roster/shape";
+import { isRoleSlot, type SlotCode } from "@/lib/roster/shape";
+import { showsRoles } from "@/lib/roster/ontology";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import meService from "@/services/me.service";
 import registrationTeamService from "@/services/registration-team.service";
@@ -62,9 +65,11 @@ export default function TeamRegistrationWizard({
   const tErrors = useTranslations("registrationTeams.errors");
   const { user: authUser } = useAuthProfile();
   const queryClient = useQueryClient();
+  // The slot tiles are the form's own game's roles (the owner read names the game).
+  const metadata = useDisciplineMetadata(form.workspace_id, form.discipline);
 
   const [name, setName] = useState("");
-  const [slot, setSlot] = useState<RosterSlotCode | null>(availableSlots[0]?.code ?? null);
+  const [slot, setSlot] = useState<SlotCode | null>(availableSlots[0]?.code ?? null);
   const [error, setError] = useState<string | null>(null);
   // Team-name errors stay hidden until the field has been left once, so the
   // panel does not open with a red "Enter a team name" on an untouched form.
@@ -176,12 +181,9 @@ export default function TeamRegistrationWizard({
         aria-labelledby="regteam-identity-heading"
         className="grid gap-4 rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-4"
       >
-        <h3
-          id="regteam-identity-heading"
-          className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]"
-        >
+        <Eyebrow as="h3" id="regteam-identity-heading" tone="muted">
           {t("create.identityHeading")}
-        </h3>
+        </Eyebrow>
 
         {/* Stacks below `sm`, where a 72px logo beside the name input crushed the
             input to ~50px and wrapped its label and error over four lines. The
@@ -210,9 +212,7 @@ export default function TeamRegistrationWizard({
               onError={(message) => notify.error(message)}
               labels={avatarLabels}
             />
-            <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-              {t("create.logoLabel")}
-            </span>
+            <Eyebrow tone="dim">{t("create.logoLabel")}</Eyebrow>
           </div>
 
           <div className="grid w-full min-w-0 gap-1.5 sm:flex-1">
@@ -247,24 +247,25 @@ export default function TeamRegistrationWizard({
           </div>
         </div>
 
-        {/* A real fieldset/legend, not a div plus `role="radiogroup"`: the radios
-            already form a group, and this is the platform's way to name it. The
-            grid lives on an inner wrapper because a legend inside a grid-display
-            fieldset is laid out inconsistently across browsers. */}
-        <fieldset className="min-w-0" aria-describedby="regteam-slot-hint">
-          <legend className="text-sm font-medium">{t("create.slotLabel")}</legend>
-          <div className="mt-2 grid gap-2">
+        {/* A one-role game has one kind of slot: the captain takes it without choosing (`slot` starts on it). */}
+        {metadata.data == null || showsRoles(metadata.data) ? (
+          <div className="grid min-w-0 gap-2">
+            <p id="regteam-slot-label" className="text-sm font-medium">
+              {t("create.slotLabel")}
+            </p>
             <RosterSlotPicker
-              name="regteam-slot"
+              aria-labelledby="regteam-slot-label"
+              aria-describedby="regteam-slot-hint"
               options={availableSlots}
               value={slot}
               onChange={setSlot}
+              ontology={metadata.data ?? null}
             />
             <p id="regteam-slot-hint" className="text-xs text-[color:var(--aqt-fg-muted)]">
               {t("create.slotHint")}
             </p>
           </div>
-        </fieldset>
+        ) : null}
       </section>
 
       <RegistrationSchemaForm
@@ -280,7 +281,7 @@ export default function TeamRegistrationWizard({
         // one row they will actually play instead of asking the question twice. A
         // `flex` slot names no role, so it locks nothing — locking on it would
         // filter every row away and leave the step with nothing to answer.
-        lockedRole={slot != null && isRoleSlotCode(slot) ? slot : null}
+        lockedRole={slot != null && isRoleSlot(slot) ? slot : null}
         onSubmit={async ({ form_version_id, answers }) => {
           setError(null);
           if (nameError) {

@@ -2,6 +2,7 @@
 
 import { useRealtimeStore } from "@/stores/realtime.store";
 import { useAuthModalStore } from "@/stores/auth-modal.store";
+import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import { getAccessTokenCookie, refreshAccessToken } from "@/lib/auth/tokens";
 import { isExpiredOrNearExpiry } from "@/lib/auth/jwt";
 import type {
@@ -27,7 +28,14 @@ const PONG_TIMEOUT_MS = 10_000;
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
 
-export function buildRealtimeWebSocketUrl(
+/** The sign-in prompt is for a session that died under a signed-in viewer, never for a visitor still being identified. */
+function promptSignIn(): void {
+  if (useAuthProfileStore.getState().status === "authenticated") {
+    useAuthModalStore.getState().open();
+  }
+}
+
+function buildRealtimeWebSocketUrl(
   realtimeBase: string | undefined = undefined,
   origin = typeof window !== "undefined" ? window.location.origin : "http://localhost"
 ): string {
@@ -269,12 +277,20 @@ class RealtimeClient {
   // think they were being logged out every few minutes. Refresh if needed and
   // re-handshake; prompt only when the session is dead or the re-handshake is
   // still anonymous.
+  //
+  // Only a viewer the app believes is signed in has a session to recover or to
+  // lose. A visitor who never signed in asked for no sign-in: a members-only
+  // topic on a public page (a mix board's workspace invalidations) stays a
+  // rejected topic its consumer can see, with no refresh and no prompt.
   private recoverAuth(): void {
+    if (useAuthProfileStore.getState().status === "anonymous") {
+      return;
+    }
     if (this.authRecovery) {
       return; // every rejected topic reports at once
     }
     if (this.socket !== null && this.socket === this.recoveredSocket) {
-      useAuthModalStore.getState().open();
+      promptSignIn();
       return;
     }
     this.authRecovery = (async () => {
@@ -284,7 +300,7 @@ class RealtimeClient {
         this.reset();
         this.recoveredSocket = this.socket;
       } else if (outcome === "unauthenticated") {
-        useAuthModalStore.getState().open();
+        promptSignIn();
       }
       // "error" is transient: keep the session, the topic error stays surfaced.
     })().finally(() => {

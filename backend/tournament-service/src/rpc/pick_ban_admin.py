@@ -1,16 +1,10 @@
 """Generic pick-ban admin methods over typed RPC (``PickBanConfig`` CRUD for
 both ``map`` and ``hero`` kinds, plus the live-session organizer overrides).
 
-Mirrors ``veto_admin.py``'s FORMER upsert/list/delete shape exactly — same
-cascade key ``(tournament_id, stage_id, round)``, now additionally
-partitioned by ``kind`` (design: docs/plans/2026-08-09-generic-pickban-engine.md)
-— plus a ``kind`` field on every route so one admin surface configures both
-map veto and hero bans. Since the map-veto cutover, this IS the sole config
-CRUD surface for both kinds.
+Configs cascade on ``(tournament_id, stage_id, round)``, partitioned by
+``kind``, so one admin surface configures both map veto and hero bans.
 
-Ruleset v2 (docs/plans/2026-09-28-pick-ban-constructor.md) replaced the flat
-token sequence with a rules DOCUMENT, so this module also carries the two
-constructor-support ops — ``rules_validate`` and ``rules_preview`` — which
+Two constructor-support ops -- ``rules_validate`` and ``rules_preview`` --
 answer "would this save?" and "what would a Bo5 look like?" without writing
 anything. They are gated exactly like the upsert they precede: an organizer
 who may not save a config may not probe the engine with one either.
@@ -18,12 +12,13 @@ who may not save a config may not probe the engine with one either.
 
 from __future__ import annotations
 
+from functools import partial
 from typing import Any, Literal
 
 from faststream.rabbit.annotations import RabbitMessage
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.enums import (
     FirstBanRotation,
@@ -33,19 +28,22 @@ from shared.core.enums import (
 )
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain import pick_ban_rules as pbr
+from shared.repository import EncounterRepository
 from shared.rpc.identity import ensure_workspace_permission
 from shared.services.audit import record_admin_audit
-from shared.services.bracket.usability import assert_encounter_live
-from src import models
 from src.core import auth
 from src.rpc import admin_misc
-from src.rpc._helpers import _dump, _identity, _path_int, _payload, _q1, _require_id, _run
+from src.rpc._helpers import _actor_player_id, _dump, _identity, _path_int, _payload, _q1, _require_id, _run
 from src.schemas import captain as captain_schemas
+from src.services.bracket.usability import assert_encounter_live
 from src.services.encounter import pick_ban_action as pick_ban_action
 from src.services.encounter import pick_ban_config, room_control, room_journal
 from src.services.encounter import pick_ban_session as pick_ban_session
+from src.services.encounter.captain import ReportResultIn
 from src.services.encounter.game_correction import game_correction_service
+from src.services.encounter.games import GameResultIn
 from src.services.encounter.pregame_rooms import pregame_rooms_service
+from src.services.encounter.room_owner import ensure_room_organizer, load_room_encounter
 from src.services.encounter.room_reconcile import request_tournament_reconcile
 
 _serialize_config = pick_ban_config.serialize_pick_ban_config
@@ -56,18 +54,13 @@ async def _load_encounter(session: Any, encounter_id: int) -> models.Encounter:
 
     Every admin handler here mutates the live session or a game result, and the
     game-result path re-derives the encounter score from its games -- so it takes
-    the same Encounter -> Game lock order the captain path uses (spec §7). Without
-    it a concurrent captain claim and an admin correction can each materialise a
+    the same Encounter -> Game lock order the captain path uses. Without it a
+    concurrent captain claim and an admin correction can each materialise a
     score from a stale read. ``populate_existing`` rides along: a row already in
     the identity map would otherwise be served at the version this session first
     saw, defeating the lock.
     """
-    encounter = await session.scalar(
-        select(models.Encounter)
-        .where(models.Encounter.id == encounter_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
+    encounter = await EncounterRepository().get_for_update(session, encounter_id)
     if encounter is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
     return encounter
@@ -81,25 +74,28 @@ class PickBanAdminReset(BaseModel):
 
 
 class PickBanAdminAct(BaseModel):
-    """Body for the admin act-for-a-side route: perform one step on behalf of
-    an absent captain. ``target_player_id`` names the opponent roster player a
-    per-player ban is spent on (ruleset v2 target steps); ``null`` everywhere
+    """Body for the admin act-for-a-participation route: perform one step on
+    behalf of an absent captain. ``target_player_id`` names the opponent roster
+    player a per-player ban is spent on (target steps); ``null`` everywhere
     else."""
 
     kind: PickBanKind
-    side: Literal["home", "away"]
+    encounter_team_id: int
+    #: The catalog item, or the side INDEX on a ``side_pick`` step.
     item_id: int
-    action: Literal["pick", "ban", "protect"]
+    action: Literal["pick", "ban", "protect", "side_pick"]
     target_player_id: int | None = None
+    #: A mix's member pick (spec §11.6 R4-9): the ``encounter.team_member`` seat the hero is for.
+    member_id: int | None = None
 
 
 class PickBanAdminSubmit(BaseModel):
-    """Body for the admin submit-for-a-side route: replace a BLIND step's draft
-    on behalf of a captain who is not there to author it. Items reuse the
-    captain schema so the two surfaces cannot drift."""
+    """Body for the admin submit-for-a-participation route: replace a BLIND
+    step's draft on behalf of a captain who is not there to author it. Items
+    reuse the captain schema so the two surfaces cannot drift."""
 
     kind: PickBanKind
-    side: Literal["home", "away"]
+    encounter_team_id: int
     items: list[captain_schemas.PickBanSubmissionItemInput] = Field(default_factory=list)
     lock: bool = False
 
@@ -118,7 +114,7 @@ class PickBanAdminElectOpener(BaseModel):
     who is not there to name it themselves."""
 
     kind: PickBanKind
-    first_side: Literal["home", "away"]
+    first_team_id: int
 
 
 class PickBanAdminPause(BaseModel):
@@ -146,48 +142,62 @@ class PickBanAdminCancel(BaseModel):
 
 
 class AdminTechnicalLossInput(BaseModel):
-    """Body for the technical-loss route: which side forfeits, optionally the
-    exact score to record it as (omitted = the default forfeit score), and the
-    reason -- a walkover is never anonymous."""
+    """Body for the technical-loss route: which PARTICIPATION forfeits,
+    optionally the exact scores to record it as (omitted = the default forfeit
+    score), and the reason -- a walkover is never anonymous."""
 
-    loser_side: Literal["home", "away"]
-    home_score: int | None = Field(default=None, ge=0)
-    away_score: int | None = Field(default=None, ge=0)
+    loser_team_id: int
+    results: list[AdminForfeitResult] = Field(default_factory=list)
     reason: str = Field(min_length=1, max_length=500)
 
 
+class AdminForfeitResult(BaseModel):
+    """One participation's score in an explicitly stated forfeit."""
+
+    encounter_team_id: int
+    score: float
+
+
 class AdminReadinessSet(BaseModel):
-    """Body for the admin readiness override: force one side's captain
+    """Body for the admin readiness override: force one participation's captain
     readiness on or off.
 
     ``ready: false`` is only meaningful before a session exists -- readiness
     gates session CREATION and nothing else -- so the service 409s once one
     does (reset the session instead)."""
 
-    side: Literal["home", "away"]
+    encounter_team_id: int
     ready: bool
 
 
-class AdminGameResultInput(BaseModel):
-    """Body for the admin game-result correction: the position's score as the
-    organizer decides it, plus the reason that goes into the audit journal (a
-    correction is never anonymous -- spec §6.5)."""
+class AdminGameResultLineInput(BaseModel):
+    """One participation's numbers inside an admin game correction."""
 
-    home_score: int = Field(ge=0)
-    away_score: int = Field(ge=0)
+    encounter_team_id: int
+    score: int | None = Field(default=None, ge=0)
+    placement: int | None = Field(default=None, ge=1)
+    column_values: dict[str, float] = Field(default_factory=dict)
+
+
+class AdminGameResultInput(BaseModel):
+    """Body for the admin game-result correction: the position's numbers as the
+    organizer decides them, one line per live participation, plus the reason
+    that goes into the audit journal (a correction is never anonymous)."""
+
+    results: list[AdminGameResultLineInput] = Field(min_length=1)
     reason: str = Field(min_length=1, max_length=500)
 
 
 class PickBanConfigSlotUpsert(BaseModel):
     """One slot of a slot-mode upsert body. No ``position``: list order IS the
-    play order (same rationale as ``veto_admin.VetoConfigSlotUpsert``)."""
+    play order."""
 
     candidates: list[int]
     reserve_item_id: int | None = None
 
 
 class PickBanConfigUpsert(BaseModel):
-    """Body for the generic pick-ban config upsert route (ruleset v2)."""
+    """Body for the generic pick-ban config upsert route."""
 
     kind: PickBanKind
     stage_id: int | None = None
@@ -256,7 +266,9 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
             body = PickBanConfigUpsert.model_validate(_payload(data))
-            pick_ban_config.validate_config_payload(
+            discipline = await pick_ban_config.tournament_discipline(session, tournament_id)
+            await pick_ban_config.validate_config(
+                session,
                 kind=body.kind,
                 mode=body.mode,
                 ruleset=body.ruleset,
@@ -264,7 +276,7 @@ def register(broker: Any, logger: Any) -> None:
                 slots=[(slot.candidates, slot.reserve_item_id) for slot in body.slots],
                 stage_id=body.stage_id,
                 round=body.round,
-                groups=await pick_ban_config.group_vocabulary(session, body.kind),
+                discipline=discipline,
             )
             config = await pick_ban_config.pick_ban_config_service.upsert_config(
                 session,
@@ -366,11 +378,13 @@ def register(broker: Any, logger: Any) -> None:
             # point is to hand the editor the issue list while it is still being
             # typed. Warnings ride along with the errors; only errors decide
             # ``valid``.
+            discipline = await pick_ban_config.tournament_discipline(session, tournament_id)
             issues = pbr.validate_ruleset(
                 body.ruleset,
                 kind=body.kind.value,
                 mode=body.mode.value,
-                groups=await pick_ban_config.group_vocabulary(session, body.kind),
+                discipline=discipline,
+                groups=await pick_ban_config.group_vocabulary(session, body.kind, discipline),
             )
             return {
                 "valid": not any(issue.severity == "error" for issue in issues),
@@ -387,14 +401,18 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
             body = PickBanRulesPreviewInput.model_validate(_payload(data))
+            discipline = await pick_ban_config.tournament_discipline(session, tournament_id)
+            pool_groups, pool_size = await pick_ban_config.pool_composition(
+                session, body.kind, _pool_item_ids(body.mode, body.item_ids, body.slots), discipline
+            )
             return pbr.preview_series(
                 body.ruleset,
                 kind=body.kind.value,
                 mode=body.mode.value,
+                discipline=discipline,
                 best_of=body.best_of,
-                pool_groups=await pick_ban_config.pool_group_counts(
-                    session, body.kind, _pool_item_ids(body.mode, body.item_ids, body.slots)
-                ),
+                pool_groups=pool_groups,
+                pool_size=pool_size,
                 # The tournament's own roster shape, not a workspace default:
                 # it bounds how many of a per-player ban step's bans can land
                 # on one role.
@@ -404,22 +422,19 @@ def register(broker: Any, logger: Any) -> None:
         return await _run(logger, op)
 
     # ── live-session admin overrides (map + hero) ───────────────────────────
-    # Generalizes veto_admin.py's two live-session operations (reset + act
-    # for an absent captain), which had no pick-ban equivalent before the
-    # room unification. Both kinds share these routes via a ``kind`` body
-    # field instead of kind-hardcoded handlers. Gated on ``match.result``, not
-    # ``update``: they run ONE match in progress, the same staff that records
-    # its result; the rules they run on stay behind the config routes above.
+    # Both kinds share these routes via a ``kind`` body field. Gated on
+    # ``match.result``, not ``update``: they run ONE match in progress, the same
+    # staff that records its result; the rules they run on stay behind the
+    # config routes above.
 
     @broker.subscriber("rpc.tournament.admin_pick_ban_session_reset")
     async def _admin_pick_ban_session_reset(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
-            ensure_workspace_permission(user, ws_id, "match", "result")
+            ws_id = await ensure_room_organizer(session, user, encounter_id)
             body = PickBanAdminReset.model_validate(_payload(data))
-            encounter = await _load_encounter(session, encounter_id)
+            encounter = await load_room_encounter(session, encounter_id, for_update=True)
             await record_admin_audit(
                 session,
                 action="pick_ban.session_reset",
@@ -431,13 +446,13 @@ def register(broker: Any, logger: Any) -> None:
                 after={"kind": body.kind},
             )
             # reset_pick_ban_session commits internally; the response is the
-            # same state shape the room polls (viewer_side stays null for
+            # same state shape the room polls (viewer stays null for
             # admins).
             await pick_ban_session.pick_ban_session_service.reset_pick_ban_session(
                 session, encounter, body.kind, actor_auth_user_id=user.id
             )
             return await pick_ban_action.pick_ban_action_service.get_pick_ban_state(
-                session, encounter_id, body.kind, viewer_side=None
+                session, encounter_id, body.kind, viewer=None
             )
 
         return await _run(logger, op)
@@ -447,8 +462,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
-            ensure_workspace_permission(user, ws_id, "match", "result")
+            ws_id = await ensure_room_organizer(session, user, encounter_id)
             body = PickBanAdminAct.model_validate(_payload(data))
             await record_admin_audit(
                 session,
@@ -460,25 +474,27 @@ def register(broker: Any, logger: Any) -> None:
                 entity_id=encounter_id,
                 after={
                     "kind": body.kind,
-                    "side": body.side,
+                    "encounter_team_id": body.encounter_team_id,
                     "action": body.action,
                     "item_id": body.item_id,
                     "target_player_id": body.target_player_id,
+                    "member_id": body.member_id,
                 },
             )
-            # Same engine as the captain act route, side supplied explicitly
-            # (bypasses captain-side resolution); commits internally.
-            # ``viewer_side=None``: an organizer sees the whole board, including
-            # the other side's unrevealed draft, which a captain must not.
+            # Same engine as the captain act route, the acting participation
+            # supplied explicitly (bypassing captain resolution); commits
+            # internally. ``viewer=None``: an organizer sees the whole board,
+            # including an unrevealed draft, which a captain must not.
             return await pick_ban_action.pick_ban_action_service.perform_pick_ban_action(
                 session,
                 encounter_id,
                 body.kind,
-                body.side,
+                body.encounter_team_id,
                 item_id=body.item_id,
                 action=body.action,
                 target_player_id=body.target_player_id,
-                viewer_side=None,
+                member_id=body.member_id,
+                viewer=None,
                 actor_auth_user_id=user.id,
             )
 
@@ -489,8 +505,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
-            ensure_workspace_permission(user, ws_id, "match", "result")
+            ws_id = await ensure_room_organizer(session, user, encounter_id)
             body = PickBanAdminSubmit.model_validate(_payload(data))
             await record_admin_audit(
                 session,
@@ -502,7 +517,7 @@ def register(broker: Any, logger: Any) -> None:
                 entity_id=encounter_id,
                 after={
                     "kind": body.kind,
-                    "side": body.side,
+                    "encounter_team_id": body.encounter_team_id,
                     "lock": body.lock,
                     "item_ids": [item.item_id for item in body.items],
                 },
@@ -511,10 +526,10 @@ def register(broker: Any, logger: Any) -> None:
                 session,
                 encounter_id,
                 body.kind,
-                body.side,
+                body.encounter_team_id,
                 items=[item.model_dump() for item in body.items],
                 lock=body.lock,
-                viewer_side=None,
+                viewer=None,
                 actor_auth_user_id=user.id,
             )
 
@@ -525,8 +540,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
-            ensure_workspace_permission(user, ws_id, "match", "result")
+            ws_id = await ensure_room_organizer(session, user, encounter_id)
             body = PickBanAdminReopen.model_validate(_payload(data))
             await record_admin_audit(
                 session,
@@ -549,8 +563,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
-            ensure_workspace_permission(user, ws_id, "match", "result")
+            ws_id = await ensure_room_organizer(session, user, encounter_id)
             body = PickBanAdminElectOpener.model_validate(_payload(data))
             pick_ban = await pick_ban_session.pick_ban_session_service.get_pick_ban_session(
                 session, encounter_id, body.kind
@@ -565,17 +578,17 @@ def register(broker: Any, logger: Any) -> None:
                 workspace_id=ws_id,
                 entity_type="encounter",
                 entity_id=encounter_id,
-                after={"kind": body.kind, "first_side": body.first_side},
+                after={"kind": body.kind, "first_team_id": body.first_team_id},
             )
-            # `acting_side=None` IS the override: the losing captain's exclusive
-            # right to choose does not apply to an organizer unsticking a room
-            # they are not playing in. Commits inside `advance_to_next_round`;
-            # the response is the state shape the room polls.
+            # `acting_team_id=None` IS the override: the losing captain's
+            # exclusive right to choose does not apply to an organizer
+            # unsticking a room they are not playing in. Commits inside
+            # `advance_to_next_round`; the response is the state the room polls.
             await pick_ban_session.pick_ban_session_service.elect_round_opener(
-                session, pick_ban, first_side=body.first_side, acting_side=None, actor_auth_user_id=user.id
+                session, pick_ban, first_team_id=body.first_team_id, acting_team_id=None, actor_auth_user_id=user.id
             )
             return await pick_ban_action.pick_ban_action_service.get_pick_ban_state(
-                session, encounter_id, body.kind, viewer_side=None
+                session, encounter_id, body.kind, viewer=None
             )
 
         return await _run(logger, op)
@@ -590,8 +603,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
-            ensure_workspace_permission(user, ws_id, "match", "result")
+            ws_id = await ensure_room_organizer(session, user, encounter_id)
             body = PickBanAdminPause.model_validate(_payload(data))
             await record_admin_audit(
                 session,
@@ -614,8 +626,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
-            ensure_workspace_permission(user, ws_id, "match", "result")
+            ws_id = await ensure_room_organizer(session, user, encounter_id)
             body = PickBanAdminExtend.model_validate(_payload(data))
             await record_admin_audit(
                 session,
@@ -638,8 +649,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
-            ensure_workspace_permission(user, ws_id, "match", "result")
+            ws_id = await ensure_room_organizer(session, user, encounter_id)
             body = PickBanAdminCancel.model_validate(_payload(data))
             await record_admin_audit(
                 session,
@@ -684,16 +694,18 @@ def register(broker: Any, logger: Any) -> None:
             encounter = await room_control.technical_loss(
                 session,
                 encounter,
-                loser_side=body.loser_side,
-                home_score=body.home_score,
-                away_score=body.away_score,
+                loser_team_id=body.loser_team_id,
+                results=[
+                    ReportResultIn(encounter_team_id=line.encounter_team_id, score=line.score) for line in body.results
+                ]
+                or None,
                 reason=body.reason,
                 actor_auth_user_id=user.id,
                 # The result audit's actor lives in PLAYER space, not auth space
-                # (admin_misc._actor_player_id explains the translation).
-                actor_player_id=await admin_misc._actor_player_id(session, user),
+                # (``_actor_player_id`` explains the translation).
+                actor_player_id=await _actor_player_id(session, user),
             )
-            return admin_misc._serialize_result(encounter)
+            return await admin_misc._serialize_result(session, encounter)
 
         return await _run(logger, op)
 
@@ -707,31 +719,39 @@ def register(broker: Any, logger: Any) -> None:
             game_id = _path_int(data, "game_id")
             body = AdminGameResultInput.model_validate(_payload(data))
             encounter = await _load_encounter(session, encounter_id)
-            await record_admin_audit(
+            # The audit row is written by ``correct_game`` itself, once the
+            # dependent-round guard has passed: a refused correction leaves none.
+            # One commit lands it with the accepted numbers, the live standing
+            # and any rebuilt round.
+            return await game_correction_service.correct_game(
                 session,
-                action="encounter.game_result",
-                actor=user,
-                data=data,
-                workspace_id=ws_id,
-                entity_type="encounter",
-                entity_id=encounter.id,
-                after={
-                    "game_id": game_id,
-                    "home_score": body.home_score,
-                    "away_score": body.away_score,
-                    "reason": body.reason,
-                },
-            )
-            # Commits internally (the accepted score, the live series score and
-            # any rebuilt round land together).
-            return await game_correction_service.correct(
-                session,
-                encounter,
+                encounter.id,
                 game_id=game_id,
-                home_score=body.home_score,
-                away_score=body.away_score,
-                actor_user_id=user.id,
+                results=[
+                    GameResultIn(
+                        encounter_team_id=line.encounter_team_id,
+                        score=line.score,
+                        placement=line.placement,
+                        column_values=dict(line.column_values),
+                    )
+                    for line in body.results
+                ],
+                actor_user_id=await _actor_player_id(session, user),
                 reason=body.reason,
+                audit=partial(
+                    record_admin_audit,
+                    action="encounter.game_result",
+                    actor=user,
+                    data=data,
+                    workspace_id=ws_id,
+                    entity_type="encounter",
+                    entity_id=encounter.id,
+                    after={
+                        "game_id": game_id,
+                        "results": [line.model_dump(mode="json") for line in body.results],
+                        "reason": body.reason,
+                    },
+                ),
             )
 
         return await _run(logger, op)
@@ -743,10 +763,9 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
-            ensure_workspace_permission(user, ws_id, "match", "result")
+            ws_id = await ensure_room_organizer(session, user, encounter_id)
             body = AdminReadinessSet.model_validate(_payload(data))
-            encounter = await _load_encounter(session, encounter_id)
+            encounter = await load_room_encounter(session, encounter_id, for_update=True)
             # Same gate the captain's own ready button applies (public_rpc
             # ``_captain_ready``): a preview bracket's room is look-only for an
             # organizer too, or they would confirm readiness into a matchup the
@@ -760,7 +779,7 @@ def register(broker: Any, logger: Any) -> None:
                 workspace_id=ws_id,
                 entity_type="encounter",
                 entity_id=encounter.id,
-                after={"side": body.side, "ready": body.ready},
+                after={"encounter_team_id": body.encounter_team_id, "ready": body.ready},
             )
             service = pick_ban_session.pick_ban_session_service
             # ``ready_user_id`` is a PLAYER identity (``identity.user``), and an
@@ -770,10 +789,12 @@ def register(broker: Any, logger: Any) -> None:
             # internally and signal the room.
             if body.ready:
                 readiness = await service.mark_ready(
-                    session, encounter, body.side, None, actor_auth_user_id=user.id, source="admin"
+                    session, encounter, body.encounter_team_id, None, actor_auth_user_id=user.id, source="admin"
                 )
             else:
-                readiness = await service.clear_ready(session, encounter, body.side, actor_auth_user_id=user.id)
+                readiness = await service.clear_ready(
+                    session, encounter, body.encounter_team_id, actor_auth_user_id=user.id
+                )
             return {"readiness": readiness}
 
         return await _run(logger, op)

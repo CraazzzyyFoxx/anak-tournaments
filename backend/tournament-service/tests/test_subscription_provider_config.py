@@ -17,6 +17,7 @@ Runs under stdlib unittest -- no pytest-asyncio in this repo.
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
@@ -26,10 +27,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.services.subscriptions.challenge_code import hash_code  # noqa: E402
-from src.schemas.registration import SubscriptionProviderConfigUpsert  # noqa: E402
+from src.schemas.registration import (  # noqa: E402
+    SubscriptionProviderConfigUpsert,
+    WorkspaceSubscriptionRequirementUpsert,
+)
 from src.services.registration.subscription_config import (  # noqa: E402
     build_config_json,
     serialize_provider_config,
+    subscription_config_service,
 )
 
 WS = 7
@@ -225,3 +230,28 @@ class TestVerificationMethod:
     def test_every_known_method_is_accepted(self):
         for method in ("live", "code", "any"):
             assert SubscriptionProviderConfigUpsert(provider="boosty", verification_method=method)
+
+
+def test_a_missing_workspace_is_a_404_not_a_foreign_key_crash(db_session):
+    """Both workspace upserts write a row keyed to the workspace: without the check a
+    superuser's typo'd id reached the INSERT and came back as a 500."""
+
+    async def _run() -> list[tuple[int, str]]:
+        refused = []
+        for upsert in (
+            subscription_config_service.upsert_provider_config(
+                db_session, workspace_id=999_999_999, body=SubscriptionProviderConfigUpsert(provider="boosty")
+            ),
+            subscription_config_service.upsert_workspace_requirement(
+                db_session, workspace_id=999_999_999, body=WorkspaceSubscriptionRequirementUpsert()
+            ),
+        ):
+            try:
+                await upsert
+            except HTTPException as exc:
+                refused.append((exc.status_code, exc.detail))
+        # Release the connection inside this loop; the fixture closes in another.
+        await db_session.rollback()
+        return refused
+
+    assert asyncio.run(_run()) == [(404, "Workspace not found")] * 2

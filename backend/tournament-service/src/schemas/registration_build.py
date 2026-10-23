@@ -1,9 +1,8 @@
 """Registration read-model builders and tournament-history aggregation.
 
-Extracted verbatim from the decommissioned ``src/routes/registration.py`` so the
-typed-RPC handlers in ``src/rpc/public_rpc.py`` build the SAME ``RegistrationRead``
-/ ``RegistrationFormRead`` payloads and the SAME participant tournament-history
-envelope. This module must NOT import fastapi.
+The typed-RPC handlers build every ``RegistrationRead`` / ``RegistrationFormRead``
+payload and the participant tournament-history envelope through here. This module
+must NOT import fastapi.
 """
 
 from __future__ import annotations
@@ -16,21 +15,21 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from shared.balancer_registration_statuses import build_unknown_status_meta
-from shared.division_grid import DivisionGrid, load_runtime_grid
+from shared import models
+from shared.disciplines import discipline
+from shared.division_grid import DivisionGrid
 from shared.domain.forms import RolesParams, schema_from_form, schema_from_version
 from shared.domain.roster import PlayerRoster
 from shared.hero_catalog import HeroCatalog, resolve_hero_catalog
-from shared.services.admission.requirements.open_profile import KEY as OPEN_PROFILE_KEY
-from shared.services.admission.requirements.subscription import KEY as SUBSCRIPTION_KEY
-from shared.services.admission.types import AdmissionEvaluation
+from shared.registration_statuses import build_unknown_status_meta
+from shared.schemas.role import RoleRef
 from shared.services.division_grid.access import (
     get_effective_division_grid_version_ids,
     load_division_grid_snapshots,
     load_division_grid_version_read_payloads,
+    runtime_fallback_grid,
 )
 from shared.services.roster import registration_load_options, roster_engine
-from src import models
 from src.schemas.admission import AdmissionRead
 from src.schemas.division_grid import DivisionGridVersionRead
 from src.schemas.registration import (
@@ -39,6 +38,9 @@ from src.schemas.registration import (
     RegistrationTeamBrief,
     TournamentHistoryEntry,
 )
+from src.services.admission.requirements.open_profile import KEY as OPEN_PROFILE_KEY
+from src.services.admission.requirements.subscription import KEY as SUBSCRIPTION_KEY
+from src.services.admission.types import AdmissionEvaluation
 from src.services.registration.answers import answer_service
 
 
@@ -50,8 +52,8 @@ class AdmissionChips:
     signals the requirements were evaluated FROM, which is why they stay separate
     columns on the read. They are lifted out of ``requirements[].detail`` rather
     than resolved a second time: the batch already paid for the
-    ``battle_tag_state`` row and the entitlement pass, and a second resolution is
-    precisely how the admin column and the player's own card came to disagree.
+    ``rank.account_state`` row and the entitlement pass, and a second resolution
+    could make the admin column and the player's own card disagree.
 
     Both list handlers -- public participants and admin registrations -- build
     their reads through here, so the ``detail`` key names live in one place and
@@ -69,10 +71,9 @@ class AdmissionChips:
 
         ``.get`` on ``detail``, not ``detail[...]``: a requirement this tournament
         switched off is present as ``not_applicable`` with an EMPTY detail, and the
-        chips must then read ``None`` -- the value they have carried all along for a
-        tournament that does not require the thing. An empty dict in that slot
-        would make the client render an empty Subscription column instead of no
-        column at all.
+        chips must then read ``None``, meaning "not required". An empty dict in
+        that slot would make the client render an empty Subscription column
+        instead of no column at all.
         """
         if evaluation is None:
             return cls(admission=AdmissionRead.unknown())
@@ -97,10 +98,15 @@ def registration_read_loaders() -> tuple[Any, ...]:
     ``registration_load_options()`` is folded in because the same rows are handed
     to the roster engine for their ranks: it reads roles, their heroes and the
     member's player, and a lazy load there would raise ``MissingGreenlet``.
+
+    ``tournament`` labels ``queue_role`` and must be eager: a post-commit
+    ``populate_existing`` reload resets it to lazy, and it then resolves only
+    while the Tournament still sits in the identity map.
     """
     return (
         *registration_load_options(),
-        selectinload(models.BalancerRegistration.registration_team),
+        selectinload(models.Registration.registration_team),
+        selectinload(models.Registration.tournament),
     )
 
 
@@ -109,28 +115,21 @@ def registration_read_loaders() -> tuple[Any, ...]:
 # full list is capped here and the true total is surfaced via ``tournament_history_count``.
 HISTORY_LIMIT = 10
 
-# HTTP 404 Not Found — raised below without importing fastapi so this module stays
-# fastapi-free. The RPC ``_run`` envelope catches fastapi ``HTTPException`` by type,
-# so we raise the genuine class via a lazy import to preserve the 404 contract.
+# The RPC envelope maps a ``BaseAPIException``'s ``status_code`` to the error code.
 _HTTP_404_NOT_FOUND = 404
 
 
 def _http_exception(status_code: int, detail: str) -> Exception:
-    """Build the canonical fastapi ``HTTPException`` without a module-level import.
-
-    The RPC envelope (``public_rpc._run``) maps a fastapi ``HTTPException`` to the
-    error code; raising the genuine class keeps the status-code contract intact
-    while keeping this module free of a top-level fastapi import.
-    """
+    """Build the ``BaseAPIException`` the RPC envelope maps to an error code by ``status_code``."""
     from shared.core.errors import BaseAPIException as HTTPException
 
     return HTTPException(status_code=status_code, detail=detail)
 
 
-def _registration_player_id(reg: models.BalancerRegistration) -> int | None:
+def _registration_player_id(reg: models.Registration) -> int | None:
     """The registration's domain player id via its workspace_member anchor.
 
-    Callers MUST eager-load ``BalancerRegistration.workspace_member``
+    Callers MUST eager-load ``Registration.workspace_member``
     (``selectinload``) — accessing an unloaded relationship here would
     lazy-load outside the request's greenlet and raise ``MissingGreenlet``.
     """
@@ -149,12 +148,15 @@ async def _resolve_tournament_workspace(session: AsyncSession, tournament_id: in
 
 async def _resolve_top_heroes_config(
     session: AsyncSession,
-    form: models.BalancerRegistrationForm,
+    form: models.RegistrationForm,
+    *,
+    discipline: str,
 ) -> tuple[HeroCatalog | None, int | None]:
-    """Resolve ``(hero_catalog, max_heroes)`` when the top-heroes ask is enabled.
+    """Resolve ``(character_catalog, max_characters)`` when the top-characters ask is enabled.
 
-    Returns ``(None, None)`` when the ``roles`` builtin is absent or its
-    ``top_heroes`` params are off, so heroes are neither validated nor persisted
+    The catalog is the OWNING tournament's ``discipline``: a pick is validated against that game's
+    characters only. Returns ``(None, None)`` when the ``roles`` builtin is absent or its
+    persisted ``top_heroes`` params are off, so characters are neither validated nor persisted
     for that tournament.
     """
     schema = schema_from_form(form)
@@ -164,7 +166,7 @@ async def _resolve_top_heroes_config(
     top_heroes = RolesParams.model_validate(roles.params).top_heroes
     if not top_heroes.enabled:
         return None, None
-    return await resolve_hero_catalog(session), top_heroes.max
+    return await resolve_hero_catalog(session, discipline=discipline), top_heroes.max
 
 
 #: Answer keys every reader may see regardless of the version a row answered.
@@ -172,7 +174,7 @@ _ALWAYS_PUBLIC = frozenset({"reserve"})
 
 
 def registration_public_keys(
-    form: models.BalancerRegistrationForm | None,
+    form: models.RegistrationForm | None,
 ) -> Callable[[Any], frozenset[str]]:
     """A ``registration -> answer keys an anonymous reader may see`` function.
 
@@ -184,7 +186,7 @@ def registration_public_keys(
     version, so this parses the schema once rather than once per row. Requires
     ``form_version`` to be eager-loaded (``registration_load_options``); a row
     without it falls back to the form's current public keys, which is exactly the
-    legacy/manual case where ``form_version_id`` is NULL.
+    manual/unversioned case where ``form_version_id`` is NULL.
 
     ``reserve`` is the one key added unconditionally. Its visibility is FIXED
     public by the builtin catalog, so no version can have collected it in
@@ -233,9 +235,12 @@ class QueuePlace:
 
 
 def _reg_to_read(
-    reg: models.BalancerRegistration,
+    reg: models.Registration,
     *,
     workspace_id: int,
+    #: The owning tournament's identity provider (``identity_provider(discipline)``):
+    #: the only game whose primary handle this read may name.
+    provider: str,
     status_meta_map: dict[str, dict[str, dict[str, object]]] | None = None,
     show_ranks: bool = False,
     admission: AdmissionRead | None = None,
@@ -274,37 +279,34 @@ def _reg_to_read(
     ``admission`` defaults to ``AdmissionRead.unknown()`` rather than staying
     ``None``: the single-registration write paths (create, self-update) return a
     read the caller refetches anyway, and a nullable object here would put a null
-    branch in every consumer -- which is how the five client-side re-derivations
-    of this answer got started.
+    branch in every consumer.
     """
     if roster is not None:
         # The roster, not the rows: under ``all_roles``/``forced`` the engine
-        # synthesizes the roles the DB never stored, and the public table used to
-        # publish one role while the balancer and the draft acted on three.
+        # synthesizes the roles the DB never stored, so the public table publishes
+        # exactly the roles the balancer and the draft act on.
         # ``is_primary``/``priority`` come from the same place for the same reason.
         roles = [
             RegistrationRoleRead(
-                role=entry.role.slot_code,
-                subrole=entry.subrole,
+                role=RoleRef.of(discipline(reg.tournament.discipline).rated_dimension.code, entry.role, entry.subrole),
                 is_primary=entry.is_primary,
                 priority=entry.priority,
                 # The engine's answer, or nothing: a role it did not rate is a role
                 # the player cannot be picked on, and printing the raw column there
-                # advertised a rating the balancer would never honour.
+                # would advertise a rating the balancer never honours.
                 rank_value=roster.rank_on(entry.role) if show_ranks else None,
-                top_heroes=[hero.slug for hero in entry.top_heroes],
+                top_characters=[character.slug for character in entry.top_characters],
             )
             for entry in sorted(roster.roles, key=lambda entry: (not entry.is_primary, entry.priority))
         ]
     else:
         roles = [
             RegistrationRoleRead(
-                role=r.role,
-                subrole=r.subrole,
+                role=r.role_ref,
                 is_primary=r.is_primary,
                 priority=r.priority,
                 rank_value=None,
-                top_heroes=[he.hero.slug for he in sorted(r.hero_entries, key=lambda he: he.priority)],
+                top_characters=[he.entity.slug for he in sorted(r.hero_entries, key=lambda he: he.priority)],
             )
             for r in sorted(reg.roles or [], key=lambda r: (not r.is_primary, r.priority))
         ]
@@ -335,10 +337,9 @@ def _reg_to_read(
         id=reg.id,
         tournament_id=reg.tournament_id,
         workspace_id=workspace_id,
-        # API shape preserved: user_id stays in the payload, derived from the
-        # workspace_member anchor (callers eager-load it; see helper).
+        # Derived from the workspace_member anchor (callers eager-load it; see helper).
         user_id=_registration_player_id(reg),
-        primary_handle=(identity.handle if (identity := reg.primary_game_identity()) else None),
+        primary_handle=(identity.handle if (identity := reg.primary_game_identity(provider=provider)) else None),
         answers=answers,
         roles=roles,
         form_version_id=reg.form_version_id,
@@ -362,7 +363,9 @@ def _reg_to_read(
         submitted_late=submitted_late,
         queue_position=queue.position if queue is not None else None,
         queue_total=queue.total if queue is not None else None,
-        queue_role=queue.role if queue is not None else None,
+        queue_role=RoleRef.of(discipline(reg.tournament.discipline).rated_dimension.code, queue.role)
+        if queue is not None
+        else None,
         queue_role_position=queue.role_position if queue is not None else None,
         queue_role_total=queue.role_total if queue is not None else None,
         can_edit=bool(self_edit is not None and self_edit.can_edit),
@@ -378,7 +381,7 @@ async def _public_rosters(session: AsyncSession, registrations: Sequence[Any]) -
     roster (``all_roles``/``forced`` synthesize roles no DB row names), and
     ``show_ranks`` only decides whether ``_reg_to_read`` prints the number.
 
-    The workspace is resolved here rather than pushed onto all five call sites:
+    The workspace is resolved here rather than by every call site:
     every caller already has the registrations, and one tournament's worth of
     them shares a tenancy. Rows must carry ``registration_read_loaders()``, which
     folds in everything the engine reads.
@@ -392,7 +395,7 @@ async def _public_rosters(session: AsyncSession, registrations: Sequence[Any]) -
 
 async def _build_tournament_history(
     session: AsyncSession,
-    registrations: list[models.BalancerRegistration],
+    registrations: list[models.Registration],
     current_tournament_id: int,
     workspace_id: int,
 ) -> tuple[
@@ -402,21 +405,20 @@ async def _build_tournament_history(
 ]:
     """Batch-query past tournament participation from the analytics system.
 
-    Uses tournament.player (the analytics table) — if a player record exists,
-    they definitely participated. No extra checks needed.
+    Uses tournament.player (the analytics table): a player record means they
+    participated.
 
     The player id (players.user.id) is resolved via workspace_member ->
-    player_id — the registration's only identity anchor since dbarch02
-    dropped user_id.
+    player_id, the registration's only identity anchor.
 
-    Callers must eager-load ``BalancerRegistration.workspace_member`` for the
+    Callers must eager-load ``Registration.workspace_member`` for the
     resolution to see anything (a lazy load here would run outside the
     request's greenlet).
 
     History is capped in SQL (``ROW_NUMBER`` after deduping substitutions)
     and the pre-cap count is returned as a window column. Python still
-    deduplicates and caps as a safety net; tests that mock 5-column rows keep
-    the Python count.
+    deduplicates and caps as a safety net; a missing SQL count uses the
+    number of distinct tournaments in the returned rows.
 
     Returns a tuple of:
     - ``history_map``: registration_id -> most-recent-first history entries,
@@ -450,6 +452,8 @@ async def _build_tournament_history(
             models.Player.rank,
             models.Tournament.name.label("tournament_name"),
             models.Tournament.start_date.label("start_date"),
+            models.Player.sub_role,
+            models.Tournament.discipline,
             sa.func.row_number()
             .over(
                 partition_by=(models.WorkspaceMember.player_id, models.Player.tournament_id),
@@ -482,6 +486,8 @@ async def _build_tournament_history(
             history_ranked.c.role,
             history_ranked.c.rank,
             history_ranked.c.tournament_name,
+            history_ranked.c.sub_role,
+            history_ranked.c.discipline,
             sa.func.row_number()
             .over(
                 partition_by=history_ranked.c.player_id,
@@ -502,6 +508,8 @@ async def _build_tournament_history(
             history_deduped.c.rank,
             history_deduped.c.tournament_name,
             history_deduped.c.history_count,
+            history_deduped.c.sub_role,
+            history_deduped.c.discipline,
         )
         .where(history_deduped.c.hist_rn <= HISTORY_LIMIT)
         .order_by(history_deduped.c.player_id, history_deduped.c.hist_rn)
@@ -510,9 +518,9 @@ async def _build_tournament_history(
 
     # --- Step 3: resolve division-grid versions for every distinct historical
     # tournament in one batch -- a constant number of Redis/DB round trips no
-    # matter how many distinct tournaments this player's history spans (was a
-    # sequential per-tournament await; see get_effective_division_grid_version_ids's
-    # docstring for why that can't just be asyncio.gather'd instead).
+    # matter how many distinct tournaments this player's history spans (see
+    # get_effective_division_grid_version_ids's docstring for why a per-tournament
+    # asyncio.gather is not an option).
     tournament_ids_with_rank = {row[0] for row in rows if row[3] is not None}
     tournament_to_version = await get_effective_division_grid_version_ids(session, tournament_ids_with_rank)
 
@@ -521,8 +529,7 @@ async def _build_tournament_history(
     # Runtime grids (for division-number resolution) come from the cached snapshots.
     snapshot_by_version = await load_division_grid_snapshots(session, distinct_version_ids)
     runtime_grid_by_version: dict[int, DivisionGrid] = {
-        vid: (snapshot_by_version[vid].to_runtime_grid() if vid in snapshot_by_version else load_runtime_grid(None))
-        for vid in distinct_version_ids
+        vid: snapshot.to_runtime_grid() for vid, snapshot in snapshot_by_version.items() if snapshot.tiers
     }
 
     # Full version metadata for the response map — cached (see
@@ -545,19 +552,19 @@ async def _build_tournament_history(
         role = row[2]
         rank = row[3]
         tournament_name = row[4]
-        sql_history_count = int(row[5]) if len(row) > 5 and row[5] is not None else None
+        sql_history_count = int(row[5]) if row[5] is not None else None
         reg_ids = player_to_reg_ids.get(user_id)
         if not reg_ids:
             continue
 
-        role_str = role.value if role else None
+        role_ref = RoleRef.of(discipline(row[7]).rated_dimension.code, role, row[6])
         division = None
         version_id = None
         if rank is not None:
             version_id = tournament_to_version.get(tournament_id)
             grid = runtime_grid_by_version.get(version_id) if version_id is not None else None
             if grid is None:
-                grid = load_runtime_grid(None)
+                grid = runtime_fallback_grid(row[7])
             division = grid.resolve_division_number(rank)
             # Only reference versions we actually have metadata for.
             if version_id not in version_read_by_id:
@@ -566,7 +573,8 @@ async def _build_tournament_history(
         entry = TournamentHistoryEntry(
             tournament_id=tournament_id,
             tournament_name=tournament_name,
-            role=role_str,
+            discipline=row[7],
+            role=role_ref,
             division=division,
             division_grid_version_id=version_id,
         )

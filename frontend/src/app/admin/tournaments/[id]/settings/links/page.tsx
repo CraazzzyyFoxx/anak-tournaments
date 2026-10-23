@@ -1,7 +1,5 @@
 "use client";
 
-import { useTranslations } from "next-intl";
-
 import dynamic from "next/dynamic";
 
 import { usePermissions } from "@/hooks/usePermissions";
@@ -20,10 +18,7 @@ export default function LinksSettingsPage() {
   const { canAccessPermission } = usePermissions();
 
   return (
-    <SettingsSectionPage
-      section="links"
-      description={useTranslations("adminTournament.screenDescriptions")("links")}
-    >
+    <SettingsSectionPage section="links">
       {({ tournamentId, workspaceId }) => (
         <TournamentLinksTab
           tournamentId={tournamentId}

@@ -1,7 +1,7 @@
 """How many lobbies one pickup mix may run at once, and what they are called.
 
 Shared because the same ceiling is a database CHECK
-(``balancer.custom_game.lobby_count``), a request contract (balancer-service)
+(``mix.custom_game.lobby_count``), a request contract (balancer-service)
 and a Discord label (``lobby_a``..``lobby_f``) at the same time.
 """
 

@@ -1,4 +1,4 @@
-import { type Tone } from "@/components/kit/tone";
+import { type Tone } from "@/components/ui/tone";
 import type {
   RegistrationTeam,
   RegistrationTeamInvite,
@@ -7,8 +7,8 @@ import type {
 
 /**
  * The vocabulary the organizer's teams browser reads its rows with: the tones
- * of every lifecycle word, and the few derivations a row needs before it can be
- * rendered or acted on.
+ * of the lifecycle words worth a pill, and the few derivations a row needs
+ * before it can be rendered or acted on.
  *
  * Pure on purpose — no hooks, no JSX. The table, the inspector and the
  * confirmations all decide from these, and a derivation that lives in one of
@@ -34,32 +34,17 @@ export const EXPORT_SKIP_CODES = [
  *  untranslated word beats a missing message path on screen. */
 export const HISTORY_STATES = ["pending", "accepted", "declined", "revoked", "expired"] as const;
 
-const INVITE_TONE: Record<(typeof HISTORY_STATES)[number], Tone> = {
-  pending: "warning",
-  accepted: "success",
-  declined: "danger",
-  revoked: "neutral",
-  expired: "neutral"
-};
-
-export function inviteTone(state: string): Tone {
-  const known = HISTORY_STATES.find((candidate) => candidate === state);
-  return known ? INVITE_TONE[known] : "neutral";
-}
-
-/** Lifecycle tone for the admin's own pill vocabulary. The public surfaces use
- *  `REGISTRATION_TEAM_STATUS_TONE` (raw classes); `StatusPill` takes a `Tone`. */
-export const TEAM_STATUS_TONE: Record<string, Tone> = {
+/** The lifecycle states that want attention, as `StatusPill` tones. A complete
+ *  or exported team is absent: most rows end there, so no pill says it. */
+export const TEAM_STATUS_TONE: Partial<Record<string, Tone>> = {
   forming: "warning",
-  complete: "success",
-  exported: "info",
   rejected: "danger",
   disbanded: "neutral"
 };
 
-export const ADMISSION_TONE: Record<string, Tone> = {
+/** Admission states that want attention; `accepted` is the norm and absent. */
+export const ADMISSION_TONE: Partial<Record<string, Tone>> = {
   pending: "warning",
-  accepted: "success",
   waitlisted: "neutral"
 };
 
@@ -80,7 +65,7 @@ export function captainOf(team: RegistrationTeam): RegistrationTeamMember | unde
  */
 export function rosterCounts(team: RegistrationTeam): { starters: number; required: number } {
   const starters = team.members.filter((member) => !member.is_substitute).length;
-  const open = Object.values(team.open_slots).reduce((sum, count) => sum + (count ?? 0), 0);
+  const open = Object.values(team.open_slots).reduce<number>((sum, count) => sum + (count ?? 0), 0);
   return { starters, required: starters + open };
 }
 

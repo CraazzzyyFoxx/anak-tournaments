@@ -4,7 +4,7 @@ One listener for every button the bot ever sent, keyed by ``custom_id``
 rather than by a per-message view: cards outlive restarts and deploys, and a
 DM fan-out would otherwise leave a view in memory for every message. A modal
 is routed the same way -- its ``custom_id`` is the action it submits
-(``owt:mix.seat_set:42``), so no ``discord.ui.Modal`` has to stay in memory
+(``owt:mix.seat_set:42-overwatch``), so no ``discord.ui.Modal`` has to stay in memory
 between opening the form and reading it back.
 """
 
@@ -29,15 +29,41 @@ if TYPE_CHECKING:
 #: form one of those clicks opened.
 _ROUTED = (discord.InteractionType.component, discord.InteractionType.modal_submit)
 
+
+def _slash(key: str, **values: str) -> app_commands.locale_str:
+    """``copy``'s Russian as Discord's default, the rest through :class:`SlashTranslator`."""
+    return app_commands.locale_str(copy.text("ru", key, **values), key=key, values=values)
+
+
+class SlashTranslator(app_commands.Translator):
+    """The ``/mix`` group's copy in each client language, as ``copy.locale_of`` picks it.
+
+    Only a sync reads it (``src.tools.sync_commands``): Discord stores the
+    localisations with the command, the running bot never translates.
+    """
+
+    async def translate(
+        self, string: app_commands.locale_str, locale: discord.Locale, context: app_commands.TranslationContextTypes
+    ) -> str | None:
+        key = string.extras.get("key")
+        language = copy.locale_of(locale)
+        if key is None or language == "ru":
+            return None
+        return copy.text(language, key, **string.extras["values"])
+
+
 #: ``/mix move|return`` run one lobby or the lot; a mix with one lobby still reads "Лобби A".
 _LOBBY_CHOICES = [
-    app_commands.Choice(name="Все лобби", value="all"),
-    *(app_commands.Choice(name=f"Лобби {letter}", value=str(index)) for index, letter in enumerate(LOBBY_LETTERS)),
+    app_commands.Choice(name=_slash("slash_all_lobbies"), value="all"),
+    *(
+        app_commands.Choice(name=_slash("slash_lobby", letter=letter), value=str(index))
+        for index, letter in enumerate(LOBBY_LETTERS)
+    ),
 ]
 
 
 class InteractionsCog(commands.Cog):
-    mix = app_commands.Group(name="mix", description="Микс", guild_only=True)
+    mix = app_commands.Group(name="mix", description=_slash("slash_mix"), guild_only=True)
 
     def __init__(self, bot: LogCollectorBot) -> None:
         self._dispatcher = bot.action_dispatcher
@@ -66,19 +92,19 @@ class InteractionsCog(commands.Cog):
             # nothing ran, and the clicker can press again.
             logger.warning(f"Could not answer Discord interaction {value}: {exc!r}")
 
-    @mix.command(name="seat", description="Моё место в текущем миксе")
+    @mix.command(name="seat", description=_slash("slash_seat"))
     async def seat(self, interaction: discord.Interaction) -> None:
         """The seat panel without a card to click it from -- same reply, same buttons."""
         await self._dispatcher.show_current_mix(interaction)
 
-    @mix.command(name="move", description="Развести игроков по войсам команд")
-    @app_commands.describe(mix="Микс, который вы ведёте", lobby="Какое лобби")
+    @mix.command(name="move", description=_slash("slash_move"))
+    @app_commands.describe(mix=_slash("slash_mix_option"), lobby=_slash("slash_lobby_option"))
     @app_commands.choices(lobby=_LOBBY_CHOICES)
     async def move(self, interaction: discord.Interaction, mix: int, lobby: app_commands.Choice[str]) -> None:
         await self._dispatcher.run_voice(interaction, "voice.move", mix, lobby.value)
 
-    @mix.command(name="return", description="Вернуть всех из войсов команд в общий")
-    @app_commands.describe(mix="Микс, который вы ведёте", lobby="Какое лобби")
+    @mix.command(name="return", description=_slash("slash_return"))
+    @app_commands.describe(mix=_slash("slash_mix_option"), lobby=_slash("slash_lobby_option"))
     @app_commands.choices(lobby=_LOBBY_CHOICES)
     async def return_voice(self, interaction: discord.Interaction, mix: int, lobby: app_commands.Choice[str]) -> None:
         await self._dispatcher.run_voice(interaction, "voice.return", mix, lobby.value)

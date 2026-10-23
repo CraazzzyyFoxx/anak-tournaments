@@ -80,3 +80,48 @@ export function createSidebarGroups(t: (key: string) => string): RulePaletteGrou
   },
   ];
 }
+
+/**
+ * The palette a game's engine registry actually offers. `offered` is the set of
+ * leaf types the registry returned for the editor's discipline: a static palette
+ * entry the registry does not know is dropped (an Overwatch node is not a League
+ * node), a group left without nodes disappears, and a registry node the static
+ * palette has no entry for lands in a trailing group so the palette never offers
+ * fewer nodes than the leaf selector. The logical operators stay: every tree needs them.
+ */
+export function filterPaletteByConditions(
+  groups: RulePaletteGroup[],
+  offered: ReadonlySet<string>,
+  other: { label: string; labelFor: (leafType: string) => string }
+): RulePaletteGroup[] {
+  const known = new Set<string>();
+  const filtered = groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => {
+        if (item.type !== "leaf") return true;
+        known.add(item.leafType ?? "");
+        return offered.has(item.leafType ?? "");
+      }),
+    }))
+    .filter((group) => group.items.length > 0);
+  const unlisted = [...offered].filter((leafType) => !known.has(leafType));
+  if (unlisted.length === 0) return filtered;
+  return [
+    ...filtered,
+    {
+      label: other.label,
+      items: unlisted.map((leafType) => ({ type: "leaf" as const, leafType, label: other.labelFor(leafType) })),
+    },
+  ];
+}
+
+/**
+ * The leaf a new node starts as, drawn from what the registry offers: the usual
+ * `preferred` one when the game has it, otherwise the first the game offers.
+ * `null` when the game offers none — there is then nothing to add, and no
+ * stand-in from another game.
+ */
+export function defaultLeafOf(offered: readonly string[], preferred: string): string | null {
+  return offered.includes(preferred) ? preferred : (offered[0] ?? null);
+}

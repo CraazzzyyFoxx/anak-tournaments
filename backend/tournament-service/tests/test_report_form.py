@@ -13,7 +13,6 @@ maps actually played, not best-of slots.
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from contextlib import contextmanager
 from pathlib import Path
@@ -25,7 +24,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 pydantic = importlib.import_module("pydantic")
 report_form = importlib.import_module("src.services.encounter.report_form")
@@ -99,8 +97,7 @@ def _mk_form(
 
 def _validate(form: schemas.MatchReportFormRead, **overrides):
     kwargs = {
-        "home_score": 2,
-        "away_score": 1,
+        "games_played": 3,
         "closeness": None,
         "map_codes": (),
         "comment": None,
@@ -268,22 +265,22 @@ class ValidateMapCodes(TestCase):
     def test_required_demands_one_code_per_played_map(self) -> None:
         form = _mk_form(map_codes=(True, True))
         with assert_detail(self, "a match code is required for every played map"):
-            # 2-1 is three played maps; only two codes supplied.
-            _validate(form, closeness=5, home_score=2, away_score=1, map_codes=[(1, "A"), (2, "B")])
+            # Three games played; only two codes supplied.
+            _validate(form, closeness=5, games_played=3, map_codes=[(1, "A"), (2, "B")])
 
     def test_required_accepts_exactly_the_played_maps(self) -> None:
         form = _mk_form(map_codes=(True, True))
-        out = _validate(form, closeness=5, home_score=2, away_score=1, map_codes=[(1, "A"), (2, "B"), (3, "C")])
+        out = _validate(form, closeness=5, games_played=3, map_codes=[(1, "A"), (2, "B"), (3, "C")])
         self.assertEqual([(1, "A"), (2, "B"), (3, "C")], out.map_codes)
 
     def test_a_blank_code_does_not_satisfy_the_requirement(self) -> None:
         form = _mk_form(map_codes=(True, True))
         with assert_detail(self, "a match code is required for every played map"):
-            _validate(form, closeness=5, home_score=1, away_score=0, map_codes=[(1, "   ")])
+            _validate(form, closeness=5, games_played=1, map_codes=[(1, "   ")])
 
     def test_a_forfeit_demands_no_codes(self) -> None:
-        """0-0 means no map was played, so "one per played map" is vacuous."""
-        out = _validate(_mk_form(map_codes=(True, True)), closeness=5, home_score=0, away_score=0)
+        """No games played means no map was played, so "one per played map" is vacuous."""
+        out = _validate(_mk_form(map_codes=(True, True)), closeness=5, games_played=0)
         self.assertEqual([], out.map_codes)
 
     def test_optional_drops_blanks_and_keeps_the_rest(self) -> None:
@@ -304,8 +301,7 @@ class ValidateMapCodes(TestCase):
         out = _validate(
             _mk_form(map_codes=(True, True)),
             closeness=5,
-            home_score=3,
-            away_score=2,
+            games_played=5,
             map_codes=[(1, "A"), (2, "B"), (3, "C")],
             available_map_indices=(1, 2, 3),
         )
@@ -318,16 +314,14 @@ class ValidateMapCodes(TestCase):
             _validate(
                 form,
                 closeness=5,
-                home_score=1,
-                away_score=1,
+                games_played=2,
                 map_codes=[(4, "A")],
                 available_map_indices=(4, 5, 6),
             )
         out = _validate(
             form,
             closeness=5,
-            home_score=1,
-            away_score=1,
+            games_played=2,
             map_codes=[(4, "A"), (5, "B")],
             available_map_indices=(4, 5, 6),
         )

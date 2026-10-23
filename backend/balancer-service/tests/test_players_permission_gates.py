@@ -6,14 +6,13 @@ roster-shaping write in this service (``admin.py``, ``binary.py``), which all
 require ``team.create``/``team.update``.
 
 ``upsert`` additionally admits a mix host (``custom_game.create``): the
-add-players dialog exists so a host can type the BattleTag of whoever is in
+add-players dialog exists so a host can type the game identity of whoever is in
 the lobby, including people the workspace has never seen.
 """
 
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -26,9 +25,10 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
+from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from src.rpc import players  # noqa: E402
+from src.services import players as players_service  # noqa: E402
 
 WORKSPACE_ID = 9
 MEMBER_ID = 77
@@ -92,23 +92,28 @@ class _GateTests(IsolatedAsyncioTestCase):
     if sys.platform == "win32":
         loop_factory = asyncio.SelectorEventLoop
 
-    async def _call(self, subject: str, identity: dict, **body: object) -> dict:
+    async def _call(self, subject: str, caller: dict, **body: object) -> dict:
         broker = _CapturingBroker()
         players.register(broker, _FakeLogger())
         self.ensure = AsyncMock(return_value=SimpleNamespace(id=MEMBER_ID))
         self.set_ranks = AsyncMock(return_value={"tank": 2500})
         row = SimpleNamespace(
-            member_id=MEMBER_ID, player_id=1, battle_tag="Newbie#1234", display_name=None, auth_user_id=None
+            member_id=MEMBER_ID,
+            player_id=1,
+            identity=PlayerIdentityRead(provider="battlenet", handle="Newbie#1234"),
+            display_name=None,
+            auth_user_id=None,
         )
         with (
             patch.object(players, "_SF", _FakeSession),
-            patch.object(players.workspace_roster, "ensure_member_for_battle_tag", self.ensure),
-            patch.object(players.workspace_roster, "list_roster", AsyncMock(return_value={MEMBER_ID: row})),
-            patch.object(players.member_rank_service, "list_layer", AsyncMock(return_value={})),
-            patch.object(players.member_rank_service, "set_ranks", self.set_ranks),
-            patch.object(players, "emit_pickup_mix_changed", AsyncMock()),
+            patch.object(players_service, "workspace_discipline", AsyncMock(return_value="overwatch")),
+            patch.object(players_service.workspace_roster, "ensure_member_for_identity", self.ensure),
+            patch.object(players_service.workspace_roster, "list_roster", AsyncMock(return_value={MEMBER_ID: row})),
+            patch.object(players_service.member_rank_service, "list_layer", AsyncMock(return_value={})),
+            patch.object(players_service.member_rank_service, "set_ranks", self.set_ranks),
+            patch.object(players_service, "emit_pickup_mix_changed", AsyncMock()),
         ):
-            data = {"workspace_id": WORKSPACE_ID, "id": MEMBER_ID, "identity": identity, "payload": body}
+            data = {"workspace_id": WORKSPACE_ID, "id": MEMBER_ID, "identity": caller, "payload": body}
             return await broker.handlers[subject](data, None)
 
     def assert_forbidden(self, response: dict) -> None:
@@ -117,19 +122,36 @@ class _GateTests(IsolatedAsyncioTestCase):
 
 
 class UpsertPermissionGateTests(_GateTests):
-    async def _upsert(self, identity: dict, **body: object) -> dict:
-        return await self._call("rpc.balancer.players.upsert", identity, battle_tag="Newbie#1234", **body)
+    async def _upsert(self, caller: dict, **body: object) -> dict:
+        return await self._call(
+            "rpc.balancer.players.upsert",
+            caller,
+            discipline="overwatch",
+            **{"identity": {"provider": "battlenet", "handle": "Newbie#1234"}, **body},
+        )
 
-    async def test_mix_host_adds_an_unknown_battle_tag(self) -> None:
+    async def test_mix_host_adds_an_unknown_game_identity(self) -> None:
         response = await self._upsert(HOST)
 
         assert response["ok"] is True, response
-        assert self.ensure.await_args.kwargs["battle_tag"] == "Newbie#1234"
+        assert response["data"]["identity"] == {"provider": "battlenet", "handle": "Newbie#1234"}
+        assert self.ensure.await_args.kwargs["provider"] == "battlenet"
+        assert self.ensure.await_args.kwargs["handle"] == "Newbie#1234"
+        assert self.ensure.await_args.kwargs["discipline"] == "overwatch"
+        # A host may type identities but not admit an account holder: that is member admission.
+        assert self.ensure.await_args.kwargs["admit_account_holders"] is False
 
-    async def test_organizer_adds_an_unknown_battle_tag(self) -> None:
+    async def test_organizer_adds_an_unknown_game_identity(self) -> None:
         response = await self._upsert(ORGANIZER)
 
         assert response["ok"] is True, response
+        assert self.ensure.await_args.kwargs["admit_account_holders"] is True
+
+    async def test_a_host_holding_member_creation_may_admit_account_holders(self) -> None:
+        response = await self._upsert(_identity("host", ("custom_game", "create"), ("workspace_member", "create")))
+
+        assert response["ok"] is True, response
+        assert self.ensure.await_args.kwargs["admit_account_holders"] is True
 
     async def test_plain_member_may_not_create_roster_rows(self) -> None:
         self.assert_forbidden(await self._upsert(MEMBER))
@@ -148,7 +170,9 @@ class UpsertPermissionGateTests(_GateTests):
 
 class SetRanksPermissionGateTests(_GateTests):
     async def _set(self, identity: dict, scope: str) -> dict:
-        return await self._call("rpc.balancer.players.set_ranks", identity, scope=scope, ranks={"tank": 2500})
+        return await self._call(
+            "rpc.balancer.players.set_ranks", identity, discipline="overwatch", scope=scope, ranks={"tank": 2500}
+        )
 
     async def test_writing_the_shared_canon_requires_team_update(self) -> None:
         self.assert_forbidden(await self._set(HOST, "workspace"))

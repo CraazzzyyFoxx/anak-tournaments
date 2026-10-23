@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import DISCIPLINES
+from shared.domain.player_sub_roles import workspace_sub_role_slug
+from shared.domain.roles import public_role_attrs
 from shared.rbac.workspace_lookup import get_player_sub_role_workspace_id
 from shared.rpc.crud import EntityConfig
 from shared.schemas.player_sub_role import PlayerSubRoleCreate, PlayerSubRoleRead, PlayerSubRoleUpdate
@@ -33,12 +37,20 @@ def _int_or_400(value: Any, field: str) -> int:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"invalid {field}") from exc
 
 
-def _dump(row: models.PlayerSubRole) -> dict[str, Any]:
-    return PlayerSubRoleRead.model_validate(row, from_attributes=True).model_dump(mode="json")
-
-
-async def _serialize(_session: AsyncSession, row: models.PlayerSubRole) -> dict[str, Any]:
-    return _dump(row)
+def _dump(row: models.CatalogRole, public_origin: str | None = None) -> dict[str, Any]:
+    return PlayerSubRoleRead(
+        id=row.id,
+        workspace_id=row.workspace_id,
+        discipline=row.dimension.discipline,
+        dimension=row.dimension.code,
+        role=row.parent.code,
+        slug=workspace_sub_role_slug(row.parent.code, row.code),
+        label=row.name,
+        description=row.description,
+        sort_order=row.sort_order,
+        is_active=row.active,
+        attrs=public_role_attrs(row.attrs, public_origin=public_origin),
+    ).model_dump(mode="json")
 
 
 async def _ws_from_payload(_session: AsyncSession, data: dict[str, Any]) -> int:
@@ -49,28 +61,46 @@ async def _ws_from_query(_session: AsyncSession, data: dict[str, Any]) -> int:
     return _int_or_400((data.get("query") or {}).get("workspace_id"), "workspace_id")
 
 
-async def _list_rpc(session: AsyncSession, data: dict[str, Any]) -> list[dict[str, Any]]:
-    query = data.get("query") or {}
-    include = _first(query.get("include_inactive"))
-    include_inactive = str(include).lower() in ("1", "true", "yes", "on") if include is not None else False
-    rows = await player_sub_role_service.list_sub_roles(
-        session,
-        workspace_id=_int_or_400(query.get("workspace_id"), "workspace_id"),
-        role=_first(query.get("role")) or None,
-        include_inactive=include_inactive,
-    )
-    return [_dump(row) for row in rows]
+def _list_rpc(public_origin: str | None) -> Callable[[AsyncSession, dict[str, Any]], Awaitable[list[dict[str, Any]]]]:
+    async def list_fn(session: AsyncSession, data: dict[str, Any]) -> list[dict[str, Any]]:
+        query = data.get("query") or {}
+        include = _first(query.get("include_inactive"))
+        include_inactive = str(include).lower() in ("1", "true", "yes", "on") if include is not None else False
+        # Optional (spec §8.1): absent is every installed game's sub-roles; an unknown code is a 422, never every game.
+        discipline = _first(query.get("discipline")) or None
+        if discipline is not None and discipline not in DISCIPLINES:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"discipline_not_installed: {discipline!r}"
+            )
+        rows = await player_sub_role_service.list_sub_roles(
+            session,
+            workspace_id=_int_or_400(query.get("workspace_id"), "workspace_id"),
+            discipline=discipline,
+            role=_first(query.get("role")) or None,
+            include_inactive=include_inactive,
+        )
+        return [_dump(row, public_origin) for row in rows]
+
+    return list_fn
 
 
-def player_sub_role_entity() -> EntityConfig:
-    """CRUD entity any service's ``CrudDispatcher`` can register as-is."""
+def player_sub_role_entity(public_origin: str | None = None) -> EntityConfig:
+    """CRUD entity any service's ``CrudDispatcher`` can register as-is.
+
+    ``public_origin`` is the service's ``s3_public_url``: it turns a stored ``assets/`` icon key into a URL.
+    """
+
+    async def serialize(_session: AsyncSession, row: models.CatalogRole) -> dict[str, Any]:
+        return _dump(row, public_origin)
+
     return EntityConfig(
         entity="player_sub_role",
         model=None,
         permission_resource="player",
-        serializer=_serialize,
+        serializer=serialize,
         create_schema=PlayerSubRoleCreate,
         update_schema=PlayerSubRoleUpdate,
+        create_audit=lambda row: _dump(row, public_origin),
         resolve_ws_from_id=get_player_sub_role_workspace_id,
         resolve_ws_for_create=_ws_from_payload,
         resolve_ws_for_list=_ws_from_query,
@@ -79,7 +109,7 @@ def player_sub_role_entity() -> EntityConfig:
             session, row_id, payload
         ),
         service_delete=lambda session, row_id, _data: player_sub_role_service.deactivate_sub_role(session, row_id),
-        list_fn=_list_rpc,
+        list_fn=_list_rpc(public_origin),
         not_found_detail="Player sub-role not found",
         actions=frozenset({"create", "update", "delete", "list"}),
     )

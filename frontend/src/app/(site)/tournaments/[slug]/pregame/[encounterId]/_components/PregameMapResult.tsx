@@ -1,19 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { AlertTriangle, Check, Equal, Hourglass, Lock, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { TeamLogo, type TeamNameInput } from "@/components/TeamName";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { MapReportDialog } from "@/components/pick-ban/MapReportDialog";
-import { acceptedScore } from "@/components/pick-ban/pick-ban-model";
+import { acceptedScore, pickBanSeats } from "@/components/pick-ban/pick-ban-model";
+import type { PregameCharacterBoard } from "@/disciplines/types";
+import { duelSeats, seatTeam, type Duel } from "@/lib/encounter/seats";
 import { cn } from "@/lib/utils";
-import type { PickBanGame, PickBanGameReport } from "@/types/tournament.types";
+import type { EncounterTeam } from "@/types/encounter.types";
+import type { PickBanGame, PickBanGameClaim } from "@/types/tournament.types";
 
-import { PregameHeroBans, type PregameHeroBoard } from "./PregameHeroBans";
+import { PregameCharacterBans } from "./PregameCharacterBans";
+import type { RoomMetadata } from "./usePregameRoomData";
 
 interface PregameMapResultProps {
   encounterId: number;
@@ -23,13 +28,10 @@ interface PregameMapResultProps {
   mapImagePath: string | null;
   /** Which map of the series this is, 1-based. */
   round: number;
-  /** Null for a spectator: they watch the step, they never file a report. */
-  viewerSide: "home" | "away" | null;
-  homeName: string;
-  awayName: string;
-  /** The side's team, for its logo — undefined when the encounter has none. */
-  homeTeam: TeamNameInput | null | undefined;
-  awayTeam: TeamNameInput | null | undefined;
+  /** The participation the viewer captains; null for a spectator: they watch the step, they never file a report. */
+  viewerTeamId: number | null;
+  /** The encounter's live seats: names, logos and the slot order of the two claim tiles. */
+  teams: EncounterTeam[];
   /**
    * This position's game — the result authority for it. Null only while the
    * server has not opened one (an older payload); the screen then shows the
@@ -41,11 +43,20 @@ interface PregameMapResultProps {
    * here and what is left. Its `actions` are empty when the encounter runs no
    * hero phase, and the section then renders nothing at all.
    */
-  heroBoard: PregameHeroBoard;
+  heroBoard: PregameCharacterBoard;
   /**
-   * The hero session's undo affordance, rendered under the bans it would take
-   * back. Supplied as a node because the consent flow needs the room's query
-   * keys and catalog, neither of which this screen otherwise knows about.
+   * The room's game's metadata, as the bans' module slot needs it: loading, failed (with a retry) or ready.
+   */
+  metadata: RoomMetadata;
+  /**
+   * Who starts on which side of this map, when the room picked sides — read
+   * before the lobby is set up, like the bans.
+   */
+  sides?: React.ReactNode;
+  /**
+   * The hero session's undo affordance, rendered under the bans (or the sides)
+   * it would take back. Supplied as a node because the consent flow needs the
+   * room's query keys and catalog, neither of which this screen otherwise knows about.
    */
   heroUndo?: React.ReactNode;
   header: React.ReactNode;
@@ -53,6 +64,8 @@ interface PregameMapResultProps {
   invalidateKeys: unknown[][];
   /** Catalog for naming the played map when there was no veto pick. */
   mapChoices?: ReadonlyArray<{ id: number; name: string }>;
+  /** The report dialog also files the game's match by its id (a tournament game of a game with a match fetcher). */
+  matchImport?: boolean;
 }
 
 /** What a side's claim tile may show, in the order the phase moves through. */
@@ -82,31 +95,50 @@ export function PregameMapResult({
   mapName,
   mapImagePath,
   round,
-  viewerSide,
-  homeName,
-  awayName,
-  homeTeam,
-  awayTeam,
+  viewerTeamId,
+  teams,
   game,
   heroBoard,
+  metadata,
+  sides,
   heroUndo,
   header,
   invalidateKeys,
-  mapChoices
+  mapChoices,
+  matchImport
 }: Readonly<PregameMapResultProps>) {
   const t = useTranslations("pickBan.room");
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const reports = game?.reports ?? [];
-  const homeReport = reports.find((report) => report.side === "home") ?? null;
-  const awayReport = reports.find((report) => report.side === "away") ?? null;
-  const ownReport = viewerSide === "home" ? homeReport : viewerSide === "away" ? awayReport : null;
-  const bothFiled = homeReport != null && awayReport != null;
+  const [seatOne, seatTwo] = duelSeats(teams);
+  const seats = pickBanSeats(teams);
+  const claims = game?.claims ?? [];
+  const claimOf = (seat: EncounterTeam | null) =>
+    claims.find((claim) => claim.claimant_team_id === seat?.id) ?? null;
+  const claimOne = claimOf(seatOne);
+  const claimTwo = claimOf(seatTwo);
+  const ownClaim =
+    viewerTeamId != null && viewerTeamId === seatOne?.id
+      ? claimOne
+      : viewerTeamId != null && viewerTeamId === seatTwo?.id
+        ? claimTwo
+        : null;
+  const bothFiled = claimOne != null && claimTwo != null;
   const disputed = game?.state === "disputed";
-  const accepted = acceptedScore(game);
+  const accepted = acceptedScore(game, teams);
+  const hasBoard = heroBoard.actions.length > 0 || heroBoard.banned.length > 0;
 
-  /** A side's tile shows its numbers when both are in, or when they are the viewer's own. */
-  const visibleTo = (side: "home" | "away") => bothFiled || viewerSide === side;
+  /** A seat's tile shows its numbers when both claims are in, or when they are the viewer's own. */
+  const visibleTo = (seat: EncounterTeam | null) =>
+    bothFiled || (viewerTeamId != null && viewerTeamId === seat?.id);
+  /** One claim as a scoreline in slot order, whoever filed it. */
+  const claimScore = (claim: PickBanGameClaim | null): Duel<number> | null =>
+    claim == null
+      ? null
+      : {
+          one: claim.results.find((line) => line.encounter_team_id === seatOne?.id)?.score ?? 0,
+          two: claim.results.find((line) => line.encounter_team_id === seatTwo?.id)?.score ?? 0
+        };
 
   return (
     <>
@@ -168,19 +200,21 @@ export function PregameMapResult({
                 captains need it in: the bans belong to the map above (they are
                 set up in its lobby) and are read before there is any result to
                 file below. */}
-            {heroBoard.actions.length > 0 || heroBoard.banned.length > 0 ? (
+            {hasBoard || sides != null ? (
               <div className="flex flex-col gap-3 border-y border-[color:var(--aqt-border)] p-4">
+                {sides != null ? <div className="mx-auto w-full max-w-2xl">{sides}</div> : null}
                 {/* Same width as the claim row below, so the bans and the score
                     they belong to read as one column rather than two widths. */}
-                <div className="mx-auto w-full max-w-2xl">
-                  <PregameHeroBans
-                    board={heroBoard}
-                    homeName={homeName}
-                    awayName={awayName}
-                    homeTeam={homeTeam}
-                    awayTeam={awayTeam}
-                  />
-                </div>
+                {hasBoard ? (
+                  <div className="mx-auto w-full max-w-2xl">
+                    <PregameCharacterBans
+                      encounterId={encounterId}
+                      metadata={metadata}
+                      board={heroBoard}
+                      teams={teams}
+                    />
+                  </div>
+                ) : null}
                 {/* Directly under the list it corrects: a wrong ban is noticed
                     HERE, reading the lobby setup, not back in the closed grid. */}
                 {heroUndo != null ? (
@@ -196,18 +230,18 @@ export function PregameMapResult({
                   grid items default to `min-width:auto` and would not shrink. */}
               <div className="mx-auto grid w-full max-w-2xl grid-cols-1 items-stretch gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-4">
                 <ClaimTile
-                  name={homeName}
-                  team={homeTeam}
-                  report={homeReport}
-                  revealed={visibleTo("home")}
+                  name={seatOne?.name ?? t("tbd")}
+                  team={seatTeam(seatOne)}
+                  report={claimScore(claimOne)}
+                  revealed={visibleTo(seatOne)}
                   accentVar="--aqt-teal"
                 />
                 <Verdict bothFiled={bothFiled} disputed={disputed} />
                 <ClaimTile
-                  name={awayName}
-                  team={awayTeam}
-                  report={awayReport}
-                  revealed={visibleTo("away")}
+                  name={seatTwo?.name ?? t("tbd")}
+                  team={seatTeam(seatTwo)}
+                  report={claimScore(claimTwo)}
+                  revealed={visibleTo(seatTwo)}
                   accentVar="--aqt-rose"
                 />
               </div>
@@ -215,10 +249,10 @@ export function PregameMapResult({
               {accepted != null ? (
                 <p
                   data-game-state="confirmed"
-                  className="flex items-start gap-2 text-sm text-[color:var(--aqt-support)]"
+                  className="flex items-start gap-2 text-sm text-[color:var(--aqt-positive)]"
                 >
                   <Check className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                  {t("mapResult.accepted", { home: accepted.home, away: accepted.away })}
+                  {t("mapResult.accepted", { first: accepted.one, second: accepted.two })}
                 </p>
               ) : disputed ? (
                 <p
@@ -234,15 +268,15 @@ export function PregameMapResult({
                 </p>
               )}
 
-              {viewerSide != null && game != null ? (
+              {viewerTeamId != null && game != null ? (
                 <div>
                   <Button
                     onClick={() => setDialogOpen(true)}
-                    variant={ownReport == null || accepted != null ? "default" : "outline"}
+                    variant={ownClaim == null || accepted != null ? "default" : "outline"}
                   >
                     {accepted != null
                       ? t("mapResult.view")
-                      : ownReport == null
+                      : ownClaim == null
                         ? t("mapResult.report")
                         : t("mapResult.amend")}
                   </Button>
@@ -253,16 +287,18 @@ export function PregameMapResult({
         </CardContent>
       </Card>
 
-      {viewerSide != null && dialogOpen && game != null ? (
+      {viewerTeamId != null && dialogOpen && game != null ? (
         <MapReportDialog
           encounterId={encounterId}
           game={game}
           mapName={mapName}
-          side={viewerSide}
+          seats={seats}
+          viewerTeamId={viewerTeamId}
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           mapChoices={mapChoices}
           invalidateKeys={invalidateKeys}
+          matchImport={matchImport}
         />
       ) : null}
     </>
@@ -270,7 +306,7 @@ export function PregameMapResult({
 }
 
 /**
- * One side's claim: logo, team, and either its two digits or the reason they
+ * One seat's claim: logo, team, and either its two digits or the reason they
  * are not on screen. The digit slab stays the same size in every state, so the
  * tile does not resize under the reader as reports land.
  */
@@ -283,7 +319,8 @@ function ClaimTile({
 }: Readonly<{
   name: string;
   team: TeamNameInput | null | undefined;
-  report: PickBanGameReport | null;
+  /** The claim as a scoreline in slot order, or null while it is unfiled. */
+  report: Duel<number> | null;
   revealed: boolean;
   accentVar: "--aqt-teal" | "--aqt-rose";
 }>) {
@@ -296,8 +333,8 @@ function ClaimTile({
       : revealed
         ? t("mapResult.filedScore", {
             team: name,
-            home: report.home_score,
-            away: report.away_score
+            first: report.one,
+            second: report.two
           })
         : t("mapResult.filed", { team: name });
 
@@ -333,9 +370,9 @@ function ClaimTile({
       >
         {state === "filed" && report != null ? (
           <>
-            {report.home_score}
+            {report.one}
             <span className="text-[0.62em] text-[color:var(--aqt-fg-faint)]">:</span>
-            {report.away_score}
+            {report.two}
           </>
         ) : (
           <span className="text-[color:var(--aqt-fg-faint)]">
@@ -347,10 +384,9 @@ function ClaimTile({
       <span
         aria-hidden
         className={cn(
-          "inline-flex items-center gap-1 text-label uppercase tracking-label",
-          state === "waiting"
-            ? "text-[color:var(--aqt-fg-faint)]"
-            : "text-[color:var(--aqt-support)]"
+          eyebrowClass(),
+          "inline-flex items-center gap-1",
+          state !== "waiting" && "text-[color:var(--aqt-positive)]"
         )}
       >
         <StateIcon className="h-3 w-3" />
@@ -376,7 +412,7 @@ function Verdict({ bothFiled, disputed }: Readonly<{ bothFiled: boolean; dispute
         className={cn(
           "grid h-8 w-8 place-items-center rounded-full border",
           tone === "good"
-            ? "border-[color:var(--aqt-support)]/45 bg-[color:var(--aqt-support)]/12 text-[color:var(--aqt-support)]"
+            ? "border-[color:var(--aqt-positive)]/45 bg-[color:var(--aqt-positive)]/12 text-[color:var(--aqt-positive)]"
             : tone === "bad"
               ? "border-[color:var(--aqt-amber)]/45 bg-[color:var(--aqt-amber)]/12 text-[color:var(--aqt-amber)]"
               : "border-[color:var(--aqt-border-2)] text-[color:var(--aqt-fg-faint)]"
@@ -386,12 +422,13 @@ function Verdict({ bothFiled, disputed }: Readonly<{ bothFiled: boolean; dispute
       </span>
       <span
         className={cn(
-          "max-w-[7.5rem] text-center text-label uppercase leading-tight tracking-label",
+          eyebrowClass(),
+          "max-w-[7.5rem] text-center leading-tight",
           tone === "good"
-            ? "text-[color:var(--aqt-support)]"
+            ? "text-[color:var(--aqt-positive)]"
             : tone === "bad"
               ? "text-[color:var(--aqt-amber)]"
-              : "text-[color:var(--aqt-fg-faint)]"
+              : null
         )}
       >
         {label}

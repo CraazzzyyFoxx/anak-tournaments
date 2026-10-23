@@ -18,8 +18,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from shared.core.enums import HeroClass
-from shared.domain.roster import HeroRef, PlayerRoster, RosterRole
+from shared.core.social import SocialProvider
+from shared.domain.roster import CharacterRef, PlayerRoster, RosterRole
+from shared.schemas.identity import PlayerIdentityRead
 from src.domain.balancer.entities import Player
 
 #: Default Tank/Damage/Support role mask shared by every test that doesn't
@@ -63,8 +64,8 @@ def make_player(
     )
 
 
-#: Distinguishes "the test does not care about the battle tag" from an explicit
-#: ``battle_tag=None`` -- a registration genuinely without one, which is what
+#: Distinguishes "the test does not care about the handle" from an explicit
+#: ``handle=None`` -- a registration genuinely without one, which is what
 #: makes the draft team name fall back to the seat's own name.
 _UNSET = object()
 
@@ -75,14 +76,15 @@ def roster(
     ranks: Mapping[str, int | None] | None = None,
     primary: str | None = None,
     flex: bool = False,
-    battle_tag: str | None | object = _UNSET,
+    handle: str | None | object = _UNSET,
     display_name: str | None = None,
     player_id: int | None = None,
+    player_name: str | None = None,
     auth_user_id: int | None = None,
     workspace_member_id: int | None = None,
     subroles: Mapping[str, str] | None = None,
     sources: Mapping[str, str] | None = None,
-    top_heroes: Mapping[str, tuple[HeroRef, ...]] | None = None,
+    top_characters: Mapping[str, tuple[CharacterRef, ...]] | None = None,
     public_notes: str | None = None,
     admin_notes: str | None = None,
     custom_fields: Mapping[str, Any] | None = None,
@@ -92,7 +94,7 @@ def roster(
     ``ranks`` is ``{slot_code: rank}`` in priority order; a ``None`` rank means
     the role is DECLARED but not playable, which is the whole point of the value
     object and the case every draft surface has to survive. ``primary`` names
-    the lead role (default: the first key). ``battle_tag`` defaults to
+    the lead role (default: the first key). ``handle`` (a Battle.net handle) defaults to
     ``P<registration_id>#1`` so a test that only cares about identity says
     nothing about it; pass ``None`` for a registration that really has none.
     """
@@ -100,20 +102,24 @@ def roster(
     lead = primary if primary is not None else next(iter(entries), None)
     return PlayerRoster(
         registration_id=registration_id,
-        battle_tag=f"P{registration_id}#1" if battle_tag is _UNSET else battle_tag,  # type: ignore[arg-type]
+        identity=PlayerIdentityRead.of(
+            SocialProvider.BATTLENET,
+            f"P{registration_id}#1" if handle is _UNSET else handle,  # type: ignore[arg-type]
+        ),
         display_name=display_name,
         player_id=player_id,
+        player_name=player_name,
         auth_user_id=auth_user_id,
         workspace_member_id=workspace_member_id,
         roles=tuple(
             RosterRole(
-                role=HeroClass.from_slot_code(code),
+                role=code,
                 rank=rank,
                 source=(sources or {}).get(code, "registration" if rank is not None else "none"),
                 is_primary=code == lead,
                 priority=priority,
                 subrole=(subroles or {}).get(code),
-                top_heroes=(top_heroes or {}).get(code, ()),
+                top_characters=(top_characters or {}).get(code, ()),
             )
             for priority, (code, rank) in enumerate(entries.items())
         ),

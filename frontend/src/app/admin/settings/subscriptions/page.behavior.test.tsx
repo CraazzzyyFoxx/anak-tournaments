@@ -20,16 +20,23 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const listSubscriptionProviders = vi.fn();
 const getSubscriptionRequirement = vi.fn();
+const upsertSubscriptionProvider = vi.fn();
+const upsertSubscriptionRequirement = vi.fn();
 
 vi.mock("@/services/balancer-admin.service", () => ({
   default: {
     listSubscriptionProviders: (...args: unknown[]) => listSubscriptionProviders(...args),
     getSubscriptionRequirement: (...args: unknown[]) => getSubscriptionRequirement(...args),
-    upsertSubscriptionRequirement: vi.fn()
+    upsertSubscriptionProvider: (...args: unknown[]) => upsertSubscriptionProvider(...args),
+    upsertSubscriptionRequirement: (...args: unknown[]) => upsertSubscriptionRequirement(...args)
   }
 }));
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() }
+}));
+// The SaveBar's leave guard routes through the router.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() })
 }));
 
 // Whether the workspace has a Discord server bound is the provider card's own
@@ -76,6 +83,29 @@ async function mount() {
   return container;
 }
 
+async function click(element: Element) {
+  await act(async () => {
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  for (let turn = 0; turn < 5; turn += 1) {
+    await act(async () => {
+      await tick();
+    });
+  }
+}
+
+function saveButton() {
+  return [...document.querySelectorAll("button")].find(
+    (node) => node.textContent?.trim() === "Save changes"
+  );
+}
+
+function addProvider(container: HTMLElement) {
+  return [...container.querySelectorAll("button")].find((node) =>
+    node.textContent?.includes("Add provider")
+  )!;
+}
+
 beforeEach(() => {
   document.body.innerHTML = "";
   canManage = true;
@@ -95,6 +125,8 @@ beforeEach(() => {
   getSubscriptionRequirement
     .mockReset()
     .mockResolvedValue({ requirement: { mode: "all", requirements: [] }, enforcing_tournaments: 0 });
+  upsertSubscriptionProvider.mockReset().mockResolvedValue({});
+  upsertSubscriptionRequirement.mockReset().mockResolvedValue({});
 });
 
 describe("WorkspaceSubscriptionsSettingsPage", () => {
@@ -113,7 +145,7 @@ describe("WorkspaceSubscriptionsSettingsPage", () => {
     canManage = false;
     const container = await mount();
 
-    expect(container.textContent).toContain("team.update");
+    expect(container.textContent).toContain("You cannot configure subscriptions");
     expect(listSubscriptionProviders).not.toHaveBeenCalled();
     expect(getSubscriptionRequirement).not.toHaveBeenCalled();
   });
@@ -124,5 +156,29 @@ describe("WorkspaceSubscriptionsSettingsPage", () => {
 
     expect(container.textContent).toContain("Pick a workspace in the sidebar");
     expect(listSubscriptionProviders).not.toHaveBeenCalled();
+  });
+
+  it("stores provider edits and the rule together behind one SaveBar", async () => {
+    const container = await mount();
+    // Nothing edited: no Save anywhere on the section.
+    expect(saveButton()).toBeUndefined();
+
+    await click(container.querySelector('button[role="checkbox"]')!);
+    await click(addProvider(container));
+    expect(container.querySelector('[role="region"]')?.textContent).toContain(
+      "Boosty · Subscription requirement"
+    );
+
+    await click(saveButton()!);
+
+    expect(upsertSubscriptionProvider).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({ provider: "boosty", enabled: false })
+    );
+    expect(upsertSubscriptionRequirement).toHaveBeenCalledWith(7, {
+      requirement: { mode: "all", requirements: [{ provider: "boosty", min_tier_rank: 1 }] }
+    });
+    // Saved: every editor restarts from what is stored, so the bar is gone.
+    expect(saveButton()).toBeUndefined();
   });
 });

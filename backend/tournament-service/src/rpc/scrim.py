@@ -1,7 +1,5 @@
 """Typed RPC surface for ad-hoc scrim rooms.
 
-Design: ``docs/plans/2026-08-12-scrim-rooms.md``.
-
 Five subjects, all thin: every rule (workspace membership, the per-creator open
 room cap, one-captain-per-person, hidden-container visibility) lives in
 ``services/scrim/service.py``, because ``claim_side`` and ``create_room`` enforce
@@ -19,9 +17,10 @@ from typing import Any
 
 from faststream.rabbit.annotations import RabbitMessage
 
+from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import rehydrate_user_optional
-from src import models, schemas
+from src import schemas
 from src.rpc._helpers import _dump, _identity, _payload, _q1, _read, _require_q1, _run
 from src.services.scrim.service import scrim_service
 
@@ -52,10 +51,10 @@ def register(broker: Any, logger: Any) -> None:
                 session,
                 user,
                 workspace_id=body.workspace_id,
+                discipline=body.discipline,
                 label=body.label,
                 best_of=body.best_of,
-                home_team_name=body.home_team_name,
-                away_team_name=body.away_team_name,
+                team_names=body.team_names,
                 pool=body.pool.model_dump(mode="json"),
             )
             return _room(room)
@@ -67,9 +66,8 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             workspace_id = _require_q1(data, "workspace_id", int)
-            # Absent ``scope`` keeps the historical behaviour (the caller's own
-            # rooms); the service owns both the vocabulary and the staff gate the
-            # workspace-wide scope needs.
+            # Absent ``scope`` means the caller's own rooms; the service owns both
+            # the vocabulary and the staff gate the workspace-wide scope needs.
             scope = _q1(data, "scope", str, "mine")
             rooms = await scrim_service.list_rooms_for_viewer(session, user, workspace_id, scope=scope)
             return schemas.ScrimRoomListRead(rooms=[schemas.ScrimRoomRead.model_validate(r) for r in rooms])

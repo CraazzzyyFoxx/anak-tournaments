@@ -1,6 +1,6 @@
-import { MapRead } from "@/types/map.types";
-import { PLAYER_ROLE_LABEL_KEY } from "@/lib/roster/player-role";
-import { UserRoleType } from "@/types/user.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
+import { ratedDimension, registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
+import type { RoleRef } from "@/lib/roster/role-ref";
 import { CompareScope } from "@/app/(site)/users/compare/types";
 
 export const parseOptionalInt = (value: string | null): number | undefined => {
@@ -10,9 +10,14 @@ export const parseOptionalInt = (value: string | null): number | undefined => {
   return Math.floor(parsed);
 };
 
-export const parseRole = (value: string | null): UserRoleType | undefined => {
-  if (value === "Tank" || value === "Damage" || value === "Support" || value === "Flex") return value;
-  return undefined;
+/**
+ * A cohort `?role=` as the reads' filter: one of the browsed game's rated roles (never the open slot). `undefined`
+ * for no role, an unknown code, or while the game's metadata loads.
+ */
+export const compareRoleFilter = (ontology: RoleOntology | null, code: string | undefined): RoleRef | undefined => {
+  const rated = ontology ? ratedDimension(ontology) : null;
+  if (!ontology || !rated || !code) return undefined;
+  return registrationRoles(ontology).some((role) => role.code === code) ? { dimension: rated.code, role: code } : undefined;
 };
 
 export const parseScope = (value: string | null): CompareScope => {
@@ -26,10 +31,6 @@ export const normalizeNumber = (value: number | string | null | undefined): numb
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
-
-export type RoleLabelKey = (typeof PLAYER_ROLE_LABEL_KEY)[UserRoleType];
-
-export const roleLabelKey = (role: UserRoleType): RoleLabelKey => PLAYER_ROLE_LABEL_KEY[role];
 
 export interface DurationUnits {
   h: string;
@@ -71,8 +72,8 @@ export const formatPercent = (value: number | null | undefined): string => {
   return `${value.toFixed(2)}%`;
 };
 
-export const getMapIconSrc = (map?: MapRead | null): string | null => {
-  const candidate = map?.image_path || map?.gamemode?.image_path;
+export const getMapIconSrc = (map?: CatalogEntityRead | null): string | null => {
+  const candidate = map?.image_path || map?.parent?.image_path;
   if (!candidate) return null;
   if (candidate.trim().length === 0) return null;
   return candidate;

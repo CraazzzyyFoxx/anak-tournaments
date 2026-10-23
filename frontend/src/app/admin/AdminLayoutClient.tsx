@@ -1,13 +1,12 @@
 "use client";
 
 import { Fragment, type CSSProperties, type ReactNode } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { skipToken, useQuery } from "@tanstack/react-query";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
-import { FloatStack } from "@/components/notifications/FloatStack";
 import { AuditTrailProvider } from "@/components/kit/AuditTrailSheet";
 import { adminRouteAccessOptions } from "@/components/admin/admin-navigation";
 import {
@@ -25,19 +24,34 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { usePermissions } from "@/hooks/usePermissions";
 import { SIDEBAR_COOKIE_NAMES } from "@/lib/site/sidebar-cookies";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import type { NotificationItem } from "@/types/notification.types";
 
+/** The page area's outline: a title row and one panel. Also `admin/loading.tsx`. */
+export function AdminContentSkeleton() {
+  return (
+    <>
+      <Skeleton className="h-8 w-56" />
+      <Skeleton className="h-64 w-full rounded-xl" />
+    </>
+  );
+}
+
+/** The shell's own outline (sidebar column + header bar) while permissions load. */
 function LoadingState() {
   const t = useTranslations("adminShell.layout");
   return (
-    <div className="flex h-screen w-full items-center justify-center">
-      <div className="text-center">
-        <Spinner className="size-8" />
-        <p className="mt-4 text-muted-foreground">{t("loading")}</p>
+    <div role="status" className="flex h-screen w-full">
+      <span className="sr-only">{t("loading")}</span>
+      <Skeleton className="hidden h-full w-[15.5rem] shrink-0 rounded-none md:block" />
+      <div className="flex flex-1 flex-col">
+        <Skeleton className="h-12 w-full rounded-none" />
+        <div className="flex flex-col gap-4 p-4 md:px-5">
+          <AdminContentSkeleton />
+        </div>
       </div>
     </div>
   );
@@ -45,24 +59,19 @@ function LoadingState() {
 
 function UnauthorizedState() {
   const t = useTranslations("adminShell.layout");
+  const router = useRouter();
   return (
-    <div className="flex h-screen w-full items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold">{t("unauthorized")}</h1>
-        <p className="mt-4 text-muted-foreground">
-          {t("noPermission")}
-        </p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {t("contactAdmin")}
-        </p>
-        <HoverPrefetchLink
-          href="/"
-          className="mt-6 inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-        >
-          {t("goHome")}
-        </HoverPrefetchLink>
-      </div>
-    </div>
+    <main className="flex min-h-screen w-full items-center justify-center p-4">
+      <PageStateCard
+        state="error"
+        headingLevel={1}
+        className="w-full max-w-md"
+        title={t("unauthorized")}
+        description={t("noPermission")}
+        actionLabel={t("goHome")}
+        onAction={() => router.push("/")}
+      />
+    </main>
   );
 }
 
@@ -80,6 +89,7 @@ function EntityBreadcrumbName({
 
 function AdminBreadcrumb() {
   const t = useTranslations("adminShell.layout");
+  const tShell = useTranslations("adminShell");
   const pathname = usePathname();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const segments = pathname.split("/").filter(Boolean);
@@ -88,10 +98,15 @@ function AdminBreadcrumb() {
   return (
     <Breadcrumb>
       <BreadcrumbList>
+        {/* The root is the page the sidebar calls Dashboard: one name for it. */}
         <BreadcrumbItem>
-          <BreadcrumbLink asChild>
-            <HoverPrefetchLink href="/admin">{t("admin")}</HoverPrefetchLink>
-          </BreadcrumbLink>
+          {segments.length > 1 ? (
+            <BreadcrumbLink asChild>
+              <HoverPrefetchLink href="/admin">{tShell("nav.dashboard")}</HoverPrefetchLink>
+            </BreadcrumbLink>
+          ) : (
+            <BreadcrumbPage>{tShell("nav.dashboard")}</BreadcrumbPage>
+          )}
         </BreadcrumbItem>
         {segments.slice(1).map((segment, index) => {
           const href = `/admin/${segments.slice(1, index + 2).join("/")}`;
@@ -131,26 +146,15 @@ function AdminBreadcrumb() {
 
 const sidebarShellStyle = {
   "--sidebar-width": "15.5rem",
-  "--sidebar-width-icon": "3.75rem",
-  // The floating announcement anchors to `--aqt-banner-top`; the admin header
-  // is `h-12`, shorter than the site's, so it gets its own clearance instead of
-  // the site default (`--aqt-sticky-top`).
-  "--aqt-banner-top": "3.75rem"
+  "--sidebar-width-icon": "3.75rem"
 } as CSSProperties;
 
 type AdminLayoutClientProps = {
   children: ReactNode;
   defaultSidebarOpen: boolean;
-  /** Server-rendered active announcements; `undefined` when the server-side
-   *  read failed, which makes the banner fetch them itself. */
-  announcements: NotificationItem[] | undefined;
 };
 
-export function AdminLayoutClient({
-  children,
-  defaultSidebarOpen,
-  announcements
-}: Readonly<AdminLayoutClientProps>) {
+export function AdminLayoutClient({ children, defaultSidebarOpen }: Readonly<AdminLayoutClientProps>) {
   const t = useTranslations("adminShell.layout");
   const pathname = usePathname();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
@@ -183,15 +187,11 @@ export function AdminLayoutClient({
         </a>
         <AdminSidebar />
         <SidebarInset className="min-w-0">
-          <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border/50 bg-background/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-5">
+          <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border/50 bg-background px-4 md:px-5">
             <SidebarTrigger className="size-8 rounded-lg border border-border/60" />
             <Separator orientation="vertical" className="h-5" />
             <AdminBreadcrumb />
           </header>
-          {/* Overlay chrome, not a row: it floats over the content below rather
-              than displacing every admin screen by its own height. */}
-          <FloatStack initialAnnouncements={announcements} tenantWorkspaceId={null} />
-
           {/* Full-bleed on purpose: a centered 1720px cap left ~300px of dead
               gutter each side on a 2560 display. Wide tables scroll inside
               their own container, so the page itself never needs the cap.
@@ -202,7 +202,7 @@ export function AdminLayoutClient({
               (the row inspector) then sticks to it and never moves. `clip`
               trims the same overflow while leaving the y axis `visible`, so the
               window stays the scroll ancestor. */}
-          <div
+          <main
             id="admin-content"
             tabIndex={-1}
             className="flex w-full flex-1 flex-col gap-4 overflow-x-clip p-4 md:px-5"
@@ -210,7 +210,7 @@ export function AdminLayoutClient({
             {/* One drawer for the whole panel: every per-entity trail opens
                 here, so no screen mounts its own copy and none can nest. */}
             <AuditTrailProvider>{children}</AuditTrailProvider>
-          </div>
+          </main>
         </SidebarInset>
       </SidebarProvider>
     </TooltipProvider>

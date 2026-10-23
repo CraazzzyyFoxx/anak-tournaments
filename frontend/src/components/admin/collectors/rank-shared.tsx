@@ -3,23 +3,29 @@
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 
-import { TintedBadge } from "@/components/admin/TintedBadge";
-import type { Tone } from "@/components/kit/tone";
+import { StatusPill } from "@/components/kit/StatusPill";
+import type { Tone } from "@/components/ui/tone";
 import type { RankCollectionStats } from "@/types/admin.types";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 
 import type { CollectorHealth } from "./collector-state";
 
 export { formatDate, formatInterval, formatRelative } from "@/components/kit/format-time";
 
-/** Tone per fetch status, handed to `TintedBadge` as the domain's vocabulary. */
+/** The rank collector's games: those that declare native rank collection (spec §3.7). */
+export const collectsRanks = (games: DisciplineDescriptor[]) =>
+  games.filter((game) => game.capabilities.native_rank_collection);
+
+/**
+ * Tone per fetch status that needs attention. `ok` and `pending` are absent on
+ * purpose: they are the normal run of the log, so they render as plain text.
+ */
 const STATUS_TONES: Record<string, Tone> = {
-  ok: "success",
   private: "warning",
   not_found: "warning",
   error: "danger",
   rate_limited: "warning",
-  disabled: "neutral",
-  pending: "info"
+  disabled: "neutral"
 };
 
 /**
@@ -51,10 +57,10 @@ export const STATUS_ORDER = [
 /**
  * Display wording per fetch status, in the UI language.
  *
- * A hook rather than a constant map: the badge, the distribution legend and the
- * history filter all name the same statuses, and a module-level map would have
- * to pin a locale (the whole reason the dashboards printed `not_found` at the
- * operator in the first place).
+ * A hook rather than a constant map: the status cell, the distribution legend
+ * and the history filter all name the same statuses, and a module-level map
+ * would have to pin a locale (the whole reason the dashboards printed
+ * `not_found` at the operator in the first place).
  */
 export function useRankStatusLabels(): Record<string, string> {
   const t = useTranslations("collectors.rank.status");
@@ -64,14 +70,21 @@ export function useRankStatusLabels(): Record<string, string> {
   );
 }
 
+/** A fetch status: a pill only when it needs attention, plain text otherwise. */
 export function StatusBadge({ status }: Readonly<{ status: string | null }>) {
   const t = useTranslations("collectors.rank.status");
   const labels = useRankStatusLabels();
-  return <TintedBadge value={status} tones={STATUS_TONES} labels={labels} fallback={t("never")} />;
+  const label = status ? (labels[status] ?? status) : t("never");
+  const tone = status ? STATUS_TONES[status] : undefined;
+  return tone ? (
+    <StatusPill tone={tone}>{label}</StatusPill>
+  ) : (
+    <span className="text-muted-foreground">{label}</span>
+  );
 }
 
 /** Collection is considered stalled once the newest capture is this old. */
-export const RANK_STALE_AFTER_MS = 30 * 60 * 1000;
+const RANK_STALE_AFTER_MS = 30 * 60 * 1000;
 
 /**
  * Is battle-tag parsing actually down right now?
@@ -90,7 +103,7 @@ export function rankParsingOutage(
   if (!stats.enabled) return null;
   const last = stats.last_success_at ? Date.parse(stats.last_success_at) : Number.NaN;
   const staleMs = Number.isNaN(last) ? Number.POSITIVE_INFINITY : now - last;
-  if (stats.overfast_circuit_state === "open") return { reason: "circuit_open", staleMs };
+  if (stats.upstream_circuit_state === "open") return { reason: "circuit_open", staleMs };
   // "Never succeeded" is not staleness: a freshly seeded collector has nothing
   // to be late with, and the tab already reads "never". The Prometheus rule
   // RankCollectionNeverSucceeded owns that case, with a 30m grace period.

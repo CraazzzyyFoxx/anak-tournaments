@@ -1,22 +1,42 @@
 "use client";
 
 import { ArrowRight } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import DivisionIcon from "@/components/DivisionIcon";
+import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { findRole, ratedDimension, rolePresentation, showsRoles, type RoleOntology } from "@/lib/roster/ontology";
+import type { DivisionGrid } from "@/types/workspace.types";
 
-import { ROLE_LABELS, type PlayerValidationIssue } from "@/components/balancer/workspace-helpers";
+import type { PlayerValidationIssue } from "@/components/balancer/workspace-helpers";
 
 const CHIP_CLASS =
   "inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-300/20 bg-amber-500/10 px-1.5 py-0.5 text-label font-medium text-amber-100/80";
 
-function staticLabel(issue: PlayerValidationIssue): string {
-  if (issue.code === "missing_ranked_role") {
-    return "No ranked roles";
-  }
-  if (issue.code === "status_blocks_ready") {
-    return "Blocks Ready";
-  }
-  return "Role mismatch";
+/** The full sentence for an issue: the chip's tooltip and the pool card's summary. */
+export function useIssueMessage(): (issue: PlayerValidationIssue) => string {
+  const t = useTranslations("balancerTool.pool.issues");
+
+  return (issue) => {
+    switch (issue.code) {
+      case "missing_ranked_role":
+        return t("message.missingRankedRole");
+      case "status_blocks_ready":
+        return t("message.statusBlocksReady");
+      case "application_role_mismatch":
+        return t("message.roleMismatch", {
+          application: issue.applicationRoleLabels.join(" / ") || t("noRoles"),
+          balancer: issue.playerRoleLabels.join(" / ") || t("noRoles")
+        });
+      case "rank_delta_warning":
+        return t("message.rankDelta", {
+          role: issue.roleLabel,
+          current: issue.currentLabel,
+          ow: issue.owLabel,
+          delta: issue.delta
+        });
+    }
+  };
 }
 
 /**
@@ -31,28 +51,49 @@ export function issueChipKey(issue: PlayerValidationIssue): string {
  * Amber validation chip. For rank-delta warnings it renders a compact icon form
  * (role · current-division-icon → ow-division-icon · Δpts); the full text is in the tooltip.
  */
-export function IssueChip({ issue }: Readonly<{ issue: PlayerValidationIssue }>) {
+export function IssueChip({
+  issue,
+  divisionGrid,
+  ontology,
+}: Readonly<{
+  issue: PlayerValidationIssue;
+  /** The owner game's grid the chip's division crests resolve in. */
+  divisionGrid: DivisionGrid;
+  /** The owner's role dictionary: a rank-delta chip shows the role's icon when it has one. */
+  ontology: RoleOntology | null;
+}>) {
+  const t = useTranslations("balancerTool.pool.issues");
+  const message = useIssueMessage()(issue);
   if (issue.code === "rank_delta_warning") {
+    const rated = ontology ? ratedDimension(ontology) : null;
+    const node = ontology && rated ? findRole(ontology, { dimension: rated.code, role: issue.role }) : null;
+    const hasIcon = ontology && node && showsRoles(ontology) && rolePresentation(ontology.roles, node.id).icon;
     return (
-      <span className={CHIP_CLASS} title={issue.message}>
-        <span className="font-semibold uppercase tracking-label">{ROLE_LABELS[issue.role]}</span>
+      <span className={CHIP_CLASS} title={message}>
+        {hasIcon ? (
+          <PlayerRoleIcon role={issue.role} ontology={ontology} size={14} label={issue.roleLabel} />
+        ) : (
+          <span className="font-semibold uppercase tracking-label">{issue.roleLabel}</span>
+        )}
         {issue.currentDivision != null ? (
-          <DivisionIcon division={issue.currentDivision} width={14} height={14} />
+          <DivisionIcon division={issue.currentDivision} tournamentGrid={divisionGrid} width={14} height={14} />
         ) : null}
         <ArrowRight className="size-4 shrink-0 opacity-70" aria-hidden />
         {issue.owDivision != null ? (
-          <DivisionIcon division={issue.owDivision} width={14} height={14} />
+          <DivisionIcon division={issue.owDivision} tournamentGrid={divisionGrid} width={14} height={14} />
         ) : null}
-        <span className="tabular-nums">Δ{issue.delta} pts</span>
+        <span className="tabular-nums">{t("deltaPoints", { delta: issue.delta })}</span>
       </span>
     );
   }
 
   return (
-    <span className={CHIP_CLASS} title={issue.message}>
-      {staticLabel(issue)}
+    <span className={CHIP_CLASS} title={message}>
+      {issue.code === "missing_ranked_role"
+        ? t("missingRankedRole")
+        : issue.code === "status_blocks_ready"
+          ? t("statusBlocksReady")
+          : t("roleMismatch")}
     </span>
   );
 }
-
-export default IssueChip;

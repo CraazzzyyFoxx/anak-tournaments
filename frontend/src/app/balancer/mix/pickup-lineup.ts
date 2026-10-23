@@ -1,18 +1,23 @@
-import { ROLES, canonicalToRegistrationRole, type RoleCode } from "@/lib/roster/roles";
-import type {
-  CustomGameOutcome,
-  CustomGameParticipationEntry,
-  CustomGamePlayer,
-  CustomGamePlayerPatch,
-  CustomGameSettings,
-  MixParticipation,
-  RotationRecommendation,
+import type { DivisionGrid } from "@/types/workspace.types";
+import type { DisciplineMetadata } from "@/types/discipline.types";
+import { ratedDimension, registrationRoles, showsRoles, slotRank, type RoleOntology } from "@/lib/roster/ontology";
+import { roleOf, toRoleRef, type RoleRef } from "@/lib/roster/role-ref";
+import { OPEN_SLOT_CODE, solverSlotCode, type RosterShape } from "@/lib/roster/shape";
+import {
+  type CustomGame,
+  type CustomGameOutcome,
+  type CustomGameParticipationEntry,
+  type CustomGamePlayer,
+  type CustomGamePlayerPatch,
+  type CustomGameSettings,
+  type MixParticipation,
+  type RankSource,
+  type RotationRecommendation,
 } from "@/services/custom-game.service";
 
-/** What recording a match needs: the click, which balance option it was played from, and whose lobby it was. */
+/** What recording a match needs: the click, and whose lobby's live match it was. */
 export type PickupRecordOutcomeInput = {
   outcome: CustomGameOutcome;
-  variantIndex: number;
   lobbyIndex: number;
 };
 
@@ -25,22 +30,26 @@ export type PickupRecordOutcomeInput = {
  * their rank override or role order, so a host can toggle a late arrival on and
  * off without rebuilding anything.
  *
- * Role vocabulary is `@/lib/roster/roles` — the same `tank`/`damage`/`support` codes the
- * balancer and the registration form use.
+ * Role vocabulary is the mix owner's game (`MixOwner`): its rated roles, in the order its ontology declares them.
  */
 
-/** Canonical role order — the order role columns and glyph rails are read in. */
-export const LINEUP_ROLES: readonly RoleCode[] = ROLES.map((role) => role.code);
-
-export const PICKUP_STATUS_LABELS: Record<string, string> = {
-  draft: "Draft",
-  balanced: "Balanced",
-  completed: "Completed",
-  cancelled: "Cancelled",
-};
+/** The role references a stored order writes: leaf refs of the owner's rated dimension, nothing guessed. */
+export function roleRefsOf(order: readonly string[], dimension: string): RoleRef[] {
+  return order.map((code) => toRoleRef(code, null, dimension));
+}
 
 /** A terminal mix is read-only server-side, so its write controls are hidden. */
 export const PICKUP_TERMINAL_STATUSES: Record<string, true> = { completed: true, cancelled: true };
+
+/**
+ * Whoever passes the server's `CustomGameService._writable`: the host, a co-host or a superuser, while the mix is
+ * still open (a completed or cancelled one is read-only, so its controls are hidden rather than left to 409).
+ */
+export function canWriteMix(game: CustomGame | undefined, userId: number | null, isSuperuser: boolean): boolean {
+  if (game == null || PICKUP_TERMINAL_STATUSES[game.status]) return false;
+  if (isSuperuser) return true;
+  return userId != null && (game.host_user_id === userId || game.co_hosts.some((coHost) => coHost.user_id === userId));
+}
 
 /**
  * The roles the balancer may use for this row, in the order the host set them.
@@ -56,21 +65,16 @@ export const PICKUP_TERMINAL_STATUSES: Record<string, true> = { completed: true,
  * times, and folding one into the other means neither survives a moment the
  * host isn't actively looking at this row.
  */
-export function resolveRoleOrder(row: Pick<CustomGamePlayer, "roles" | "ranks">): RoleCode[] {
+export function resolveRoleOrder(row: Pick<CustomGamePlayer, "roles" | "ranks">, roles: readonly string[]): string[] {
   if (row.roles == null) {
-    return LINEUP_ROLES.filter((role) => row.ranks[role] != null);
+    // Ranked roles in the game's declared order (`roles`); a rank key the dictionary does not list sorts last.
+    return Object.keys(row.ranks)
+      .filter((role) => row.ranks[role] != null)
+      .sort((a, b) => slotRank(roles, a) - slotRank(roles, b));
   }
-  const seen = new Set<string>();
-  const out: RoleCode[] = [];
-  for (const code of row.roles) {
-    const role = LINEUP_ROLES.find((item) => item === code);
-    if (role == null || seen.has(role)) {
-      continue;
-    }
-    seen.add(role);
-    out.push(role);
-  }
-  return out;
+  // The server validated every reference against the game's roles; the host's order is kept as stored. The open
+  // slot (`flex`) is a seat, never a role a player can be ordered on.
+  return [...new Set(row.roles.map((ref) => roleOf(ref)).filter((code) => code !== OPEN_SLOT_CODE))];
 }
 
 /**
@@ -80,27 +84,28 @@ export function resolveRoleOrder(row: Pick<CustomGamePlayer, "roles" | "ranks">)
  * end of it rather than being resorted — the host's existing order for the
  * other roles is left exactly as they set it.
  */
-export function toggleRole(order: readonly RoleCode[], role: RoleCode): RoleCode[] {
+export function toggleRole(order: readonly string[], role: string): string[] {
   return order.includes(role) ? order.filter((item) => item !== role) : [...order, role];
 }
 
 export type LineupIssue = "no_role" | "no_rank";
 
-export const LINEUP_ISSUE_MESSAGES: Record<LineupIssue, string> = {
-  no_role: "No roles selected — balance will reject this mix",
-  no_rank: "No rank on any selected role — balance will reject this mix",
-};
+/** A balance candidate, as the server filters them: in the lineup (not benched) and present (not away). */
+function inBalance(row: Pick<CustomGamePlayer, "participation" | "away">): boolean {
+  return row.participation !== "benched" && !row.away;
+}
 
 /**
  * What would make `balance` reject this row. An active player with no playable
  * ranked role fails the whole run server-side (`missing_ranked_role`), so it is
- * worth showing before the host presses Balance.
+ * worth showing before the host presses Balance. A benched or away row is no
+ * candidate, so it fails nothing.
  */
-export function getLineupIssue(row: CustomGamePlayer): LineupIssue | null {
-  if (row.participation === "benched") {
+export function getLineupIssue(row: CustomGamePlayer, roles: readonly string[]): LineupIssue | null {
+  if (!inBalance(row)) {
     return null;
   }
-  const order = resolveRoleOrder(row);
+  const order = resolveRoleOrder(row, roles);
   if (order.length === 0) {
     return row.roles == null ? "no_rank" : "no_role";
   }
@@ -109,14 +114,14 @@ export function getLineupIssue(row: CustomGamePlayer): LineupIssue | null {
 
 /** One label rule shared by the lineup, the teams and the sheet. */
 export function playerLabel(
-  row: Pick<CustomGamePlayer, "display_name" | "battle_tag" | "workspace_member_id">,
+  row: Pick<CustomGamePlayer, "display_name" | "identity" | "workspace_member_id">,
 ): string {
-  return row.display_name || row.battle_tag || `#${row.workspace_member_id}`;
+  return row.display_name || row.identity?.handle || `#${row.workspace_member_id}`;
 }
 
 /** Mean effective rank across the roles the player can actually be assigned. */
-export function averageRank(row: Pick<CustomGamePlayer, "roles" | "ranks">): number | null {
-  const values = resolveRoleOrder(row)
+export function averageRank(row: Pick<CustomGamePlayer, "roles" | "ranks">, roles: readonly string[]): number | null {
+  const values = resolveRoleOrder(row, roles)
     .map((role) => row.ranks[role])
     .filter((value): value is number => value != null);
   if (values.length === 0) {
@@ -132,41 +137,110 @@ export type LineupSummary = {
   blocking: number;
 };
 
-export function summarizeLineup(rows: CustomGamePlayer[]): LineupSummary {
+/** `active` counts the balance candidates; an away row is neither active nor benched, but stays in `total`. */
+export function summarizeLineup(rows: CustomGamePlayer[], roles: readonly string[]): LineupSummary {
   let active = 0;
+  let benched = 0;
   let blocking = 0;
   for (const row of rows) {
-    if (row.participation !== "benched") {
+    if (inBalance(row)) {
       active += 1;
     }
-    if (getLineupIssue(row) != null) {
+    if (row.participation === "benched") {
+      benched += 1;
+    }
+    if (getLineupIssue(row, roles) != null) {
       blocking += 1;
     }
   }
-  return { total: rows.length, active, benched: rows.length - active, blocking };
+  return { total: rows.length, active, benched, blocking };
 }
 
 /**
- * A 5v5 mix needs one tank and two of each damage/support per team, so ONE
- * lobby needs twice that before a balance can seat everyone. Exported because a
- * mix running several lobbies asks for the same shape once per lobby: the
- * lineup's supply strip multiplies by `lobby_count` rather than keeping a
- * second table of its own.
+ * Lobbies are two teams. A mix's format fixes the seats of ONE team, so one lobby needs twice that before a balance
+ * can seat everyone, and a mix running several lobbies asks for the same shape once per lobby.
  */
-export const ROLE_DEMAND: Record<RoleCode, number> = { tank: 2, damage: 4, support: 4 };
+const TEAMS_PER_LOBBY = 2;
 
 /**
- * Seats one lobby's balance can actually fill — the sum of the demand above.
- *
- * The add-players dialog counts against this rather than against a literal 10 so
- * the "you are two over a full lobby" line and the role gauges below it can
- * never disagree about how big a lobby is.
+ * The mix owner's game, as the lineup reads it: the game's roles in declared order, what one lobby asks of each role
+ * (from the mix's own frozen roster shape, never a fixed table), the lobby size and the grid its ranks are on.
+ * Everything is empty/`null` while the owner's metadata is still loading -- nothing is guessed in the meantime.
  */
-export const LOBBY_SIZE: number = Object.values(ROLE_DEMAND).reduce((sum, need) => sum + need, 0);
+export type MixOwner = {
+  /** The owner's role dictionary: names, glyphs and tints of its roles. `null` until it loads. */
+  ontology: RoleOntology | null;
+  /** The game's own name, for labels that say where a rank came from. */
+  gameName: string | null;
+  /** The game's name when it collects a live native rank (a rank to read beside the author's), else `null`. */
+  nativeRankName: string | null;
+  /** The rated dimension role references are written in. `null` until metadata loads, so nothing writes a guess. */
+  dimension: string | null;
+  /** Roles a lineup row may play, in the game's declared order. */
+  roles: readonly string[];
+  /**
+   * More than one role to choose between. A one-role game (Deadlock) shows no role UI: no role order, no role-supply
+   * strip, no slot labels. Derived from the role count, not a flag.
+   */
+  showsRoles: boolean;
+  /** The game has Full flex players (`discipline.flex`); `false` hides the switch and never sends one. `false` until metadata loads. */
+  flex: boolean;
+  /** Seats ONE lobby needs per role (`TEAMS_PER_LOBBY ×` the shape's slots); roles the format has no seat for are absent. */
+  demand: Readonly<Record<string, number>>;
+  /** Seats one lobby's balance can actually fill (`TEAMS_PER_LOBBY × team_size`); `null` while the shape is unknown. */
+  lobbySize: number | null;
+  /** The grid a mix's ranks are on: the owner game's global ladder, never the workspace's tournament grid. */
+  grid: DivisionGrid;
+};
+
+/**
+ * The owner view of one mix from its game's metadata and the mix's own roster shape. `workspaceGrid` is read only
+ * for a game without a native ladder: there the workspace grid is the scale its ranks are entered on.
+ */
+export function buildMixOwner(
+  metadata: DisciplineMetadata | null | undefined,
+  shape: RosterShape | null | undefined,
+  workspaceGrid: DivisionGrid,
+): MixOwner {
+  const ontology = metadata ?? null;
+  const roles = registrationRoles(ontology).map((role) => role.code);
+  const demand: Record<string, number> = {};
+  for (const role of roles) {
+    const seats = shape?.slots[role] ?? 0;
+    if (seats > 0) {
+      demand[role] = TEAMS_PER_LOBBY * seats;
+    }
+  }
+  // Mix ranks live on the game's own scale in every workspace; a workspace grid (e.g. tournament divisions 1-20)
+  // would read a 3500 as its top tier. Empty while metadata loads.
+  const ladder = metadata?.native_ladder ?? [];
+  const grid = ladder.length > 0 || metadata == null ? { tiers: [...ladder] } : workspaceGrid;
+  return {
+    ontology,
+    gameName: metadata?.discipline.name ?? null,
+    nativeRankName: metadata?.discipline.capabilities.native_rank_collection ? metadata.discipline.name : null,
+    dimension: ontology ? (ratedDimension(ontology)?.code ?? null) : null,
+    roles,
+    showsRoles: showsRoles(ontology),
+    flex: metadata?.discipline.flex ?? false,
+    demand,
+    lobbySize: shape ? TEAMS_PER_LOBBY * shape.team_size : null,
+    grid,
+  };
+}
+
+/** Where a rank came from, in the owner's words: `native` is the game's own ladder, named after the game. */
+export function rankSourceLabel(
+  source: RankSource,
+  gameName: string | null,
+  layerLabel: (source: RankSource) => string,
+): string {
+  return source === "native" ? (gameName ?? layerLabel("native")) : layerLabel(source);
+}
 
 export type RoleSupply = {
-  role: RoleCode;
-  /** Active players who both selected this role and carry a rank for it. */
+  role: string;
+  /** Balance candidates (not benched, not away) who both selected this role and carry a rank for it. */
   supply: number;
   need: number;
   /** How many more the solver would want; 0 once the role is covered. */
@@ -174,23 +248,24 @@ export type RoleSupply = {
 };
 
 /**
- * Who can actually fill each role, counted the way the solver counts, against
- * the demand of every lobby the mix is running.
+ * Who can actually fill each role the format asks for, counted the way the solver counts, against the demand of
+ * every lobby the mix is running.
  *
  * A selected role with no rank is not supply — the balance refuses to seat it —
  * so this deliberately does not match "how many chips are lit".
  */
-export function summarizeRoleSupply(rows: CustomGamePlayer[], lobbyCount = 1): RoleSupply[] {
-  return LINEUP_ROLES.map((role) => {
-    const supply = rows.filter(
-      (row) =>
-        row.participation !== "benched" &&
-        resolveRoleOrder(row).includes(role) &&
-        row.ranks[role] != null,
-    ).length;
-    const need = ROLE_DEMAND[role] * lobbyCount;
-    return { role, supply, need, short: Math.max(0, need - supply) };
-  });
+export function summarizeRoleSupply(rows: CustomGamePlayer[], owner: MixOwner, lobbyCount = 1): RoleSupply[] {
+  // One role is no shortage to read: the lobby count already says how many are missing.
+  if (!owner.showsRoles) return [];
+  return owner.roles
+    .filter((role) => (owner.demand[role] ?? 0) > 0)
+    .map((role) => {
+      const supply = rows.filter(
+        (row) => inBalance(row) && resolveRoleOrder(row, owner.roles).includes(role) && row.ranks[role] != null,
+      ).length;
+      const need = owner.demand[role] * lobbyCount;
+      return { role, supply, need, short: Math.max(0, need - supply) };
+    });
 }
 
 /** Active players first, then the host's own ordering. */
@@ -222,7 +297,8 @@ const PARTICIPATION_BY_HINT: Record<"must_play" | "should_rest", MixParticipatio
  * (`mix_rotation.recommend_rotation`): whoever is owed a seat is pinned, and
  * whoever should rest is benched -- each exactly like the host's own drag into
  * that column. A row already in its hinted column, or with no actionable hint,
- * is left alone, so applying is idempotent.
+ * is left alone, so applying is idempotent. An away row is never moved: a
+ * cached verdict must not bench or seat someone who stepped away.
  */
 export function computeRotationHintPatches(
   rows: readonly CustomGamePlayer[],
@@ -233,7 +309,7 @@ export function computeRotationHintPatches(
   for (const row of rows) {
     const status = hintByMember.get(row.workspace_member_id)?.status;
     const wanted = status == null || status === "neutral" ? null : PARTICIPATION_BY_HINT[status];
-    if (wanted == null || wanted === row.participation) {
+    if (row.away || wanted == null || wanted === row.participation) {
       continue;
     }
     patches.push({ workspaceMemberId: row.workspace_member_id, patch: { participation: wanted } });
@@ -256,7 +332,8 @@ export function participationEntries(
 export type PickupSeat = {
   uuid: string;
   name: string;
-  role: RoleCode;
+  /** A role code of the owner game (lower-cased), or `flex` for an open seat. */
+  role: string;
   rating: number | null;
   /**
    * The host's own open rating for that bucket, when the mix balanced in
@@ -267,19 +344,22 @@ export type PickupSeat = {
   /** The solver put them off their first choice. */
   offRole: boolean;
   isFlex: boolean;
+  /** Wears the team's crown: the lineup's `captain_member_id` (spec §7.2), not the solver's own flag. */
   isCaptain: boolean;
   subRole: string | null;
 };
 
 export type PickupTeam = {
   id: number;
-  /** The host's override, or the computed `Team N` default. */
+  /** The host's override, or the caller's numbered default (`parseVariants`' `defaultName`). */
   name: string;
   averageRank: number | null;
+  /** The seat uuid of the team's captain; `null` while the team has none. */
+  captainUuid: string | null;
   seats: PickupSeat[];
 };
 
-export type PickupVariantStats = {
+type PickupVariantStats = {
   /**
    * How this option scored against its siblings, lower is better. The mix
    * engine's own total (`mix_balancer_quality_total`), or the tournament GA's
@@ -349,13 +429,31 @@ export function teamNamesByIndex(
   return out;
 }
 
-function parseSeats(roster: Record<string, unknown>, players: Record<string, unknown>): PickupSeat[] {
+/**
+ * A role-keyed player map (`ratings`, `open_ratings`, `sub_roles`) read at the seat's normalized slot code, so a
+ * legacy-capitalised key (`Top`) matches its lower-case seat exactly as the bucket itself does.
+ */
+function slotValue(map: Record<string, unknown> | null, role: string): unknown {
+  if (map == null) return undefined;
+  if (role in map) return map[role];
+  for (const [key, value] of Object.entries(map)) {
+    if (solverSlotCode(key) === role) return value;
+  }
+  return undefined;
+}
+
+function parseSeats(
+  roster: Record<string, unknown>,
+  players: Record<string, unknown>,
+  roleOrder: readonly string[],
+  captainUuid: string | null,
+): PickupSeat[] {
   const seats: PickupSeat[] = [];
   for (const [name, group] of Object.entries(roster)) {
-    // The solver keys buckets by its own role vocabulary (`Tank`/`Damage`/…
-    // for tournaments, `tank`/`damage`/… for pickup masks); both normalise here.
-    const role = canonicalToRegistrationRole(name);
-    if (role == null || !Array.isArray(group)) {
+    // Every bucket is a seat group: the game's roles and the open slot alike. A bucket the owner's catalog does
+    // not know still keeps its players (shown as an unknown role) instead of silently dropping them.
+    const role = solverSlotCode(name);
+    if (role === "" || !Array.isArray(group)) {
       continue;
     }
     for (const entry of group) {
@@ -366,25 +464,26 @@ function parseSeats(roster: Record<string, unknown>, players: Record<string, unk
       }
       const preferences = Array.isArray(player.role_preferences) ? player.role_preferences : [];
       const isFlex = player.is_flex === true;
-      const subRole = asRecord(player.sub_roles)?.[name];
+      const subRole = slotValue(asRecord(player.sub_roles), role);
+      const first = typeof preferences[0] === "string" ? solverSlotCode(preferences[0]) : null;
       seats.push({
         uuid,
         name: typeof player.name === "string" ? player.name : uuid,
         role,
         // The server's `seat_rating`: the rating for the bucket they sit in, 0 without one.
-        rating: asNumber(asRecord(player.ratings)?.[name]) ?? 0,
+        rating: asNumber(slotValue(asRecord(player.ratings), role)) ?? 0,
         // Only written by the server when the host balanced in ranker mode.
-        openRating: asNumber(asRecord(player.open_ratings)?.[name]),
-        // A flex player is never off-role: any seat is their first choice.
-        offRole: !isFlex && preferences.length > 0 && preferences[0] !== name,
+        openRating: asNumber(slotValue(asRecord(player.open_ratings), role)),
+        // A flex player is never off-role: any seat is their first choice -- and an open seat names no role.
+        offRole: !isFlex && role !== OPEN_SLOT_CODE && first != null && first !== role,
         isFlex,
-        isCaptain: player.is_captain === true,
+        isCaptain: uuid === captainUuid,
         subRole: typeof subRole === "string" ? subRole : null,
       });
     }
   }
-  // Canonical role order, so the same team reads the same way every render.
-  return seats.sort((a, b) => LINEUP_ROLES.indexOf(a.role) - LINEUP_ROLES.indexOf(b.role));
+  // The game's declared role order, so the same team reads the same way every render.
+  return seats.sort((a, b) => slotRank(roleOrder, a.role) - slotRank(roleOrder, b.role));
 }
 
 /**
@@ -395,8 +494,16 @@ function parseSeats(roster: Record<string, unknown>, players: Record<string, unk
  * player uuids plus its own numbers -- the seats are rebuilt against that map
  * here. An unrecognised shape yields an empty list rather than throwing, so a
  * malformed result degrades to "no teams to show" instead of blanking the screen.
+ *
+ * `roleOrder` is the owner game's declared slot order (`slotCodeOrder`); it only orders seats inside a team.
+ * `defaultName` names a team the host has not renamed, by its 0-based position.
  */
-export function parseVariants(resultJson: unknown, teamNames: Record<number, string> = {}): PickupVariant[] {
+export function parseVariants(
+  resultJson: unknown,
+  teamNames: Record<number, string>,
+  roleOrder: readonly string[],
+  defaultName: (index: number) => string,
+): PickupVariant[] {
   const root = asRecord(resultJson);
   if (root == null || !Array.isArray(root.variants)) {
     return [];
@@ -421,14 +528,23 @@ export function parseVariants(resultJson: unknown, teamNames: Record<number, str
           if (team == null || roster == null) {
             return [];
           }
-          return [{ id: asNumber(team.id), averageRank: asNumber(team.average_mmr), seats: parseSeats(roster, players) }];
+          const captain = asNumber(team.captain_member_id);
+          const captainUuid = captain == null ? null : String(captain);
+          return [
+            {
+              id: asNumber(team.id),
+              averageRank: asNumber(team.average_mmr),
+              captainUuid,
+              seats: parseSeats(roster, players, roleOrder, captainUuid),
+            },
+          ];
         })
         // Named by final render position, not the raw payload index: a
         // malformed entry dropped above must not shift every name after it.
         .map((team, index) => ({
           ...team,
           id: team.id ?? index + 1,
-          name: teamNames[index] ?? `Team ${index + 1}`,
+          name: teamNames[index] ?? defaultName(index),
         })),
       stats: {
         // Whichever engine ran: `mix_balancer` scores a seating with its own
@@ -454,4 +570,90 @@ export function parseVariants(resultJson: unknown, teamNames: Record<number, str
     });
   }
   return out;
+}
+
+/**
+ * How many players one lobby's next balance can seat: in the lineup (not benched), present (not away), not on another
+ * lobby's floor and not pinned to another lobby -- the server's `_lobby_candidates`, read off the board.
+ */
+export function lobbyCandidateCount(rows: readonly CustomGamePlayer[], lobbyIndex: number): number {
+  return rows.filter(
+    (row) =>
+      inBalance(row) &&
+      (row.current_lobby == null || row.current_lobby === lobbyIndex) &&
+      (row.lobby_pin == null || row.lobby_pin === lobbyIndex),
+  ).length;
+}
+
+/**
+ * A waiting player's place in line, 1-based, or `null` when no seat is being waited for: the present lineup players
+ * no lobby seats, ordered the way rotation owes seats (`mix_rotation.recommend_rotation`) -- the host's must-play pin
+ * first, then the longest sit-out, the shortest playing streak, the fewest games and the host's own order.
+ */
+export function waitingQueuePosition(
+  rows: readonly CustomGamePlayer[],
+  rotation: readonly RotationRecommendation[],
+  memberId: number,
+): number | null {
+  const hints = new Map(rotation.map((rec) => [rec.workspace_member_id, rec]));
+  const waiting = rows
+    .filter((row) => row.participation !== "benched" && !row.away && row.current_lobby == null)
+    .sort((a, b) => {
+      const first = hints.get(a.workspace_member_id);
+      const second = hints.get(b.workspace_member_id);
+      return (
+        Number(b.participation === "must_play") - Number(a.participation === "must_play") ||
+        (second?.consecutive_sat ?? 0) - (first?.consecutive_sat ?? 0) ||
+        (first?.consecutive_played ?? 0) - (second?.consecutive_played ?? 0) ||
+        (first?.games_played ?? 0) - (second?.games_played ?? 0) ||
+        a.sort_order - b.sort_order ||
+        a.id - b.id
+      );
+    });
+  const index = waiting.findIndex((row) => row.workspace_member_id === memberId);
+  return index < 0 ? null : index + 1;
+}
+
+/** A player's own team as the phone view shows it (spec §7.5, G1). */
+export type MySeatTeam = {
+  lobbyIndex: number;
+  teamName: string;
+  nextMapId: number | null;
+  /** In seat order; `role` is the slot the option seats them on (the roster line's glyph). */
+  members: { uuid: string; name: string; role: string; isCaptain: boolean; isMe: boolean }[];
+};
+
+/** The team the lobby's shown option seats this member in, or `null` while no lobby seats them. */
+export function myLobbyTeam(
+  game: CustomGame | undefined,
+  memberId: number | null,
+  roleOrder: readonly string[],
+  defaultName: (index: number) => string,
+): MySeatTeam | null {
+  if (game == null || memberId == null) return null;
+  const me = String(memberId);
+  for (const lobby of game.lobbies) {
+    const variant = parseVariants(
+      lobby.balance_result,
+      teamNamesByIndex(game.settings, lobby.lobby_index),
+      roleOrder,
+      defaultName,
+    )[lobby.selected_variant_index];
+    const team = variant?.teams.find((candidate) => candidate.seats.some((seat) => seat.uuid === me));
+    if (team != null) {
+      return {
+        lobbyIndex: lobby.lobby_index,
+        teamName: team.name,
+        nextMapId: lobby.next_map_id,
+        members: team.seats.map((seat) => ({
+          uuid: seat.uuid,
+          name: seat.name,
+          role: seat.role,
+          isCaptain: seat.isCaptain,
+          isMe: seat.uuid === me,
+        })),
+      };
+    }
+  }
+  return null;
 }

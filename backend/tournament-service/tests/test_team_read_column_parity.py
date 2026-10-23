@@ -20,7 +20,6 @@ that wires a field to the wrong column fails too.
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -31,7 +30,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 team_flows = importlib.import_module("src.services.team.flows")
 schemas = importlib.import_module("src.schemas")

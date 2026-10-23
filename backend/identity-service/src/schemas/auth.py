@@ -9,6 +9,7 @@ __all__ = (
     "USERNAME_MAX_LENGTH",
     "USERNAME_MIN_LENGTH",
     "normalize_username",
+    "permission_key",
     "suggest_username",
     "UserRegister",
     "UserLogin",
@@ -68,6 +69,31 @@ def suggest_username(raw: str | None, fallback: str) -> str:
     return text if len(text) >= USERNAME_MIN_LENGTH else fallback
 
 
+def permission_key(resource: str, action: str) -> str:
+    """The human/wire name of a grant; the ``*``/``*`` wildcard reads as ``admin.*``."""
+    if resource == "*" and action == "*":
+        return "admin.*"
+    return f"{resource}.{action}"
+
+
+def _fits_bcrypt(password: str) -> str:
+    # bcrypt only reads the first 72 bytes; anything longer would be silently truncated.
+    if len(password.encode("utf-8")) > 72:
+        raise ValueError("Password cannot be longer than 72 bytes")
+    return password
+
+
+def _strong_password(password: str) -> str:
+    _fits_bcrypt(password)
+    if not re.search(r"[A-Z]", password):
+        raise ValueError("Password must contain at least one uppercase letter")
+    if not re.search(r"[a-z]", password):
+        raise ValueError("Password must contain at least one lowercase letter")
+    if not re.search(r"\d", password):
+        raise ValueError("Password must contain at least one digit")
+    return password
+
+
 class UserRegister(BaseModel):
     """Schema for user registration"""
 
@@ -85,15 +111,7 @@ class UserRegister(BaseModel):
     @field_validator("password")
     @classmethod
     def validate_password(cls, v: str) -> str:
-        if len(v.encode("utf-8")) > 72:
-            raise ValueError("Password cannot be longer than 72 bytes")
-        if not re.search(r"[A-Z]", v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not re.search(r"[a-z]", v):
-            raise ValueError("Password must contain at least one lowercase letter")
-        if not re.search(r"\d", v):
-            raise ValueError("Password must contain at least one digit")
-        return v
+        return _strong_password(v)
 
 
 class UserLogin(BaseModel):
@@ -105,9 +123,7 @@ class UserLogin(BaseModel):
     @field_validator("password")
     @classmethod
     def validate_password(cls, v: str) -> str:
-        if len(v.encode("utf-8")) > 72:
-            raise ValueError("Password cannot be longer than 72 bytes")
-        return v
+        return _fits_bcrypt(v)
 
 
 class Token(BaseModel):
@@ -173,11 +189,10 @@ class TokenPayload(BaseModel):
     email: str
     username: str
     is_superuser: bool = False
-    roles: list[str] = Field(default_factory=list)  # List of role names
-    permissions: list[dict[str, str]] = Field(default_factory=list)  # List of {resource, action} dicts
-    # Per-user deny overlay: {resource, action, workspace_id}. workspace_id is
-    # None for a global deny (blocks everywhere), absent/None also means
-    # global for back-compat with pre-workspace-scoped tokens.
+    roles: list[str] = Field(default_factory=list)
+    permissions: list[dict[str, str]] = Field(default_factory=list)  # {resource, action} dicts
+    # Per-user deny overlay: {resource, action, workspace_id}; a None or absent
+    # workspace_id is a global deny that blocks everywhere.
     denies: list[dict[str, str | int | None]] = Field(default_factory=list)
     workspaces: list[WorkspaceMembership] = Field(default_factory=list)
     # "discord": a request made by the bot on behalf of a linked Discord account.
@@ -201,24 +216,12 @@ class PasswordSetRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def validate_new_password(cls, v: str) -> str:
-        if len(v.encode("utf-8")) > 72:
-            raise ValueError("Password cannot be longer than 72 bytes")
-        if not re.search(r"[A-Z]", v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not re.search(r"[a-z]", v):
-            raise ValueError("Password must contain at least one lowercase letter")
-        if not re.search(r"\d", v):
-            raise ValueError("Password must contain at least one digit")
-        return v
+        return _strong_password(v)
 
     @field_validator("current_password")
     @classmethod
     def validate_current_password(cls, v: str | None) -> str | None:
-        if v is None:
-            return None
-        if len(v.encode("utf-8")) > 72:
-            raise ValueError("Password cannot be longer than 72 bytes")
-        return v
+        return None if v is None else _fits_bcrypt(v)
 
 
 class AuthUserWorkspace(BaseModel):
@@ -251,7 +254,7 @@ class AuthUser(BaseModel):
     is_active: bool
     is_superuser: bool
     is_verified: bool
-    roles: list[str] = Field(default_factory=list)  # List of role names
+    roles: list[str] = Field(default_factory=list)
     permissions: list[str] = Field(default_factory=list)  # List of "resource.action" strings
     denies: list[str] = Field(default_factory=list)  # Denied "resource.action" capabilities
     workspaces: list[AuthUserWorkspace] = Field(default_factory=list)
@@ -262,8 +265,7 @@ class AuthUser(BaseModel):
     @field_validator("roles", mode="before")
     @classmethod
     def normalize_roles(cls, v):
-        # When using from_attributes=True, SQLAlchemy relationships come through
-        # as lists of ORM objects. Convert Role objects -> role.name.
+        # from_attributes hands SQLAlchemy relationships over as ORM objects: Role -> role.name.
         if v is None:
             return []
         if isinstance(v, (list, tuple, set)):
@@ -308,10 +310,7 @@ class AuthUser(BaseModel):
             if resource is None or action is None:
                 continue
 
-            if resource == "*" and action == "*":
-                key = "admin.*"
-            else:
-                key = f"{resource}.{action}"
+            key = permission_key(resource, action)
 
             if key not in seen:
                 out.append(key)

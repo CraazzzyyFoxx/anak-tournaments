@@ -1,5 +1,7 @@
 """RabbitMQ queue and exchange configurations with dead letter support."""
 
+from functools import cache
+
 from faststream.rabbit import ExchangeType, RabbitExchange, RabbitQueue
 
 # Dead Letter Exchange (DLX)
@@ -112,29 +114,58 @@ DISCORD_VOICE_MOVE_DLQ = RabbitQueue(
 )
 
 # ============================================================================
-# Process Match Log Queue
+# Ingest queues (one per discipline)
 # ============================================================================
+# `stats.ingest.<discipline code>` carries ProcessIngestJobEvent for that discipline's jobs; a stats worker consumes
+# only the disciplines it selected (STATS_DISCIPLINES). Every producer (outbox, reaper, retry, tournament fanout) names
+# the queue through ingest_queue(job.discipline).
 
-PROCESS_MATCH_LOG_QUEUE = RabbitQueue(
-    "process_match_log",
-    durable=True,
-    arguments={
-        "x-dead-letter-exchange": "dlx",
-        "x-dead-letter-routing-key": "process_match_log.dlq",
-        "x-message-ttl": 300000,  # 5 minutes
-    },
-)
+INGEST_QUEUE_PREFIX = "stats.ingest."
 
-PROCESS_MATCH_LOG_DLQ = RabbitQueue(
-    "process_match_log.dlq",
-    durable=True,
-)
+
+@cache
+def ingest_queue(discipline: str) -> RabbitQueue:
+    return RabbitQueue(
+        f"{INGEST_QUEUE_PREFIX}{discipline}",
+        durable=True,
+        arguments={
+            "x-dead-letter-exchange": "dlx",
+            "x-dead-letter-routing-key": f"{INGEST_QUEUE_PREFIX}{discipline}.dlq",
+            "x-message-ttl": 300000,  # 5 minutes
+        },
+    )
+
+
+@cache
+def ingest_dlq(discipline: str) -> RabbitQueue:
+    return RabbitQueue(f"{INGEST_QUEUE_PREFIX}{discipline}.dlq", durable=True)
+
+
+# Replay requests (a tournament-wide reparse of DONE jobs, carrying the revision seen at selection) get their own queue
+# WITHOUT a message TTL: a DONE job is not recoverable by the stall reaper, so an expiring request would silently drop
+# the reparse. Only a worker selecting the discipline declares and consumes it; refused/poison deliveries go to its DLQ.
+@cache
+def ingest_replay_queue(discipline: str) -> RabbitQueue:
+    return RabbitQueue(
+        f"{INGEST_QUEUE_PREFIX}{discipline}.replay",
+        durable=True,
+        arguments={
+            "x-dead-letter-exchange": "dlx",
+            "x-dead-letter-routing-key": f"{INGEST_QUEUE_PREFIX}{discipline}.replay.dlq",
+        },
+    )
+
+
+@cache
+def ingest_replay_dlq(discipline: str) -> RabbitQueue:
+    return RabbitQueue(f"{INGEST_QUEUE_PREFIX}{discipline}.replay.dlq", durable=True)
+
 
 # ============================================================================
-# Upload Match Log Queue (discord bot -> parser worker)
+# Upload Match Log Queue (discord bot -> stats worker)
 # ============================================================================
-# Carries the raw log bytes (base64) so the bot no longer calls parser over HTTP.
-# The worker stores the file + record, then publishes a ProcessMatchLogEvent.
+# Carries the raw log bytes (base64) so the bot never calls stats-service over HTTP.
+# The worker stores the file + record, then publishes a ProcessIngestJobEvent.
 
 UPLOAD_MATCH_LOG_QUEUE = RabbitQueue(
     "upload_match_log",
@@ -152,17 +183,24 @@ UPLOAD_MATCH_LOG_DLQ = RabbitQueue(
 )
 
 # ============================================================================
-# Match Log Result (parser worker -> discord)
+# Match Log Result (stats worker -> discord)
 # ============================================================================
-# Fanout so every discord-service replica receives every result; the replica
-# holding the pending upload future resolves it and the rest no-op. This mirrors
-# the broadcast semantics of the pg LISTEN/NOTIFY channel it replaces, which
-# pgBouncer transaction pooling breaks. Consumers bind their own exclusive,
-# auto-deleted (server-named) queue to this exchange — no durable shared queue,
-# which would round-robin results to the wrong replica.
-MATCH_LOG_RESULT_EXCHANGE = RabbitExchange(
-    "match_log.result",
-    type=ExchangeType.FANOUT,
+# One durable work queue: the result names the Discord message it answers
+# (``channel_id``/``message_id``), so any replica can react on it -- there is no
+# in-process waiter to find.
+
+MATCH_LOG_RESULT_QUEUE = RabbitQueue(
+    "match_log_result",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "match_log_result.dlq",
+        "x-message-ttl": 300000,  # 5 minutes: past that the uploader has moved on
+    },
+)
+
+MATCH_LOG_RESULT_DLQ = RabbitQueue(
+    "match_log_result.dlq",
     durable=True,
 )
 
@@ -261,9 +299,8 @@ DIVISION_GRID_IMPORT_JOBS_DLQ = RabbitQueue(
 
 # Cache invalidation, cross-service. One topic exchange, one queue per service
 # that owns a cache, routing key `cache.invalidated.<scope_kind>.<scope_id>`.
-# Replaces the tournament.changed contour: the payload names the stale
-# RESOURCES, so a consumer maps them onto its own keys instead of re-deriving
-# intent from a shared "reason" enum.
+# The payload names the stale RESOURCES, so a consumer maps them onto its own
+# keys instead of re-deriving intent from a shared "reason" enum.
 CACHE_INVALIDATION_EXCHANGE = RabbitExchange(
     "cache.invalidation",
     type=ExchangeType.TOPIC,
@@ -286,19 +323,20 @@ CACHE_INVALIDATION_TOURNAMENT_DLQ = RabbitQueue(
     durable=True,
 )
 
-CACHE_INVALIDATION_APP_QUEUE = RabbitQueue(
-    "cache_invalidation_app_service",
+# stats-service owns the public read caches (statistics, /users/*, achievements) and the hero-stats materialized view.
+CACHE_INVALIDATION_STATS_QUEUE = RabbitQueue(
+    "cache_invalidation_stats_service",
     durable=True,
     routing_key="cache.invalidated.#",
     arguments={
         "x-dead-letter-exchange": "dlx",
-        "x-dead-letter-routing-key": "cache_invalidation_app_service.dlq",
+        "x-dead-letter-routing-key": "cache_invalidation_stats_service.dlq",
         "x-message-ttl": 300000,  # 5 minutes
     },
 )
 
-CACHE_INVALIDATION_APP_DLQ = RabbitQueue(
-    "cache_invalidation_app_service.dlq",
+CACHE_INVALIDATION_STATS_DLQ = RabbitQueue(
+    "cache_invalidation_stats_service.dlq",
     durable=True,
 )
 
@@ -356,26 +394,17 @@ TOURNAMENT_REGISTRATION_RANK_CHECK_DLQ = RabbitQueue(
     durable=True,
 )
 
-TOURNAMENT_REGISTRATION_REJECTED_QUEUE = RabbitQueue(
-    "tournament_registration_rejected",
-    durable=True,
-    routing_key="tournament.registration.rejected",
-    arguments={
-        "x-dead-letter-exchange": "dlx",
-        "x-dead-letter-routing-key": "tournament_registration_rejected.dlq",
-        "x-message-ttl": 600000,  # 10 minutes
-    },
-)
+# Routing key on ``tournament.events`` that more than one binding names (the
+# bot's per-replica channel-registry queue binds it too); the rest are spelled
+# at their single producer/consumer pair.
+TOURNAMENT_STATE_CHANGED_ROUTING_KEY = "tournament.state.changed"
 
-TOURNAMENT_REGISTRATION_REJECTED_DLQ = RabbitQueue(
-    "tournament_registration_rejected.dlq",
-    durable=True,
-)
-
+# Owner: analytics-worker. A ``completed`` tournament gets its compute job
+# created from here instead of waiting for someone to press "recalculate".
 TOURNAMENT_STATE_CHANGED_QUEUE = RabbitQueue(
     "tournament_state_changed",
     durable=True,
-    routing_key="tournament.state.changed",
+    routing_key=TOURNAMENT_STATE_CHANGED_ROUTING_KEY,
     arguments={
         "x-dead-letter-exchange": "dlx",
         "x-dead-letter-routing-key": "tournament_state_changed.dlq",
@@ -403,12 +432,148 @@ TOURNAMENT_STANDINGS_INVALIDATED_DLQ = RabbitQueue(
     durable=True,
 )
 
+# Owner: tournament-service. The confirmed-result push to Challonge, taken out
+# of the confirming request: the request commits the result and this row, the
+# consumer talks to Challonge with the queue's retry instead of a swallowed
+# ``logger.error``.
+TOURNAMENT_CHALLONGE_PUSH_QUEUE = RabbitQueue(
+    "tournament_challonge_push",
+    durable=True,
+    routing_key="tournament.encounter.challonge_push_requested",
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "tournament_challonge_push.dlq",
+        "x-message-ttl": 600000,  # 10 minutes
+    },
+)
+
+TOURNAMENT_CHALLONGE_PUSH_DLQ = RabbitQueue(
+    "tournament_challonge_push.dlq",
+    durable=True,
+)
+
+# Owner: tournament-service. A mix match started with hero bans (balancer-service's Start match): its encounter's
+# pick-ban room is opened by the room healer (``reconcile_encounter``), which is idempotent -- a redelivery opens
+# nothing twice.
+TOURNAMENT_PICK_BAN_ROOM_OPEN_QUEUE = RabbitQueue(
+    "tournament_pick_ban_room_open",
+    durable=True,
+    routing_key="tournament.encounter.pick_ban_room_open_requested",
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "tournament_pick_ban_room_open.dlq",
+        "x-message-ttl": 600000,  # 10 minutes
+    },
+)
+
+TOURNAMENT_PICK_BAN_ROOM_OPEN_DLQ = RabbitQueue(
+    "tournament_pick_ban_room_open.dlq",
+    durable=True,
+)
+
+# ============================================================================
+# Workspace membership changes (app-service -> identity-service)
+# ============================================================================
+# ``WorkspaceMemberChangedEvent`` through the outbox, straight onto the queue:
+# identity drops the cached RBAC payload of the listed users.
+
+WORKSPACE_MEMBER_CHANGED_QUEUE = RabbitQueue(
+    "workspace_member_changed",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "workspace_member_changed.dlq",
+        "x-message-ttl": 120000,  # 2 minutes: the cache entry it drops lives 60 s anyway
+    },
+)
+
+WORKSPACE_MEMBER_CHANGED_DLQ = RabbitQueue(
+    "workspace_member_changed.dlq",
+    durable=True,
+)
+
+# ============================================================================
+# Steam account created / re-pointed (any social-account writer -> identity-service)
+# ============================================================================
+# ``SteamAccountChangedEvent`` through the outbox, straight onto the queue:
+# identity fetches the account's persona name into ``social_account.display_name``.
+# Best effort: the daily refresh is the reconciliation for a lost message.
+
+STEAM_ACCOUNT_CHANGED_QUEUE = RabbitQueue(
+    "steam_account_changed",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "steam_account_changed.dlq",
+        "x-message-ttl": 3600000,  # 1 hour
+    },
+)
+
+STEAM_ACCOUNT_CHANGED_DLQ = RabbitQueue(
+    "steam_account_changed.dlq",
+    durable=True,
+)
+
+# ============================================================================
+# Discord guild member changes (discord-service -> stats-worker)
+# ============================================================================
+# ``DiscordMemberChangedEvent``, published straight from the gateway event (the
+# bot has no transaction to join). stats re-resolves the member's Boosty
+# entitlement; the scheduled sweep stays as the slow reconciliation.
+
+DISCORD_MEMBER_CHANGED_QUEUE = RabbitQueue(
+    "discord_member_changed",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "discord_member_changed.dlq",
+        "x-message-ttl": 600000,  # 10 minutes
+    },
+)
+
+DISCORD_MEMBER_CHANGED_DLQ = RabbitQueue(
+    "discord_member_changed.dlq",
+    durable=True,
+)
+
+# ============================================================================
+# Match ingested (stats-service -> tournament match layer)
+# ============================================================================
+# One opaque evidence id/revision/placements payload per accepted observation
+# revision. The tournament consumer decides whether it is official; the
+# stats side never writes ``encounter.*``.
+
+MATCH_INGESTED_EXCHANGE = RabbitExchange(
+    "match.ingested",
+    type=ExchangeType.TOPIC,
+    durable=True,
+)
+
+MATCH_INGESTED_TOURNAMENT_QUEUE = RabbitQueue(
+    "match.ingested.tournament",
+    durable=True,
+    routing_key="match.ingested",
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "match.ingested.tournament.dlq",
+        "x-message-ttl": 600000,  # 10 minutes
+    },
+)
+
+MATCH_INGESTED_TOURNAMENT_DLQ = RabbitQueue(
+    "match.ingested.tournament.dlq",
+    durable=True,
+)
+
 # ============================================================================
 # Notification delivery (notify()/broadcast() outbox -> app-service)
 # ============================================================================
-# Routing keys: ``notification.created`` (one personal row, DM) and
-# ``notification.broadcast`` (one workspace channel post). One queue, one owner:
-# app-service's delivery consumer.
+# One queue, one owner: app-service's delivery consumer.
+
+#: One personal row (DM).
+NOTIFICATION_CREATED_ROUTING_KEY = "notification.created"
+#: One workspace channel post.
+NOTIFICATION_BROADCAST_ROUTING_KEY = "notification.broadcast"
 
 NOTIFICATIONS_EXCHANGE = RabbitExchange(
     "notifications",
@@ -432,11 +597,11 @@ NOTIFICATION_DELIVERY_DLQ = RabbitQueue(
 )
 
 # ============================================================================
-# Pickup mix changes (balancer-service -> balancer-service)
+# Pickup mix changes (balancer-service, tournament-service -> discord-service)
 # ============================================================================
 # ``PickupMixChangedEvent`` through the outbox, straight onto the queue (default
-# exchange): the one consumer re-projects the mix's Discord signup card. No
-# exchange until a second consumer needs the fact.
+# exchange): the one consumer, the bot's mix projector, re-renders the mix's
+# live Discord cards. No exchange until a second consumer needs the fact.
 
 PICKUP_MIX_CHANGED_QUEUE = RabbitQueue(
     "pickup_mix_changed",
@@ -469,38 +634,6 @@ ANALYTICS_JOB_QUEUE = RabbitQueue(
 
 ANALYTICS_JOB_DLQ = RabbitQueue(
     "analytics_job.dlq",
-    durable=True,
-)
-
-
-ANALYTICS_TRAIN_QUEUE = RabbitQueue(
-    "analytics_train",
-    durable=True,
-    arguments={
-        "x-dead-letter-exchange": "dlx",
-        "x-dead-letter-routing-key": "analytics_train.dlq",
-        # Training can take many minutes; bump TTL accordingly.
-        "x-message-ttl": 3600000,  # 1 hour
-    },
-)
-
-ANALYTICS_TRAIN_DLQ = RabbitQueue(
-    "analytics_train.dlq",
-    durable=True,
-)
-
-ANALYTICS_INFER_QUEUE = RabbitQueue(
-    "analytics_infer",
-    durable=True,
-    arguments={
-        "x-dead-letter-exchange": "dlx",
-        "x-dead-letter-routing-key": "analytics_infer.dlq",
-        "x-message-ttl": 1800000,  # 30 min
-    },
-)
-
-ANALYTICS_INFER_DLQ = RabbitQueue(
-    "analytics_infer.dlq",
     durable=True,
 )
 
@@ -577,3 +710,23 @@ RANK_FETCH_PRIORITY_DLQ = RabbitQueue(
     "rank_fetch_priority.dlq",
     durable=True,
 )
+
+# ============================================================================
+# Every exchange the outbox relay may publish to, by name
+# ============================================================================
+# The drain declares an exchange before its first publish to it. A publish to an
+# exchange the broker does not know (``NOT_FOUND``) closes the channel and
+# fails the rest of the batch, and any producing service (app-svc onto
+# ``tournament.events``, say) can be the first process to publish on a fresh
+# broker, before the consumer that declares the exchange has started.
+
+EXCHANGES_BY_NAME: dict[str, RabbitExchange] = {
+    exchange.name: exchange
+    for exchange in (
+        TOURNAMENT_COMPUTE_EXCHANGE,
+        CACHE_INVALIDATION_EXCHANGE,
+        TOURNAMENT_EVENTS_EXCHANGE,
+        MATCH_INGESTED_EXCHANGE,
+        NOTIFICATIONS_EXCHANGE,
+    )
+}

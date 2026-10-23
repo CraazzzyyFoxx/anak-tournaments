@@ -1,11 +1,13 @@
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from src.core.job_store import JobStatus
+
 # Generated from ``AlgorithmConfig`` -- one declaration per knob, see
-# ``services/balancer/config/public_contract.py``. Re-exported here because the
+# ``domain/balancer/config/public_contract.py``. Re-exported here because the
 # request schemas below are the public face of it.
-from src.services.balancer.config.public_contract import ConfigOverrides
+from src.domain.balancer.config.public_contract import ConfigOverrides
 
 __all__ = [
     "BalanceJobResult",
@@ -15,7 +17,6 @@ __all__ = [
     "ConfigOverrides",
     "CreateJobResponse",
     "FeasibilityReport",
-    "JobEvent",
     "JobProgress",
     "JobStatusResponse",
     "PlayerData",
@@ -39,13 +40,12 @@ class BalanceRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     player_data: dict = Field(..., description="Player data in the tournament format")
-    role_mask: dict[str, Annotated[int, Field(ge=0, le=20)]] | None = Field(
-        None,
+    role_mask: dict[str, Annotated[int, Field(ge=0, le=20)]] = Field(
+        ...,
         description=(
-            'Per-team slot counts keyed by roster slot code, e.g. {"tank": 1, "damage": 2, "support": 2} '
-            "-- the default when omitted. Team count is derived from it: floor(players / sum(slots)); "
-            "the remainder is benched. Input role names are matched case-insensitively against these "
-            'keys, so a pool written with "Damage" fills the "damage" slots.'
+            "Per-team slot counts keyed by the game's role codes (open slot `flex`). Required: no game's shape "
+            "is assumed. Team count is derived from it: floor(players / sum(slots)); the remainder is benched. "
+            "Input role names are matched case-insensitively against these keys."
         ),
     )
     config_overrides: ConfigOverrides | None = Field(None, description="Optional configuration overrides")
@@ -56,7 +56,7 @@ class TournamentBalanceRequest(BaseModel):
 
     The xv-1 input is built server-side from ``shared.services.roster`` -- the
     same engine the draft reads -- so the caller cannot hand the algorithm a
-    different set of ranks than the draft sees. Use ``BalanceRequest`` /the
+    different set of ranks than the draft sees. Use ``BalanceRequest`` or the
     multipart upload only for a payload that is genuinely not a tournament pool.
     """
 
@@ -73,7 +73,7 @@ class PlayerData(BaseModel):
     all_ratings: dict[str, int]
     # Stable per-role discomfort snapshot (computed from original preferences),
     # so the frontend can re-derive discomfort when a player is moved between
-    # roles without re-running the solver. Defaulted for legacy payloads.
+    # roles without re-running the solver. Defaulted so payloads without it still validate.
     all_discomforts: dict[str, int] = Field(default_factory=dict)
     is_flex: bool = False
     sub_role: str | None = None
@@ -87,6 +87,8 @@ class TeamData(BaseModel):
     total_discomfort: int
     max_discomfort: int
     roster: dict[str, list[PlayerData]]
+    format_violations: list[str] = Field(default_factory=list)
+    format_advisories: list[str] = Field(default_factory=list)
 
 
 class RoleFeasibility(BaseModel):
@@ -153,27 +155,16 @@ class JobProgress(BaseModel):
     percent: float | None = None
 
 
-class JobEvent(BaseModel):
-    event_id: int
-    timestamp: float
-    level: str
-    status: Literal["queued", "running", "succeeded", "failed"]
-    stage: str
-    message: str
-    progress: JobProgress | None = None
-
-
 class CreateJobResponse(BaseModel):
     job_id: str
-    status: Literal["queued", "running", "succeeded", "failed"]
+    status: JobStatus
     status_url: str
     result_url: str
-    stream_url: str
 
 
 class JobStatusResponse(BaseModel):
     job_id: str
-    status: Literal["queued", "running", "succeeded", "failed"]
+    status: JobStatus
     stage: str | None = None
     tournament_id: int | None = None
     created_at: float

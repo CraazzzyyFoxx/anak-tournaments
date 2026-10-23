@@ -1,11 +1,8 @@
 """The one answer pipeline: validate a submission, write it, project it back.
 
-A registration answer has exactly three jobs, and they used to live in five
-places: the ten-keyword ``create_registration``, the ``setattr``-per-key
-``update_registration``, the per-field branches of ``lifecycle`` and the whole
-of the deleted ``validation.py``. Here they are three methods over one flat
-``{field key -> value}`` document, so adding a question to the form costs an
-organizer a schema edit and nothing else.
+A registration answer has exactly three jobs, and here they are three methods
+over one flat ``{field key -> value}`` document, so adding a question to the
+form costs an organizer a schema edit and nothing else.
 
 ``validate`` runs the three stages -- normalisation, role composition, verified
 identity -- and collects errors from ALL of them before raising, so a registrant
@@ -31,8 +28,10 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.balancer_subrole_catalog import resolve_subrole_catalog
 from shared.core.social import VERIFIABLE_PROVIDERS, normalize_social_handle
+from shared.disciplines import DISCIPLINES
 from shared.domain.forms import (
     IDENTITY_PROVIDERS,
     ErrorCode,
@@ -50,8 +49,7 @@ from shared.domain.forms import (
 )
 from shared.domain.roster import flex_role_mode_from_schema
 from shared.hero_catalog import HeroCatalog
-from src import models
-from src.services.registration._common import build_registration_roles
+from src.services.registration._common import build_registration_roles, only_role_answer, root_role_codes
 from src.services.registration.roles_rules import validate_roles
 
 __all__ = (
@@ -149,7 +147,9 @@ class RegistrationAnswerService:
         enforce_required: bool,
         player_id: int | None,
         workspace_id: int,
+        discipline: str,
         hero_catalog: HeroCatalog | None,
+        registration: models.Registration | None = None,
     ) -> dict[str, Any]:
         """The typed values ``answers`` reduces to, or ``422`` with every error.
 
@@ -162,10 +162,36 @@ class RegistrationAnswerService:
         ``enforce_required=False`` is the organizer path: blanks are allowed and
         the OAuth gate does not run, because the organizer authoring the row IS
         the authority the gate exists to substitute for.
+
+        ``registration`` is the row an EDIT rewrites. A key the form does not ask
+        that only repeats what ``answers_of`` reads back for it is dropped, not
+        refused: the read reports every answer column (``reserve``/``stream_pov``
+        are NOT NULL) and answers to questions a later version removed, so a
+        client sending back the document it just read must not get
+        ``unknown_field``. A CHANGED undeclared key still does.
         """
+        if registration is not None:
+            stored = self.answers_of(registration)
+            answers = {
+                key: value
+                for key, value in answers.items()
+                if schema.field(key) is not None or key not in stored or stored[key] != value
+            }
+        role_codes = tuple(role.code for role in DISCIPLINES[discipline].rated_dimension.roles)
+        implied = only_role_answer(role_codes)
+        if implied is not None and not partial and schema.builtin("roles") is not None and not answers.get("roles"):
+            # A one-role game asks no role question: the sign-up still plays that role, required question or not.
+            answers = {**answers, "roles": implied}
         normalized = normalize_answers(schema, answers, partial=partial, enforce_required=enforce_required)
         values = normalized.values
         errors: list[FieldError] = list(normalized.errors)
+        for field in schema.fields():
+            if field.kind == "role_ranks" and isinstance(values.get(field.key), dict):
+                unknown = tuple(sorted(set(values[field.key]) - set(role_codes)))
+                if unknown:
+                    errors.append(
+                        FieldError(field.key, ErrorCode.INVALID_OPTION.value, "Not a known role.", {"values": unknown})
+                    )
 
         roles_field = schema.builtin("roles")
         if roles_field is not None and "roles" in values:
@@ -173,7 +199,8 @@ class RegistrationAnswerService:
                 validate_roles(
                     roles_field,
                     values["roles"],
-                    subrole_catalog=await resolve_subrole_catalog(session, workspace_id),
+                    role_codes=role_codes,
+                    subrole_catalog=await resolve_subrole_catalog(session, workspace_id, discipline=discipline),
                     hero_catalog=hero_catalog,
                 )
             )
@@ -264,8 +291,7 @@ class RegistrationAnswerService:
         player_id: int,
         providers: set[str],
     ) -> dict[str, set[str]]:
-        # Multi-column projection over one player's verified handles — a
-        # row-tuple read, not a CRUD fetch, so it stays here.
+        # Analytical: a two-column projection over one player's verified handles.
         rows = (
             await session.execute(
                 sa.select(models.SocialAccount.provider, models.SocialAccount.username_normalized).where(
@@ -283,11 +309,12 @@ class RegistrationAnswerService:
 
     def apply(
         self,
-        registration: models.BalancerRegistration,
+        registration: models.Registration,
         values: Mapping[str, Any],
         *,
         schema: FormSchema,
         hero_catalog: HeroCatalog | None,
+        catalog_roles: Mapping[str, models.CatalogRole],
     ) -> None:
         """Write validated answers onto a registration (and its child rows).
 
@@ -301,15 +328,25 @@ class RegistrationAnswerService:
             value = values[key]
             setattr(registration, column, bool(value) if column in _BOOL_COLUMNS else (value or None))
         self._apply_identities(registration, values, schema=schema)
-        if "roles" in values:
-            self._apply_roles(registration, values["roles"] or [], schema=schema, hero_catalog=hero_catalog)
+        roots = root_role_codes(catalog_roles)
+        # A NEW registration of a one-role game gets that role even when nothing asked (organizer and sheet rows
+        # validate partially, so ``validate`` implied nothing). A stored row is edited, never re-seeded: its roles may
+        # not even be loaded.
+        if "roles" in values or (registration.id is None and len(roots) == 1):
+            self._apply_roles(
+                registration,
+                values.get("roles") or [],
+                schema=schema,
+                hero_catalog=hero_catalog,
+                catalog_roles=catalog_roles,
+            )
         custom = custom_answers(values)
         if custom:
             registration.custom_fields_json = merge_custom_answers(registration.custom_fields_json, custom) or None
 
     def _apply_identities(
         self,
-        registration: models.BalancerRegistration,
+        registration: models.Registration,
         values: Mapping[str, Any],
         *,
         schema: FormSchema,
@@ -324,7 +361,7 @@ class RegistrationAnswerService:
         targets still read it. The positional/handle uniques are DEFERRED, so a
         swap mid-rewrite is fine.
         """
-        rows_by_provider: dict[str, list[models.BalancerRegistrationIdentity]] = {}
+        rows_by_provider: dict[str, list[models.RegistrationIdentity]] = {}
         for row in registration.identities:
             rows_by_provider.setdefault(row.provider, []).append(row)
         for provider in IDENTITY_PROVIDERS:
@@ -340,7 +377,7 @@ class RegistrationAnswerService:
                     rows[position].handle_normalized = normalized
                 else:
                     registration.identities.append(
-                        models.BalancerRegistrationIdentity(
+                        models.RegistrationIdentity(
                             provider=provider,
                             position=position,
                             handle=handle,
@@ -352,11 +389,12 @@ class RegistrationAnswerService:
 
     def _apply_roles(
         self,
-        registration: models.BalancerRegistration,
+        registration: models.Registration,
         roles: list[Any],
         *,
         schema: FormSchema,
         hero_catalog: HeroCatalog | None,
+        catalog_roles: Mapping[str, models.CatalogRole],
     ) -> None:
         """Replace the role set, KEEPING the rank of every role that survives.
 
@@ -370,18 +408,21 @@ class RegistrationAnswerService:
         params = RolesParams.model_validate(roles_field.params) if roles_field is not None else RolesParams()
         entries = build_registration_roles(
             roles,
+            catalog_roles=catalog_roles,
+            role_codes=root_role_codes(catalog_roles),
             hero_catalog=hero_catalog,
             max_heroes=params.top_heroes.max,
             mode=flex_role_mode_from_schema(schema),
         )
         existing = {row.role: row for row in registration.roles}
-        merged: list[models.BalancerRegistrationRole] = []
+        merged: list[models.RegistrationRole] = []
         for entry in entries:
             row = existing.get(entry.role)
             if row is None:
                 merged.append(entry)
                 continue
-            row.subrole = entry.subrole
+            row.catalog_role = entry.catalog_role
+            row.dimension_id = entry.dimension_id
             row.is_primary = entry.is_primary
             row.priority = entry.priority
             if hero_catalog is not None:
@@ -397,7 +438,7 @@ class RegistrationAnswerService:
         # the delete-orphan cascade rather than being detached from the list.
         registration.roles[:] = merged
 
-    def answers_of(self, registration: models.BalancerRegistration) -> dict[str, Any]:
+    def answers_of(self, registration: models.Registration) -> dict[str, Any]:
         """The flat answer document a registration reads back as.
 
         Every ``identity_<provider>`` answer is a list of handles, primary first

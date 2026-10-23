@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { FolderOpen } from "lucide-react";
+import { AlertTriangle, FolderOpen } from "lucide-react";
+import { SettingGroup, SettingRow, settingHintId } from "@/components/kit/SettingRow";
 import { AutoUploadStatus } from "@/components/logs/AutoUploadStatus";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { directoryErrorCode } from "@/lib/logs/browser-directory";
 import { useLogDirectory } from "@/lib/logs/use-log-directory";
-import { SettingsGroup } from "./SettingsGroup";
 
 export function LogDirectorySection() {
   const t = useTranslations("accountSettings.logDirectory");
@@ -31,45 +32,61 @@ export function LogDirectorySection() {
   const visibleError = error ?? (directory.error ? t(`errors.${directoryErrorCode(directory.error)}`) : null);
 
   return (
-    <>
-      <SettingsGroup title={t("title")} description={t("hint")}>
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] py-1.5 pl-3 pr-1.5">
-          <FolderOpen className="size-4 shrink-0 text-[color:var(--aqt-fg-muted)]" aria-hidden />
-          <p className="min-w-0 flex-1 truncate text-sm text-[color:var(--aqt-fg)]" role="status">
-            {directory.isLoading ? t("loading") : directory.handle?.name ?? t("none")}
-          </p>
-          <Button type="button" size="sm" variant="outline" disabled={busy || directory.isLoading} onClick={() => void run(directory.select)}>
-            {directory.handle ? t("replace") : t("select")}
-          </Button>
-          {directory.handle ? (
-            <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void run(directory.forget)}>
-              {t("forget")}
+    <div className="space-y-6">
+      <SettingGroup id="logs-folder" level={4} title={t("title")} description={t("hint")}>
+        <div className="py-3 first:pt-0 last:pb-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <FolderOpen className="size-4 shrink-0 text-[color:var(--aqt-fg-muted)]" aria-hidden />
+            <div
+              className="min-w-0 flex-1 truncate text-body text-[color:var(--aqt-fg)]"
+              role="status"
+              title={directory.handle?.name}
+            >
+              {directory.isLoading ? (
+                <>
+                  <span className="sr-only">{t("loading")}</span>
+                  <Skeleton aria-hidden className="h-4 w-32" />
+                </>
+              ) : (
+                directory.handle?.name ?? t("none")
+              )}
+            </div>
+            <Button type="button" size="sm" variant="outline" disabled={busy || directory.isLoading} onClick={() => void run(directory.select)}>
+              {directory.handle ? t("replace") : t("select")}
             </Button>
+            {directory.handle ? (
+              <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void run(directory.forget)}>
+                {t("forget")}
+              </Button>
+            ) : null}
+          </div>
+          {visibleError ? (
+            <p role="alert" className="mt-1.5 flex items-start gap-1.5 text-caption text-danger">
+              <AlertTriangle aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+              <span className="min-w-0 [overflow-wrap:anywhere]">{visibleError}</span>
+            </p>
           ) : null}
         </div>
-        {visibleError ? <p className="text-sm text-destructive" role="alert">{visibleError}</p> : null}
-      </SettingsGroup>
+      </SettingGroup>
 
-      <SettingsGroup title={t("auto.title")}>
-        <div className="flex items-start gap-3 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] px-3 py-2.5">
-          <div className="flex-1 space-y-1">
-            <p id="log-auto-upload-label" className="text-sm text-[color:var(--aqt-fg)]">{t("auto.toggle")}</p>
-            <p id="log-auto-upload-desc" className="text-caption text-pretty text-[color:var(--aqt-fg-dim)]">
-              {directory.handle ? t("auto.toggleHint") : t("auto.needsFolder")}
-            </p>
-          </div>
+      <SettingGroup id="logs-auto" level={4} title={t("auto.title")}>
+        <SettingRow
+          htmlFor="log-auto-upload"
+          label={t("auto.toggle")}
+          hint={directory.handle ? t("auto.toggleHint") : t("auto.needsFolder")}
+        >
           <Switch
+            id="log-auto-upload"
+            aria-describedby={settingHintId("log-auto-upload")}
             checked={directory.autoUpload}
             disabled={!directory.handle}
             onCheckedChange={directory.setAutoUpload}
-            aria-labelledby="log-auto-upload-label"
-            aria-describedby="log-auto-upload-desc"
           />
-        </div>
+        </SettingRow>
         {directory.autoUpload ? (
-          <AutoUploadStatus folder={directory.handle?.name ?? ""} idle={t("auto.idle")} />
+          <AutoUploadStatus folder={directory.handle?.name ?? ""} idle={t("auto.idle")} framed={false} />
         ) : null}
-      </SettingsGroup>
-    </>
+      </SettingGroup>
+    </div>
   );
 }

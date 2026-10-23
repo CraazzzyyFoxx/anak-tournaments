@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { usePathname } from "next/navigation";
 
 import { useBalancerTournamentId } from "@/app/balancer/components/useBalancerTournamentId";
 import { resolveToolState, type ToolContextStatus } from "@/app/balancer/tool-context";
@@ -9,6 +10,7 @@ import balancerAdminService from "@/services/balancer-admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { BalancerTournamentSummary } from "@/types/balancer-admin.types";
 import { balancerQueryKeys } from "@/lib/balancer/query-keys";
+import { tournamentOverviewQueryOptions } from "@/lib/tournament/overview-query";
 
 export interface ToolContext {
   status: ToolContextStatus;
@@ -22,7 +24,10 @@ export interface ToolContext {
  * runtime entity context, without overwriting the saved viewing preference.
  */
 export function useToolContext(): ToolContext {
-  const tournamentId = useBalancerTournamentId();
+  const requested = useBalancerTournamentId();
+  // A pickup mix is its own owner (its page registers the mix's community and game): a `?tournament=`
+  // carried onto a mix route names no tool tournament, so it neither reads nor claims the opened owner.
+  const tournamentId = usePathname().startsWith("/balancer/mix") ? null : requested;
   const query = useQuery({
     queryKey: balancerQueryKeys.tournamentSummary(tournamentId),
     queryFn: () => balancerAdminService.getTournamentSummary(tournamentId as number),
@@ -34,7 +39,12 @@ export function useToolContext(): ToolContext {
   });
   const summary = query.data ?? null;
 
-  useEntityWorkspace(summary?.workspace_id);
+  // The owner's game: the same cached public read the tool page makes for its roster shape.
+  const owner = useQuery({
+    ...tournamentOverviewQueryOptions(tournamentId as number),
+    enabled: tournamentId != null
+  });
+  useEntityWorkspace(summary?.workspace_id, owner.data?.discipline);
   const entityWorkspaceId = useWorkspaceStore((state) => state.entityWorkspaceId);
   const aligned = summary == null || entityWorkspaceId === summary.workspace_id;
 

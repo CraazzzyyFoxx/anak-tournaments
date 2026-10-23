@@ -41,7 +41,11 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validat
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.messaging.config import NOTIFICATIONS_EXCHANGE
+from shared.messaging.config import (
+    NOTIFICATION_BROADCAST_ROUTING_KEY,
+    NOTIFICATION_CREATED_ROUTING_KEY,
+    NOTIFICATIONS_EXCHANGE,
+)
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.models.platform.notification import Notification
 from shared.schemas.events import NotificationBroadcastEvent, NotificationCreatedEvent
@@ -63,6 +67,7 @@ __all__ = (
     "EncounterDisputeReviewPayload",
     "EncounterReportDisputedPayload",
     "EncounterScheduledPayload",
+    "MixRoomOpenedPayload",
     "NotificationGroup",
     "RegistrationDecisionPayload",
     "TeamInviteAnsweredPayload",
@@ -141,7 +146,8 @@ class EncounterReportDisputedPayload(_Payload):
     #: the inbox renders.
     game_id: int
     position: int
-    map_id: int
+    #: ``None`` for a game nobody has picked a map for (no pick-ban ran); the row then omits it.
+    map_id: int | None = None
 
 
 class EncounterDisputeReviewPayload(_Payload):
@@ -165,8 +171,8 @@ class EncounterDisputeReviewPayload(_Payload):
     tournament_id: int
     game_id: int | None = None
     position: int = 0
-    home_team_name: str
-    away_team_name: str
+    #: Every participation's name in slot order.
+    team_names: list[str]
 
 
 class TeamRosterEventPayload(_Payload):
@@ -202,10 +208,20 @@ class EncounterScheduledPayload(_Payload):
     encounter_id: int
     tournament_id: int
     tournament_name: str
-    home_team_name: str
-    away_team_name: str
+    #: Every seat's name in slot order.
+    team_names: list[str]
     scheduled_at: datetime | None = None
     pick_ban: bool = False
+
+
+class MixRoomOpenedPayload(_Payload):
+    """Shared by ``mix.ban_room_opened`` and ``mix.draft_started`` -- the kind is the room (spec §12.1 R3-3). Sent to
+    a mix lobby's captain; ``lobby`` is the lobby's letter, which both the sentence and the link
+    (``/balancer/mix/{custom_game_id}/lobby/{lobby}``) use."""
+
+    custom_game_id: int
+    mix_name: str
+    lobby: str = Field(pattern=r"^[A-F]$")
 
 
 class AnnouncementText(_Payload):
@@ -282,6 +298,8 @@ NOTIFICATION_KINDS: dict[str, type[BaseModel]] = {
     "registration.opened": TournamentPhaseOpenedPayload,
     "check_in.opened": TournamentPhaseOpenedPayload,
     "encounter.scheduled": EncounterScheduledPayload,
+    "mix.ban_room_opened": MixRoomOpenedPayload,
+    "mix.draft_started": MixRoomOpenedPayload,
 }
 
 #: Kinds ``broadcast()`` may post to a workspace channel. Everything else is
@@ -305,6 +323,8 @@ NOTIFICATION_KIND_GROUPS: dict[str, NotificationGroup] = {
     "registration.rejected": "tournament",
     "encounter.scheduled": "matches",
     "encounter.report_disputed": "matches",
+    "mix.ban_room_opened": "matches",
+    "mix.draft_started": "matches",
     "encounter.dispute_review": "staff",
     "team_invite.received": "team",
     "team_invite.answered": "team",
@@ -489,7 +509,7 @@ async def notify(
             session,
             NotificationCreatedEvent(notification_id=row.id),
             exchange=NOTIFICATIONS_EXCHANGE,
-            routing_key="notification.created",
+            routing_key=NOTIFICATION_CREATED_ROUTING_KEY,
         )
     return row
 
@@ -547,5 +567,5 @@ async def broadcast(
             dedupe_key=dedupe_key,
         ),
         exchange=NOTIFICATIONS_EXCHANGE,
-        routing_key="notification.broadcast",
+        routing_key=NOTIFICATION_BROADCAST_ROUTING_KEY,
     )

@@ -27,10 +27,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from shared import models
 from shared.models.platform.audit import AuditLog  # noqa: E402
-from src import models, schemas  # noqa: E402
+from src import schemas  # noqa: E402
 from src.services.api_keys import api_keys  # noqa: E402
-from src.services.rbac_admin import PermissionDenyService, RoleAdminService  # noqa: E402
+from src.services.rbac import PermissionDenyService, RoleAdminService  # noqa: E402
 from tests._fakes import FakeSessionCache as _NoopCache  # noqa: E402
 from tests._fakes import make_api_key_row  # noqa: E402
 from tests._fakes import make_auth_user as _api_actor  # noqa: E402

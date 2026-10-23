@@ -95,7 +95,8 @@ export function ParamFields({
           return (
             <NumberInput
               key={spec.name}
-              className="h-7 text-xs"
+              size="sm"
+              className="h-7"
               aria-label={name}
               integer
               min={spec.min ?? undefined}
@@ -118,7 +119,7 @@ export function ParamFields({
               disabled={disabled}
               onValueChange={(next) => setParam(spec.name, next === ANY_VALUE ? null : next)}
             >
-              <SelectTrigger className="h-7 text-xs" aria-label={name}>
+              <SelectTrigger size="sm" className="h-7" aria-label={name}>
                 <SelectValue placeholder={label} />
               </SelectTrigger>
               <SelectContent>

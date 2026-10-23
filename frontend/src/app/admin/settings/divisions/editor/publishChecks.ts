@@ -2,14 +2,15 @@ import type { DivisionGridActivationReadiness } from "@/types/workspace.types";
 
 import {
   bandsCoverLadder,
+  bandsMissingCrest,
   floorsDescend,
-  RANK_COUNT,
   unlinkedRanks,
   type Band,
+  type Ladder,
   type Scale
 } from "./draftReducer";
 
-export type PublishCheckMessageKey =
+type PublishCheckMessageKey =
   | "impactChecks.coverageAll"
   | "impactChecks.floors"
   | "impactChecks.coverageLinked"
@@ -20,6 +21,7 @@ export type PublishCheckMessageKey =
   | "impactChecks.saved"
   | "impactChecks.crests"
   | "impactChecks.crestsSome"
+  | "impactChecks.crestsRequired"
   | "impactChecks.mappings"
   | "impactChecks.mappingsSome"
 
@@ -33,6 +35,8 @@ export interface PublishCheck {
 }
 
 export interface PublishCheckInput {
+  /** The discipline's native ladder; `null` when it declares none (no native coverage to check). */
+  ladder: Ladder | null;
   bands: Band[];
   scale: Scale;
   readiness: DivisionGridActivationReadiness | null;
@@ -48,11 +52,15 @@ export interface PublishCheckInput {
  * enablement. One computation, two consumers, so the reason a publish is
  * refused is always on screen next to the disabled button.
  *
- * The OW coverage is checked rather than assumed on both scales: a rank no
- * division takes is a player whose OverFast snapshot silently resolves to
- * nothing, and a ladder band out of place would re-band every player.
+ * With a native ladder its coverage is checked rather than assumed on both
+ * scales: a rank no division takes is a player whose collected snapshot
+ * silently resolves to nothing, and a ladder band out of place would re-band
+ * every player. Without one there is no native coverage to check, and the
+ * crest is mandatory: there is no ladder to borrow one from and the server
+ * refuses a tier without it.
  */
 export function publishChecks({
+  ladder,
   bands,
   scale,
   readiness,
@@ -63,52 +71,52 @@ export function publishChecks({
   const names = bands.map((band) => band.name.trim().toLowerCase());
   const namesUnique = new Set(names).size === names.length && names.every((name) => name !== "");
   const borrowed = bands.filter((band) => band.icon_url === null).length;
+  const crestless = bandsMissingCrest(ladder, bands).length;
   const incomplete = readiness
     ? readiness.incomplete_mapping_version_ids.length + readiness.missing_mapping_version_ids.length
     : 0;
   const open = unresolvedMappings + incomplete;
-  const gaps = unlinkedRanks(bands).length;
-  const unlinked = bands.filter((band) => band.ow === null).length;
 
-  const coverage: PublishCheck[] =
-    scale === "ladder"
-      ? [
-          {
-            key: "coverage",
-            messageKey: "impactChecks.coverageAll",
-            values: { count: RANK_COUNT },
-            ok: bandsCoverLadder(bands),
-            blocking: true
-          }
-        ]
-      : [
-          {
-            key: "floors",
-            messageKey: "impactChecks.floors",
-            ok: floorsDescend(bands),
-            blocking: true
-          },
-          {
-            key: "coverage",
-            messageKey:
-              gaps === 0
-                ? "impactChecks.coverageLinked"
-                : "impactChecks.gaps",
-            values: { count: gaps || RANK_COUNT },
-            ok: gaps === 0,
-            blocking: true
-          },
-          {
-            key: "unlinked",
-            messageKey:
-              unlinked === 0
-                ? "impactChecks.unlinked"
-                : "impactChecks.unlinkedSome",
-            values: { count: unlinked },
-            ok: unlinked === 0,
-            blocking: false
-          }
-        ];
+  const floors: PublishCheck = {
+    key: "floors",
+    messageKey: "impactChecks.floors",
+    ok: floorsDescend(bands),
+    blocking: true
+  };
+  let coverage: PublishCheck[];
+  if (!ladder) {
+    coverage = [floors];
+  } else if (scale === "ladder") {
+    coverage = [
+      {
+        key: "coverage",
+        messageKey: "impactChecks.coverageAll",
+        values: { count: ladder.count },
+        ok: bandsCoverLadder(ladder, bands),
+        blocking: true
+      }
+    ];
+  } else {
+    const gaps = unlinkedRanks(ladder, bands).length;
+    const unlinked = bands.filter((band) => band.native === null).length;
+    coverage = [
+      floors,
+      {
+        key: "coverage",
+        messageKey: gaps === 0 ? "impactChecks.coverageLinked" : "impactChecks.gaps",
+        values: { count: gaps || ladder.count },
+        ok: gaps === 0,
+        blocking: true
+      },
+      {
+        key: "unlinked",
+        messageKey: unlinked === 0 ? "impactChecks.unlinked" : "impactChecks.unlinkedSome",
+        values: { count: unlinked },
+        ok: unlinked === 0,
+        blocking: false
+      }
+    ];
+  }
 
   return [
     ...coverage,
@@ -125,22 +133,24 @@ export function publishChecks({
       ok: !dirty,
       blocking: true
     },
-    {
-      key: "crests",
-      messageKey:
-        borrowed === 0
-          ? "impactChecks.crests"
-          : "impactChecks.crestsSome",
-      values: { count: borrowed },
-      ok: borrowed === 0,
-      blocking: false
-    },
+    ladder
+      ? {
+          key: "crests",
+          messageKey: borrowed === 0 ? "impactChecks.crests" : "impactChecks.crestsSome",
+          values: { count: borrowed },
+          ok: borrowed === 0,
+          blocking: false
+        }
+      : {
+          key: "crests",
+          messageKey: crestless === 0 ? "impactChecks.crests" : "impactChecks.crestsRequired",
+          values: { count: crestless },
+          ok: crestless === 0,
+          blocking: true
+        },
     {
       key: "mappings",
-      messageKey:
-        open === 0
-          ? "impactChecks.mappings"
-          : "impactChecks.mappingsSome",
+      messageKey: open === 0 ? "impactChecks.mappings" : "impactChecks.mappingsSome",
       values: { count: open },
       // Before the first save there is nothing to map onto, and the "saved"
       // check above already reports that.

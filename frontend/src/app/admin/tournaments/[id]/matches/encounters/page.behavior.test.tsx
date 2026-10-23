@@ -78,12 +78,18 @@ vi.mock("@/components/kit/AuditTrailSheet", () => ({
   AuditTrailButton: () => <button type="button">Change history</button>
 }));
 
-const replace = vi.fn((url: string) => {
-  window.history.replaceState(null, "", url);
-  rerender?.();
-});
+// Every URL write re-renders from the new `useSearchParams` in the app — the
+// router's `replace` and, through Next's History patch, the inspector's native
+// `replaceState`. Both land here as "write `window.history`, poke the harness".
+const replace = vi.fn((url: string) => window.history.replaceState(null, "", url));
 
 let rerender: (() => void) | null = null;
+
+const nativeReplaceState = window.history.replaceState.bind(window.history);
+window.history.replaceState = (data, unused, url) => {
+  nativeReplaceState(data, unused, url);
+  rerender?.();
+};
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "78" }),
@@ -114,6 +120,9 @@ function encounter(overrides: Partial<Encounter> = {}): Encounter {
     scheduled_at: null,
     started_at: null,
     ended_at: null,
+    played_at: null,
+    is_live: false,
+    is_final: false,
     current_map_index: null,
     confirmed_at: null,
     matches: [],
@@ -228,7 +237,11 @@ beforeEach(() => {
     workspace_id: 1,
     challonge_slug: null
   });
-  getStages.mockReset().mockResolvedValue([{ id: 5, name: "Groups", order: 1, items: [] }]);
+  // Two stages: a filter with one option is not offered at all.
+  getStages.mockReset().mockResolvedValue([
+    { id: 5, name: "Groups", order: 1, items: [] },
+    { id: 6, name: "Playoffs", order: 2, items: [] }
+  ]);
   getTeams.mockReset().mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 });
   deleteEncounter.mockReset().mockResolvedValue(undefined);
   listEncounterReports.mockReset().mockResolvedValue({
@@ -262,13 +275,13 @@ describe("hub Matches › Encounters", () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
-  it("lists the tournament's encounters and pins the tournament chip", async () => {
+  it("lists the tournament's encounters with no tournament filter to pick", async () => {
     const container = await mount();
     await waitFor(() => container.textContent?.includes("Team C vs Team D"), "the encounter row");
 
     expect(lastListCall()[2]).toBe(78);
-    const pinned = container.querySelector('[data-pinned-filter="tournament"]');
-    expect(pinned?.textContent).toContain("OWT 78");
+    // The hub owns the scope: there is no tournament chip to show or remove.
+    expect(document.querySelector('button[aria-label^="Remove filter Tournament"]')).toBeNull();
   });
 
   it("sends ?stage= to the endpoint as stage_id and keeps it in the URL", async () => {
@@ -334,7 +347,7 @@ describe("hub Matches › Encounters", () => {
   // The planned start time (P7): entered per round in the stage editor, or per
   // match in the match editor. Invisible here before this column, so an
   // organizer could not tell which matches had a time at all.
-  it("shows the planned start time, and an em dash for a match without one", async () => {
+  it("shows the planned start time, and nothing for a match without one", async () => {
     getAll.mockResolvedValue({
       results: [
         encounter(),
@@ -359,6 +372,6 @@ describe("hub Matches › Encounters", () => {
       "2026-05-02T15:00:00.000Z"
     );
     expect(cells[1]?.textContent?.trim()).not.toBe("");
-    expect(cells[0]?.textContent?.trim()).toBe("—");
+    expect(cells[0]?.textContent?.trim()).toBe("");
   });
 });

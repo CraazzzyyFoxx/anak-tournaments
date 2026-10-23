@@ -50,7 +50,7 @@ export function useTournamentTeamsData(tournament: Tournament) {
     queryFn: () => registrationService.listRegistrations(tournament.id),
     enabled: hasPlayerRegistrations
   });
-  const heroesMap = useHeroesMap({ enabled: hasPlayerRegistrations });
+  const heroesMap = useHeroesMap(tournament.discipline, { enabled: hasPlayerRegistrations });
 
   const registrationsByUser = useMemo(() => {
     const byUser = new Map<number, Registration>();

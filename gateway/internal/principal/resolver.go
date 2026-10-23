@@ -39,6 +39,12 @@ const (
 	// credentialAPIKey is the payload's credential_type for an opaque API key;
 	// anything else (in practice "access_token", or absent) is a session.
 	credentialAPIKey = "api_key"
+
+	// rbacTopicPrefix/rbacTopicSuffix frame the realtime topic identity-svc
+	// publishes whenever it drops a user's cached RBAC: "user:{id}:rbac"
+	// (backend/identity-service/src/services/session_cache.py, RBAC_DOMAIN).
+	rbacTopicPrefix = "user:"
+	rbacTopicSuffix = ":rbac"
 )
 
 // RPCCaller is the subset of rpc.Client the resolver needs.
@@ -110,6 +116,10 @@ type cacheItem struct {
 // longer wipe every active session's entry at once (the old behavior dropped
 // the whole map on overflow). Concurrent misses for the same token are
 // collapsed into a single validate_token RPC via singleflight.
+//
+// The TTL is only the backstop: identity-svc announces every RBAC change
+// (membership, role, deny) on the realtime bus and Broadcast evicts that
+// user's entries, so a grant or a revocation applies on the next request.
 type Resolver struct {
 	rpc    RPCCaller
 	now    func() time.Time
@@ -117,6 +127,11 @@ type Resolver struct {
 	mu     sync.Mutex
 	cache  map[string]*list.Element // token -> element in order (holds *cacheItem)
 	order  *list.List               // most recently used at the front
+	// epoch counts EvictUser calls. A validation snapshots it before going to
+	// identity-svc: an answer read before an RBAC change must neither be
+	// stored after that change's eviction (which found nothing to drop yet)
+	// nor be shared with a request that arrived after it.
+	epoch uint64
 }
 
 // New builds a resolver over the shared RPC client.
@@ -194,7 +209,8 @@ func (r *Resolver) resolveToken(ctx context.Context, token string) (entry, error
 		return entry{}, nil
 	}
 
-	if e, ok := r.lookup(token); ok {
+	e, epoch, ok := r.lookup(token)
+	if ok {
 		return e, nil
 	}
 
@@ -202,9 +218,11 @@ func (r *Resolver) resolveToken(ctx context.Context, token string) (entry, error
 	// requests from one session (page load fans out N API calls) used to fire
 	// N identical validate_token calls until the first reply landed in the
 	// cache. DoChan (not Do) so each waiter still honors its own request
-	// context instead of blocking past its client's disconnect.
-	ch := r.flight.DoChan(token, func() (any, error) {
-		return r.validate(ctx, token)
+	// context instead of blocking past its client's disconnect. The epoch is
+	// part of the key so a request arriving after an eviction never joins a
+	// flight that started before it.
+	ch := r.flight.DoChan(strconv.FormatUint(epoch, 10)+":"+token, func() (any, error) {
+		return r.validate(ctx, token, epoch)
 	})
 	select {
 	case res := <-ch:
@@ -223,7 +241,7 @@ func (r *Resolver) resolveToken(ctx context.Context, token string) (entry, error
 // (one impatient client must not fail validation for the others) while keeping
 // its context values (trace/correlation) and the validateTimeout deadline —
 // which still drives the AMQP TTL via rpc/deadline.go.
-func (r *Resolver) validate(ctx context.Context, token string) (entry, error) {
+func (r *Resolver) validate(ctx context.Context, token string, epoch uint64) (entry, error) {
 	body, _ := json.Marshal(map[string]any{"token": token})
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), validateTimeout)
 	defer cancel()
@@ -254,7 +272,7 @@ func (r *Resolver) validate(ctx context.Context, token string) (entry, error) {
 		ttl = apiKeyCacheTTL
 	}
 	e := entry{payload: payload, info: parseInfo(payload), ok: ok, exp: r.now().Add(ttl)}
-	r.store(token, e)
+	r.store(token, e, epoch)
 	return e, nil
 }
 
@@ -350,27 +368,34 @@ func (r *Resolver) APIKeyQuota(req *http.Request) (string, int, bool) {
 }
 
 // lookup returns the cached entry for token if present and unexpired,
-// refreshing its LRU recency. Expired entries are removed eagerly.
-func (r *Resolver) lookup(token string) (entry, bool) {
+// refreshing its LRU recency, plus the eviction epoch a miss must validate
+// under. Expired entries are removed eagerly.
+func (r *Resolver) lookup(token string) (entry, uint64, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	el, ok := r.cache[token]
 	if !ok {
-		return entry{}, false
+		return entry{}, r.epoch, false
 	}
 	it := el.Value.(*cacheItem)
 	if !r.now().Before(it.exp) {
 		delete(r.cache, token)
 		r.order.Remove(el)
-		return entry{}, false
+		return entry{}, r.epoch, false
 	}
 	r.order.MoveToFront(el)
-	return it.entry, true
+	return it.entry, r.epoch, true
 }
 
-func (r *Resolver) store(token string, e entry) {
+// store caches e unless an eviction happened since the validation started
+// (epoch): that answer may predate the RBAC change, and the next request
+// simply validates again.
+func (r *Resolver) store(token string, e entry, epoch uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if epoch != r.epoch {
+		return
+	}
 	if el, ok := r.cache[token]; ok {
 		el.Value.(*cacheItem).entry = e
 		r.order.MoveToFront(el)
@@ -388,6 +413,49 @@ func (r *Resolver) store(token string, e entry) {
 		r.order.Remove(back)
 	}
 	r.cache[token] = r.order.PushFront(&cacheItem{token: token, entry: e})
+}
+
+// RBACTopicUser parses the realtime topic identity-svc publishes after dropping
+// a user's cached RBAC, "user:{id}:rbac", into that user's id. Any other topic
+// reports false. ws.TopicRevoker keys off the same frame.
+func RBACTopicUser(topic string) (int64, bool) {
+	rest, ok := strings.CutPrefix(topic, rbacTopicPrefix)
+	if !ok {
+		return 0, false
+	}
+	raw, ok := strings.CutSuffix(rest, rbacTopicSuffix)
+	if !ok {
+		return 0, false
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	return id, err == nil && id > 0
+}
+
+// Broadcast implements events.Broadcaster: evict on realtime:user:{id}:rbac,
+// ignore every other topic.
+func (r *Resolver) Broadcast(topic string, _ []byte) {
+	if id, ok := RBACTopicUser(topic); ok {
+		r.EvictUser(id)
+	}
+}
+
+// EvictUser drops every cached verdict for userID — sessions and API keys
+// alike, since a key's UserID is the owner whose grants it carries — and
+// fences the validations already in flight (see epoch).
+func (r *Resolver) EvictUser(userID int64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.epoch++
+	// ponytail: linear scan of at most maxCacheEntries under the lock; add a
+	// user -> tokens index if RBAC changes ever become frequent.
+	for el := r.order.Front(); el != nil; {
+		next := el.Next()
+		if it := el.Value.(*cacheItem); it.info.UserID == userID {
+			delete(r.cache, it.token)
+			r.order.Remove(el)
+		}
+		el = next
+	}
 }
 
 func bearer(r *http.Request) string {

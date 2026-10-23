@@ -6,15 +6,17 @@ import { Check, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import pickBanService from "@/services/pickBan.service";
+import type { EncounterTeam } from "@/types/encounter.types";
 import type { PickBanKind, PickBanState } from "@/types/tournament.types";
-import { Fact, Pill } from "@/components/match/EncounterAtoms";
+import { duelSeats, seatsBySlot } from "@/lib/encounter/seats";
+import { Fact } from "@/components/match/EncounterAtoms";
+import { Badge } from "@/components/ui/badge";
 import styles from "@/components/match/EncounterDetail.module.css";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 
 interface EncounterPregamePanelProps {
   encounterId: number;
-  homeName: string;
-  awayName: string;
+  teams: EncounterTeam[];
 }
 
 /**
@@ -27,8 +29,7 @@ interface EncounterPregamePanelProps {
  */
 export default function EncounterPregamePanel({
   encounterId,
-  homeName,
-  awayName
+  teams
 }: Readonly<EncounterPregamePanelProps>) {
   const t = useTranslations();
   const mapQuery = usePregameState("map", encounterId);
@@ -59,26 +60,18 @@ export default function EncounterPregamePanel({
         {readiness ? (
           <div className={styles.card}>
             <div className={cn(styles.factGrid, styles.factGridFlush)}>
-              <Fact label={t("encounters.detail.readinessHome")}>
-                <ReadyMark ready={readiness.home} />
-                {homeName}
-              </Fact>
-              <Fact label={t("encounters.detail.readinessAway")}>
-                <ReadyMark ready={readiness.away} />
-                {awayName}
-              </Fact>
+              {seatsBySlot(teams).map((seat) => (
+                <Fact key={seat.id} label={t("encounters.detail.readiness", { slot: seat.slot })}>
+                  <ReadyMark ready={readiness[String(seat.id)] ?? false} />
+                  {seat.name}
+                </Fact>
+              ))}
             </div>
           </div>
         ) : null}
 
         {sections.map(({ kind, state, title }) => (
-          <PregameSection
-            key={kind}
-            title={title}
-            state={state!}
-            homeName={homeName}
-            awayName={awayName}
-          />
+          <PregameSection key={kind} title={title} state={state!} teams={teams} />
         ))}
       </div>
     </section>
@@ -101,20 +94,18 @@ function applies(state: PickBanState | null | undefined): boolean {
 function PregameSection({
   title,
   state,
-  homeName,
-  awayName
+  teams
 }: Readonly<{
   title: string;
   state: PickBanState;
-  homeName: string;
-  awayName: string;
+  teams: EncounterTeam[];
 }>) {
   const t = useTranslations();
   const session = state.session;
   const decided = state.pool.filter((entry) => entry.status === "picked").length;
   const banned = state.pool.filter((entry) => entry.status === "banned").length;
-  const sideName = (side: "home" | "away" | null) =>
-    side === "home" ? homeName : side === "away" ? awayName : null;
+  const [seatOne, seatTwo] = duelSeats(teams);
+  const seatName = (id: number) => teams.find((seat) => seat.id === id)?.name ?? null;
 
   return (
     <div className={styles.card}>
@@ -122,9 +113,10 @@ function PregameSection({
         <h3 className={styles.cardTitle}>{title}</h3>
         {/* Only the running session keeps a chip: it is the one state that moves. */}
         {session && !state.is_complete ? (
-          <Pill tone="accent" live>
+          <Badge palette="aqt" shape="pill" tone="accent">
+            <span aria-hidden className={styles.livePulse} />
             {t("encounters.veto.room.statusChip.active")}
-          </Pill>
+          </Badge>
         ) : (
           <span className={cn(styles.cardSub, session && styles.metaGood)}>
             {session
@@ -149,24 +141,24 @@ function PregameSection({
           </Fact>
           <Fact label={t("encounters.detail.pregamePicked")}>{decided}</Fact>
           <Fact label={t("encounters.detail.pregameBanned")}>{banned}</Fact>
-          {session.first_side ? (
-            <Fact label={t("encounters.detail.pregameFirst")}>{sideName(session.first_side)}</Fact>
+          {session.first_team_id != null ? (
+            <Fact label={t("encounters.detail.pregameFirst")}>{seatName(session.first_team_id)}</Fact>
           ) : null}
-          {session.home_seed != null || session.away_seed != null ? (
+          {seatOne?.seed != null || seatTwo?.seed != null ? (
             <Fact label={t("encounters.detail.pregameSeeds")}>
               <span className={styles.mono}>
-                {session.home_seed != null ? `#${session.home_seed}` : "—"}
+                {seatOne?.seed != null ? `#${seatOne.seed}` : "—"}
                 {" / "}
-                {session.away_seed != null ? `#${session.away_seed}` : "—"}
+                {seatTwo?.seed != null ? `#${seatTwo.seed}` : "—"}
               </span>
               <span className={styles.cardSub}>
                 {t(`encounters.veto.room.seedSource.${session.seed_source}` as never)}
               </span>
             </Fact>
           ) : null}
-          {!state.is_complete && state.acting_sides.length > 0 ? (
+          {!state.is_complete && state.acting_team_ids.length > 0 ? (
             <Fact label={t("encounters.detail.pregameTurn")}>
-              {state.acting_sides.map((side) => sideName(side)).join(" · ")}
+              {state.acting_team_ids.map((id) => seatName(id)).join(" · ")}
             </Fact>
           ) : null}
         </div>

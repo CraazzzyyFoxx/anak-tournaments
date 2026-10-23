@@ -1,12 +1,13 @@
 import type { Answers, FormSchema } from "@/types/forms.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
+import type { RoleRef } from "@/lib/roster/role-ref";
 
 export interface SubroleOption {
   slug: string;
   label: string;
 }
 
-/** Workspace sub-role catalog keyed by registration role code (tank/damage/support). */
+/** Workspace sub-role catalog keyed by registration role code of the owner game's rated dimension. */
 export type SubroleCatalog = Record<string, SubroleOption[]>;
 
 // ---------------------------------------------------------------------------
@@ -15,7 +16,7 @@ export type SubroleCatalog = Record<string, SubroleOption[]>;
 
 /** Which gate a requirement blocks at. Ordered: `registration` implies
  *  `check_in` as well, so a registration-stage requirement is checked twice. */
-export type AdmissionStage = "registration" | "check_in";
+type AdmissionStage = "registration" | "check_in";
 
 /** The composed decision. Mirrors `shared.services.admission.AdmissionDecision`.
  *
@@ -32,12 +33,12 @@ export type AdmissionDecision = "admitted" | "pending_check_in" | "not_admitted"
  *  mid-tournament. `not_applicable` means the tournament switched the
  *  requirement off — such verdicts still ship, because the registrant's
  *  progress steps are built by walking the whole list. */
-export type RequirementState = "satisfied" | "blocked" | "undetermined" | "not_applicable";
+type RequirementState = "satisfied" | "blocked" | "undetermined" | "not_applicable";
 
 /** Who can fix a reason. This is what makes an aggregate readable: forty
  *  `undetermined` rows are either forty players who never linked Discord or one
  *  broken role mapping, and the code alone cannot tell an organizer which. */
-export type ReasonActor = "player" | "organizer" | "system";
+type ReasonActor = "player" | "organizer" | "system";
 
 export interface AdmissionReason {
   /** Stable machine code; the UI renders `admission.reason.{code}` and falls
@@ -123,8 +124,6 @@ export interface SubscriptionStatus {
   required: boolean;
   mode?: "any" | "all" | null;
   outcome?: SubscriptionOutcome | null;
-  /** Human-readable rule, e.g. `Boosty уровень 2 или Twitch`. */
-  rule?: string | null;
   /** Whether signing up is refused right now. Narrower than `outcome === "refused"`:
    *  a provider the patron can still satisfy with a challenge code is deferred,
    *  because that field only exists at check-in. */
@@ -216,6 +215,8 @@ export interface RegistrationForm {
   id: number;
   tournament_id: number;
   workspace_id: number;
+  /** The owning tournament's game: the scope of the form's roles, characters and identity provider. */
+  discipline: string;
   is_open: boolean;
   require_open_profile?: boolean;
   open_profile_scope?: "main" | "all";
@@ -264,7 +265,9 @@ type BalancerStatus = string;
 export interface TournamentHistoryEntry {
   tournament_id: number;
   tournament_name: string;
-  role: string | null;
+  /** The past tournament's own game: `role` is a leaf of THAT game's ontology, not the viewed one's. */
+  discipline: string;
+  role: RoleRef | null;
   division: number | null;
   /** Reference into `RegistrationListResponse.division_grids`. */
   division_grid_version_id?: number | null;
@@ -274,7 +277,7 @@ export interface TournamentHistoryEntry {
 
 /** Inline team summary carried by every roster row. Mirrors the backend's
  *  `RegistrationTeamBrief`; the full model lives in `registration-team.types.ts`. */
-export interface RegistrationTeamBrief {
+interface RegistrationTeamBrief {
   id: number;
   name: string;
   status: "forming" | "complete" | "rejected" | "disbanded";
@@ -301,8 +304,8 @@ export interface Registration {
   workspace_id: number;
   user_id: number | null;
   /** The registration's public identity: the PRIMARY handle of its first game
-   *  identity (the BattleTag, today). Derived from
-   *  `answers.identity_battlenet[0]` server-side, and the key the Google-Sheets
+   *  identity, in the owning tournament's identity provider. Derived from
+   *  `answers.identity_<provider>[0]` server-side, and the key the Google-Sheets
    *  feed matches on. */
   primary_handle: string | null;
   /** Stays top-level: normalized rows with ranks and heroes, not a JSON answer. */
@@ -350,7 +353,7 @@ export interface Registration {
    *  index is the position. */
   queue_position?: number | null;
   queue_total?: number | null;
-  queue_role?: string | null;
+  queue_role?: RoleRef | null;
   queue_role_position?: number | null;
   queue_role_total?: number | null;
   /** Capped to the most recent few entries; see `tournament_history_count` for the true total. */
@@ -396,13 +399,12 @@ export interface RegistrationListResponse {
 }
 
 export interface RegistrationRole {
-  role: string;
-  subrole: string | null;
+  role: RoleRef;
   is_primary: boolean;
   priority: number;
   rank_value?: number | null;
-  /** Ordered hero slugs (top picks). */
-  top_heroes: string[];
+  /** Ordered character slugs (top picks) of the owning game. */
+  top_characters: string[];
 }
 
 export interface RoleInput {

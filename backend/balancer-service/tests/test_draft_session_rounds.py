@@ -12,6 +12,7 @@ import asyncio
 import inspect
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -25,7 +26,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 
 from shared.core.errors import ApiHTTPException  # noqa: E402
-from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
 from src.services.draft import lifecycle  # noqa: E402
 
 
@@ -48,9 +49,17 @@ class _FakeSession:
         return None
 
 
+class _Tournaments:
+    """The owner ``create_session`` copies the discipline from."""
+
+    async def get(self, _session: Any, _id: int) -> Any:
+        return SimpleNamespace(discipline="overwatch")
+
+
 def _create(**kwargs: Any):
+    service = lifecycle.DraftLifecycleService(tournaments_repo=_Tournaments())  # type: ignore[arg-type]
     return asyncio.run(
-        lifecycle.lifecycle_service.create_session(_FakeSession(), tournament_id=1, workspace_id=2, **kwargs)  # type: ignore[arg-type]
+        service.create_session(_FakeSession(), tournament_id=1, workspace_id=2, **kwargs)  # type: ignore[arg-type]
     )
 
 
@@ -64,7 +73,7 @@ def _create(**kwargs: Any):
     ],
 )
 def test_rounds_come_from_the_shape(slots: dict[str, int], expected_rounds: int) -> None:
-    draft = _create(shape=parse_roster_slots(slots))
+    draft = _create(shape=RosterShape(entries=tuple(slots.items())))
 
     assert draft.rounds == expected_rounds
 
@@ -72,7 +81,7 @@ def test_rounds_come_from_the_shape(slots: dict[str, int], expected_rounds: int)
 def test_a_one_slot_roster_cannot_be_drafted() -> None:
     # A 1v1 tournament is a legal format; it just has no picks to make.
     with pytest.raises(ApiHTTPException) as exc_info:
-        _create(shape=parse_roster_slots({"flex": 1}))
+        _create(shape=RosterShape(entries=tuple({"flex": 1}.items())))
 
     assert exc_info.value.status_code == 422
     assert exc_info.value.detail[0]["code"] == "invalid_roster_shape"
@@ -89,7 +98,7 @@ def test_the_shape_is_required_and_the_scalars_are_gone() -> None:
 @pytest.mark.parametrize("scalar", ["team_size", "rounds"])
 def test_passing_a_scalar_size_is_a_type_error(scalar: str) -> None:
     with pytest.raises(TypeError):
-        _create(shape=parse_roster_slots({"flex": 6}), **{scalar: 3})
+        _create(shape=RosterShape(entries=tuple({"flex": 6}.items())), **{scalar: 3})
 
 
 def test_the_session_row_never_stores_a_size_of_its_own() -> None:

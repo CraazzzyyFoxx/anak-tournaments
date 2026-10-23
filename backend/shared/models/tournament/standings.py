@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, CheckConstraint, Float, ForeignKey, Index, Integer
+from sqlalchemy import Boolean, CheckConstraint, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
@@ -24,6 +24,7 @@ class Standing(db.TimeStampIntegerMixin):
             "stage_item_id",
             "team_id",
         ),
+        CheckConstraint("swiss_status IN ('qualified', 'eliminated')", name="ck_standing_swiss_status"),
         {"schema": "tournament"},
     )
 
@@ -44,7 +45,7 @@ class Standing(db.TimeStampIntegerMixin):
     points: Mapped[float] = mapped_column(Float)
     # The TRIMMED (median) Buchholz -- and, load-bearing beyond its value, the
     # group-vs-playoff discriminator: `buchholz IS NULL` means "playoff row" in
-    # app-service user/compare/overview queries and in parser-service achievement
+    # app-service user/compare/overview queries and in stats-service achievement
     # filters. Renaming it would touch all of those, so the untrimmed sum lives
     # in its own column instead.
     buchholz: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -65,6 +66,10 @@ class Standing(db.TimeStampIntegerMixin):
     #: The organizer pinned this row's ``position`` (``StandingPin``); written by
     #: the engine on every recalculation, like everything else on the row.
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    #: Swiss with thresholds only: ``qualified`` / ``eliminated`` once the team
+    #: reached ``Stage.swiss_qualify_wins`` / ``swiss_eliminate_losses`` and is
+    #: paired no more; NULL while it plays on (and outside such a stage).
+    swiss_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
     tournament: Mapped[Tournament] = relationship(back_populates="standings")
     team: Mapped[Team] = relationship(back_populates="standings")

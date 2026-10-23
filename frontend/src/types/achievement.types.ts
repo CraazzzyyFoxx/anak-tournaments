@@ -1,5 +1,6 @@
-import { Score } from "./encounter.types";
+import type { Schema } from "@/types/api";
 import { User } from "@/types/user.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 
 export type AchievementCategory = "overall" | "hero" | "division" | "team" | "standing" | "match";
 type AchievementScope = "global" | "tournament" | "match";
@@ -19,6 +20,11 @@ export interface Achievement {
   description_ru: string;
   description_en: string;
   image_url: string | null;
+  /** The game the rule belongs to; (discipline, slug) is its public identity. */
+  discipline: string;
+  entity_id: number | null;
+  /** The linked catalog character; present only when `entities=entity` was requested. */
+  entity?: CatalogEntityRead | null;
 
   category: AchievementCategory | null;
   scope: AchievementScope | null;
@@ -34,29 +40,21 @@ interface AchievementTournamentLink {
   is_league: boolean;
 }
 
-interface AchievementMatchTeamRef {
-  id: number;
-  name: string;
-  /** Uploaded team image (S3 URL); `null` when the team has none. */
-  image_url: string | null;
-}
-
+/** The match an achievement was earned in and every participant of it, in slot order (`score` is `result?.score`/`team_facts.score`). */
 export interface AchievementMatchLink {
   id: number;
   encounter_id: number;
   map_id: number;
-  score: Score;
   log_name: string | null;
-  time: number | null;
-  home_team: AchievementMatchTeamRef | null;
-  away_team: AchievementMatchTeamRef | null;
+  /** Seconds. The link carries no timestamp: a duration is never a date. */
+  duration_s: number | null;
+  participants: Schema<"stats.MatchParticipantRead">[];
 }
 
 export interface AchievementRarity extends Achievement {
   count: number;
-  tournaments_ids: number[];
+  /** Where it was earned: filled only when the read names `tournaments` / `matches` in `entities`. */
   tournaments: AchievementTournamentLink[];
-  matches_ids: number[];
   matches: AchievementMatchLink[];
 }
 

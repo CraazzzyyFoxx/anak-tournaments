@@ -23,6 +23,8 @@ type fakeMembers struct {
 	organizer    bool
 	captain      bool
 	draftCaptain bool
+	draftHost    bool
+	mixMember    bool
 	err          error
 	calls        []memberCall
 }
@@ -47,6 +49,14 @@ func (f *fakeMembers) IsDraftSessionCaptain(context.Context, int64, int64) (bool
 	return f.draftCaptain, f.err
 }
 
+func (f *fakeMembers) IsDraftSessionMixHost(context.Context, int64, int64) (bool, error) {
+	return f.draftHost, f.err
+}
+
+func (f *fakeMembers) IsMixRoomMember(context.Context, int64, int64) (bool, error) {
+	return f.mixMember, f.err
+}
+
 // fakeVis defaults to a visible (found, not hidden) tournament so spectating
 // topics stay public unless a test opts into hidden.
 type fakeVis struct {
@@ -55,8 +65,10 @@ type fakeVis struct {
 	preview       bool
 	encTID        int64
 	encFound      bool
+	encMix        bool
 	draftTID      int64
 	draftFound    bool
+	draftMix      bool
 	spectatorRead bool
 	err           error
 }
@@ -69,12 +81,12 @@ func (f fakeVis) IsPreviewAllowed(context.Context, int64, int64) (bool, error) {
 	return f.preview, f.err
 }
 
-func (f fakeVis) EncounterTournamentID(context.Context, int64) (int64, bool, error) {
-	return f.encTID, f.encFound, f.err
+func (f fakeVis) EncounterOwner(context.Context, int64) (int64, bool, bool, error) {
+	return f.encTID, f.encMix, f.encFound, f.err
 }
 
-func (f fakeVis) DraftSessionTournamentID(context.Context, int64) (int64, bool, error) {
-	return f.draftTID, f.draftFound, f.err
+func (f fakeVis) DraftSessionOwner(context.Context, int64) (int64, bool, bool, error) {
+	return f.draftTID, f.draftMix, f.draftFound, f.err
 }
 
 func (f fakeVis) RoomSpectatorRead(context.Context, string, int64) (bool, error) {
@@ -99,7 +111,7 @@ func TestPatternMatch(t *testing.T) {
 
 func TestAllow_SpectatePublicWhenNotHidden(t *testing.T) {
 	r := New(fakeResolver{}, &fakeMembers{}, visibleVis())
-	for _, topic := range []string{"tournament:1:bracket", "tournament:1:draft"} {
+	for _, topic := range []string{"tournament:1:bracket"} {
 		ok, err := r.Allow(context.Background(), nil, topic) // anonymous
 		if err != nil || !ok {
 			t.Fatalf("%s should be allowed for anon on a visible tournament: ok=%v err=%v", topic, ok, err)
@@ -129,7 +141,7 @@ func TestAllow_SpectateHiddenTournament(t *testing.T) {
 	t.Run("superuser allowed", func(t *testing.T) {
 		r := New(fakeResolver{found: false}, &fakeMembers{}, hiddenVis)
 		su := &auth.User{ID: 9, IsSuperuser: true}
-		if ok, err := r.Allow(ctx, su, "tournament:42:draft"); err != nil || !ok {
+		if ok, err := r.Allow(ctx, su, "tournament:42:bracket"); err != nil || !ok {
 			t.Fatalf("superuser should be allowed: ok=%v err=%v", ok, err)
 		}
 	})
@@ -272,6 +284,98 @@ func TestAllow_RoomChatUnknownReferentDenied(t *testing.T) {
 	}
 }
 
+// A mix match's room (spec §4.4): its pick-ban topics are public to anyone, its chat is its seated players' and
+// hosts' only -- no spectator branch, whatever the room's settings say.
+func TestAllow_MixEncounterRoom(t *testing.T) {
+	ctx := context.Background()
+	mix := fakeVis{encFound: true, encMix: true, spectatorRead: true}
+	for _, topic := range []string{"encounter:5:pick-ban:hero", "encounter:5:map-veto"} {
+		r := New(fakeResolver{}, &fakeMembers{}, mix)
+		if ok, err := r.Allow(ctx, nil, topic); err != nil || !ok {
+			t.Fatalf("anonymous must watch a mix room (%s): ok=%v err=%v", topic, ok, err)
+		}
+	}
+	cases := []struct {
+		name    string
+		user    *auth.User
+		members *fakeMembers
+		want    bool
+	}{
+		{"seated player or host writes", &auth.User{ID: 7}, &fakeMembers{mixMember: true}, true},
+		{"superuser", &auth.User{ID: 9, IsSuperuser: true}, &fakeMembers{}, true},
+		{"workspace organizer is not enough", &auth.User{ID: 7}, &fakeMembers{organizer: true, member: true}, false},
+		{"signed-in spectator", &auth.User{ID: 7}, &fakeMembers{}, false},
+		{"anonymous spectator", nil, &fakeMembers{}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := New(fakeResolver{workspaceID: 3, found: true}, tc.members, mix)
+			ok, err := r.Allow(ctx, tc.user, "encounter:5:chat")
+			if err != nil || ok != tc.want {
+				t.Fatalf("Allow(chat) = %v (err=%v), want %v", ok, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestAllow_DraftBoardFollowsItsOwner(t *testing.T) {
+	ctx := context.Background()
+	t.Run("a mix draft is public", func(t *testing.T) {
+		r := New(fakeResolver{}, &fakeMembers{}, fakeVis{draftFound: true, draftMix: true})
+		if ok, err := r.Allow(ctx, nil, "draft:5:board"); err != nil || !ok {
+			t.Fatalf("anon should watch a mix draft: ok=%v err=%v", ok, err)
+		}
+	})
+	t.Run("a tournament draft follows its tournament", func(t *testing.T) {
+		visible := New(fakeResolver{}, &fakeMembers{}, fakeVis{draftFound: true, draftTID: 42, hiddenFound: true})
+		if ok, err := visible.Allow(ctx, nil, "draft:5:board"); err != nil || !ok {
+			t.Fatalf("anon should watch a visible tournament's draft: ok=%v err=%v", ok, err)
+		}
+		hidden := New(fakeResolver{workspaceID: 3, found: true}, &fakeMembers{}, fakeVis{draftFound: true, draftTID: 42, hiddenFound: true, hidden: true})
+		if ok, _ := hidden.Allow(ctx, nil, "draft:5:board"); ok {
+			t.Fatal("anon must not watch a hidden tournament's draft")
+		}
+	})
+	t.Run("an unknown session is denied", func(t *testing.T) {
+		r := New(fakeResolver{}, &fakeMembers{}, fakeVis{draftFound: false})
+		if ok, _ := r.Allow(ctx, nil, "draft:5:board"); ok {
+			t.Fatal("an unknown draft must be denied")
+		}
+	})
+	t.Run("the tournament draft topic is retired", func(t *testing.T) {
+		r := New(fakeResolver{}, &fakeMembers{}, visibleVis())
+		if ok, _ := r.Allow(ctx, nil, "tournament:1:draft"); ok {
+			t.Fatal("tournament:*:draft must no longer be a topic")
+		}
+	})
+}
+
+func TestAllow_MixDraftChatIsOpenWhileSpectatorReadIsOn(t *testing.T) {
+	ctx := context.Background()
+	open := New(fakeResolver{}, &fakeMembers{}, fakeVis{draftFound: true, draftMix: true, spectatorRead: true})
+	if ok, err := open.Allow(ctx, nil, "draft:5:chat"); err != nil || !ok {
+		t.Fatalf("anon should read an open mix draft chat: ok=%v err=%v", ok, err)
+	}
+	closed := New(fakeResolver{}, &fakeMembers{}, fakeVis{draftFound: true, draftMix: true, spectatorRead: false})
+	if ok, _ := closed.Allow(ctx, &auth.User{ID: 7}, "draft:5:chat"); ok {
+		t.Fatal("a non-captain must not read a closed mix draft chat")
+	}
+}
+
+// U4: a mix's host and co-hosts run its draft, so they read its chat even with spectator read off; nobody else does.
+func TestAllow_MixDraftChatAdmitsItsHostsWhileClosed(t *testing.T) {
+	ctx := context.Background()
+	closed := fakeVis{draftFound: true, draftMix: true, spectatorRead: false}
+	host := New(fakeResolver{}, &fakeMembers{draftHost: true}, closed)
+	if ok, err := host.Allow(ctx, &auth.User{ID: 7}, "draft:5:chat"); err != nil || !ok {
+		t.Fatalf("a mix host should read a closed draft chat: ok=%v err=%v", ok, err)
+	}
+	stranger := New(fakeResolver{}, &fakeMembers{}, closed)
+	if ok, err := stranger.Allow(ctx, &auth.User{ID: 8}, "draft:5:chat"); err != nil || ok {
+		t.Fatalf("a stranger must not read a closed mix draft chat: ok=%v err=%v", ok, err)
+	}
+}
+
 func TestAllow_BalancerRequiresMembership(t *testing.T) {
 	ctx := context.Background()
 	user := &auth.User{ID: 7}
@@ -377,6 +481,9 @@ func TestAllow_OwnUserNotifications(t *testing.T) {
 		{"anonymous", nil, "user:7:notifications", false},
 		{"superuser has no bypass", &auth.User{ID: 8, IsSuperuser: true}, "user:7:notifications", false},
 		{"unparseable id", &auth.User{ID: 7}, "user:abc:notifications", false},
+		// A catalog sync's progress reaches only the admin who started it; another superuser reads GET.
+		{"sync starter", &auth.User{ID: 7, IsSuperuser: true}, "user:7:catalog-sync", true},
+		{"another superuser", &auth.User{ID: 8, IsSuperuser: true}, "user:7:catalog-sync", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

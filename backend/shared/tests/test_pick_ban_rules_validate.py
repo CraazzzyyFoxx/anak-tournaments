@@ -42,16 +42,20 @@ def ruleset(*steps, phase=None, **overrides):
     return payload
 
 
-def codes(document, *, kind="hero", mode="pool", severity="error", groups=None):
+def codes(
+    document, *, kind="hero", mode="pool", severity="error", groups=None, discipline="overwatch", owner="tournament"
+):
     return [
         issue.code
-        for issue in pbr.validate_ruleset(document, kind=kind, mode=mode, groups=groups)
+        for issue in pbr.validate_ruleset(
+            document, kind=kind, mode=mode, groups=groups, discipline=discipline, owner=owner
+        )
         if issue.severity == severity
     ]
 
 
 def test_a_valid_hero_ruleset_has_no_issues():
-    assert pbr.validate_ruleset(ruleset(step()), kind="hero", mode="pool") == []
+    assert pbr.validate_ruleset(ruleset(step()), kind="hero", mode="pool", discipline="overwatch") == []
 
 
 # ── shape ───────────────────────────────────────────────────────────────────
@@ -62,7 +66,7 @@ def test_non_object_is_rejected():
 
 
 def test_unknown_field_is_rejected_with_its_path():
-    issues = pbr.validate_ruleset(ruleset(step(nope=1)), kind="hero", mode="pool")
+    issues = pbr.validate_ruleset(ruleset(step(nope=1)), kind="hero", mode="pool", discipline="overwatch")
     assert [(issue.path, issue.code) for issue in issues] == [
         ("phases[0].steps[0].nope", "schema_invalid"),
     ]
@@ -232,6 +236,21 @@ def test_group_names_are_checked_against_the_kind():
     assert codes(ok) == []
 
 
+def test_hero_group_names_are_the_disciplines_declared_classes_never_another_games():
+    overwatch_class = ruleset(step(constraints=[{"type": "min_per_group", "params": {"min": 1, "group": "damage"}}]))
+    lol_class = ruleset(step(constraints=[{"type": "min_per_group", "params": {"min": 1, "group": "Mage"}}]))
+    assert codes(overwatch_class, discipline="overwatch") == []
+    assert codes(overwatch_class, discipline="lol") == ["unknown_group"]
+    assert codes(lol_class, discipline="lol") == []
+    assert codes(lol_class, discipline="overwatch") == ["unknown_group"]
+
+
+def test_an_explicit_hero_vocabulary_replaces_the_modules_classes():
+    document = ruleset(step(constraints=[{"type": "min_per_group", "params": {"min": 1, "group": "bruiser"}}]))
+    assert codes(document, discipline="lol") == ["unknown_group"]
+    assert codes(document, discipline="lol", groups=["Bruiser"]) == []
+
+
 def test_map_group_names_are_checked_against_the_supplied_vocabulary():
     document = ruleset(
         step(action="pick", eligible={"type": "item_group", "params": {"groups": ["koth"]}}),
@@ -308,7 +327,8 @@ def test_uncovered_maps_are_a_warning_not_an_error():
 
 
 def test_a_covered_series_has_no_coverage_warning():
-    assert codes(pbr.PRESETS_BY_ID["hero_anti_one_trick"].ruleset.to_json(), severity="warning") == []
+    anti = {preset.id: preset for preset in pbr.presets_for("overwatch")}["hero_anti_one_trick"]
+    assert codes(anti.ruleset.to_json(), severity="warning") == []
 
 
 def test_previous_round_actors_on_the_opening_map_warn():
@@ -316,3 +336,45 @@ def test_previous_round_actors_on_the_opening_map_warn():
         step(actors="winner_prev"), phase={"when": {"type": "map_index", "params": {"op": "<=", "value": 1}}}
     )
     assert "previous_round_on_first_map" in codes(document, severity="warning")
+
+
+# ── hero picks (spec §11.2, §11.6) ──────────────────────────────────────────
+
+
+def test_a_hero_pick_needs_a_game_that_plays_a_hero_once_a_match():
+    assert "pick_uniqueness_unsupported" in codes(ruleset(step(action="pick")), discipline="overwatch")
+    assert codes(ruleset(step(action="pick")), discipline="deadlock") == []
+    # A map pick is no hero pick.
+    assert codes(ruleset(step(action="pick")), kind="map", discipline="overwatch") == []
+
+
+def test_member_picks_and_assignments_belong_to_a_mix_room_only():
+    each = ruleset(step(action="pick", actors="both", member="each"))
+    assign = ruleset(step(id="p", action="pick"), step(id="a", action="assign", actors="both", count=5))
+    for document in (each, assign):
+        assert codes(document, discipline="deadlock") == ["mix_only"]
+        assert codes(document, discipline="deadlock", owner="mix") == []
+
+
+def test_a_member_pick_is_one_open_hero():
+    assert "member_pick_only" in codes(ruleset(step(member="next")), discipline="deadlock", owner="mix")
+    assert "member_count" in codes(
+        ruleset(step(action="pick", member="each", count=2)), discipline="deadlock", owner="mix"
+    )
+    assert "member_system" in codes(
+        ruleset(step(action="pick", actors="system", member="next")), discipline="deadlock", owner="mix"
+    )
+    assert "pick_blind" in codes(ruleset(step(action="pick", blind=True)), discipline="deadlock", owner="mix")
+
+
+def test_an_assignment_is_both_captains_open_hero_step():
+    assert "assign_actors" in codes(ruleset(step(action="assign")), discipline="deadlock", owner="mix")
+    assert "assign_open" in codes(
+        ruleset(step(action="assign", actors="both", blind=True)), discipline="deadlock", owner="mix"
+    )
+    assert "assign_hero_only" in codes(
+        ruleset(step(action="pick"), step(id="a", action="assign", actors="both")),
+        kind="map",
+        discipline="deadlock",
+        owner="mix",
+    )

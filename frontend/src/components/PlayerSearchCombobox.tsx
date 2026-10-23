@@ -4,6 +4,9 @@ import { useId } from "react";
 import { useTranslations } from "next-intl";
 import { History, Search, User, X } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
+import { Input } from "@/components/ui/input";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
 import { usePlayerSearch } from "@/hooks/usePlayerSearch";
@@ -72,7 +75,9 @@ export function PlayerSearchCombobox({
           >
             <span className="sr-only">{placeholder}</span>
             <Search className="size-4 shrink-0" aria-hidden />
-            <input
+            {/* Bare inside the framed label: the label draws the border and the
+                focus state, the field keeps the combobox ARIA and its text size. */}
+            <Input
               type="search"
               role="combobox"
               value={searchValue}
@@ -94,24 +99,24 @@ export function PlayerSearchCombobox({
               aria-label={placeholder}
               placeholder={placeholder}
               className={cn(
-                "h-full min-w-0 flex-1 border-0 bg-transparent text-[color:var(--aqt-fg)] outline-none",
-                "placeholder:text-[color:var(--aqt-fg-faint)]",
+                "h-full min-w-0 flex-1 rounded-none border-0 bg-transparent px-0 py-0 shadow-none focus-visible:ring-0",
+                "text-[color:var(--aqt-fg)] placeholder:text-[color:var(--aqt-fg-faint)]",
                 // The native clear glyph ignores the theme; the button below replaces it.
-                "[&::-webkit-search-cancel-button]:appearance-none",
-                size === "lg" ? "text-ui" : "text-body"
+                "[&::-webkit-search-cancel-button]:appearance-none"
               )}
             />
             {isSearching ? <Spinner className="shrink-0" /> : null}
             {searchValue && !isSearching ? (
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 aria-label={t("nav.search.clear")}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={clearSearch}
-                className="-mr-1 grid size-6 shrink-0 place-items-center rounded-md text-[color:var(--aqt-fg-faint)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] focus-visible:shadow-[inset_0_0_0_2px_var(--aqt-teal)]"
+                className="-mr-1 shrink-0 text-[color:var(--aqt-fg-faint)]"
               >
-                <X className="size-3.5" aria-hidden />
-              </button>
+                <X aria-hidden />
+              </Button>
             ) : null}
           </label>
         </PopoverAnchor>
@@ -125,9 +130,9 @@ export function PlayerSearchCombobox({
         >
           <div id={listId} role="listbox" aria-label={t("nav.search.resultsLabel")}>
             {showHistory && history.length > 0 ? (
-              <p className="px-2.5 pb-1.5 pt-2 text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+              <Eyebrow as="p" className="px-2.5 pb-1.5 pt-2">
                 {t("nav.search.recent")}
-              </p>
+              </Eyebrow>
             ) : null}
             {rows.length === 0 ? (
               <p className="px-2.5 py-3 text-body text-[color:var(--aqt-fg-muted)]">

@@ -5,17 +5,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Plus, Save, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { EYEBROW_CLASS } from "@/components/kit/tone";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { eyebrowClass } from "@/components/ui/eyebrow";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle
-} from "@/components/ui/card";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -311,12 +304,12 @@ export function MatchReportFormBuilder({ tournamentId }: Readonly<{ tournamentId
 
   if (formQuery.isError) {
     return (
-      <Alert variant="destructive">
-        <AlertTitle>{t("loadError")}</AlertTitle>
-        {formQuery.error instanceof Error ? (
-          <AlertDescription>{formQuery.error.message}</AlertDescription>
-        ) : null}
-      </Alert>
+      <PageStateCard
+        state="error"
+        title={t("loadError")}
+        description={formQuery.error instanceof Error ? formQuery.error.message : undefined}
+        onAction={() => void formQuery.refetch()}
+      />
     );
   }
 
@@ -337,17 +330,10 @@ export function MatchReportFormBuilder({ tournamentId }: Readonly<{ tournamentId
 
   return (
     <Card>
-      <CardHeader className="pb-4">
-        <CardTitle asChild className="text-base font-semibold">
-          <h2>{t("title")}</h2>
-        </CardTitle>
-        <CardDescription>{t("description")}</CardDescription>
-      </CardHeader>
-
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-6 pt-6">
         <section aria-labelledby={`${idBase}-built-in`} className="space-y-3">
           <div className="space-y-1">
-            <h3 id={`${idBase}-built-in`} className={EYEBROW_CLASS}>
+            <h3 id={`${idBase}-built-in`} className={eyebrowClass("muted")}>
               {t("builtInHeading")}
             </h3>
             <p className="text-xs text-muted-foreground">{t("builtInDescription")}</p>
@@ -390,7 +376,7 @@ export function MatchReportFormBuilder({ tournamentId }: Readonly<{ tournamentId
           className="space-y-3 border-t border-border/30 pt-6"
         >
           <div className="space-y-1">
-            <h3 id={`${idBase}-custom`} className={EYEBROW_CLASS}>
+            <h3 id={`${idBase}-custom`} className={eyebrowClass("muted")}>
               {t("customHeading")}
             </h3>
             <p className="text-xs text-muted-foreground">{t("customDescription")}</p>

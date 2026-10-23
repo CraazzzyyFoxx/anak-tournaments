@@ -4,11 +4,11 @@ export interface DivisionTier {
   number: number;
   name: string;
   rank_min: number;
-  rank_max: number | null;
+  rank_max?: number | null;
   sort_order?: number;
   icon_url: string;
-  ow_rank_min?: number | null;
-  ow_rank_max?: number | null;
+  native_rank_min?: number | null;
+  native_rank_max?: number | null;
 }
 
 export interface DivisionGrid {
@@ -18,6 +18,8 @@ export interface DivisionGrid {
 export interface DivisionGridVersion {
   id: number;
   grid_id: number;
+  /** The owning grid's game; served by the grid-version endpoints, absent on embedded reads. */
+  discipline?: string | null;
   version: number;
   label: string;
   status: "draft" | "published" | "archived" | string;
@@ -29,6 +31,7 @@ export interface DivisionGridVersion {
 export interface DivisionGridEntity {
   id: number;
   workspace_id: number | null;
+  discipline: string;
   slug: string;
   name: string;
   description: string | null;
@@ -39,6 +42,8 @@ export interface DivisionGridEntity {
   source_fingerprint: string | null;
   imported_at: string | null;
   archived_at: string | null;
+  /** Tournaments pinned to any of its versions; served by the grid list, `null`/absent elsewhere. */
+  tournament_count?: number | null;
 }
 
 export interface DivisionGridMappingRule {
@@ -83,7 +88,7 @@ export interface DivisionGridMarketplaceImportRequest {
   source_grid_id: number;
   source_version_id: number;
   include_icons: boolean;
-  include_ow_rank_mappings: boolean;
+  include_native_rank_mappings: boolean;
 }
 
 interface DivisionGridMarketplaceImportedGrid {
@@ -186,7 +191,8 @@ interface DivisionGridPortableMapping {
 }
 
 export interface DivisionGridPortableDocument {
-  schema_version: "division-grid/v1";
+  schema_version: "division-grid/v2";
+  discipline: string;
   slug: string;
   name: string;
   description: string | null;
@@ -198,6 +204,23 @@ export interface DivisionGridPortableDocument {
   }>;
   mappings: DivisionGridPortableMapping[];
 }
+
+/** User-held v1 files carry the old native-range names and have no discipline. */
+export type DivisionGridPortableImportDocument =
+  | DivisionGridPortableDocument
+  | (Omit<DivisionGridPortableDocument, "schema_version" | "discipline" | "versions"> & {
+      schema_version: "division-grid/v1";
+      versions: Array<
+        Omit<DivisionGridPortableDocument["versions"][number], "tiers"> & {
+          tiers: Array<
+            Omit<DivisionTier, "native_rank_min" | "native_rank_max"> & {
+              ow_rank_min?: number | null;
+              ow_rank_max?: number | null;
+            }
+          >;
+        }
+      >;
+    });
 
 /** Trust tier of a workspace. New self-service workspaces start `unverified`
  * and stay off the public home-page directory until a superuser reviews them;
@@ -223,6 +246,7 @@ export interface Workspace {
   slug: string;
   name: string;
   description: string | null;
+  disciplines_enabled: string[];
   /** One-line motto under the community name on its page. */
   tagline: string | null;
   /** Organizer-written "About the community", Markdown. */
@@ -266,13 +290,19 @@ export interface Workspace {
   /** Self-service trust tier: `unverified` workspaces are absent from the
    * public directory (`scope=public`) for every caller, superusers included. */
   verification_status: WorkspaceVerificationStatus;
-  default_division_grid_version_id: number | null;
-  default_division_grid_version: DivisionGridVersion | null;
+  /** Explicit active selections; missing keys use the discipline's fallback. */
+  default_division_grid_versions: Record<string, number>;
+  /** Real resolved versions, including same-discipline system defaults. Only a single-workspace read carries
+   * them: a `WorkspaceListItem` does not. */
+  effective_division_grid_versions: Record<string, DivisionGridVersion>;
   /** How "is this player new" is decided when a roster is created: `"global"`
    * counts any workspace's tournaments, `"workspace"` counts only this
    * workspace's. */
   newcomer_scope: "global" | "workspace";
 }
+
+/** A row of `GET /api/v1/workspaces`: every field but the grids, which a list of every workspace cannot afford. */
+export type WorkspaceListItem = Omit<Workspace, "effective_division_grid_versions">;
 
 /**
  * `Workspace.owner_id` resolved to a person — the account accountable for the

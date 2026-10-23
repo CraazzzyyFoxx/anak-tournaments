@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
+import { ApiError } from "@/lib/api/error";
+import { notify } from "@/lib/notify";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +14,7 @@ import { MatchReportDialog } from "@/components/tournaments/MatchReportDialog";
 import type {
   CaptainReport,
   Encounter,
+  EncounterTeam,
   MatchReportForm,
   ReportBuiltInFieldConfig
 } from "@/types/encounter.types";
@@ -41,13 +44,21 @@ vi.mock("@/services/pickBan.service", () => ({
   }
 }));
 
-vi.mock("@/services/map.service", () => ({
-  default: { getAll: () => Promise.resolve({ results: [] }) }
+vi.mock("@/services/catalog.service", () => ({
+  default: { list: () => Promise.resolve({ results: [] }) }
 }));
 
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() }
 }));
+
+/** The two live seats, slot 1 Alpha and slot 2 Bravo, standing `one` – `two`. */
+function seats(one: number, two: number): EncounterTeam[] {
+  return [
+    { id: 1, slot: 1, team_id: 11, name: "Alpha", seed: null, score: one, placement: null, active: true },
+    { id: 2, slot: 2, team_id: 22, name: "Bravo", seed: null, score: two, placement: null, active: true }
+  ];
+}
 
 function encounter(overrides: Partial<Encounter> = {}): Encounter {
   return {
@@ -55,9 +66,6 @@ function encounter(overrides: Partial<Encounter> = {}): Encounter {
     created_at: new Date(0),
     updated_at: null,
     name: "A vs B",
-    home_team_id: 1,
-    away_team_id: 2,
-    score: { home: 2, away: 1 },
     round: 1,
     best_of: 3,
     tournament_id: 7,
@@ -71,11 +79,18 @@ function encounter(overrides: Partial<Encounter> = {}): Encounter {
     scheduled_at: null,
     started_at: null,
     ended_at: null,
+    played_at: null,
+    is_live: false,
+    is_final: false,
     current_map_index: null,
     confirmed_at: null,
     matches: [],
-    home_team: { id: 1, name: "Alpha" } as never,
-    away_team: { id: 2, name: "Bravo" } as never,
+    slot_count: 2,
+    scoring_preset: "wins",
+    result_source: null,
+    result_version: 1,
+    games: [],
+    teams: seats(2, 1),
     tournament: null as never,
     stage: null,
     stage_item: null,
@@ -165,7 +180,7 @@ async function type(id: string, value: string) {
 beforeEach(() => {
   document.body.innerHTML = "";
   getReports.mockReset();
-  getMyRole.mockReset().mockResolvedValue({ side: "home" });
+  getMyRole.mockReset().mockResolvedValue({ encounter_team_id: 1, slot: 1 });
   getPickBanState.mockReset().mockResolvedValue(null);
   submitReport.mockReset().mockResolvedValue({ id: 1, result_status: "reported" });
 });
@@ -196,13 +211,15 @@ describe("MatchReportDialog opponent report", () => {
         {
           id: 9,
           encounter_id: 42,
-          team_id: 2,
-          side: "away",
+          encounter_team_id: 2,
           reporter_user_id: 3,
-          home_score: 1,
-          away_score: 2,
+          games_played: 3,
+          basis_version: 1,
+          results: [
+            { encounter_team_id: 1, score: 1, placement: null, wins: 1 },
+            { encounter_team_id: 2, score: 2, placement: null, wins: 2 }
+          ],
           closeness: null,
-          map_codes: [],
           comment: "Laggy on map 2.",
           custom_fields: { vod_link: "https://x", retired_key: "orphan value" },
           created_at: null,
@@ -253,7 +270,7 @@ describe("MatchReportDialog field configuration", () => {
       })
     );
 
-    expect(body.querySelector("#match-report-42-home-score")).not.toBeNull();
+    expect(body.querySelector("#match-report-42-first-score")).not.toBeNull();
     expect(submitButton()?.disabled).toBe(false);
   });
 
@@ -340,8 +357,8 @@ describe("MatchReportDialog required rules", () => {
   });
 
   it("demands no code for a map the series never played", async () => {
-    // A 1-0 forfeit of a Bo3 played one map. Demanding three would make a
-    // legitimate result unreportable.
+    // A 2-0 sweep of a Bo3 played two maps, not three. Demanding a third code
+    // would make a legitimate result unreportable.
     getReports.mockResolvedValue({
       reports: [],
       form: form({
@@ -356,11 +373,13 @@ describe("MatchReportDialog required rules", () => {
       <MatchReportDialog
         open
         onOpenChange={() => {}}
-        encounter={encounter({ score: { home: 1, away: 0 } })}
+        encounter={encounter({ teams: seats(2, 0) })}
       />
     );
 
-    await type("match-report-42-map-code-1", "ONLY1");
+    await type("match-report-42-map-code-1", "FIRST1");
+    expect(submitButton()?.disabled).toBe(true);
+    await type("match-report-42-map-code-2", "SECOND2");
     expect(submitButton()?.disabled).toBe(false);
   });
 
@@ -443,8 +462,9 @@ describe("MatchReportDialog submission", () => {
       id: 42,
       result_status: "confirmed",
       status: "completed",
-      home_score: 2,
-      away_score: 1,
+      result_source: "series_claim",
+      result_version: 2,
+      teams: [],
       closeness: 0.7,
       reports: []
     });
@@ -489,8 +509,12 @@ describe("MatchReportDialog submission", () => {
     });
 
     expect(submitReport).toHaveBeenCalledWith(42, {
-      home_score: 2,
-      away_score: 1,
+      basis_version: 1,
+      games_played: 3,
+      results: [
+        { encounter_team_id: 1, score: 2, wins: 2 },
+        { encounter_team_id: 2, score: 1, wins: 1 }
+      ],
       closeness: 6,
       map_codes: [],
       comment: "Close series.",
@@ -509,5 +533,88 @@ describe("MatchReportDialog submission", () => {
       comment: null,
       custom_fields: {}
     });
+  });
+});
+
+describe("MatchReportDialog series validation", () => {
+  const bare = form({
+    built_in_fields: {
+      closeness: field({ enabled: false }),
+      map_codes: field({ enabled: false }),
+      comment: field({ enabled: false })
+    }
+  });
+
+  async function openWith(teams: EncounterTeam[]) {
+    getReports.mockResolvedValue({ reports: [], form: bare });
+    return mount(<MatchReportDialog open onOpenChange={() => {}} encounter={encounter({ teams })} />);
+  }
+
+  it("files a two-seat points encounter as a lobby card: points, no wins", async () => {
+    // The seat count says duel, the preset says lobby: the card is paid by points.
+    getReports.mockResolvedValue({ reports: [], form: bare });
+    await mount(
+      <MatchReportDialog open onOpenChange={() => {}} encounter={encounter({ scoring_preset: "points", teams: seats(5, 3) })} />
+    );
+
+    await act(async () => {
+      submitButton()?.click();
+    });
+    const [, body] = submitReport.mock.calls[0];
+    expect(body.results.map((line: { wins: number | null }) => line.wins)).toEqual([null, null]);
+  });
+
+  it("blocks a standing the match cannot end on, with the server's own code worded", async () => {
+    // 1-1 after two games of a Bo3 is not over: `series_claim_not_final`.
+    const body = await openWith(seats(1, 1));
+    expect(body.textContent).toContain(messages.matchReport.errors.series_claim_not_final);
+    expect(submitButton()?.disabled).toBe(true);
+  });
+
+  it("blocks a standing that would have been decided earlier", async () => {
+    // A 3-0 in a Bo3 ended after two games: `series_claim_unreachable`.
+    const body = await openWith(seats(3, 0));
+    expect(body.textContent).toContain(messages.matchReport.errors.series_claim_unreachable);
+    expect(submitButton()?.disabled).toBe(true);
+  });
+
+  it("blocks fewer wins than the confirmed games already gave a team", async () => {
+    getReports.mockResolvedValue({ reports: [], form: bare });
+    const game = (position: number) => ({
+      id: position,
+      position,
+      map_id: null,
+      state: "confirmed" as const,
+      result_source: "captain_agreement" as const,
+      result_version: 1,
+      confirmed_at: null,
+      teams: [
+        { encounter_team_id: 1, score: 5, placement: null, column_values: {}, starting_side: null, replay_code: null },
+        { encounter_team_id: 2, score: 1, placement: null, column_values: {}, starting_side: null, replay_code: null }
+      ]
+    });
+    const body = await mount(
+      <MatchReportDialog
+        open
+        onOpenChange={() => {}}
+        encounter={encounter({ teams: seats(0, 2), games: [game(1), game(2)] as never })}
+      />
+    );
+    expect(body.textContent).toContain(messages.matchReport.errors.series_claim_wins);
+    expect(submitButton()?.disabled).toBe(true);
+  });
+
+  it("words a server refusal by its code instead of showing raw English", async () => {
+    submitReport.mockRejectedValue(
+      new ApiError(409, [{ code: "stale_state", msg: "This encounter has moved on (version 5)" }])
+    );
+    await openWith(seats(2, 1));
+    await act(async () => {
+      submitButton()?.click();
+    });
+    expect(notify.apiError).toHaveBeenCalledWith(
+      expect.any(ApiError),
+      expect.objectContaining({ description: messages.matchReport.errors.stale_state })
+    );
   });
 });

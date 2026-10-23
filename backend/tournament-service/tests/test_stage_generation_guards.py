@@ -17,7 +17,6 @@ ahead-of-seeding bracket the same entry point builds:
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,7 +27,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 enums = importlib.import_module("shared.core.enums")
 errors = importlib.import_module("shared.core.errors")
@@ -52,25 +50,28 @@ def _item(item_id: int, name: str = "Group", order: int = 0, item_type=None) -> 
     return SimpleNamespace(id=item_id, name=name, order=order, type=item_type, inputs=[])
 
 
-def _scalars_result(rows: list) -> SimpleNamespace:
-    return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: rows))
+def _tuples_result(rows: list[tuple]) -> SimpleNamespace:
+    """``_fill_bracket_seeds`` reads ``(Encounter, round)`` pairs: the round
+    lives on ``tournament.bracket_encounter`` now (D22)."""
+    return SimpleNamespace(tuples=lambda: SimpleNamespace(all=lambda: rows))
 
 
-def _encounter(round_number: int, encounter_id: int, **overrides) -> SimpleNamespace:
+def _encounter(round_number: int, encounter_id: int, **overrides) -> tuple[SimpleNamespace, int]:
+    """One row of that pair. ``slot_count`` is what makes it a duel; there is no
+    home or away column to set."""
     fields = {
         "id": encounter_id,
-        "round": round_number,
-        "home_team_id": None,
-        "away_team_id": None,
+        "slot_count": 2,
         "status": enums.EncounterStatus.OPEN,
         "name": "TBD vs TBD",
     }
-    return SimpleNamespace(**{**fields, **overrides})
+    return SimpleNamespace(**{**fields, **overrides}), round_number
 
 
-def _queued_session(results: list) -> SimpleNamespace:
+def _queued_session(results: list, *, seated: int = 0) -> SimpleNamespace:
     """A session whose ``execute`` hands back ``results`` in call order; a row
-    lock (``SELECT … FOR UPDATE``) returns nothing and consumes none of them."""
+    lock (``SELECT … FOR UPDATE``) returns nothing and consumes none of them.
+    ``seated`` is what the participation count behind the preview check answers."""
     queue = list(results)
 
     def execute(statement=None, *_a, **_kw):
@@ -78,7 +79,11 @@ def _queued_session(results: list) -> SimpleNamespace:
             return _rows_result([])
         return queue.pop(0)
 
-    return SimpleNamespace(execute=AsyncMock(side_effect=execute), flush=AsyncMock())
+    return SimpleNamespace(
+        execute=AsyncMock(side_effect=execute),
+        scalar=AsyncMock(return_value=seated),
+        flush=AsyncMock(),
+    )
 
 
 class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
@@ -102,6 +107,7 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
             patch.object(stage_service, "_collect_item_team_ids", lambda item: [10, 20]),
             patch.object(stage_service.stage_service, "_generate_stage_skeleton", AsyncMock(return_value="skeleton")),
             patch.object(stage_service.stage_service, "_load_team_names", AsyncMock(return_value={})),
+            patch.object(stage_service.stage_service, "_team_lineups", AsyncMock(return_value={})),
             patch.object(
                 stage_service.stage_service, "_create_encounters_from_skeleton", AsyncMock(return_value=[new_encounter])
             ) as create,
@@ -246,7 +252,8 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
         # the seeds only exist as group placements until the groups finish.
         self.assertEqual(7, len(skeleton.pairings))
         self.assertEqual([1, 2, 3], sorted({p.round_number for p in skeleton.pairings}))
-        self.assertTrue(all(p.home_team_id is None and p.away_team_id is None for p in skeleton.pairings))
+        # Every seat is TBD: a pairing is ``team_ids[i]`` per slot now (D55).
+        self.assertTrue(all(all(team_id is None for team_id in p.team_ids) for p in skeleton.pairings))
 
     async def test_a_group_override_changes_the_projected_bracket_size(self) -> None:
         """One group advancing 3 while the other three advance the stage's 2 makes
@@ -290,7 +297,7 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
         )
         # The TBD bracket generated earlier: two semifinals and a final.
         existing = [_encounter(1, 10), _encounter(1, 11), _encounter(2, 12)]
-        session = _queued_session([_rows_result([(1, 3)]), _scalars_result(existing)])
+        session = _queued_session([_rows_result([(1, 3)]), _tuples_result(existing)])
 
         with (
             patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
@@ -300,7 +307,9 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
                 "_load_team_names",
                 AsyncMock(return_value={1: "A", 2: "B", 3: "C", 4: "D"}),
             ),
+            patch.object(stage_service.stage_service, "_team_lineups", AsyncMock(return_value={})),
             patch.object(stage_service.stage_service, "_create_encounters_from_skeleton", AsyncMock()) as create,
+            patch.object(stage_service, "place_team", AsyncMock()) as seat,
             patch.object(stage_service, "enqueue_tournament_recalculation", AsyncMock()),
             patch.object(stage_service.stage_service, "_publish_structure_changed", AsyncMock()),
         ):
@@ -308,11 +317,16 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
 
         # Same encounters, now seeded 1v4 / 2v3 the way the generator pairs them
         # — no second bracket, so ids, schedule and links all survive.
-        self.assertEqual(existing, result)
+        self.assertEqual([encounter for encounter, _round in existing], result)
         create.assert_not_awaited()
-        self.assertEqual([(1, 4), (2, 3)], [(e.home_team_id, e.away_team_id) for e in existing[:2]])
-        self.assertEqual("A vs D", existing[0].name)
-        self.assertEqual((None, None), (existing[2].home_team_id, existing[2].away_team_id))
+        # Seeded 1v4 / 2v3 the way the generator pairs them, through the
+        # participation writer -- slot 1 then slot 2 of each semifinal.
+        self.assertEqual(
+            [(10, 1, 1), (10, 2, 4), (11, 1, 2), (11, 2, 3)],
+            [(call.args[1].id, call.kwargs["slot"], call.kwargs["team_id"]) for call in seat.await_args_list],
+        )
+        self.assertEqual("A vs D", existing[0][0].name)
+        self.assertEqual("TBD vs TBD", existing[2][0].name)
 
     async def test_refuses_to_reseed_a_bracket_that_is_already_being_played(self) -> None:
         stage = SimpleNamespace(
@@ -322,8 +336,10 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
             items=[_item(1, "Bracket")],
             **stage_regulation(),
         )
-        existing = [_encounter(1, 10, home_team_id=7), _encounter(1, 11), _encounter(2, 12)]
-        session = _queued_session([_rows_result([(1, 3)]), _scalars_result(existing)])
+        existing = [_encounter(1, 10), _encounter(1, 11), _encounter(2, 12)]
+        # One participation anywhere in the stage -- live or retired -- means this
+        # bracket was played, not previewed.
+        session = _queued_session([_rows_result([(1, 3)]), _tuples_result(existing)], seated=1)
 
         with (
             patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
@@ -347,7 +363,7 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
         # A 4-team bracket was generated; 8 teams resolved. Reseeding in place
         # would leave half of them out, so it refuses and asks for a rebuild.
         existing = [_encounter(1, 10), _encounter(1, 11), _encounter(2, 12)]
-        session = _queued_session([_rows_result([(1, 3)]), _scalars_result(existing)])
+        session = _queued_session([_rows_result([(1, 3)]), _tuples_result(existing)])
 
         with (
             patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)),
@@ -359,7 +375,6 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(409, ctx.exception.status_code)
         create.assert_not_awaited()
-        self.assertTrue(all(e.home_team_id is None for e in existing))
 
 
 class ActivateStageParallelPhaseTests(IsolatedAsyncioTestCase):
@@ -394,7 +409,9 @@ class ActivateStageParallelPhaseTests(IsolatedAsyncioTestCase):
 class DeactivateStageGuardTests(IsolatedAsyncioTestCase):
     async def test_reverts_an_untouched_stage_to_draft(self) -> None:
         stage = SimpleNamespace(id=5, tournament_id=1, is_active=True, is_published=True)
-        session = SimpleNamespace(execute=AsyncMock(return_value=_scalar_result(0)), flush=AsyncMock())
+        # ``deactivate_stage`` counts non-OPEN encounters with one scalar over
+        # ``tournament.bracket_encounter``.
+        session = SimpleNamespace(execute=AsyncMock(), scalar=AsyncMock(return_value=0), flush=AsyncMock())
 
         with (
             patch.object(stage_service.stage_service, "get_stage", AsyncMock(side_effect=[stage, stage])),
@@ -410,7 +427,7 @@ class DeactivateStageGuardTests(IsolatedAsyncioTestCase):
 
     async def test_refuses_once_any_encounter_left_open(self) -> None:
         stage = SimpleNamespace(id=5, tournament_id=1, is_active=True, is_published=True)
-        session = SimpleNamespace(execute=AsyncMock(return_value=_scalar_result(1)))
+        session = SimpleNamespace(execute=AsyncMock(), scalar=AsyncMock(return_value=1))
 
         with patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=stage)):
             with self.assertRaises(HTTPException) as ctx:

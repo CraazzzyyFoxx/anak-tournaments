@@ -2,13 +2,11 @@ import typing
 
 from sqlalchemy import (
     Boolean,
-    Enum,
     Float,
     ForeignKey,
     Index,
     Integer,
     String,
-    Text,
     UniqueConstraint,
     and_,
     cast,
@@ -16,22 +14,32 @@ from sqlalchemy import (
     select,
     text,
 )
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
+from sqlalchemy.sql.elements import ColumnElement
 
-from shared.core import db, enums
+from shared.core import db
 from shared.models.identity.user import User
+from shared.models.tournament.player_role import PlayerRole, rated_role_code
 from shared.models.tournament.tournament import Tournament
+from shared.schemas.role import RoleRef
 
 if typing.TYPE_CHECKING:
+    from shared.models.catalog.role import CatalogRole
     from shared.models.tenancy.workspace import WorkspaceMember
     from shared.models.tournament.standings import Standing
 
-__all__ = ("Team", "Player", "PlayerSubRole")
+__all__ = ("Team", "Player")
 
 
 class Team(db.TimeStampIntegerMixin):
     __tablename__ = "team"
-    __table_args__ = ({"schema": "tournament"},)
+    __table_args__ = (
+        # Target of ``fk_team_source``: a participation names a team of its own
+        # tournament, and the database checks it.
+        UniqueConstraint("id", "tournament_id", name="uq_team_id_tournament"),
+        {"schema": "tournament"},
+    )
 
     balancer_name: Mapped[str] = mapped_column(String())
     name: Mapped[str] = mapped_column(String())
@@ -71,7 +79,6 @@ class Player(db.TimeStampIntegerMixin):
             "tournament_id",
             postgresql_where=text("is_substitution = false"),
         ),
-        Index("ix_player_tournament_role_sub_role", "tournament_id", "role", "sub_role"),
         # Self-referencing FK (ondelete=SET NULL); index created CONCURRENTLY
         # by dbarch01.
         Index("ix_player_related_player_id", "related_player_id"),
@@ -79,9 +86,8 @@ class Player(db.TimeStampIntegerMixin):
     )
 
     name: Mapped[str] = mapped_column(String())
-    sub_role: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    rank: Mapped[int] = mapped_column(Integer())
-    role: Mapped[enums.HeroClass | None] = mapped_column(Enum(enums.HeroClass), nullable=True)
+    # NULL = rank not specified (e.g. 1v1 duels); a specified rank is >= 1.
+    rank: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     is_substitution: Mapped[bool] = mapped_column(Boolean(), server_default="false")
     related_player_id: Mapped[int | None] = mapped_column(
         ForeignKey("tournament.player.id", ondelete="SET NULL"), nullable=True
@@ -98,6 +104,50 @@ class Player(db.TimeStampIntegerMixin):
     workspace_member: Mapped[WorkspaceMember] = relationship()
     team_id: Mapped[int] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"))
     team: Mapped[Team] = relationship(back_populates="players")
+
+    #: One leaf per dimension.
+    assignments: Mapped[list[PlayerRole]] = relationship(
+        lazy="selectin", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+    @property
+    def _rated_leaf(self) -> CatalogRole | None:
+        return next((a.role for a in self.assignments if a.role.dimension.rated), None)
+
+    @hybrid_property
+    def role(self) -> str | None:
+        """Top-level role code on the rated dimension."""
+        leaf = self._rated_leaf
+        if leaf is None:
+            return None
+        return leaf.parent.code if leaf.parent is not None else leaf.code
+
+    @role.inplace.expression
+    @classmethod
+    def _role_expression(cls) -> ColumnElement[str | None]:
+        return rated_role_code(cls.id, top=True).correlate(cls).label("role")  # type: ignore[attr-defined]
+
+    @hybrid_property
+    def sub_role(self) -> str | None:
+        """The workspace sub-role's leaf code, or None for a top-level assignment."""
+        leaf = self._rated_leaf
+        return leaf.code if leaf is not None and leaf.parent is not None else None
+
+    @sub_role.inplace.expression
+    @classmethod
+    def _sub_role_expression(cls) -> ColumnElement[str | None]:
+        return rated_role_code(cls.id, top=False).correlate(cls).label("sub_role")  # type: ignore[attr-defined]
+
+    @property
+    def role_ref(self) -> RoleRef | None:
+        leaf = self._rated_leaf
+        return (
+            None
+            if leaf is None
+            else RoleRef(
+                dimension=leaf.dimension.code, role=leaf.code, parent=None if leaf.parent is None else leaf.parent.code
+            )
+        )
 
     def __repr__(self):
         return f"<Player name={self.name} role={self.role}>"
@@ -119,31 +169,3 @@ Team.avg_sr = column_property(
 Team.total_sr = column_property(
     select(func.coalesce(func.sum(Player.rank), 0)).where(_active_roster).correlate_except(Player).scalar_subquery()
 )
-
-
-class PlayerSubRole(db.TimeStampIntegerMixin):
-    __tablename__ = "player_sub_role"
-    __table_args__ = (
-        UniqueConstraint(
-            "workspace_id",
-            "role",
-            "slug",
-            name="uq_player_sub_role_workspace_role_slug",
-        ),
-        Index(
-            "ix_player_sub_role_workspace_role_active",
-            "workspace_id",
-            "role",
-            "is_active",
-        ),
-        Index("ix_player_sub_role_workspace_id", "workspace_id"),
-        {"schema": "tournament"},
-    )
-
-    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"))
-    role: Mapped[str] = mapped_column(String(64))
-    slug: Mapped[str] = mapped_column(String(128))
-    label: Mapped[str] = mapped_column(String(128))
-    description: Mapped[str | None] = mapped_column(Text(), nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer(), server_default="0", default=0)
-    is_active: Mapped[bool] = mapped_column(Boolean(), server_default="true", default=True)

@@ -26,6 +26,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 import type { Tournament, TournamentFacets, TournamentStatus } from "@/types/tournament.types";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -37,6 +38,14 @@ const getFacets = vi.fn();
 const getOverview = vi.fn();
 const getOverallStatistics = vi.fn();
 
+vi.mock("@/services/discipline.service", () => ({
+  default: {
+    list: async () => [
+      { code: "overwatch", name: "Overwatch", short_name: "OW", icon: null, enabled: true },
+      { code: "lol", name: "League of Legends", short_name: "LoL", icon: null, enabled: true }
+    ]
+  }
+}));
 vi.mock("@/services/tournament.service", () => ({
   default: {
     listTournaments: (...args: unknown[]) => listTournaments(...args),
@@ -48,11 +57,6 @@ vi.mock("@/services/encounter.service", () => ({
 }));
 vi.mock("@/services/statistics.service", () => ({
   default: { getOverallStatistics: (...args: unknown[]) => getOverallStatistics(...args) }
-}));
-vi.mock("@/stores/workspace.store", () => ({
-  useWorkspaceStore: (
-    selector: (state: { currentWorkspaceId: number; workspaces: { id: number; name: string }[] }) => unknown
-  ) => selector({ currentWorkspaceId: 1, workspaces: [{ id: 1, name: "OWT" }] })
 }));
 
 /**
@@ -68,7 +72,7 @@ const replace = vi.fn((url: string) => {
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/tournaments",
-  useRouter: () => ({ replace, push: replace }),
+  useRouter: () => ({ replace, push: replace, refresh: vi.fn() }),
   useSearchParams: () => new URLSearchParams(window.location.search)
 }));
 vi.mock("next/link", () => ({
@@ -121,7 +125,7 @@ function tournament(id: number, over: Partial<Tournament> = {}): Tournament {
     teams_count: 6,
     division_grid_version_id: null,
     division_grid_version: null,
-    roster_slots_json: null,
+    discipline: "overwatch",
     roster_shape: null,
     roster_locked_by_draft: null,
     cover_image_url: null,
@@ -268,6 +272,14 @@ function urlsWritten() {
 }
 
 beforeEach(() => {
+  useWorkspaceStore.setState({
+    currentWorkspaceId: 1,
+    workspaces: [{ id: 1, name: "OWT", disciplines_enabled: ["overwatch", "lol"] }] as never,
+    statsScope: "workspace",
+    hostLockedWorkspaceId: null,
+    gameScope: "all",
+    lastGame: null
+  });
   replace.mockClear();
   listTournaments.mockReset().mockImplementation(
     async ({ page = 1, status }: { page?: number; status?: TournamentStatus }) => {
@@ -282,10 +294,7 @@ beforeEach(() => {
     }
   );
   getFacets.mockReset().mockResolvedValue(facets());
-  getOverview.mockReset().mockResolvedValue({
-    featured: { live: [] },
-    kpis: { live_now_count: 0 }
-  });
+  getOverview.mockReset().mockResolvedValue({ live: [] });
   getOverallStatistics.mockReset().mockResolvedValue({ players: 1453, teams: 210 });
 });
 
@@ -436,9 +445,64 @@ describe("tournaments list", () => {
     const container = await mount("", "all");
 
     expect(listCalls()).toEqual([expect.objectContaining({ workspaceId: "all" })]);
-    expect(getFacets).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: "all" }));
-    expect(getOverview).toHaveBeenCalledWith("", {}, "all");
+    expect(getFacets).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: "all" }), expect.anything());
+    expect(getOverview).toHaveBeenCalledWith("", { discipline: null }, "all");
     expect(getOverallStatistics).toHaveBeenCalledWith({ workspaceId: "all" });
     expect(container.textContent).toContain(en.common.scope.all);
+  });
+
+  it("lists and counts one game's tournaments when a game is chosen, with no all-games totals", async () => {
+    const container = await mount("?discipline=lol");
+
+    expect(listCalls()).toEqual([expect.objectContaining({ discipline: "lol" })]);
+    expect(getFacets).toHaveBeenCalledWith(expect.objectContaining({ discipline: "lol" }), expect.anything());
+    expect(getOverview).toHaveBeenCalledWith("", { discipline: "lol" }, 1);
+    // The platform totals have no per-game reader: a game's page states none rather than another scope's.
+    expect(getOverallStatistics).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain(en.common.playersLabel);
+    // One game on screen: no card repeats it.
+    expect(cards(container)[0]?.textContent).not.toContain("Overwatch");
+  });
+
+  it("reads an old ?discipline=all link as no parameter: every game", async () => {
+    await mount("?discipline=all");
+
+    expect(listCalls()).toEqual([expect.objectContaining({ discipline: null })]);
+    expect(getOverallStatistics).toHaveBeenCalled();
+  });
+
+  it("shows an unknown game as an error and requests no list", async () => {
+    const container = await mount("?discipline=starcraft");
+
+    expect(listTournaments).not.toHaveBeenCalled();
+    expect(getFacets).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("starcraft");
+    expect(urlsWritten()).toEqual([]);
+  });
+
+  it("marks every card with its game when the list spans every game", async () => {
+    const container = await mount();
+
+    expect(listCalls()).toEqual([expect.objectContaining({ discipline: null })]);
+    expect(cards(container)[0]?.textContent).toContain("Overwatch");
+  });
+
+  it("narrows the list to the saved game scope without writing it into the URL", async () => {
+    useWorkspaceStore.setState({ gameScope: "lol" });
+    const container = await mount();
+
+    expect(listCalls()).toEqual([expect.objectContaining({ discipline: "lol" })]);
+    expect(urlsWritten()).toEqual([]);
+    expect(cards(container)[0]?.textContent).not.toContain("Overwatch");
+  });
+
+  it("offers every game as the way out of an unknown one, dropping the parameter", async () => {
+    await mount("?discipline=starcraft");
+
+    await click(button(en.common.discipline.showAll));
+
+    expect(new URL(urlsWritten().at(-1)!, "http://x").search).toBe("");
+    expect(useWorkspaceStore.getState().gameScope).toBe("all");
+    expect(listCalls()).toEqual([expect.objectContaining({ discipline: null })]);
   });
 });

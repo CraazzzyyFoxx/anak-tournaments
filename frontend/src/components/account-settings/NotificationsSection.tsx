@@ -1,11 +1,15 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
+import { EmptyNote } from "@/components/kit/EmptyNote";
+import { SettingGroup, SettingRow, settingHintId, settingLabelId } from "@/components/kit/SettingRow";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { Spinner } from "@/components/ui/spinner";
 import { notificationQueryKeys } from "@/lib/notifications/query-keys";
 import { notify } from "@/lib/notify";
 import notificationService from "@/services/notification.service";
@@ -55,140 +59,126 @@ export default function NotificationsSection() {
     onError: (error) => notify.apiError(error)
   });
 
-  if (preferencesQuery.isLoading) {
+  if (preferencesQuery.isError) {
     return (
-      <Spinner
-        className="text-[color:var(--aqt-fg-muted)]"
-        label={t("notifications.title")}
+      <PageStateCard
+        state="error"
+        title={t("notifications.loadError")}
+        onAction={() => void preferencesQuery.refetch()}
       />
     );
   }
 
-  if (preferencesQuery.isError) {
-    return <p className="text-sm text-[color:var(--aqt-fg-dim)]">{t("notifications.loadError")}</p>;
-  }
+  const staffWorkspaces = preferences?.staff_workspaces ?? [];
 
   return (
-    <div className="space-y-8">
-      <section className="space-y-3">
-        <h4 className="text-sm font-medium text-[color:var(--aqt-fg-muted)]">
-          {t("notifications.discordTitle")}
-        </h4>
-        <p className="text-xs text-[color:var(--aqt-fg-dim)]">{t("notifications.discordDesc")}</p>
-
-        {/* Not an error: the switches keep their meaning, the messages simply
-            have nowhere to go until a Discord account is linked — and that is
-            one tab away rather than on this one. */}
-        {preferences && !preferences.discord_linked ? (
-          <div className="rounded-lg border border-dashed border-[color:var(--aqt-border-2)] px-3 py-2.5">
-            <p className="text-xs text-[color:var(--aqt-fg-muted)]">
-              {t("notifications.linkDiscordHint")}
-            </p>
-            <button
-              type="button"
-              onClick={() => setActiveTab("profile")}
-              className="mt-2 text-xs font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
+    <div className="space-y-3">
+      {/* Not an error: the switches keep their meaning, the messages simply
+          have nowhere to go until a Discord account is linked — and that is
+          one tab away rather than on this one. A dashed note, so it sits
+          above the group card rather than inside it. */}
+      {preferences && !preferences.discord_linked ? (
+        <EmptyNote
+          size="sm"
+          action={
+            <Button variant="link" size="inline" onClick={() => setActiveTab("profile")}>
               {t("notifications.linkDiscordAction")}
-            </button>
-          </div>
-        ) : null}
+            </Button>
+          }
+        >
+          {t("notifications.linkDiscordHint")}
+        </EmptyNote>
+      ) : null}
 
-        <div className="space-y-2">
-          {GROUPS.map((group) => (
-            <GroupSwitch
-              key={group}
-              id={`dm-${group}`}
-              label={t(`notifications.groups.${group}.label`)}
-              desc={t(`notifications.groups.${group}.desc`)}
-              checked={preferences?.discord_dm[group] ?? true}
-              // Never act on a guess: without a loaded row there is no value
-              // to invert, and a wrong payload here silently re-enables DMs
-              // the reader turned off.
-              disabled={!preferences || save.isPending}
-              onCheckedChange={(next) => save.mutate({ discord_dm: { [group]: next } })}
-            />
-          ))}
+      <SettingGroup
+        id="notifications-discord"
+        level={4}
+        title={t("notifications.discordTitle")}
+        description={t("notifications.discordDesc")}
+      >
+        {preferencesQuery.isLoading
+          ? // Shaped like the rows below, so nothing moves when they land.
+            GROUPS.map((name) => (
+              <div
+                key={name}
+                aria-hidden
+                className="flex items-center justify-between gap-6 py-3 first:pt-0 last:pb-0"
+              >
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-full max-w-xs" />
+                </div>
+                <Skeleton className="h-6 w-11 shrink-0 rounded-full" />
+              </div>
+            ))
+          : GROUPS.map((name) => (
+              <SettingRow
+                key={name}
+                htmlFor={`dm-${name}`}
+                label={t(`notifications.groups.${name}.label`)}
+                hint={t(`notifications.groups.${name}.desc`)}
+              >
+                <Switch
+                  id={`dm-${name}`}
+                  aria-describedby={settingHintId(`dm-${name}`)}
+                  checked={preferences?.discord_dm[name] ?? true}
+                  // Never act on a guess: without a loaded row there is no value
+                  // to invert, and a wrong payload here silently re-enables DMs
+                  // the reader turned off.
+                  disabled={!preferences || save.isPending}
+                  onCheckedChange={(next) => save.mutate({ discord_dm: { [name]: next } })}
+                />
+              </SettingRow>
+            ))}
 
-          {preferences && preferences.staff_workspaces.length > 0 ? (
-            <GroupSwitch
-              id="dm-staff"
+        {preferences && staffWorkspaces.length > 0 ? (
+          <div className="py-3 first:pt-0 last:pb-0">
+            <SettingRow
+              htmlFor="dm-staff"
               label={t("notifications.groups.staff.label")}
-              desc={t("notifications.groups.staff.desc")}
-              checked={preferences.discord_dm.staff}
-              disabled={save.isPending}
-              onCheckedChange={(next) => save.mutate({ discord_dm: { staff: next } })}
+              hint={t("notifications.groups.staff.desc")}
             >
-              {/* One workspace needs no second switch saying the same thing. */}
-              {preferences.staff_workspaces.length > 1 ? (
-                <ul className="mt-2 space-y-1.5 border-t border-[color:var(--aqt-border)] pt-2">
-                  {preferences.staff_workspaces.map((workspace) => (
-                    <li key={workspace.workspace_id} className="flex items-center gap-3">
-                      <span
-                        id={`dm-staff-${workspace.workspace_id}-label`}
-                        className="flex-1 truncate text-xs text-[color:var(--aqt-fg-muted)]"
+              <Switch
+                id="dm-staff"
+                aria-describedby={settingHintId("dm-staff")}
+                checked={preferences.discord_dm.staff}
+                disabled={save.isPending}
+                onCheckedChange={(next) => save.mutate({ discord_dm: { staff: next } })}
+              />
+            </SettingRow>
+            {/* One workspace needs no second switch saying the same thing. */}
+            {staffWorkspaces.length > 1 ? (
+              <ul className="ms-1 space-y-2 border-s border-border/60 ps-4">
+                {staffWorkspaces.map((workspace) => {
+                  const id = `dm-staff-${workspace.workspace_id}`;
+                  return (
+                    <li key={workspace.workspace_id} className="flex min-h-9 items-center justify-between gap-3">
+                      <Label
+                        id={settingLabelId(id)}
+                        htmlFor={id}
+                        title={workspace.name}
+                        className="min-w-0 truncate text-caption font-normal leading-normal text-[color:var(--aqt-fg-muted)]"
                       >
                         {workspace.name}
-                      </span>
+                      </Label>
                       <Switch
+                        id={id}
                         checked={workspace.enabled}
                         disabled={!preferences.discord_dm.staff || save.isPending}
                         onCheckedChange={(next) =>
                           save.mutate({ staff_workspaces: { [workspace.workspace_id]: next } })
                         }
-                        aria-labelledby={`dm-staff-${workspace.workspace_id}-label`}
                       />
                     </li>
-                  ))}
-                </ul>
-              ) : null}
-            </GroupSwitch>
-          ) : null}
-        </div>
+                  );
+                })}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+      </SettingGroup>
 
-        <p className="text-label text-[color:var(--aqt-fg-dim)]">{t("notifications.footnote")}</p>
-      </section>
-    </div>
-  );
-}
-
-function GroupSwitch({
-  id,
-  label,
-  desc,
-  checked,
-  disabled,
-  onCheckedChange,
-  children
-}: Readonly<{
-  id: string;
-  label: string;
-  desc: string;
-  checked: boolean;
-  disabled: boolean;
-  onCheckedChange: (next: boolean) => void;
-  children?: ReactNode;
-}>) {
-  return (
-    <div className="rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] px-3 py-2.5">
-      <div className="flex items-start gap-3">
-        <div className="flex-1 space-y-1">
-          <p id={`${id}-label`} className="text-sm text-[color:var(--aqt-fg)]">
-            {label}
-          </p>
-          <p id={`${id}-desc`} className="text-xs text-[color:var(--aqt-fg-dim)]">
-            {desc}
-          </p>
-        </div>
-        <Switch
-          checked={checked}
-          disabled={disabled}
-          onCheckedChange={onCheckedChange}
-          aria-labelledby={`${id}-label`}
-          aria-describedby={`${id}-desc`}
-        />
-      </div>
-      {children}
+      <p className="text-caption text-pretty text-[color:var(--aqt-fg-dim)]">{t("notifications.footnote")}</p>
     </div>
   );
 }

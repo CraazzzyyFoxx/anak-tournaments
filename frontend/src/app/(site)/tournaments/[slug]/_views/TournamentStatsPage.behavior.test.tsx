@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// Statistics is what only exists once matches have been played: which heroes
+// Statistics is what only exists once matches have been played: which characters
 // were played, and which maps were played. The pool itself is not here — it has
 // its own `maps` section, open before the tournament starts.
 //
@@ -14,7 +14,7 @@
 //     tell them apart. Rows are ordered by plays;
 //  3. counts and mean duration come from the tournament's own series, and
 //     "matches →" leads to the matches section filtered by that map;
-//  4. an empty pool, a failed read and no hero data are different cards, all
+//  4. an empty pool, a failed read and no character data are different cards, all
 //     from `TournamentPageState`.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
@@ -24,7 +24,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 import type { Encounter, Match } from "@/types/encounter.types";
-import type { MapRead } from "@/types/map.types";
+import { catalogEntity, catalogMap, catalogMode } from "@/test/catalog";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { PickBanConfig, Stage, Tournament } from "@/types/tournament.types";
 
 import TournamentStatsPage, { buildMapPlayedCounts } from "./TournamentStatsPage";
@@ -37,14 +38,19 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const TOURNAMENT_ID = 88;
 const WORKSPACE_ID = 3;
 
-const getHeroPlaytime = vi.fn();
+const getCharacterPlaytime = vi.fn();
 const getEncounters = vi.fn();
 const listPublicConfigs = vi.fn();
 const getAllMaps = vi.fn();
 const getStages = vi.fn();
 
-vi.mock("@/services/hero.service", () => ({
-  default: { getHeroPlaytime: (...args: unknown[]) => getHeroPlaytime(...args) }
+vi.mock("@/services/statistics.service", () => ({
+  default: { getCharacterPlaytime: (...args: unknown[]) => getCharacterPlaytime(...args) }
+}));
+vi.mock("@/services/discipline.service", () => ({
+  default: {
+    metadata: async () => ({ discipline: { code: "overwatch", character_classes: ["tank", "damage", "support"] } })
+  }
 }));
 vi.mock("@/services/encounter.service", () => ({
   default: { getAll: (...args: unknown[]) => getEncounters(...args) }
@@ -52,8 +58,8 @@ vi.mock("@/services/encounter.service", () => ({
 vi.mock("@/services/pickBan.service", () => ({
   default: { listPublicConfigs: (...args: unknown[]) => listPublicConfigs(...args) }
 }));
-vi.mock("@/services/map.service", () => ({
-  default: { getAll: (...args: unknown[]) => getAllMaps(...args) }
+vi.mock("@/services/catalog.service", () => ({
+  default: { list: (...args: unknown[]) => getAllMaps(...args) }
 }));
 vi.mock("@/services/tournament.service", () => ({
   default: { getStages: (...args: unknown[]) => getStages(...args) }
@@ -143,7 +149,7 @@ function makeTournament(): Tournament {
     teams_count: 10,
     division_grid_version_id: null,
     division_grid_version: null,
-    roster_slots_json: null,
+    discipline: "overwatch",
     roster_shape: null,
     roster_locked_by_draft: null,
     cover_image_url: null,
@@ -151,27 +157,11 @@ function makeTournament(): Tournament {
   };
 }
 
-function map(id: number, name: string, gamemode: string, gamemodeId: number): MapRead {
-  return {
-    id,
-    created_at: new Date("2025-01-01T00:00:00Z"),
-    updated_at: null,
+function map(id: number, name: string, gamemode: string, gamemodeId: number): CatalogEntityRead {
+  return catalogMap(id, { ...catalogMode(gamemodeId, gamemode), image_path: `/gamemodes/${gamemodeId}.jpg` }, {
     name,
-    image_path: `/maps/${id}.jpg`,
-    gamemode_id: gamemodeId,
-    in_competitive: true,
-    aliases: [],
-    gamemode: {
-      id: gamemodeId,
-      created_at: new Date("2025-01-01T00:00:00Z"),
-      updated_at: null,
-      name: gamemode,
-      image_path: `/gamemodes/${gamemodeId}.jpg`,
-      slug: gamemode.toLowerCase(),
-      description: "",
-      aliases: []
-    }
-  };
+    image_path: `/maps/${id}.jpg`
+  });
 }
 
 /**
@@ -182,7 +172,7 @@ const KINGS_ROW = map(45, "King's Row", "Hybrid", 2);
 const ILIOS = map(37, "Ilios", "Control", 1);
 /** In the pool, never picked. Note ② is about this row existing. */
 const SURAVASA = map(91, "Suravasa", "Flashpoint", 4);
-const MAPS: MapRead[] = [KINGS_ROW, ILIOS, SURAVASA];
+const MAPS: CatalogEntityRead[] = [KINGS_ROW, ILIOS, SURAVASA];
 
 function config(overrides: Partial<PickBanConfig>): PickBanConfig {
   return {
@@ -204,21 +194,24 @@ function config(overrides: Partial<PickBanConfig>): PickBanConfig {
 function match(id: number, mapId: number, time: number | null): Match {
   return {
     id,
-    created_at: new Date("2025-02-02T00:00:00Z"),
+    created_at: "2025-02-02T00:00:00Z",
     updated_at: null,
-    home_team_id: 1,
-    away_team_id: 2,
-    score: { home: 2, away: 1 },
-    time,
+    played_at: null,
+    workspace_id: 1,
+    discipline: "overwatch",
+    encounter_game_id: null,
+    participants: [
+      { encounter_team_id: 11, slot: 1, source_position: 0, tournament_team_id: 1, name: "A", result: null, team_facts: { score: 2 } },
+      { encounter_team_id: 12, slot: 2, source_position: 1, tournament_team_id: 2, name: "B", result: null, team_facts: { score: 1 } }
+    ],
+    duration_s: time,
     encounter_id: 500,
     map_id: mapId,
     map_index: null,
     log_name: null,
-    source: "log_parser",
-    code: null,
+    raw_status: null,
+    raw_available: false,
     map: null,
-    home_team: null,
-    away_team: null,
     encounter: null
   };
 }
@@ -234,9 +227,7 @@ function encounter(matches: Match[]): Encounter {
     created_at: new Date("2025-02-02T00:00:00Z"),
     updated_at: null,
     name: "A vs B",
-    home_team_id: 1,
-    away_team_id: 2,
-    score: { home: 2, away: 1 },
+    slot_count: 2,
     round: 1,
     best_of: 5,
     tournament_id: TOURNAMENT_ID,
@@ -247,14 +238,22 @@ function encounter(matches: Match[]): Encounter {
     closeness: null,
     has_logs: true,
     result_status: "confirmed",
+    result_source: "series_claim",
+    result_version: 1,
     scheduled_at: null,
     started_at: null,
     ended_at: null,
+    played_at: null,
+    is_live: false,
+    is_final: false,
     current_map_index: null,
     confirmed_at: null,
     matches,
-    home_team: { id: 1, name: "A" } as Encounter["home_team"],
-    away_team: { id: 2, name: "B" } as Encounter["away_team"],
+    games: [],
+    teams: [
+      { id: 11, slot: 1, team_id: 1, name: "A", seed: null, score: 2, placement: null, active: true },
+      { id: 12, slot: 2, team_id: 2, name: "B", seed: null, score: 1, placement: null, active: true }
+    ],
     tournament: makeTournament()
   };
 }
@@ -271,25 +270,25 @@ beforeEach(() => {
   tournament = makeTournament();
   tournamentIsError = false;
 
-  getHeroPlaytime.mockReset().mockResolvedValue({
+  getCharacterPlaytime.mockReset().mockResolvedValue({
     results: [
       {
-        hero: {
+        entity: catalogEntity({
           id: 7,
-          created_at: new Date("2025-01-01T00:00:00Z"),
-          updated_at: null,
+          kind: "character",
           name: "Reinhardt",
           slug: "reinhardt",
           image_path: "/heroes/reinhardt.png",
-          type: "Tank",
-          role: "Tank",
-          color: "#9a9a9a",
-          aliases: []
-        },
+          attrs: { class: "tank" }
+        }),
         playtime: 0.42
+      },
+      {
+        entity: catalogEntity({ id: 9, kind: "character", name: "Ana", slug: "ana", attrs: { class: "support" } }),
+        playtime: 0.5
       }
     ],
-    total: 1,
+    total: 2,
     page: 1,
     per_page: -1
   });
@@ -342,7 +341,7 @@ async function render(query?: string) {
     root.render(
       <QueryClientProvider client={client}>
         <NextIntlClientProvider locale="en" messages={en}>
-          <TournamentStatsPage tournamentId={TOURNAMENT_ID} slug="anak-open" />
+          <TournamentStatsPage slug="anak-open" />
         </NextIntlClientProvider>
       </QueryClientProvider>
     );
@@ -373,14 +372,24 @@ function mapRows() {
 }
 
 describe("the tab is the URL", () => {
-  it("opens on heroes when no tab is named", async () => {
+  it("opens on characters when no tab is named", async () => {
     await render();
 
     expect(tabButtons()).toEqual([
-      { label: en.common.heroes, selected: true },
+      { label: en.common.characters, selected: true },
       { label: en.common.maps, selected: false }
     ]);
     expect(container.textContent).toContain("Reinhardt");
+    // The tournament's own game and workspace, the whole tournament.
+    expect(getCharacterPlaytime).toHaveBeenCalledWith(
+      "overwatch",
+      expect.objectContaining({ axis: WORKSPACE_ID, tournamentId: TOURNAMENT_ID, perPage: -1 })
+    );
+    // One column per character class, in the game's declared order (tank before support).
+    const columns = [...container.querySelectorAll("[aria-label]")]
+      .map((node) => node.getAttribute("aria-label"))
+      .filter((label) => label === en.common.roles.tank || label === en.common.roles.support);
+    expect(columns).toEqual([en.common.roles.tank, en.common.roles.support]);
     expect(container.querySelector("tbody")).toBeNull();
     expect(getEncounters).not.toHaveBeenCalled();
   });
@@ -517,8 +526,8 @@ describe("nothing to show", () => {
     expect(container.querySelector("tbody")).toBeNull();
   });
 
-  it("says there is no hero data yet", async () => {
-    getHeroPlaytime.mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 });
+  it("says there is no character data yet", async () => {
+    getCharacterPlaytime.mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 });
 
     await render();
 

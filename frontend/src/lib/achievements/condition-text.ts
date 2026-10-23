@@ -16,7 +16,11 @@
 import { useCallback, useMemo } from "react";
 import { useTranslations } from "next-intl";
 
-import { useHeroesCatalog } from "@/hooks/useHeroesCatalog";
+import { useCatalogEntities } from "@/hooks/useCatalogEntities";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useRoleName } from "@/hooks/useRoleName";
+import { findRole, ratedDimension } from "@/lib/roster/ontology";
+import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 import type { ConditionNode } from "@/types/achievement.types";
 
 /**
@@ -32,6 +36,11 @@ export interface ConditionTextOptions {
   t: ConditionTranslator;
   /** Display name for a hero slug; defaults to a humanized slug. */
   heroName?: (slug: string) => string;
+  /**
+   * Display name for a role code of the rule's game (its ontology), `null` when the game does not know it. The
+   * engine compares role params lower-cased, so the code passed here is too.
+   */
+  roleName?: (code: string) => string | null;
 }
 
 /** A condition rendered as prose: a group heading with children, or one leaf. */
@@ -142,6 +151,12 @@ function heroLabel(o: ConditionTextOptions, slug: unknown): string {
   return o.heroName?.(value) || humanize(value);
 }
 
+/** A role param as the rule's game names it; a role that game does not know reads as written, never guessed. */
+function roleLabel(o: ConditionTextOptions, raw: unknown): string {
+  const value = text(raw);
+  return o.roleName?.(value.toLowerCase()) ?? value;
+}
+
 /** An enum-ish param value: its message when known, humanized otherwise. */
 function word(o: ConditionTextOptions, group: string, value: unknown): string {
   const raw = text(value);
@@ -164,7 +179,7 @@ const scopeDetail = (p: Params, o: ConditionTextOptions): string | null =>
   p.scope === "tournament" ? msg(o, "q.perTournament") : null;
 
 const rankFilters = (p: Params, o: ConditionTextOptions): (string | null)[] => [
-  p.role != null ? msg(o, "q.rankRole", { role: word(o, "q.role", p.role) }) : null,
+  p.role != null ? msg(o, "q.rankRole", { role: roleLabel(o, p.role) }) : null,
   p.platform != null ? msg(o, "q.platform", { platform: text(p.platform) }) : null,
   p.season != null ? msg(o, "q.season", { season: text(p.season) }) : null,
 ];
@@ -329,7 +344,7 @@ const BUILDERS: Record<string, Builder> = {
     text: msg(o, "leaf.player_div", { amount: amount(o, p.op, p.value) }),
   }),
   player_role: (p, o) => ({
-    text: msg(o, "leaf.player_role", { role: word(o, "q.role", p.role) }),
+    text: msg(o, "leaf.player_role", { role: roleLabel(o, p.role) }),
   }),
 
   // ── Participation ──
@@ -538,7 +553,7 @@ function leagueDetail(isLeague: unknown, o: ConditionTextOptions): string | null
 }
 
 /** Any node, named: the catalogue label, or the node name read as words. */
-export function conditionTypeLabel(type: string | undefined, o: ConditionTextOptions): string {
+function conditionTypeLabel(type: string | undefined, o: ConditionTextOptions): string {
   if (!type) return msg(o, "unnamed");
   const key = `achievements.condition.${type}`;
   return o.t.has(key) ? o.t(key) : humanize(type);
@@ -601,47 +616,54 @@ export function sentenceToLine(sentence: ConditionSentence): string {
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
-/** Every `hero_slug` the tree mentions, so the catalogue is only fetched for
- *  trees that actually name a hero. */
-function heroSlugs(node: unknown, found: Set<string> = new Set()): Set<string> {
-  if (Array.isArray(node)) {
-    for (const child of node) heroSlugs(child, found);
-    return found;
-  }
-  if (node && typeof node === "object") {
-    for (const [key, value] of Object.entries(node)) {
-      if (key === "hero_slug" && typeof value === "string") found.add(value);
-      else heroSlugs(value, found);
-    }
-  }
-  return found;
+/** Whether the tree sets `param` anywhere, so a catalogue or ontology is only read for trees that name one. */
+function mentions(node: unknown, param: string): boolean {
+  if (Array.isArray(node)) return node.some((child) => mentions(child, param));
+  if (!node || typeof node !== "object") return false;
+  return Object.entries(node).some(
+    ([key, value]) => (key === param && typeof value === "string") || mentions(value, param)
+  );
 }
 
 /**
- * The describer bound to the current locale and the hero catalogue.
+ * The describer bound to the current locale and to the rule's own game: its character catalogue (hero names) and
+ * its role ontology (role names, localized like every role label) read on the caller's resolved workspace `axis`
+ * — the viewing workspace (a tenant host's own), the rule's workspace in the editor — so a workspace's child roles
+ * resolve; the metadata key carries that axis.
  *
- * `tree` is only used to decide whether the hero catalogue is worth fetching;
+ * `tree` is only used to decide whether the catalogue / ontology is worth fetching;
  * the returned functions work on any node.
  */
-export function useConditionText(tree?: unknown) {
+export function useConditionText(tree: unknown, discipline: string, axis: WorkspaceAxis) {
   const translate = useTranslations();
   const t = translate as unknown as ConditionTranslator;
+  const nameOfRole = useRoleName();
 
-  const needsHeroes = useMemo(() => heroSlugs(tree).size > 0, [tree]);
-  const { data: heroes } = useHeroesCatalog({ enabled: needsHeroes });
+  const needsHeroes = useMemo(() => mentions(tree, "hero_slug"), [tree]);
+  const { data: heroes } = useCatalogEntities(discipline, "character", { enabled: needsHeroes });
+  const needsRoles = useMemo(() => mentions(tree, "role"), [tree]);
+  const { data: ontology } = useDisciplineMetadata(axis, needsRoles ? discipline : null);
 
   const heroName = useCallback(
     (slug: string) => heroes?.find((hero) => hero.slug === slug)?.name ?? humanize(slug),
     [heroes]
   );
+  const roleName = useCallback(
+    (code: string) => {
+      const rated = ontology ? ratedDimension(ontology) : null;
+      const role = ontology && rated ? findRole(ontology, { dimension: rated.code, role: code }) : null;
+      return role ? nameOfRole(role) : null;
+    },
+    [ontology, nameOfRole]
+  );
 
   return useMemo(() => {
-    const options: ConditionTextOptions = { t, heroName };
+    const options: ConditionTextOptions = { t, heroName, roleName };
     return {
       describe: (node: ConditionNode | null | undefined) => describeCondition(node, options),
       leafLabel: (type: string | undefined) => conditionTypeLabel(type, options),
       leafLine: (type: string, params: Params) =>
         sentenceToLine(describeLeaf(type, params, options)),
     };
-  }, [t, heroName]);
+  }, [t, heroName, roleName]);
 }

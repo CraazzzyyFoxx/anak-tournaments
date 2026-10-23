@@ -7,14 +7,17 @@ from datetime import UTC, datetime
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.division_grid import stamp_canonical_numbers
 from shared.repository import (
     DivisionGridRepository,
     DivisionGridTierRepository,
     DivisionGridVersionRepository,
     WorkspaceRepository,
 )
-from src import models, schemas
+from shared.services.ontology import assert_discipline_enabled
+from src import schemas
 from src.services.division_grid.marketplace import MarketplaceService, marketplace_service
 from src.services.division_grid.service import DivisionGridService, division_grid_service
 
@@ -41,8 +44,8 @@ def build_portable_document(
                     rank_min=tier.rank_min,
                     rank_max=tier.rank_max,
                     icon_url=tier.icon_url,
-                    ow_rank_min=tier.ow_rank_min,
-                    ow_rank_max=tier.ow_rank_max,
+                    native_rank_min=tier.native_rank_min,
+                    native_rank_max=tier.native_rank_max,
                 )
                 for tier in sorted(version.tiers, key=lambda item: item.sort_order)
             ],
@@ -79,6 +82,7 @@ def build_portable_document(
         )
 
     return schemas.DivisionGridPortableDocument(
+        discipline=grid.discipline,
         slug=grid.slug,
         name=grid.name,
         description=grid.description,
@@ -131,6 +135,10 @@ class PortableService:
         request: schemas.DivisionGridPortableImportRequest,
     ) -> models.DivisionGrid:
         document = request.document
+        workspace = await self.workspace_repo.get(session, workspace_id)
+        if workspace is None:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+        assert_discipline_enabled(workspace, document.discipline)
         version_numbers = [version.version for version in document.versions]
         if len(version_numbers) != len(set(version_numbers)):
             raise HTTPException(status_code=400, detail="Portable grid contains duplicate version numbers")
@@ -151,6 +159,7 @@ class PortableService:
             self.grid_repo.select()
             .where(
                 models.DivisionGrid.workspace_id == workspace_id,
+                models.DivisionGrid.discipline == document.discipline,
                 provenance_filter,
                 models.DivisionGrid.source_fingerprint == fingerprint,
                 models.DivisionGrid.archived_at.is_(None),
@@ -166,6 +175,7 @@ class PortableService:
                 self.grid_repo.select()
                 .where(
                     models.DivisionGrid.workspace_id == workspace_id,
+                    models.DivisionGrid.discipline == document.discipline,
                     models.DivisionGrid.source_key == source_key,
                     models.DivisionGrid.archived_at.is_(None),
                 )
@@ -180,6 +190,7 @@ class PortableService:
             session,
             models.DivisionGrid(
                 workspace_id=workspace_id,
+                discipline=document.discipline,
                 slug=target_slug,
                 name=document.name,
                 description=document.description,
@@ -215,12 +226,13 @@ class PortableService:
                         rank_min=portable_tier.rank_min,
                         rank_max=portable_tier.rank_max,
                         icon_url=portable_tier.icon_url,
-                        ow_rank_min=portable_tier.ow_rank_min,
-                        ow_rank_max=portable_tier.ow_rank_max,
+                        native_rank_min=portable_tier.native_rank_min,
+                        native_rank_max=portable_tier.native_rank_max,
                     ),
                 )
                 for portable_tier in sorted(portable_version.tiers, key=lambda item: item.sort_order)
             ]
+            stamp_canonical_numbers([tier for _, tier in pending_tiers], document.discipline)
             # One INSERT batch per version instead of a flush per tier.
             await self.tier_repo.create_many(session, [tier for _, tier in pending_tiers])
             for slug, tier in pending_tiers:

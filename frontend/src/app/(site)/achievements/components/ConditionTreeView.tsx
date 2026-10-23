@@ -2,6 +2,7 @@
 
 import { useConditionText, type ConditionSentence } from "@/lib/achievements/condition-text";
 import type { ConditionNode } from "@/types/achievement.types";
+import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 
 /** Group rows are the only coloured thing here: the operator is the one piece
  *  of structure a reader has to keep in their head. */
@@ -50,8 +51,12 @@ function SentenceItem({ sentence }: Readonly<{ sentence: ConditionSentence }>) {
  * `condition-text` folds them into the sentence, with hero and stat names
  * resolved, and the admin viewer reads the same text.
  */
-export default function ConditionTreeView({ tree }: Readonly<{ tree: ConditionNode }>) {
-  const { describe } = useConditionText(tree);
+export default function ConditionTreeView({
+  tree,
+  discipline,
+  axis
+}: Readonly<{ tree: ConditionNode; discipline: string; axis: WorkspaceAxis }>) {
+  const { describe } = useConditionText(tree, discipline, axis);
 
   return (
     <ul className="flex flex-col gap-1.5">

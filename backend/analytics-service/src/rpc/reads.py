@@ -1,15 +1,12 @@
 """Public + authenticated read RPC subscribers (``rpc.analytics.*``).
 
-Each handler calls a flow/query and coerces the result through the same
-response model the decommissioned HTTP layer used (default
-``exclude_none=False`` — none of the analytics reads set
-``response_model_exclude_none``). Response schemas now live in
-``src/schemas/analytics_read.py`` and ``src/schemas/ml.py`` so the contract
-stays single-source and fastapi-free.
+Each handler calls a flow/query and coerces the result through its response
+model (``src/schemas/analytics_read.py``, ``src/schemas/ml.py``) with the
+default ``exclude_none=False``.
 
 Auth: rating reads are public (gateway ``AuthNone``); ML + job reads require
-a global ``analytics.read`` permission (gateway ``AuthRequired`` + the same
-``has_permission`` check the legacy routes used).
+a global ``analytics.read`` permission (gateway ``AuthRequired`` +
+``has_permission``).
 """
 
 from __future__ import annotations
@@ -18,9 +15,10 @@ from typing import Any
 
 from faststream.rabbit.annotations import RabbitMessage
 
+from shared.core import pagination
 from shared.core.errors import BaseAPIException as HTTPException
-from src.core import db, pagination
-from src.core.jobs import get_active_job, job_runtime
+from src.core import db
+from src.core.jobs import job_runtime, reconcile_and_get_active_job
 from src.schemas.ml import (
     AnalyticsJobRow,
     AnomalyFeedbackRow,
@@ -186,7 +184,8 @@ def register(broker: Any, logger: Any) -> None:
     async def _jobs_active(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             c.require_permission(c.actor(data), "analytics", "read")
-            job = await get_active_job(session, c.q1(data, "workspace_id", int))
+            # Not a pure read: a stalled job with a failed stage is marked FAILED (and committed) first.
+            job = await reconcile_and_get_active_job(session, c.q1(data, "workspace_id", int))
             return AnalyticsJobRow.model_validate(job, from_attributes=True) if job is not None else None
 
         return await c.envelope(logger, "jobs_active", op, session_factory=sf)

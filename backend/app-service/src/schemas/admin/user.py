@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
-from src.core import pagination
+from shared.core import pagination
 
 __all__ = (
     "UserCreate",
@@ -18,14 +18,10 @@ __all__ = (
 
 
 class UserCreate(BaseModel):
-    """Schema for creating a user"""
-
     name: str
 
 
 class UserAdminUpdate(BaseModel):
-    """Schema for updating a user"""
-
     name: str | None = None
 
 
@@ -80,6 +76,6 @@ class StreamVisibilityUpdate(BaseModel):
 
     Separate from ``SocialVisibilityUpdate``: that one governs whether a handle is
     shown on the public profile at all, this one only whether the live broadcast is
-    surfaced. Collapsing them is the bug this endpoint exists to fix."""
+    surfaced."""
 
     visible: bool

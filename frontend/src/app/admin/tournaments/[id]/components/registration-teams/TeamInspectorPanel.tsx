@@ -3,11 +3,8 @@
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
-import { StatusPill } from "@/components/kit/StatusPill";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
+import { InspectorField } from "@/components/kit/InspectorField";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -18,17 +15,20 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { REGISTRATION_TEAM_ERROR_CODES } from "@/lib/registration/team-errors";
-import { formatShortfall } from "@/lib/registration/team-shortfall";
 import type { RegistrationTeam } from "@/types/registration-team.types";
 
-import { ADMISSION_TONE, isTeamLive } from "./model";
+import { isTeamLive } from "./model";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import { TeamInviteHistory } from "./TeamInviteHistory";
 import { TeamRosterStrip } from "./TeamRosterStrip";
 import type { RegistrationTeamActions } from "./useRegistrationTeamActions";
 
 /**
- * One team, in full: the badges that answer "what is this roster's state", the
- * three fields an organizer may write to it, and the invite ledger.
+ * One team, in full: what the row cannot show (lock, cover, check-in, the
+ * roster itself, eligibility), the fields an organizer may write to it, and
+ * the invite ledger. Status, shortfall and rejection reason are on the row and
+ * the inspector subtitle; they are not said again here. Renaming is the row
+ * kebab's dialog.
  *
  * Everything here is an edit of a team the organizer does NOT own, so every
  * control is gated on the same two facts — the permission, and whether the team
@@ -41,11 +41,14 @@ export function TeamInspectorPanel({
   canManageTeams,
   disabled,
   inlineError,
+  ontology,
   actions
 }: Readonly<{
   team: RegistrationTeam;
   tournamentId: number;
   workspaceId: number;
+  /** The tournament's own game's scoped ontology: slots are named and drawn in it. */
+  ontology: RoleOntology | null;
   canManageTeams: boolean;
   /** A read or a write is in flight; nothing on the panel may be typed into. */
   disabled: boolean;
@@ -54,60 +57,39 @@ export function TeamInspectorPanel({
 }>) {
   const t = useTranslations("registrationTeams");
   const tErr = useTranslations("registrationTeams.errors");
-  const tSlot = useTranslations("rosterShape.slotCodes");
 
   const editable = canManageTeams && team.exported_team_id == null && isTeamLive(team);
-  const name = actions.nameDraft[team.id] ?? team.name;
+  const admission = team.admission ?? "pending";
+  const meta = [
+    team.roster_locked_at ? t("lock.locked") : null,
+    team.subscription_covered ? t("cover.covered") : null,
+    typeof team.checked_in_count === "number" && (team.check_in_total ?? 0) > 0
+      ? t("checkIn.counts", { done: team.checked_in_count, total: team.check_in_total ?? 0 })
+      : null
+  ].filter(Boolean);
 
   return (
     <div className="space-y-4">
       {inlineError}
-      {team.rejection_reason && (
-        <Alert variant="destructive">
-          <AlertDescription>
-            {t("admin.rejectionReason", { reason: team.rejection_reason })}
-          </AlertDescription>
-        </Alert>
+      {meta.length > 0 && (
+        <p className="text-caption text-muted-foreground">{meta.join(" · ")}</p>
       )}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <StatusPill tone={ADMISSION_TONE[team.admission ?? "pending"] ?? "neutral"}>
-          {t(`admission.${team.admission ?? "pending"}`)}
-        </StatusPill>
-        {team.roster_locked_at && <Badge variant="outline">{t("lock.locked")}</Badge>}
-        {team.subscription_covered && <Badge variant="outline">{t("cover.covered")}</Badge>}
-        {typeof team.checked_in_count === "number" && (team.check_in_total ?? 0) > 0 && (
-          <span className="text-caption text-muted-foreground">
-            {t("checkIn.counts", {
-              done: team.checked_in_count,
-              total: team.check_in_total ?? 0
-            })}
-          </span>
-        )}
-        {team.exported_team_id != null && <Badge variant="outline">{t("admin.inTournament")}</Badge>}
-        {/* The whole point of the screen: what is still missing. A full roster
-            already says so in its status pill, so only the shortfall gets words
-            of its own. */}
-        {team.status === "forming" && team.exported_team_id == null && (
-          <span className="text-caption font-medium text-warning">
-            {t("list.shortfall", { slots: formatShortfall(team.open_slots, tSlot) })}
-          </span>
-        )}
-      </div>
 
       <TeamRosterStrip
         team={team}
         canManage={canManageTeams}
         disabled={disabled}
+        ontology={ontology}
         onRevokeInvite={(inviteId) => actions.revokeInvite({ teamId: team.id, inviteId })}
       />
 
-      {editable && (
+      {editable ? (
         <div className="flex flex-wrap items-center gap-2">
           <Label className="text-caption text-muted-foreground" htmlFor={`admission-${team.id}`}>
             {t("admin.admission")}
           </Label>
           <Select
-            value={team.admission ?? "pending"}
+            value={admission}
             disabled={disabled}
             onValueChange={(value) =>
               actions.setAdmission({
@@ -116,7 +98,7 @@ export function TeamInspectorPanel({
               })
             }
           >
-            <SelectTrigger id={`admission-${team.id}`} className="h-8 w-44">
+            <SelectTrigger id={`admission-${team.id}`} size="sm" className="w-44">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -128,31 +110,8 @@ export function TeamInspectorPanel({
             </SelectContent>
           </Select>
         </div>
-      )}
-      {editable && (
-        <div className="grid gap-1">
-          <Label htmlFor={`name-${team.id}`} className="text-caption text-muted-foreground">
-            {t("create.nameLabel")}
-          </Label>
-          <Input
-            id={`name-${team.id}`}
-            value={name}
-            disabled={disabled}
-            onChange={(event) =>
-              actions.setNameDraft((current) => ({ ...current, [team.id]: event.target.value }))
-            }
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="w-fit"
-            disabled={disabled || !name.trim() || name.trim() === team.name}
-            onClick={() => actions.rename({ teamId: team.id, name: name.trim() })}
-          >
-            {t("rename.save")}
-          </Button>
-        </div>
+      ) : (
+        <InspectorField label={t("admin.admission")}>{t(`admission.${admission}`)}</InspectorField>
       )}
       {canManageTeams && (
         <div className="grid gap-1">
@@ -202,18 +161,7 @@ export function TeamInspectorPanel({
         tournamentId={tournamentId}
         workspaceId={workspaceId}
         teamId={team.id}
-        meta={
-          /* Only once someone is actually on the bench: "0 of 2 substitutes"
-             under every team is a constant, not news. */
-          team.substitutes_used > 0 ? (
-            <span className="text-caption text-muted-foreground">
-              {t("list.substitutes", {
-                used: team.substitutes_used,
-                max: team.max_substitutes
-              })}
-            </span>
-          ) : null
-        }
+        ontology={ontology}
       />
     </div>
   );

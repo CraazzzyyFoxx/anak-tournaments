@@ -1,33 +1,25 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from shared import models
 from shared.repository.base import BaseRepository
+from shared.services.achievement_evidence import (
+    achievement_reference_change,
+    lock_achievement_rules,
+    reserve_reference_ids,
+)
+from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
 
 
 class DivisionGridRepository(BaseRepository[models.DivisionGrid]):
     def __init__(self) -> None:
         super().__init__(models.DivisionGrid)
-
-    async def list_workspace_grids(
-        self,
-        session: AsyncSession,
-        workspace_id: int,
-    ) -> Sequence[models.DivisionGrid]:
-        result = await session.execute(
-            sa.select(models.DivisionGrid)
-            .options(selectinload(models.DivisionGrid.versions))
-            .where(models.DivisionGrid.workspace_id == workspace_id)
-            .order_by(models.DivisionGrid.id.asc())
-        )
-        return result.unique().scalars().all()
 
 
 class AchievementRuleRepository(BaseRepository[models.AchievementRule]):
@@ -46,10 +38,74 @@ class AchievementRuleRepository(BaseRepository[models.AchievementRule]):
         )
         return result.scalars().all()
 
+    async def create(self, session: AsyncSession, instance: models.AchievementRule) -> models.AchievementRule:
+        await session.execute(
+            sa.select(models.Workspace.id).where(models.Workspace.id == instance.workspace_id).with_for_update()
+        )
+        if instance.id is None:
+            instance.id = (await reserve_reference_ids(session, self.model, 1))[0]
+        async with achievement_reference_change(
+            session,
+            kind="rule",
+            ids=[instance.id],
+            workspace_id=instance.workspace_id,
+        ):
+            await super().create(session, instance)
+        return instance
+
+    async def update_fields(self, session: AsyncSession, instance: models.AchievementRule, data: dict):
+        async with achievement_reference_change(
+            session,
+            kind="rule",
+            ids=[instance.id],
+            workspace_id=instance.workspace_id,
+        ):
+            await super().update_fields(session, instance, data)
+        return instance
+
+    async def delete(self, session: AsyncSession, instance: models.AchievementRule) -> None:
+        await lock_achievement_rules(session, [instance.id])
+        rule_ids = sa.select(self.model.id).where(self.model.id == instance.id)
+        await AchievementEvaluationResultRepository().delete_for_rules(session, rule_ids)
+        await AchievementOverrideRepository().delete_for_rule(session, instance.id)
+        async with achievement_reference_change(
+            session,
+            kind="rule",
+            ids=[instance.id],
+            workspace_id=instance.workspace_id,
+        ):
+            await session.execute(sa.delete(self.model).where(self.model.id == instance.id))
+
 
 class AchievementOverrideRepository(BaseRepository[models.AchievementOverride]):
     def __init__(self) -> None:
         super().__init__(models.AchievementOverride)
+
+    async def create(self, session: AsyncSession, instance: models.AchievementOverride) -> models.AchievementOverride:
+        workspace_id = await lock_achievement_rules(session, [instance.achievement_rule_id])
+        if instance.id is None:
+            instance.id = (await reserve_reference_ids(session, self.model, 1))[0]
+        async with achievement_reference_change(session, kind="override", ids=[instance.id], workspace_id=workspace_id):
+            await super().create(session, instance)
+        return instance
+
+    async def delete(self, session: AsyncSession, instance: models.AchievementOverride) -> None:
+        workspace_id = await lock_achievement_rules(session, [instance.achievement_rule_id])
+        async with achievement_reference_change(session, kind="override", ids=[instance.id], workspace_id=workspace_id):
+            await super().delete(session, instance)
+
+    async def delete_for_rule(self, session: AsyncSession, rule_id: int) -> None:
+        workspace_id = await lock_achievement_rules(session, [rule_id])
+        while ids := list(
+            await session.scalars(
+                sa.select(self.model.id)
+                .where(self.model.achievement_rule_id == rule_id)
+                .order_by(self.model.id)
+                .limit(100)
+            )
+        ):
+            async with achievement_reference_change(session, kind="override", ids=ids, workspace_id=workspace_id):
+                await session.execute(sa.delete(self.model).where(self.model.id.in_(ids)))
 
 
 class AchievementEvaluationResultRepository(BaseRepository[models.AchievementEvaluationResult]):
@@ -74,22 +130,60 @@ class AchievementEvaluationResultRepository(BaseRepository[models.AchievementEva
         super().__init__(models.AchievementEvaluationResult)
 
     async def bulk_delete_by_ids(self, session: AsyncSession, ids: Sequence[int]) -> None:
-        if not ids:
-            return
-        await session.execute(sa.delete(models.AchievementEvaluationResult).where(self.model.id.in_(ids)))
+        for start in range(0, len(ids), 100):
+            chunk = ids[start : start + 100]
+            workspace_id = await lock_achievement_rules(
+                session,
+                sa.select(self.model.achievement_rule_id).where(self.model.id.in_(chunk)),
+            )
+            async with achievement_reference_change(session, kind="evaluation", ids=chunk, workspace_id=workspace_id):
+                await session.execute(sa.delete(self.model).where(self.model.id.in_(chunk)))
 
     async def delete_for_rules(self, session: AsyncSession, rule_ids: sa.Select) -> int:
-        """Delete every result for the rules selected by ``rule_ids`` (a subquery-shaped
-        ``sa.Select``, e.g. ``sa.select(AchievementRule.id).where(...)``). Returns the row count."""
-        result = await session.execute(sa.delete(self.model).where(self.model.achievement_rule_id.in_(rule_ids)))
-        return result.rowcount or 0
+        """Delete references in bounded, evidenced batches before their rule parents."""
+        await lock_achievement_rules(session, rule_ids)
+        removed = 0
+        while ids := list(
+            await session.scalars(
+                sa.select(self.model.id)
+                .where(self.model.achievement_rule_id.in_(rule_ids))
+                .order_by(self.model.id)
+                .limit(100)
+            )
+        ):
+            await self.bulk_delete_by_ids(session, ids)
+            removed += len(ids)
+        return removed
 
     async def bulk_upsert_ignore_conflicts(self, session: AsyncSession, values: list[dict]) -> None:
         if not values:
             return
-        await session.execute(
-            pg_insert(self.model).values(values).on_conflict_do_nothing(index_elements=self._DEDUP_INDEX_ELEMENTS)
-        )
+        workspace_id = await lock_achievement_rules(session, sorted({row["achievement_rule_id"] for row in values}))
+        for start in range(0, len(values), 100):
+            chunk = values[start : start + 100]
+            ids = await reserve_reference_ids(session, self.model, len(chunk))
+            # Keep conflict losers out of the receipt's owner chains.
+            before = {
+                row_id: await capture_stats_evidence(session, scopes=owner_scopes("evaluation", (row_id,)))
+                for row_id in ids
+            }
+            inserted_ids = await session.scalars(
+                pg_insert(self.model)
+                .values([dict(row, id=row_id) for row_id, row in zip(ids, chunk, strict=True)])
+                .on_conflict_do_nothing(index_elements=self._DEDUP_INDEX_ELEMENTS)
+                .returning(self.model.id)
+            )
+            for row_id in inserted_ids:
+                after = await capture_stats_evidence(session, scopes=owner_scopes("evaluation", (row_id,)))
+                await stage_stats_evidence(
+                    session,
+                    operation="stats.reference_update",
+                    before=before[row_id],
+                    after=after,
+                    workspace_id=workspace_id,
+                    entity_type="achievement_evaluation",
+                    entity_id=row_id,
+                )
 
 
 class EvaluationRunRepository(BaseRepository[models.EvaluationRun]):
@@ -108,19 +202,22 @@ class DiscordChannelRepository(BaseRepository[models.TournamentDiscordChannel]):
     ) -> models.TournamentDiscordChannel | None:
         return await self.get_by(session, tournament_id=tournament_id)
 
-    async def list_channel_ids_for_tournament(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-    ) -> Sequence[int]:
-        """Active channel ids configured for a tournament (0 or 1: unique per tournament)."""
+    async def set_last_scanned(self, session: AsyncSession, channel_id: int, message_id: int) -> bool:
+        """Raise the channel's rescan cursor to ``message_id``; ``False`` when it already sits there or past.
+
+        Guarded in SQL, so a slow history walk finishing after a live message
+        never drags the cursor back.
+        """
+        model = models.TournamentDiscordChannel
         result = await session.execute(
-            sa.select(models.TournamentDiscordChannel.channel_id).where(
-                models.TournamentDiscordChannel.tournament_id == tournament_id,
-                models.TournamentDiscordChannel.is_active,
+            sa.update(model)
+            .where(
+                model.channel_id == channel_id,
+                sa.or_(model.last_scanned_message_id.is_(None), model.last_scanned_message_id < message_id),
             )
+            .values(last_scanned_message_id=message_id)
         )
-        return result.scalars().all()
+        return result.rowcount > 0
 
     async def list_active_with_tournament(
         self,
@@ -149,236 +246,6 @@ class DiscordChannelRepository(BaseRepository[models.TournamentDiscordChannel]):
             )
         )
         return list(result.all())
-
-
-def stalled_conditions(
-    *,
-    now: datetime,
-    pending_after_seconds: int,
-    processing_after_seconds: int,
-) -> sa.ColumnElement[bool]:
-    """WHERE term selecting records no live queue message can still be driving.
-
-    ``updated_at`` is null until a row is first updated, so last-touch falls back
-    to ``created_at``. The pending window must exceed the queue TTL: inside it a
-    message may still be waiting for a busy consumer, and requeueing then would
-    parse the same log twice concurrently.
-
-    Moved verbatim from ``src/services/match_logs/reaper.py`` — that module
-    still exposes it (``reaper.stalled_conditions``, re-exported from here) since
-    a test constructs it directly to pin the exact WHERE shape.
-    """
-    record = models.LogProcessingRecord
-    last_touch = sa.func.coalesce(record.updated_at, record.created_at)
-    return sa.or_(
-        sa.and_(
-            record.status == models.LogProcessingStatus.pending,
-            last_touch < now - timedelta(seconds=pending_after_seconds),
-        ),
-        sa.and_(
-            record.status == models.LogProcessingStatus.processing,
-            sa.func.coalesce(record.started_at, last_touch) < now - timedelta(seconds=processing_after_seconds),
-        ),
-    )
-
-
-class LogProcessingRepository(BaseRepository[models.LogProcessingRecord]):
-    def __init__(self) -> None:
-        super().__init__(models.LogProcessingRecord)
-
-    async def exists_done(
-        self,
-        session: AsyncSession,
-        *,
-        tournament_id: int,
-        filename: str,
-    ) -> bool:
-        """Whether this exact (tournament, filename) already finished processing.
-
-        Used to skip re-uploading logs already seen on a channel-history rescan
-        (bot restart, newly-added channel).
-        """
-        result = await session.execute(
-            sa.select(models.LogProcessingRecord.id)
-            .where(
-                models.LogProcessingRecord.tournament_id == tournament_id,
-                models.LogProcessingRecord.filename == filename,
-                models.LogProcessingRecord.status == models.LogProcessingStatus.done,
-            )
-            .limit(1)
-        )
-        return result.scalar_one_or_none() is not None
-
-    async def get_latest_error_message(
-        self,
-        session: AsyncSession,
-        *,
-        tournament_id: int,
-        filename: str,
-    ) -> str | None:
-        result = await session.execute(
-            sa.select(models.LogProcessingRecord.error_message)
-            .where(
-                models.LogProcessingRecord.tournament_id == tournament_id,
-                models.LogProcessingRecord.filename == filename,
-            )
-            .order_by(models.LogProcessingRecord.created_at.desc())
-            .limit(1)
-        )
-        return result.scalar_one_or_none()
-
-    async def find_reusable(
-        self,
-        session: AsyncSession,
-        *,
-        tournament_id: int,
-        filename: str,
-    ) -> models.LogProcessingRecord | None:
-        """A pending/failed record for (tournament_id, filename) to refresh on a
-        re-upload, rather than forking a duplicate row."""
-        result = await session.execute(
-            sa.select(models.LogProcessingRecord)
-            .where(
-                models.LogProcessingRecord.tournament_id == tournament_id,
-                models.LogProcessingRecord.filename == filename,
-                models.LogProcessingRecord.status.in_(
-                    [models.LogProcessingStatus.pending, models.LogProcessingStatus.failed]
-                ),
-            )
-            .limit(1)
-        )
-        return result.scalar_one_or_none()
-
-    async def find_latest(
-        self,
-        session: AsyncSession,
-        *,
-        tournament_id: int,
-        filename: str,
-    ) -> models.LogProcessingRecord | None:
-        """The most recently created record for (tournament_id, filename), any status."""
-        result = await session.execute(
-            sa.select(models.LogProcessingRecord)
-            .where(
-                models.LogProcessingRecord.tournament_id == tournament_id,
-                models.LogProcessingRecord.filename == filename,
-            )
-            .order_by(models.LogProcessingRecord.created_at.desc())
-            .limit(1)
-        )
-        return result.scalar_one_or_none()
-
-    async def find_latest_incomplete(
-        self,
-        session: AsyncSession,
-        *,
-        tournament_id: int,
-        filename: str,
-        statuses: Sequence[models.LogProcessingStatus],
-    ) -> models.LogProcessingRecord | None:
-        """The most recent record for (tournament_id, filename) still in one of
-        ``statuses`` — callers pick which non-terminal states count as "incomplete"
-        for their purpose (duplicate finalization vs. an unstarted-log failure)."""
-        result = await session.execute(
-            sa.select(models.LogProcessingRecord)
-            .where(
-                models.LogProcessingRecord.tournament_id == tournament_id,
-                models.LogProcessingRecord.filename == filename,
-                models.LogProcessingRecord.status.in_(statuses),
-            )
-            .order_by(models.LogProcessingRecord.created_at.desc())
-            .limit(1)
-        )
-        return result.scalar_one_or_none()
-
-    async def claim_stalled(
-        self,
-        session: AsyncSession,
-        *,
-        now: datetime,
-        pending_after_seconds: int,
-        processing_after_seconds: int,
-        limit: int,
-    ) -> Sequence[models.LogProcessingRecord]:
-        """``SELECT ... FOR UPDATE SKIP LOCKED`` — moved verbatim from
-        ``reaper.py``'s ``_claim_stalled``. Locks and returns the stalled rows;
-        the caller decides requeue vs. exhausted per row and owns the commit (no
-        write happens here, so this is safe to call from a read-locking method
-        despite the write-methods-flush-only convention).
-        """
-        result = await session.execute(
-            sa.select(models.LogProcessingRecord)
-            .where(
-                stalled_conditions(
-                    now=now,
-                    pending_after_seconds=pending_after_seconds,
-                    processing_after_seconds=processing_after_seconds,
-                )
-            )
-            .order_by(models.LogProcessingRecord.created_at)
-            .limit(limit)
-            .with_for_update(skip_locked=True)
-        )
-        return result.scalars().all()
-
-    async def claim_expired_failed(
-        self,
-        session: AsyncSession,
-        *,
-        cutoff: datetime,
-        limit: int,
-    ) -> Sequence[sa.Row[tuple[int, int, str]]]:
-        """Lock ``(id, tournament_id, filename)`` of ``failed`` records finished
-        before ``cutoff``. A record a match still points at is skipped: it is that
-        map's provenance, not a dead upload."""
-        record = models.LogProcessingRecord
-        result = await session.execute(
-            sa.select(record.id, record.tournament_id, record.filename)
-            .where(
-                record.status == models.LogProcessingStatus.failed,
-                record.finished_at < cutoff,
-                ~sa.exists().where(models.Match.log_record_id == record.id),
-            )
-            .order_by(record.finished_at)
-            .limit(limit)
-            .with_for_update(skip_locked=True, of=record)
-        )
-        return result.all()
-
-    async def log_file_in_use(
-        self,
-        session: AsyncSession,
-        *,
-        record_id: int,
-        tournament_id: int,
-        filename: str,
-        cutoff: datetime,
-    ) -> bool:
-        """Whether ``logs/{tournament_id}/{filename}`` still backs something other
-        than an expired failure: another live record for the same key, or a match
-        (including pre-provenance ones that only carry ``log_name``)."""
-        record = models.LogProcessingRecord
-        other_record = sa.exists().where(
-            record.tournament_id == tournament_id,
-            record.filename == filename,
-            record.id != record_id,
-            sa.or_(
-                record.status != models.LogProcessingStatus.failed,
-                record.finished_at.is_(None),
-                record.finished_at >= cutoff,
-            ),
-        )
-        match = sa.exists().where(
-            models.Match.log_name == filename,
-            models.Match.encounter_id == models.Encounter.id,
-            models.Encounter.tournament_id == tournament_id,
-        )
-        result = await session.execute(sa.select(sa.or_(other_record, match)))
-        return bool(result.scalar_one())
-
-    async def delete_by_ids(self, session: AsyncSession, ids: Sequence[int]) -> None:
-        if ids:
-            await session.execute(sa.delete(models.LogProcessingRecord).where(models.LogProcessingRecord.id.in_(ids)))
 
 
 class ChallongeMappingRepository:

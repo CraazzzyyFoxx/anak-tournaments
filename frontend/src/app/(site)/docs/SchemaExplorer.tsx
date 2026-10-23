@@ -3,6 +3,8 @@
 import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 
+import { EmptyNote } from "@/components/kit/EmptyNote";
+import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/ui/search-field";
 import { cn } from "@/lib/utils";
 
@@ -49,7 +51,7 @@ export function SchemaExplorer() {
         placeholder={t("searchPlaceholder")}
         containerClassName={styles.search}
       />
-      {packages.length === 0 ? <p className={styles.empty}>{t("empty", { query })}</p> : null}
+      {packages.length === 0 ? <EmptyNote>{t("empty", { query })}</EmptyNote> : null}
       {packages.map((pkg) => {
         const note = PACKAGE_NOTES[pkg.key];
         const isOpen = open.has(pkg.key);
@@ -71,14 +73,15 @@ export function SchemaExplorer() {
                 </li>
               ))}
             </ul>
-            <button
-              type="button"
-              className={styles.toggle}
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3"
               aria-expanded={isOpen}
               onClick={() => toggle(pkg.key)}
             >
               {isOpen ? t("hideDiagram") : t("showDiagram")}
-            </button>
+            </Button>
             {isOpen ? (
               <>
                 <MermaidDiagram code={pkg.mermaid} diagramKey={pkg.key} />

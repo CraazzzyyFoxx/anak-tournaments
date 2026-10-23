@@ -6,12 +6,12 @@ import { useState, type Dispatch, type SetStateAction } from "react";
 
 import { notify } from "@/lib/notify";
 import { registrationTeamErrorCode } from "@/lib/registration/team-errors";
-import type { RosterSlotCode } from "@/lib/roster/shape";
+import type { SlotCode } from "@/lib/roster/shape";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import registrationTeamService from "@/services/registration-team.service";
 import type { RegistrationFreeAgent } from "@/types/registration-team.types";
 
-export type InviteMode = "link" | "targeted";
+type InviteMode = "link" | "targeted";
 
 /** Everything the invite dialog renders and drives. */
 export interface MyTeamInviteController {
@@ -19,12 +19,12 @@ export interface MyTeamInviteController {
   setOpen: (open: boolean) => void;
   mode: InviteMode;
   selectMode: (mode: InviteMode) => void;
-  slot: RosterSlotCode | null;
-  setSlot: (code: RosterSlotCode) => void;
+  slot: SlotCode | null;
+  setSlot: (code: SlotCode) => void;
   substitute: boolean;
   toggleSubstitute: (substitute: boolean) => void;
   /** Slot codes offerable in the current mode: bench shape or starter gaps. */
-  selectableSlots: RosterSlotCode[];
+  selectableSlots: SlotCode[];
   search: string;
   setSearch: (value: string) => void;
   targetRegistrationId: number | null;
@@ -42,7 +42,7 @@ export interface MyTeamInviteController {
   setIssuedToken: Dispatch<SetStateAction<string | null>>;
   isPending: boolean;
   /** Seeds the dialog for one slot and opens it. */
-  openInvite: (code: RosterSlotCode | null, substitute?: boolean) => void;
+  openInvite: (code: SlotCode | null, substitute?: boolean) => void;
   /** `false` when a targeted invite still has no addressee. */
   submit: () => boolean;
 }
@@ -54,8 +54,8 @@ interface UseMyTeamInviteInput {
   /** Whether a roster write can still land at all. The dialog closes with it,
    *  and the submit refuses rather than posting something the server denies. */
   canEditRoster: boolean;
-  offerableSlots: RosterSlotCode[];
-  benchSlots: RosterSlotCode[];
+  offerableSlots: SlotCode[];
+  benchSlots: SlotCode[];
   invalidate: () => Promise<unknown>;
   failure: (err: unknown) => void;
   /** The cap counts every invite ever issued, including ones long since
@@ -83,7 +83,7 @@ export function useMyTeamInvite({
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteMode, setInviteMode] = useState<InviteMode>("link");
-  const [inviteSlot, setInviteSlot] = useState<RosterSlotCode | null>(null);
+  const [inviteSlot, setInviteSlot] = useState<SlotCode | null>(null);
   const [inviteSubstitute, setInviteSubstitute] = useState(false);
   const [pickerSearch, setPickerSearch] = useState("");
   /** A registration id, not an account id. Targeted mode requires a selection. */
@@ -145,7 +145,7 @@ export function useMyTeamInvite({
     },
   });
 
-  const openInvite = (code: RosterSlotCode | null, substitute = false) => {
+  const openInvite = (code: SlotCode | null, substitute = false) => {
     setInviteSubstitute(substitute);
     setInviteSlot(code);
     setInviteMode("link");

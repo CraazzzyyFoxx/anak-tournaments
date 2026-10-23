@@ -9,7 +9,7 @@ import { segmentedFrame, toggleVariants } from "@/components/ui/toggle";
 import type { Tone } from "@/components/ui/tone";
 import { cn } from "@/lib/utils";
 
-type TabsVariant = "underline" | "pill";
+type TabsVariant = "underline" | "pill" | "rail";
 
 /**
  * The one tab look for the whole app, in two forms that share these classes:
@@ -24,7 +24,9 @@ type TabsVariant = "underline" | "pill";
  *
  * `underline` is the default. `pill` is the site's segmented control drawing
  * (`segmentedFrame` + `toggleVariants`) for the rare mode switch that also owns
- * panels; a plain view/mode switch without panels is a `ToggleGroup`.
+ * panels; a plain view/mode switch without panels is a `ToggleGroup`. `rail` is
+ * a vertical section list beside its panels (the account settings dialog): an
+ * overlay fill and a teal bar on the active row, 44px rows below `md`.
  */
 const tabsListVariants = cva("", {
   variants: {
@@ -34,7 +36,8 @@ const tabsListVariants = cva("", {
       // sits on its rule, without a wrapper around the scroll container.
       underline:
         "relative flex w-full items-center gap-1 overflow-x-auto whitespace-nowrap shadow-[inset_0_-1px_0_hsl(var(--border))]",
-      pill: cn(segmentedFrame, "relative max-w-full overflow-x-auto")
+      pill: cn(segmentedFrame, "relative max-w-full overflow-x-auto"),
+      rail: "flex flex-col gap-0.5"
     }
   },
   defaultVariants: { variant: "underline" }
@@ -48,12 +51,21 @@ const tabsTriggerVariants = cva(
         // Inset ring: the list scrolls horizontally, which clips anything
         // drawn outside a trigger's box.
         underline: cn(
-          "inline-flex h-9 items-center gap-1.5 border-b-2 border-transparent px-3 text-sm text-muted-foreground transition-colors hover:text-foreground",
+          "inline-flex h-9 items-center gap-1.5 border-b-2 border-transparent px-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground",
           "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-          "data-[state=active]:border-primary data-[state=active]:font-medium data-[state=active]:text-foreground",
-          "aria-[current=page]:border-primary aria-[current=page]:font-medium aria-[current=page]:text-foreground"
+          "data-[state=active]:border-primary data-[state=active]:text-foreground",
+          "aria-[current=page]:border-primary aria-[current=page]:text-foreground"
         ),
-        pill: toggleVariants({ variant: "pill", size: "sm" })
+        pill: toggleVariants({ variant: "pill", size: "sm" }),
+        rail: cn(
+          "relative flex h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-sm font-medium text-[color:var(--aqt-fg-muted)] transition-colors md:h-9",
+          "hover:bg-[color:var(--aqt-overlay-2)] hover:text-[color:var(--aqt-fg)]",
+          "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          "before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-transparent",
+          "data-[state=active]:bg-[color:var(--aqt-overlay-3)] data-[state=active]:text-[color:var(--aqt-fg)] data-[state=active]:before:bg-primary",
+          "aria-[current=page]:bg-[color:var(--aqt-overlay-3)] aria-[current=page]:text-[color:var(--aqt-fg)] aria-[current=page]:before:bg-primary",
+          "[&_svg]:size-4 [&_svg]:shrink-0"
+        )
       }
     },
     defaultVariants: { variant: "underline" }

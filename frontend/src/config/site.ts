@@ -1,4 +1,8 @@
-export const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME ?? "OWT";
+// A build arg Docker received empty (`ARG X` + `ENV X=${X}`) reaches the bundle
+// as "", which `??` keeps: a blank title or a missing icon. Empty means unset.
+const configured = (value: string | undefined, fallback: string) => value?.trim() || fallback;
+
+export const SITE_NAME = configured(process.env.NEXT_PUBLIC_SITE_NAME, "OWT");
 
 // The platform's short wordmark in the site chrome (header plate, footer,
 // "Работает на OWT"). Not the configurable SITE_NAME, which names the
@@ -7,7 +11,7 @@ export const BRAND_NAME = "OWT";
 
 // Public base URL for the frontend (used in metadata like Open Graph).
 // Must be an absolute URL including protocol, e.g. "https://example.com".
-export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://owt.craazzzyyfoxx.me";
+export const SITE_URL = configured(process.env.NEXT_PUBLIC_SITE_URL, "https://owt.craazzzyyfoxx.me");
 
 export const SITE_URL_OBJ = (() => {
 	try {
@@ -19,11 +23,11 @@ export const SITE_URL_OBJ = (() => {
 
 // Path to the main site icon (used for the header logo + metadata icon).
 // Must be a file under `frontend/public` (e.g. "/logo.webp").
-export const SITE_ICON = process.env.NEXT_PUBLIC_SITE_ICON ?? "/logo.webp";
+export const SITE_ICON = configured(process.env.NEXT_PUBLIC_SITE_ICON, "/logo.webp");
 
 // Browser favicon path (used for <link rel="icon">).
 // Must be a file under `frontend/public` (e.g. "/favicon.ico").
-export const SITE_FAVICON = process.env.NEXT_PUBLIC_SITE_FAVICON ?? "/favicon.ico";
+export const SITE_FAVICON = configured(process.env.NEXT_PUBLIC_SITE_FAVICON, "/favicon.ico");
 
 // Google Analytics measurement id (e.g. "G-XXXXXXXXXX"). Unset disables GA.
 export const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
@@ -35,6 +39,12 @@ export const YM_ID = process.env.NEXT_PUBLIC_YM_ID;
 // (`v1.2.3`) as a build arg, so it is baked into the bundle; unset in local
 // dev, where the footer then renders no version at all.
 export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION;
+
+// The repository the app is built from: the footer's source link and the
+// changelog's links to each release tag. One constant, because the URL was once
+// written out twice and both copies kept the old `anak-tournaments` name after
+// the rename, so every version chip in the footer 404'd.
+export const REPO_URL = "https://github.com/CraazzzyyFoxx/overwatch-tournaments";
 
 // Discord application id of the platform's bot — the `client_id` of the bot
 // invite link on the workspace Discord settings page. It is the APPLICATION id

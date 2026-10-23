@@ -94,7 +94,7 @@ export function DateRangePicker({
           variant="outline"
           data-empty={!from}
           className={cn(
-            "w-full justify-start text-left font-normal",
+            "w-full justify-start text-left",
             "data-[empty=true]:text-muted-foreground"
           )}
         >

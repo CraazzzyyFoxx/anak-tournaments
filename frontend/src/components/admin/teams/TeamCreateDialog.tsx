@@ -6,11 +6,12 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
-import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
+import { UserSearchCombobox } from "@/components/kit/ServerSearchCombobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { notify } from "@/lib/notify";
+import { splitHandle } from "@/lib/player";
 import adminService from "@/services/admin.service";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
@@ -45,7 +46,7 @@ export function TeamCreateDialog({ open, onOpenChange, tournamentId }: Readonly<
   const [error, setError] = useState<string | undefined>();
   // Same convention as the balancer export: a team without its own name is known
   // by its captain's handle, battletag suffix dropped.
-  const captainHandle = form.captainName.split("#")[0];
+  const captainHandle = splitHandle(form.captainName).name;
   const teamName = form.name.trim() || captainHandle;
 
   const createTeam = useMutation({
@@ -110,7 +111,7 @@ export function TeamCreateDialog({ open, onOpenChange, tournamentId }: Readonly<
           <Input
             id="team-create-name"
             value={form.name}
-            placeholder={captainHandle || t("teamName")}
+            placeholder={captainHandle || undefined}
             onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
           />
           <p className="text-xs text-muted-foreground">
@@ -123,7 +124,7 @@ export function TeamCreateDialog({ open, onOpenChange, tournamentId }: Readonly<
           <UserSearchCombobox
             id="team-create-captain"
             value={form.captainId || undefined}
-            selectedName={form.captainName || undefined}
+            selectedLabel={form.captainName}
             placeholder={t("searchUser")}
             onSelect={(user) =>
               setForm((current) => ({

@@ -14,7 +14,6 @@
 import { declaredRoles } from "@/lib/forms/answers";
 import { identityMaxCount, identityProvider } from "@/lib/forms/builtin-keys";
 import type { Translate } from "@/lib/forms/form-errors";
-import { REGISTRATION_TO_CANONICAL } from "@/lib/roster/roles";
 import { displaySocialHandle, normalizeSocialHandle } from "@/lib/social/providers";
 import type { Answers, FormField } from "@/types/forms.types";
 
@@ -28,7 +27,10 @@ const DEFAULT_PATTERNS: Record<string, string> = {
   identity_discord: String.raw`^[a-z0-9_.]{2,32}$`,
   identity_twitch: String.raw`^[a-zA-Z0-9_]{4,25}$`,
   identity_boosty: String.raw`^[^#]{2,50}$`,
-  url: String.raw`^https?://.+$`,
+  identity_riot: String.raw`^[^#]{3,16}#[0-9a-z]{3,5}$`,
+  // A Steam account id, 1..2^32-1 (`shared.core.social`'s handle pattern): any other spelling is normalized to it first.
+  identity_steam: String.raw`^(?:[1-9]\d{0,8}|[1-3]\d{9}|4[01]\d{8}|42[0-8]\d{7}|429[0-3]\d{6}|4294[0-8]\d{5}|42949[0-5]\d{4}|429496[0-6]\d{3}|4294967[01]\d{2}|42949672[0-8]\d|429496729[0-5])$`,
+  url: String.raw`^https?://.+$`
 };
 
 /** A number as typed by a human: `1,5` is the Russian decimal separator. */
@@ -130,12 +132,17 @@ function isRealDate(value: string): boolean {
  * `answers` is the whole document, needed by the rules that read a SECOND
  * answer declares. Optional, so a caller validating one value in isolation (one
  * handle being typed into a combobox) keeps passing three arguments.
+ *
+ * `roleCodes` are the owner game's registration roles; a `role_ranks` answer may
+ * only name those. Absent (the host has no metadata for the game), the server
+ * stays the only judge of which codes exist — no game's list is assumed here.
  */
 export function validateAnswer(
   field: FormField,
   value: unknown,
   t: Translate,
   answers?: Answers,
+  roleCodes?: readonly string[],
 ): string | null {
   const empty =
     value === null ||
@@ -181,7 +188,7 @@ export function validateAnswer(
     case "role_ranks": {
       if (!isPlainObject(value)) return t("invalid_type");
       const entries = Object.entries(value);
-      if (entries.some(([role]) => !Object.hasOwn(REGISTRATION_TO_CANONICAL, role))) {
+      if (roleCodes && entries.some(([role]) => !roleCodes.includes(role))) {
         return t("invalid_option");
       }
       const bad = entries.some(([, rank]) =>

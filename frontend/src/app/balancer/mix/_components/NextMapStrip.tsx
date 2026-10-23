@@ -1,20 +1,23 @@
 "use client";
 
 import { useState } from "react";
-
-import Image from "next/image";
+import { useTranslations } from "next-intl";
 
 import { Dices } from "lucide-react";
 
 import { rollNextMap, rollableModes } from "@/app/balancer/mix/pickup-map-roll";
-import { CAPTION_CLASS, EYEBROW_CLASS } from "@/app/balancer/mix/pickup-chrome";
-import { MapCombobox } from "@/components/MapCombobox";
+import { CAPTION_CLASS } from "@/app/balancer/mix/pickup-chrome";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { Button } from "@/components/ui/button";
+import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
+import { CommandGroup, CommandItem } from "@/components/ui/command";
+import { Eyebrow } from "@/components/ui/eyebrow";
+import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { Spinner } from "@/components/ui/spinner";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import type { CustomGameMatch } from "@/services/custom-game.service";
-import type { MapRead } from "@/types/map.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 
 /**
  * The map the next match is on, and how a host gets one: roll it (inside one
@@ -37,14 +40,17 @@ export function NextMapStrip({
 }: Readonly<{
   /** This lobby's own `next_map_id`, not the mix's -- the mix has none. */
   nextMapId: number | null;
-  maps: MapRead[];
+  maps: CatalogEntityRead[];
   matches: CustomGameMatch[];
   canWrite: boolean;
   saving: boolean;
   capturing: boolean;
   onNextMapChange: (mapId: number | null) => void;
 }>) {
+  const t = useTranslations("mixes.room");
+  const tCommon = useTranslations("common");
   const [modeId, setModeId] = useState<number | null>(null);
+  const [mapPickerOpen, setMapPickerOpen] = useState(false);
   const modes = rollableModes(maps);
   const nextMap = nextMapId == null ? null : (maps.find((map) => map.id === nextMapId) ?? null);
 
@@ -56,42 +62,44 @@ export function NextMapStrip({
       playedMapIds: matches.flatMap((match) => (match.map_id == null ? [] : [match.map_id]))
     });
     if (rolled == null) {
-      notify.error("No competitive maps to roll from");
+      notify.error(t("noMapsToRoll"));
       return;
     }
     onNextMapChange(rolled.id);
   };
 
+  const pickMap = (mapId: number | null) => {
+    onNextMapChange(mapId);
+    setMapPickerOpen(false);
+  };
+
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-3 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] px-3 py-2.5",
+        "flex flex-wrap items-center gap-3 border-b border-[color:var(--aqt-border)] px-4 py-3",
         capturing && nextMap == null && "hidden"
       )}
     >
-      <div className="relative h-10 w-[72px] shrink-0 overflow-hidden rounded-md border border-[color:var(--aqt-border-2)] bg-[linear-gradient(135deg,var(--aqt-card-2),var(--aqt-bg-2))]">
-        {nextMap?.image_path ? (
-          <Image src={nextMap.image_path} alt="" fill sizes="72px" className="object-cover" />
-        ) : (
-          <Dices
-            className="absolute inset-0 m-auto size-4 text-[color:var(--aqt-fg-faint)]"
-            aria-hidden="true"
-          />
-        )}
-      </div>
+      {nextMap ? (
+        <CatalogEntityImage entity={nextMap} size={40} shape="wide" decorative />
+      ) : (
+        <span className="relative flex h-10 w-[53px] shrink-0 items-center justify-center rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card-2)]">
+          <Dices className="size-4 text-[color:var(--aqt-fg-faint)]" aria-hidden="true" />
+        </span>
+      )}
       <div className="min-w-0 flex-1">
-        <span className={EYEBROW_CLASS}>Next map</span>
+        <Eyebrow>{t("nextMapLabel")}</Eyebrow>
         <div className="flex flex-wrap items-baseline gap-x-2">
           <span
             className={cn(
-              "truncate font-display text-base font-bold tracking-[-0.01em]",
+              "truncate font-display text-ui font-bold",
               nextMap ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-dim)]"
             )}
           >
-            {nextMap?.name ?? "Not rolled yet"}
+            {nextMap?.name ?? t("notRolled")}
           </span>
-          {nextMap?.gamemode ? (
-            <span className={CAPTION_CLASS}>{nextMap.gamemode.name}</span>
+          {nextMap?.parent ? (
+            <span className={CAPTION_CLASS}>{nextMap.parent.name}</span>
           ) : null}
         </div>
       </div>
@@ -101,25 +109,20 @@ export function NextMapStrip({
           data-export-hide
           className={cn("flex flex-wrap items-center gap-1.5", capturing && "invisible")}
         >
-          <div
-            role="group"
-            aria-label="Roll within mode"
-            className="flex flex-wrap items-center gap-1"
-          >
-            <ModeChip label="Any" active={modeId == null} onClick={() => setModeId(null)} />
+          <FilterChipGroup label={t("rollMode")} className="gap-1">
+            <FilterChip active={modeId == null} onClick={() => setModeId(null)}>
+              {tCommon("any")}
+            </FilterChip>
             {modes.map((mode) => (
-              <ModeChip
-                key={mode.id}
-                label={mode.name}
-                active={modeId === mode.id}
-                onClick={() => setModeId(mode.id)}
-              />
+              <FilterChip key={mode.id} active={modeId === mode.id} onClick={() => setModeId(mode.id)}>
+                {mode.name}
+              </FilterChip>
             ))}
-          </div>
+          </FilterChipGroup>
           <Button
             type="button"
             variant="outline"
-            className="h-8"
+            size="sm"
             disabled={saving || maps.length === 0}
             onClick={roll}
           >
@@ -128,34 +131,33 @@ export function NextMapStrip({
             ) : (
               <Dices className="mr-1.5 size-3.5" aria-hidden="true" />
             )}
-            Roll
+            {t("roll")}
           </Button>
-          <MapCombobox maps={maps} mapId={nextMapId} onMapIdChange={onNextMapChange} />
+          <Combobox
+            open={mapPickerOpen}
+            onOpenChange={setMapPickerOpen}
+            label={nextMap?.name ?? t("noMap")}
+            variant="surface"
+            size="sm"
+            triggerClassName="w-40"
+            searchPlaceholder={t("searchMaps")}
+            emptyMessage={t("noMapsMatch")}
+          >
+            <CommandGroup>
+              <CommandItem value={t("noMap")} onSelect={() => pickMap(null)}>
+                <span className="min-w-0 flex-1 truncate">{t("noMap")}</span>
+                <ComboboxCheck selected={nextMapId == null} />
+              </CommandItem>
+              {maps.map((map) => (
+                <CommandItem key={map.id} value={map.name} onSelect={() => pickMap(map.id)}>
+                  <span className="min-w-0 flex-1 truncate">{map.name}</span>
+                  <ComboboxCheck selected={nextMapId === map.id} />
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </Combobox>
         </div>
       ) : null}
     </div>
-  );
-}
-
-/** One mode the roll can stay inside; the same pressed-pill the add-players filters use. */
-function ModeChip({
-  label,
-  active,
-  onClick
-}: Readonly<{ label: string; active: boolean; onClick: () => void }>) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={cn(
-        "inline-flex h-7 shrink-0 items-center rounded-full border px-2.5 text-label transition-colors",
-        active
-          ? "border-[color:color-mix(in_srgb,var(--aqt-teal)_38%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_12%,transparent)] text-[color:var(--aqt-teal)]"
-          : "border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
-      )}
-    >
-      {label}
-    </button>
   );
 }

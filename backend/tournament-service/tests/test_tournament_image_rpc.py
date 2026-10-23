@@ -19,7 +19,6 @@ from __future__ import annotations
 import base64
 import importlib
 import json
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -32,7 +31,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 tournament_binary = importlib.import_module("src.rpc.tournament_binary")
 helpers = importlib.import_module("src.rpc._helpers")
@@ -90,6 +88,7 @@ def _tournament_read(*, cover_image_url: str | None, logo_url: str | None) -> ob
     return schemas.TournamentRead(
         id=TOURNAMENT_ID,
         workspace_id=WORKSPACE_ID,
+        discipline="overwatch",
         name="Anak Cup",
         slug="anak-cup",
         description=None,

@@ -3,10 +3,11 @@
 Traffic model — four user archetypes mirroring real frontend usage, all
 hitting the nginx -> Go gateway edge (the same path production traffic takes):
 
-* ``AnonymousBrowser`` (weight 6) — landing dashboard, tournament pages,
-  matches, teams, cached metadata. The bulk of real traffic.
+* ``AnonymousBrowser`` (weight 6) — tournament pages, matches, teams,
+  cached metadata. The bulk of real traffic.
 * ``ProfileViewer``   (weight 3) — player profile tabs (profile, tournaments,
-  heroes, maps, teammates, encounters) and player compare.
+  characters, maps, teammates, encounters) and player compare, each in the
+  configured game (``OWT_CATALOG_DISCIPLINE``).
 * ``StatsAnalyst``    (weight 2) — statistics + analytics endpoints, the
   heaviest cold-cache reads in the system.
 * ``SearchUser``      (weight 2) — user search / filtered user lists
@@ -57,6 +58,10 @@ class OwtUser(HttpUser):
             params["workspace_id"] = self.seed.workspace_id
         return params
 
+    def game_params(self, **extra: object) -> dict:
+        """Workspace scope plus the explicit game every statistics read requires (no default discipline)."""
+        return self.ws_params(discipline=config.CATALOG_DISCIPLINE, **extra)
+
     def pick(self, pool: list[int]) -> int | None:
         return random.choice(pool) if pool else None
 
@@ -70,14 +75,10 @@ class OwtUser(HttpUser):
 
 
 class AnonymousBrowser(OwtUser):
-    """Casual visitor: dashboard -> tournament pages -> matches/teams."""
+    """Casual visitor: tournament pages -> matches/teams."""
 
     weight = 6
     wait_time = between(1, 4)
-
-    @task(3)
-    def dashboard(self) -> None:
-        self.get("/api/v1/statistics/dashboard", "/api/v1/statistics/dashboard", self.ws_params())
 
     @task(3)
     def list_tournaments(self) -> None:
@@ -127,9 +128,14 @@ class AnonymousBrowser(OwtUser):
 
     @task(2)
     def metadata(self) -> None:
-        # Heavily cached (1-day Redis TTL) — cheap, high-frequency requests.
-        path = random.choice(("/api/v1/heroes", "/api/v1/maps", "/api/v1/gamemodes", "/api/v1/achievements"))
-        self.get(path, path, {"page": 1, "per_page": 50})
+        # Public catalog + achievements: cheap, high-frequency requests; one stats name per kind, not per discipline.
+        # Only kinds the discipline declares: an undeclared one (League has no `mode`) is a deterministic 404.
+        base = f"/api/v1/catalog/{config.CATALOG_DISCIPLINE}"
+        path, name = random.choice(
+            [(f"{base}/{kind}", f"/api/v1/catalog/[discipline]/{kind}") for kind in self.seed.catalog_kinds]
+            + [("/api/v1/achievements", "/api/v1/achievements")]
+        )
+        self.get(path, name, {"page": 1, "per_page": 50})
 
     @task(1)
     def list_workspaces(self) -> None:
@@ -147,28 +153,30 @@ class ProfileViewer(OwtUser):
         uid = self.pick(self.seed.user_ids)
         if uid is None:
             return
-        self.get(f"/api/v1/users/{uid}/profile", "/api/v1/users/[id]/profile", self.ws_params(), detail=True)
+        self.get(f"/api/v1/users/{uid}/profile", "/api/v1/users/[id]/profile", self.game_params(), detail=True)
 
     @task(3)
     def profile_tournaments(self) -> None:
         uid = self.pick(self.seed.user_ids)
         if uid is None:
             return
-        self.get(f"/api/v1/users/{uid}/tournaments", "/api/v1/users/[id]/tournaments", self.ws_params(), detail=True)
+        self.get(f"/api/v1/users/{uid}/tournaments", "/api/v1/users/[id]/tournaments", self.game_params(), detail=True)
 
     @task(2)
-    def profile_heroes(self) -> None:
+    def profile_characters(self) -> None:
         uid = self.pick(self.seed.user_ids)
         if uid is None:
             return
-        self.get(f"/api/v1/users/{uid}/heroes", "/api/v1/users/[id]/heroes", self.ws_params(), detail=True)
+        self.get(f"/api/v1/users/{uid}/characters", "/api/v1/users/[id]/characters", self.game_params(), detail=True)
 
     @task(2)
     def profile_maps_summary(self) -> None:
         uid = self.pick(self.seed.user_ids)
         if uid is None:
             return
-        self.get(f"/api/v1/users/{uid}/maps/summary", "/api/v1/users/[id]/maps/summary", self.ws_params(), detail=True)
+        self.get(
+            f"/api/v1/users/{uid}/maps/summary", "/api/v1/users/[id]/maps/summary", self.game_params(), detail=True
+        )
 
     @task(2)
     def profile_teammates(self) -> None:
@@ -178,7 +186,7 @@ class ProfileViewer(OwtUser):
         self.get(
             f"/api/v1/users/{uid}/teammates",
             "/api/v1/users/[id]/teammates",
-            self.ws_params(page=1, per_page=10),
+            self.game_params(page=1, per_page=10),
             detail=True,
         )
 
@@ -190,7 +198,7 @@ class ProfileViewer(OwtUser):
         self.get(
             f"/api/v1/users/{uid}/encounters",
             "/api/v1/users/[id]/encounters",
-            self.ws_params(page=1, per_page=10),
+            self.game_params(page=1, per_page=10),
             detail=True,
         )
 
@@ -202,7 +210,7 @@ class ProfileViewer(OwtUser):
         self.get(
             f"/api/v1/users/{uid}/matches/summary",
             "/api/v1/users/[id]/matches/summary",
-            self.ws_params(),
+            self.game_params(),
             detail=True,
         )
 
@@ -214,7 +222,7 @@ class ProfileViewer(OwtUser):
         self.get(
             f"/api/v1/users/{uid}/compare",
             "/api/v1/users/[id]/compare",
-            {"baseline": "global", "target_user_id": other},
+            {"baseline": "global", "target_user_id": other, "discipline": config.CATALOG_DISCIPLINE},
             detail=True,
         )
 
@@ -230,7 +238,7 @@ class StatsAnalyst(OwtUser):
         self.get(
             "/api/v1/statistics/champion",
             "/api/v1/statistics/champion",
-            self.ws_params(page=1, per_page=20),
+            self.game_params(page=1, per_page=20),
         )
 
     @task(2)
@@ -238,7 +246,7 @@ class StatsAnalyst(OwtUser):
         self.get(
             "/api/v1/statistics/winrate",
             "/api/v1/statistics/winrate",
-            self.ws_params(page=1, per_page=20),
+            self.game_params(page=1, per_page=20),
         )
 
     @task(2)
@@ -246,25 +254,25 @@ class StatsAnalyst(OwtUser):
         self.get(
             "/api/v1/statistics/won-maps",
             "/api/v1/statistics/won-maps",
-            self.ws_params(page=1, per_page=20),
+            self.game_params(page=1, per_page=20),
         )
 
     @task(2)
-    def heroes_playtime(self) -> None:
+    def characters_playtime(self) -> None:
         self.get(
-            "/api/v1/heroes/statistics/playtime",
-            "/api/v1/heroes/statistics/playtime",
+            f"/api/v1/statistics/{config.CATALOG_DISCIPLINE}/characters/playtime",
+            "/api/v1/statistics/[discipline]/characters/playtime",
             self.ws_params(page=1, per_page=20),
         )
 
     @task(2)
-    def hero_leaderboard(self) -> None:
-        hid = self.pick(self.seed.hero_ids)
-        if hid is None:
+    def character_leaderboard(self) -> None:
+        entity_id = self.pick(self.seed.hero_ids)
+        if entity_id is None:
             return
         self.get(
-            f"/api/v1/heroes/{hid}/leaderboard",
-            "/api/v1/heroes/[id]/leaderboard",
+            f"/api/v1/statistics/{config.CATALOG_DISCIPLINE}/characters/{entity_id}/leaderboard",
+            "/api/v1/statistics/[discipline]/characters/[id]/leaderboard",
             self.ws_params(),
             detail=True,
         )

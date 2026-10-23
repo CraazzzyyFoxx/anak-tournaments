@@ -2,18 +2,34 @@
 
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { AlertTriangle, CheckCircle2, Circle, Lock, Minus } from "lucide-react";
+import { CheckCircle2, Circle, Lock, Minus, type LucideIcon } from "lucide-react";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { StatusPill } from "@/components/kit/StatusPill";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EYEBROW_CLASS, type Tone } from "@/components/kit/tone";
-import type { ChecklistItem, ChecklistPhase } from "@/components/admin/tournament-checklist";
+import { eyebrowClass } from "@/components/ui/eyebrow";
+import type { ChecklistItem, ChecklistPhase, ChecklistState } from "@/components/admin/tournament-checklist";
 
-const PHASE_KEYS: ChecklistPhase[] = ["setup", "registration", "formation", "bracket", "live", "finish"];
+const PHASE_KEYS: ChecklistPhase[] = ["setup", "registration", "formation", "bracket", "matches", "wrap_up"];
 
-function ChecklistRow({ item, t }: Readonly<{ item: ChecklistItem; t: ReturnType<typeof useTranslations> }>) {
-  const meta = { done: { label: t("states.done"), icon: CheckCircle2, tone: "accent" as Tone }, todo: { label: t("states.todo"), icon: Circle, tone: "neutral" as Tone }, warn: { label: t("states.warn"), icon: AlertTriangle, tone: "warning" as Tone }, skipped: { label: t("states.skipped"), icon: Minus, tone: "neutral" as Tone }, "no-access": { label: t("states.noAccess"), icon: Lock, tone: "neutral" as Tone } }[item.state];
-  const Icon = meta.icon;
+/** Quiet states are an icon; `warn` wants attention and gets a pill; `info` has no verdict to show. */
+const STATE_ICON: Record<Exclude<ChecklistState, "warn" | "info">, { icon: LucideIcon; variant: "success" | "muted" }> = {
+  done: { icon: CheckCircle2, variant: "success" },
+  todo: { icon: Circle, variant: "muted" },
+  skipped: { icon: Minus, variant: "muted" },
+  "no-access": { icon: Lock, variant: "muted" }
+};
+
+const STATE_LABEL_KEY = {
+  done: "states.done",
+  todo: "states.todo",
+  warn: "states.warn",
+  skipped: "states.skipped",
+  "no-access": "states.noAccess"
+} as const satisfies Record<Exclude<ChecklistState, "info">, string>;
+
+function ChecklistRow({ item }: Readonly<{ item: ChecklistItem }>) {
+  const t = useTranslations("adminTournament.lifecycle");
   return (
     <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2 last:border-b-0">
       <div className="min-w-0">
@@ -28,17 +44,26 @@ function ChecklistRow({ item, t }: Readonly<{ item: ChecklistItem; t: ReturnType
           <p className="truncate text-xs tabular-nums text-muted-foreground">{item.detail}</p>
         ) : null}
       </div>
-      <StatusPill tone={meta.tone} className="shrink-0">
-        <Icon className="size-3" aria-hidden />
-        {meta.label}
-      </StatusPill>
+      {item.state === "info" ? null : item.state === "warn" ? (
+        <StatusPill tone="warning" className="shrink-0">
+          {t(STATE_LABEL_KEY.warn)}
+        </StatusPill>
+      ) : (
+        <StatusIcon
+          icon={STATE_ICON[item.state].icon}
+          label={t(STATE_LABEL_KEY[item.state])}
+          variant={STATE_ICON[item.state].variant}
+          className="shrink-0"
+        />
+      )}
     </div>
   );
 }
 
 /**
  * Living checklist of the Overview tab (§3, D22). Items come pre-computed
- * from `buildChecklist`; groups without applicable items are omitted.
+ * from `buildChecklist`; groups without applicable items are omitted, and a
+ * status with no work at all (archived) renders nothing.
  *
  * This is the tab's `<h2>` section — the hub previously rendered no heading
  * above `<h3>`, leaving these group titles as the document's first headings.
@@ -51,6 +76,7 @@ export function LifecycleChecklist({
   const groups = PHASE_KEYS
     .map((phase) => ({ phase, rows: items.filter((item) => item.phase === phase) }))
     .filter((group) => group.rows.length > 0);
+  if (!isLoading && groups.length === 0) return null;
 
   return (
     <Card>
@@ -58,9 +84,6 @@ export function LifecycleChecklist({
         <CardTitle asChild>
           <h2>{t("title")}</h2>
         </CardTitle>
-        <CardDescription>
-          {t("description")}
-        </CardDescription>
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -73,10 +96,10 @@ export function LifecycleChecklist({
           <div className="grid gap-x-6 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
             {groups.map((group) => (
               <section key={group.phase}>
-                <h3 className={EYEBROW_CLASS}>{t(`phases.${group.phase}`)}</h3>
+                <h3 className={eyebrowClass("muted")}>{t(`phases.${group.phase}`)}</h3>
                 <div className="mt-1">
                   {group.rows.map((item) => (
-                    <ChecklistRow key={item.key} item={item} t={t} />
+                    <ChecklistRow key={item.key} item={item} />
                   ))}
                 </div>
               </section>

@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from threading import Lock
+from socketserver import ThreadingMixIn
+from threading import Lock, Thread
 from typing import Any
+from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
 
 from loguru import logger as default_logger
 from opentelemetry import propagate, trace
 from opentelemetry.trace import SpanKind, Status, StatusCode
-from prometheus_client import Counter, Gauge, Histogram, start_http_server
+from prometheus_client import Counter, Gauge, Histogram, make_wsgi_app, start_http_server
 
 from .correlation import (
     CORRELATION_ID_HEADER,
@@ -73,8 +76,38 @@ def _queue_name(queue: Any) -> str:
     return getattr(queue, "name", str(queue))
 
 
-def start_worker_metrics_server(port: int | None) -> None:
-    """Expose a Prometheus endpoint from non-HTTP worker processes."""
+class _ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
+    daemon_threads = True
+
+
+class _QuietHandler(WSGIRequestHandler):
+    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 - wsgiref's signature
+        return
+
+
+def _metrics_and_health_app(ready: Callable[[], tuple[bool, str]]) -> Callable[..., Any]:
+    metrics_app = make_wsgi_app()
+
+    def app(environ: dict[str, Any], start_response: Callable[..., Any]) -> Any:
+        if environ.get("PATH_INFO") != "/health":
+            return metrics_app(environ, start_response)
+        try:
+            ok, detail = ready()
+        except Exception as exc:  # a probe that raises is a failed probe, never a crashed listener
+            ok, detail = False, f"probe failed: {exc}"
+        start_response("200 OK" if ok else "503 Service Unavailable", [("Content-Type", "text/plain; charset=utf-8")])
+        return [detail.encode()]
+
+    return app
+
+
+def start_worker_metrics_server(port: int | None, *, ready: Callable[[], tuple[bool, str]] | None = None) -> None:
+    """Expose a Prometheus endpoint from non-HTTP worker processes.
+
+    With ``ready`` the same listener also answers ``GET /health`` with 200 or 503 and the probe's one-line detail, so a
+    container healthcheck reflects the process's real state rather than that the interpreter is up. ``ready`` runs on a
+    listener thread.
+    """
     global _metrics_server_started
     if port is None:
         return
@@ -82,7 +115,13 @@ def start_worker_metrics_server(port: int | None) -> None:
     with _metrics_server_lock:
         if _metrics_server_started:
             return
-        start_http_server(port, addr="0.0.0.0")
+        if ready is None:
+            start_http_server(port, addr="0.0.0.0")
+        else:
+            server = make_server(
+                "0.0.0.0", port, _metrics_and_health_app(ready), _ThreadingWSGIServer, handler_class=_QuietHandler
+            )
+            Thread(target=server.serve_forever, name="worker-metrics", daemon=True).start()
         _metrics_server_started = True
 
 
@@ -250,7 +289,7 @@ async def publish_message(
     jobs, rank fetches, ...), and FastStream's own default is
     ``persist=False`` — a transient message on a durable queue, which a broker
     restart silently discards. The dropped job leaves its row behind with no
-    live consumer (a LogProcessingRecord stuck on ``pending``, i.e. "Queued"
+    live consumer (an IngestJob stuck on ``pending``, i.e. "Queued"
     forever). The transactional outbox already publishes with ``persist=True``;
     this makes the direct publishers match. Pass ``persist=False`` explicitly
     for a genuinely disposable message.

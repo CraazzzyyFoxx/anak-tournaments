@@ -10,7 +10,6 @@ position MAE for standings.
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,8 +21,7 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "analytics-service"))
 
 from tests.factories import identity_assign as _identity_assign  # noqa: E402
-
-os.environ["DEBUG"] = "false"
+from tests.ow_analytics import exports as ow_exports  # noqa: E402
 
 backtest = importlib.import_module("src.services.ml.training.backtest")
 
@@ -113,9 +111,11 @@ class RealisedShiftMapTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(backtest, "load_source_grids", AsyncMock(return_value={})),
-            patch.object(backtest, "assign_canonical_division", _identity_assign),
+            patch.object(ow_exports, "assign_canonical_division", _identity_assign),
         ):
-            fold_10 = await backtest._realised_shift_map(session, 10, history_through_tournament_id=30)
+            fold_10 = await backtest._realised_shift_map(
+                session, 10, history_through_tournament_id=30, discipline="overwatch"
+            )
         self.assertEqual({1: 1.0}, fold_10)  # 7 - 6
 
     async def test_last_tournament_without_next_is_dropped(self) -> None:
@@ -127,7 +127,9 @@ class RealisedShiftMapTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(backtest, "load_source_grids", AsyncMock(return_value={})),
-            patch.object(backtest, "assign_canonical_division", _identity_assign),
+            patch.object(ow_exports, "assign_canonical_division", _identity_assign),
         ):
-            fold_30 = await backtest._realised_shift_map(session, 30, history_through_tournament_id=30)
+            fold_30 = await backtest._realised_shift_map(
+                session, 30, history_through_tournament_id=30, discipline="overwatch"
+            )
         self.assertEqual({}, fold_30)

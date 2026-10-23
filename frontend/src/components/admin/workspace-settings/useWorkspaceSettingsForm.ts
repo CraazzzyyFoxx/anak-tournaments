@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -9,14 +10,17 @@ import type { Workspace } from "@/types/workspace.types";
 import {
   useScopedSettingsForm,
   type ScopedSettingsForm
-} from "@/components/admin/settings/useScopedSettingsForm";
+} from "@/components/kit/useScopedSettingsForm";
 import {
   formFromWorkspace,
+  formIssues,
   sectionPayload,
+  type FieldIssue,
   type WorkspaceSettingsFormState
 } from "./fields";
 import type { WorkspaceRecordSectionKey } from "./sections";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
+import { disciplineQueryKeys } from "@/lib/site/discipline-query-keys";
 
 /**
  * Everything a settings section needs to render and save its own fields:
@@ -27,8 +31,16 @@ export interface WorkspaceSettingsForm
   workspace: Workspace | undefined;
   isLoading: boolean;
   isError: boolean;
-  /** Re-read `admin-workspaces`, `admin-workspace` and the picker store. */
+  /** Re-runs the workspace read after a failed load. */
+  refetch: () => void;
+  /** Re-read `admin-workspaces`, `admin-workspace`, the community's game list and the picker store. */
   invalidate: () => void;
+}
+
+/** Words for a `FieldIssue`, in the reader's language. */
+export function useFieldIssueText(): (issue: FieldIssue) => string {
+  const t = useTranslations("adminWorkspace.workspaceSettings.errors");
+  return (issue) => ("values" in issue ? t(issue.key, issue.values) : t(issue.key));
 }
 
 /**
@@ -63,15 +75,23 @@ export function useWorkspaceSettingsForm(
     queryClient.invalidateQueries({ queryKey: adminQueryKeys.workspaces() });
     if (workspaceId !== null) {
       queryClient.invalidateQueries({ queryKey: adminQueryKeys.workspace(workspaceId) });
+      // The scope pill and every game tab read the community's games in `disciplines_enabled` order.
+      queryClient.invalidateQueries({ queryKey: disciplineQueryKeys.list(workspaceId) });
     }
     void fetchWorkspaces();
   }, [queryClient, workspaceId, fetchWorkspaces]);
 
+  const issueText = useFieldIssueText();
   const settings = useScopedSettingsForm({
     baseline,
     toPayload: (form, base) => sectionPayload(section, form, base),
     submit: (payload) => workspaceService.update(workspaceId as number, payload),
-    onSaved: invalidate
+    onSaved: invalidate,
+    validate: (form) => {
+      const messages: Record<string, string> = {};
+      for (const [key, issue] of Object.entries(formIssues(form))) messages[key] = issueText(issue);
+      return messages;
+    }
   });
 
   return {
@@ -79,6 +99,7 @@ export function useWorkspaceSettingsForm(
     workspace,
     isLoading: query.isLoading,
     isError: query.isError,
+    refetch: () => void query.refetch(),
     invalidate
   };
 }

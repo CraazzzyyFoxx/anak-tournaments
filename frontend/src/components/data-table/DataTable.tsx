@@ -4,12 +4,16 @@
 // only consumer.
 import "./data-table.css";
 
-import React, { useEffect, useId, useRef, useState } from "react";
+import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import type { Row } from "@tanstack/react-table";
 
+import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
 import { InfiniteScrollFooter } from "@/components/ui/infinite-scroll";
+import { DataPagination } from "@/components/ui/data-pagination";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useIsMobile, usePathname } from "@/components/data-table/host";
 import {
   ADMIN_ACTION_COLUMN_ID,
@@ -19,14 +23,13 @@ import {
 import type { DataTableProps } from "@/components/data-table/types";
 import { useColumnVisibility } from "@/components/data-table/useColumnVisibility";
 import { isInteractiveRowTarget, useRowSelectionGestures } from "@/components/data-table/useRowSelectionGestures";
-import { AdminTableSearchContext } from "@/components/data-table/HighlightMatch";
 import { downloadCsv } from "@/components/data-table/csv";
 import type { ColumnDndModule } from "@/components/data-table/ColumnDnd";
 import { buildColumnLayout } from "@/components/data-table/column-layout";
-import { createBodyRenderer } from "@/components/data-table/body-rows";
+import { renderBodyItem, type RowHandlers, type SharedRowProps } from "@/components/data-table/body-rows";
+import { AdminRowContextMenu } from "@/components/data-table/AdminRowContextMenu";
 import { AdminTableHeader } from "@/components/data-table/AdminTableHeader";
 import { AdminTableToolbar, type PickerColumn } from "@/components/data-table/AdminTableToolbar";
-import { AdminTablePagination } from "@/components/data-table/AdminTablePagination";
 import { AdminTableEmptyState } from "@/components/data-table/AdminTableEmptyState";
 import { AdminTableMobileList } from "@/components/data-table/AdminTableMobileList";
 import { useAdminTableState } from "@/components/data-table/useAdminTableState";
@@ -45,7 +48,7 @@ const DEFAULT_PAGE_SIZE_OPTIONS = [10, 15, 25, 50, 100];
  * rows. Everything with a seam of its own lives next to it: the URL state
  * (`useAdminTableState`), the two data modes (`useAdminTableData`), column
  * geometry (`column-layout`), the cells (`head-cell`, `body-cells`) and the
- * chrome (`AdminTableToolbar`, `AdminTablePagination`, `AdminTableMobileList`).
+ * chrome (`AdminTableToolbar`, `AdminTableMobileList`, the `DataPagination` footer).
  */
 export function DataTable<TData>({
   queryKey,
@@ -75,10 +78,11 @@ export function DataTable<TData>({
   cellAlign = "middle",
   toolbar,
   inspectorId,
+  onPageRowsChange,
   renderMobileCard,
 }: Readonly<DataTableProps<TData>>) {
   const t = useTranslations("kitTable.dataTableExtra");
-  const i18n = (key: string, values?: Record<string, unknown>) => t(key as never, values as never);
+  const tTable = useTranslations("kitTable.table");
   const isClientMode = rows !== undefined;
   // Server mode has no accumulating query to grow, so it always paginates.
   const isInfinite = isClientMode && paging === "infinite";
@@ -123,7 +127,7 @@ export function DataTable<TData>({
     useTablePreferences(prefsKey, columns);
   const { scrollElement, tableRef, cardRef } = useTableScrollBox();
 
-  const { data, clientRows, isRefreshing } = useAdminTableData({
+  const { data, clientRows, isInitialLoading, isRefreshing } = useAdminTableData({
     queryKey,
     queryFn,
     rows,
@@ -137,6 +141,14 @@ export function DataTable<TData>({
     sortDir,
     filters
   });
+  // Reported from the query's result, not from inside `queryFn`: a page served
+  // from the cache never runs the fetch, and the screen's inspector would be
+  // left holding the rows of whatever page was fetched last.
+  const onPageRowsChangeRef = useRef(onPageRowsChange);
+  onPageRowsChangeRef.current = onPageRowsChange;
+  useEffect(() => {
+    if (!isClientMode) onPageRowsChangeRef.current?.(data.results, data);
+  }, [isClientMode, data]);
 
   const pickerColumns = columns
     .map((column) => {
@@ -218,12 +230,26 @@ export function DataTable<TData>({
   }, []);
 
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
-  /** Text of the cell under the last right-click, offered as "Copy" in the row menu. */
-  const [contextCell, setContextCell] = useState("");
 
   const hasRowAction = Boolean(onRowClick || onRowDoubleClick);
   const hasLeadingColumn = Boolean(enableRowSelection || renderExpanded);
-  const layout = buildColumnLayout({ table, columns, columnSizing, hasLeadingColumn, density });
+  const visibleLeafColumns = table.getVisibleLeafColumns();
+  // Resizing commits once, on release (`columnResizeMode: "onEnd"`); mid-drag
+  // the width lives in `columnSizingInfo`. Folding it in redraws the columns
+  // as the handle moves, the same way TanStack will commit them.
+  const { columnSizingStart, deltaPercentage } = table.getState().columnSizingInfo;
+  const liveColumnSizing = useMemo(() => {
+    if (deltaPercentage === null) return columnSizing;
+    const live = { ...columnSizing };
+    for (const [id, size] of columnSizingStart) live[id] = size + size * deltaPercentage;
+    return live;
+  }, [columnSizing, columnSizingStart, deltaPercentage]);
+  // The body rows are memoised and compare it by identity.
+  const layout = useMemo(
+    () =>
+      buildColumnLayout({ visibleColumns: visibleLeafColumns, columns, columnSizing: liveColumnSizing, hasLeadingColumn, density }),
+    [visibleLeafColumns, columns, liveColumnSizing, hasLeadingColumn, density]
+  );
   const { visibleColumns, bodyColumnCount } = layout;
 
   const { rowGroups, bodyItems, virtualize, virtualizer, virtualItems, padTop, padBottom, firstRowId } =
@@ -236,6 +262,7 @@ export function DataTable<TData>({
       scrollElement
     });
   // Roving tabindex: one row is in the Tab order, arrows move between the rest.
+  // Only the two rows whose `tabbable` flips repaint when focus moves.
   const tabbableRowId = focusedRowId !== null && table.getRowModel().rowsById[focusedRowId] ? focusedRowId : firstRowId;
 
   const handleRowClick = (event: React.MouseEvent<HTMLTableRowElement>, row: Row<TData>) => {
@@ -258,6 +285,19 @@ export function DataTable<TData>({
     if (rowClickTimeoutRef.current !== null) { window.clearTimeout(rowClickTimeoutRef.current); rowClickTimeoutRef.current = null; }
     onRowDoubleClick(row);
   };
+
+  // The memoised rows all hold this one object for the table's lifetime; it
+  // forwards to whichever handlers the latest render made.
+  const latestRef = useRef({ handleRowClick, handleRowDoubleClick, gestures });
+  latestRef.current = { handleRowClick, handleRowDoubleClick, gestures };
+  const [rowHandlers] = useState<RowHandlers<TData>>(() => ({
+    click: (event, row) => latestRef.current.handleRowClick(event, row),
+    doubleClick: (event, row) => latestRef.current.handleRowDoubleClick(event, row),
+    focus: setFocusedRowId,
+    pointerDown: (event, row) => latestRef.current.gestures.rowPointerDown(row)(event),
+    checkboxPointerDown: (event, row) => latestRef.current.gestures.checkboxPointerDown(row)(event),
+    checkboxClick: (event) => latestRef.current.gestures.checkboxClick(event)
+  }));
 
   /** Arrow/Space/Escape/Ctrl+A go to the selection gestures; Enter (and Space without selection) opens the row. */
   const handleBodyKeyDown = (event: React.KeyboardEvent<HTMLTableSectionElement>) => {
@@ -304,38 +344,31 @@ export function DataTable<TData>({
 
   // Right-click / long-press menu mirrors the kebab column, when a screen has one.
   const rowActions = columns.map((column) => readColumnMeta<TData>(column.meta).rowActions).find(Boolean);
-  // Only cells left on TanStack's default renderer get search highlighting;
-  // custom cells opt in through `useAdminTableSearch`.
-  const customCellIds = new Set(columns.filter((column) => column.cell !== undefined).map(columnDefId));
-  const cellPadding = density === "compact" ? "py-1" : "py-2.5";
-  const renderItem = createBodyRenderer<TData>({
+  // Only cells left on TanStack's default renderer get search highlighting.
+  const customCellIds = useMemo(
+    () => new Set(columns.filter((column) => column.cell !== undefined).map(columnDefId)),
+    [columns]
+  );
+  const sharedRowProps: SharedRowProps<TData> = {
     layout,
-    cell: { i18n, layout, cellPadding, cellAlign, hasLeadingColumn, customCellIds, search: debouncedSearchValue },
-    leading: hasLeadingColumn
-      ? {
-          i18n,
-          layout,
-          cellPadding,
-          cellAlign,
-          enableRowSelection: Boolean(enableRowSelection),
-          hasExpandedDetail: Boolean(renderExpanded),
-          gestures
-        }
-      : undefined,
-    virtualizer,
-    gestures,
+    cellPadding: density === "compact" ? "py-1" : "py-2.5",
+    cellAlign,
+    search: debouncedSearchValue,
+    customCellIds,
+    hasLeadingColumn,
+    enableRowSelection: Boolean(enableRowSelection),
+    hasExpandedDetail: Boolean(renderExpanded),
+    hasRowAction,
+    rowHintId,
+    handlers: rowHandlers
+  };
+  const bodyItemContext = {
+    shared: sharedRowProps,
     inspectorId,
     tabbableRowId,
-    onRowFocus: setFocusedRowId,
-    hasRowAction,
-    onRowClick: handleRowClick,
-    onRowDoubleClick: handleRowDoubleClick,
-    contextCell,
-    onContextCellChange: setContextCell,
-    rowActions,
-    rowHintId,
-    renderExpanded
-  });
+    renderExpanded,
+    measureElement: virtualizer.measureElement
+  };
 
   /**
    * The built-in search box stays unless a `toolbar` was handed in without a
@@ -359,8 +392,7 @@ export function DataTable<TData>({
   const offPageSelected = selectedData.length - selectedOnPage;
 
   return (
-    <AdminTableSearchContext.Provider value={debouncedSearchValue}>
-    <div ref={cardRef} className="rounded-xl border border-border/50 bg-card/50 overflow-hidden">
+    <Card ref={cardRef} variant="flat" className="overflow-hidden border-border/50 bg-card/50">
       <AdminTableToolbar
         showSearch={showSearch}
         searchInputId={searchInputId}
@@ -388,9 +420,7 @@ export function DataTable<TData>({
       {/* ── TABLE ───────────────────────────────────────── */}
       <div>
         <p id={rowHintId} className="sr-only">
-          {t("useArrows")}
-          {enableRowSelection ? t("spaceSelect") : ""}
-          {onRowClick ? t("enterOpen") : ""}.
+          {t("rowHint", { select: enableRowSelection ? "yes" : "no", open: onRowClick ? "yes" : "no" })}
         </p>
         {isMobile ? (
           pageRows.length > 0 ? (
@@ -428,9 +458,23 @@ export function DataTable<TData>({
             onReorder={handleColumnReorder}
             onArmDnd={armColumnDnd}
           />
+          <AdminRowContextMenu table={table} rowActions={rowActions}>
           <TableBody onKeyDown={handleBodyKeyDown}>
-            {bodyItems.length === 0 ? (
-              <TableRow>
+            {bodyItems.length === 0 && isInitialLoading ? (
+              // The first load draws rows, not "nothing here": the empty
+              // state is a fact about the data, and there is no data yet.
+              Array.from({ length: 5 }, (_, index) => (
+                <TableRow key={`skeleton-${index}`} aria-hidden>
+                  {Array.from({ length: bodyColumnCount }, (_, cell) => (
+                    <TableCell key={cell} className="py-3">
+                      <Skeleton className="h-4 w-3/4" />
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : bodyItems.length === 0 ? (
+              // Not a row: right-click keeps the browser's menu instead of the row menu.
+              <TableRow onContextMenu={(event) => event.stopPropagation()}>
                 <TableCell colSpan={bodyColumnCount} className="py-8 text-center">
                   {emptyState}
                 </TableCell>
@@ -438,16 +482,16 @@ export function DataTable<TData>({
             ) : virtualize ? (
               <>
                 {padTop > 0 ? <tr aria-hidden style={{ height: padTop }} /> : null}
-                {virtualItems.map((virtual) => renderItem(bodyItems[virtual.index], virtual))}
+                {virtualItems.map((virtual) => renderBodyItem(bodyItems[virtual.index], bodyItemContext, virtual))}
                 {padBottom > 0 ? <tr aria-hidden style={{ height: padBottom }} /> : null}
               </>
             ) : (
-              bodyItems.map((item) => renderItem(item))
+              bodyItems.map((item) => renderBodyItem(item, bodyItemContext))
             )}
             {safeTotal > 0 && isInfinite ? (
               // Inside the scroll box, where the sentinel is only in view once
               // the user has actually reached the bottom of the loaded rows.
-              <TableRow className="hover:bg-transparent">
+              <TableRow className="hover:bg-transparent" onContextMenu={(event) => event.stopPropagation()}>
                 <TableCell colSpan={bodyColumnCount} className="border-t border-border/40 px-4 py-3">
                   <InfiniteScrollFooter
                     root={scrollElement}
@@ -464,24 +508,47 @@ export function DataTable<TData>({
               </TableRow>
             ) : null}
           </TableBody>
+          </AdminRowContextMenu>
         </Table>
         )}
       </div>
 
       {safeTotal > 0 && !isInfinite && !showAll && (
-        <AdminTablePagination
-          total={safeTotal}
-          rangeStart={rangeStart}
-          rangeEnd={rangeEnd}
-          currentPage={currentPage}
-          totalPageCount={totalPageCount}
+        <DataPagination
+          page={currentPage}
+          totalPages={totalPageCount}
           onPageChange={setCurrentPage}
-          pageSize={effectivePageSize}
-          pageSizeOptions={availablePageSizeOptions}
-          onPageSizeChange={(next) => { setCurrentPage(1); setPageSize(next); }}
+          className="border-t border-border/40 px-4 py-2"
+          // One page: the count and the page size stay (a larger page is how a
+          // reader gets back a split list); only the pager goes.
+          leading={
+            <div className="flex items-center gap-3">
+              <span className="tabular-nums">{tTable("range", { start: rangeStart, end: rangeEnd, total: safeTotal })}</span>
+              <div className="flex items-center gap-1.5">
+                <span>{tTable("rows")}</span>
+                <Select
+                  value={String(effectivePageSize)}
+                  onValueChange={(value) => {
+                    setCurrentPage(1);
+                    setPageSize(Number(value));
+                  }}
+                >
+                  <SelectTrigger aria-label={tTable("rowsPerPage")} size="sm" className="w-auto gap-1 px-2.5 tabular-nums">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availablePageSizeOptions.map((option) => (
+                      <SelectItem key={option} value={String(option)} className="tabular-nums">
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          }
         />
       )}
-    </div>
-    </AdminTableSearchContext.Provider>
+    </Card>
   );
 }

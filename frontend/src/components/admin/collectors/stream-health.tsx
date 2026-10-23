@@ -2,22 +2,20 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { AlertTriangle, Clock, Gauge, Pause, Play, Radio, Trophy } from "lucide-react";
+import { AlertTriangle, Clock, Gauge, Radio, Trophy } from "lucide-react";
 
 import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
 import { StatTileGridSkeleton } from "@/components/admin/StatTileGridSkeleton";
-import { TintedBadge } from "@/components/admin/TintedBadge";
 import { formatInterval, formatRelative } from "@/components/kit/format-time";
-import { TONE_CLASS, type Tone } from "@/components/kit/tone";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useFormatter } from "@/lib/datetime/client";
 import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import { Spinner } from "@/components/ui/spinner";
 
-import { RUN_STATE_TONES } from "./collector-state";
 import { diagnoseStreamHealth } from "./stream-shared";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 
@@ -60,36 +58,36 @@ export function StreamHealthDashboard() {
       notify.apiError(error, { title: t("pollingToggleError") })
   });
 
-  if (healthQuery.isLoading || !health) {
-    return <StatTileGridSkeleton />;
+  if (!health) {
+    return healthQuery.isError ? (
+      <PageStateCard state="error" onAction={() => healthQuery.refetch()} />
+    ) : (
+      <StatTileGridSkeleton />
+    );
   }
 
   const diagnosis = diagnoseStreamHealth(health);
-  const hint = t(`status.${diagnosis.key}.hint`);
+  // Only a problem earns the banner; a healthy, idle or paused poller is said
+  // by the tab dot, the Last tick tile and the pause button.
+  const alerting = diagnosis.tone === "danger" || diagnosis.tone === "warning";
+  // Only the alerting states carry a hint.
+  const hintKey = `status.${diagnosis.key}.hint` as "status.error.hint";
   // 800/min shared with identity-service sign-ins; a low reading is a sign-in
   // outage waiting to happen, so it is worth a tone rather than a bare number.
   const remaining = health.ratelimit_remaining;
-  const rateTone: Tone = remaining == null ? "neutral" : remaining < 80 ? "danger" : "neutral";
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Refetches every 30s — announce the pause/resume flip and the pacing. */}
-        <output className="flex flex-wrap items-center gap-2 text-sm">
-          <TintedBadge
-            value={health.enabled ? "running" : "paused"}
-            tones={RUN_STATE_TONES}
-            labels={{ running: t("run.polling"), paused: tCommon("health.paused") }}
-            fallback={tCommon("health.paused")}
-            dot
-          />
-          <span className="text-muted-foreground">
-            {t.rich("pace", {
-              interval: formatInterval(format, health.interval_seconds),
-              batch: health.batch_size,
-              num: (chunks) => <span className="tabular-nums">{chunks}</span>
-            })}
-          </span>
+        <output className="text-sm text-muted-foreground">
+          {health.enabled
+            ? t.rich("pace", {
+                interval: formatInterval(format, health.interval_seconds),
+                batch: health.batch_size,
+                num: (chunks) => <span className="tabular-nums">{chunks}</span>
+              })
+            : tCommon("health.paused")}
         </output>
         {isSuperuser && (
           <Button
@@ -98,73 +96,57 @@ export function StreamHealthDashboard() {
             disabled={toggleMutation.isPending}
             onClick={() => toggleMutation.mutate()}
           >
-            {toggleMutation.isPending ? (
-              <Spinner className="mr-1.5" />
-            ) : health.enabled ? (
-              <Pause aria-hidden className="mr-1.5 h-4 w-4" />
-            ) : (
-              <Play aria-hidden className="mr-1.5 h-4 w-4" />
-            )}
+            {toggleMutation.isPending ? <Spinner className="mr-1.5" /> : null}
             {t(health.enabled ? "pausePolling" : "resumePolling")}
           </Button>
         )}
       </div>
 
-      <div className={cn("space-y-1 rounded-xl border p-4 text-sm", TONE_CLASS[diagnosis.tone])}>
-        <p className="flex items-center gap-2 font-medium">
-          {diagnosis.tone === "danger" || diagnosis.tone === "warning" ? (
-            <AlertTriangle aria-hidden className="h-4 w-4 shrink-0" />
-          ) : null}
-          {t(`status.${diagnosis.key}.label`)}
-        </p>
-        {hint ? (
-          <p className="text-muted-foreground">{hint}</p>
-        ) : (
-          <p className="text-muted-foreground">
-            {t("nothingToDo", { time: formatRelative(format, health.last_run_at) })}
-          </p>
-        )}
-      </div>
+      {alerting && (
+        <Alert variant={diagnosis.tone === "danger" ? "destructive" : "default"}>
+          <AlertTriangle aria-hidden className="h-4 w-4" />
+          <AlertTitle>{t(`status.${diagnosis.key}.label`)}</AlertTitle>
+          {t.has(hintKey) ? <AlertDescription>{t(hintKey)}</AlertDescription> : null}
+        </Alert>
+      )}
 
       <StatTileGrid className="xl:grid-cols-5">
         <StatTile
           label={t("tiles.lastTick")}
-          value={formatRelative(format, health.last_run_at)}
-          detail={
-            health.status === null ? t("tiles.neverRun") : t(`status.${health.status}.label`)
+          value={
+            health.last_run_at ? formatRelative(format, health.last_run_at) : t("tiles.neverRun")
           }
+          detail={health.status ? t(`status.${health.status}.label`) : undefined}
           icon={Clock}
-          tone={diagnosis.tone}
         />
 
         <StatTile
           label={t("tiles.tournaments")}
-          value={health.tournaments_active ?? "—"}
+          value={health.tournaments_active ?? ""}
           detail={t("tiles.tournamentsDetail", { count: health.tournaments_updated ?? 0 })}
           icon={Trophy}
         />
 
         <StatTile
           label={t("tiles.channels")}
-          value={health.channels_polled ?? "—"}
+          value={health.channels_polled ?? ""}
           detail={t("tiles.channelsDetail")}
           icon={Radio}
         />
 
         <StatTile
           label={t("tiles.live")}
-          value={health.live_channels ?? "—"}
+          value={health.live_channels ?? ""}
           detail={t("tiles.liveDetail")}
           icon={Radio}
-          tone={(health.live_channels ?? 0) > 0 ? "success" : "neutral"}
         />
 
         <StatTile
           label={t("tiles.rateLimit")}
-          value={remaining ?? "—"}
+          value={remaining ?? ""}
           detail={t("tiles.rateLimitDetail")}
           icon={Gauge}
-          tone={rateTone}
+          tone={remaining != null && remaining < 80 ? "danger" : "neutral"}
         />
       </StatTileGrid>
     </div>

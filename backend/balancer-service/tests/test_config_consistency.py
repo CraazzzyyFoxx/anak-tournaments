@@ -20,7 +20,6 @@ Deliberately offline/deterministic: no DB, Redis or network.
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -32,11 +31,10 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
-from shared.domain.roster_shape import ROSTER_SLOT_CODES  # noqa: E402
+from shared.disciplines import DISCIPLINES  # noqa: E402
+from src.domain.balancer.config.defaults import AlgorithmConfig, default_role_settings  # noqa: E402
 from src.domain.balancer.moo_backend import _serialize_native_request  # noqa: E402
-from src.services.balancer.config.defaults import DEFAULT_ROLE_SETTINGS, AlgorithmConfig  # noqa: E402
 from src.services.balancer.config.provider import get_balancer_config_payload  # noqa: E402
 
 
@@ -46,7 +44,7 @@ def _algorithm_field_names() -> set[str]:
 
 def test_config_payload_exposes_expected_top_level_keys() -> None:
     """``get_balancer_config_payload`` returns the stable public envelope."""
-    payload = get_balancer_config_payload()
+    payload = get_balancer_config_payload("overwatch")
 
     assert isinstance(payload, dict)
     assert set(payload.keys()) == {"defaults", "limits", "presets", "fields"}
@@ -174,15 +172,10 @@ def test_rust_only_allowlist_has_no_stale_entries() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_every_roster_slot_code_has_role_settings() -> None:
-    """Rust carries no role defaults, so a slot code missing here has no weights.
-
-    ``native.build_roles`` raises on a mask role it cannot look up, which would
-    fail every balance run of a tournament fielding that slot.
-    """
-    missing = {code for code in ROSTER_SLOT_CODES if code not in DEFAULT_ROLE_SETTINGS}
-
-    assert missing == set(), (
-        f"DEFAULT_ROLE_SETTINGS has no entry for roster slot codes {sorted(missing)}: "
-        "every engine run fielding one of them would fail."
-    )
+def test_role_defaults_exclude_open_slots() -> None:
+    roles = {role.code for role in DISCIPLINES["overwatch"].rated_dimension.roles}
+    assert set(default_role_settings("overwatch")) == roles
+    assert "flex" not in default_role_settings("overwatch")
+    # A game that declares no weights (LoL), or none at all, weighs every role neutrally.
+    assert default_role_settings("lol") == {} == default_role_settings(None) == AlgorithmConfig().role_settings
+    assert AlgorithmConfig().open_slot_settings is not None

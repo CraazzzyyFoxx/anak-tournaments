@@ -20,7 +20,7 @@ import (
 
 const (
 	// defaultRPCTimeout matches the old Kong edge allowance (up to 120s). Some
-	// app-service reads (e.g. /users/{id}/compare, hero stats on a cold cache)
+	// stats-service reads (e.g. /users/{id}/compare, hero stats on a cold cache)
 	// legitimately run ~20-30s; a tighter cap would turn slow-but-successful
 	// responses into 504s that the HTTP edge returned as 200/500. The gateway
 	// server has no write timeout for the same reason (long WS + long balancer

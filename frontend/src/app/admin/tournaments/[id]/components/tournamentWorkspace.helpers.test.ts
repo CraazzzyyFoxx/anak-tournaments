@@ -30,7 +30,6 @@ function form(partial: Partial<TournamentFormState> = {}): TournamentFormState {
     phase_schedule: EMPTY_SCHEDULE,
     division_grid_version_id: null,
     team_formation: "balancer",
-    roster_slots_json: null,
     ...partial
   };
 }
@@ -60,17 +59,6 @@ describe("getTournamentUpdatePayload", () => {
     });
 
     expect(getTournamentUpdatePayload(current, initial)).toEqual({});
-  });
-
-  it("diffs roster_slots_json by value, not by reference", () => {
-    const initial = form({ roster_slots_json: { tank: 1, damage: 2, support: 2 } });
-    const unchanged = form({ roster_slots_json: { tank: 1, damage: 2, support: 2 } });
-    const changed = form({ roster_slots_json: { tank: 2, damage: 2, support: 1 } });
-
-    expect(getTournamentUpdatePayload(unchanged, initial)).toEqual({});
-    expect(getTournamentUpdatePayload(changed, initial)).toEqual({
-      roster_slots_json: { tank: 2, damage: 2, support: 1 }
-    });
   });
 
   it("diffs slug by trimmed value; re-sending the same slug is not a change", () => {

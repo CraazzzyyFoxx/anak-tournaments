@@ -1,11 +1,10 @@
 """Platform-audit rows for the registration admin surface.
 
 Registrations sit outside the shared CRUD dispatcher -- ``rpc/registration_admin.py``
-drives bespoke lifecycle services instead of ``EntityConfig`` hooks -- so nothing
-was appending to ``audit_log`` for them. However many times an admin edited a
-registration, the feed and any per-entity trail came back empty. This module is
-the one place those handlers stage a row from, so ``entity_type``/``action`` stay
-spelled the same way across every call site.
+drives bespoke lifecycle services instead of ``EntityConfig`` hooks -- so the
+dispatcher's audit staging never runs for them. This module is the one place
+those handlers stage a row from, so ``entity_type``/``action`` stay spelled the
+same way across every call site.
 
 Call order follows ``shared.rpc.crud``'s service-backed branches: the lifecycle
 services own their ``commit()``, so a row is staged BEFORE the service runs and
@@ -25,10 +24,12 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.social import display_social_handle
 from shared.domain.forms import IDENTITY_PROVIDERS, identity_key
+from shared.domain.player_sub_roles import workspace_sub_role_slug
+from shared.schemas.role import RoleRef
 from shared.services.audit import AuditSource, record_audit
-from src import models
 from src.services.registration.answers import custom_answers, merge_custom_answers
 
 __all__ = ("ENTITY", "audit_service", "label", "profile_changes", "role_snapshot")
@@ -60,31 +61,34 @@ _ANSWER_FIELDS: dict[str, str] = {
 _EMPTY_IS_NULL = frozenset({"custom_fields_json"})
 
 
-def label(registration: models.BalancerRegistration) -> str | None:
-    """Snapshot name for the row, so the feed stays readable after a delete."""
-    identity = registration.primary_game_identity()
+def label(registration: models.Registration, *, provider: str) -> str | None:
+    """Snapshot name for the row, so the feed stays readable after a delete.
+
+    ``provider`` is the owning tournament's identity provider: the handle named is
+    that game's, never another game's.
+    """
+    identity = registration.primary_game_identity(provider=provider)
     return registration.display_name or (identity.handle if identity is not None else None)
 
 
-def _role_key(value: Any) -> str:
-    """``RegistrationRoleCode`` (a plain string) on the request side, same on the model side."""
-    return str(getattr(value, "value", value))
+def _role_key(value: Any) -> dict[str, str]:
+    """The submitted leaf identity; parent is output-only and irrelevant to comparison."""
+    return RoleRef.model_validate(value).model_dump(exclude={"parent"})
 
 
-def role_snapshot(registration: models.BalancerRegistration) -> list[dict[str, Any]]:
+def role_snapshot(registration: models.Registration) -> list[dict[str, Any]]:
     """The role fields the balancer actually reads, ordered so two images compare."""
     return sorted(
         (
             {
-                "role": _role_key(role.role),
-                "subrole": role.subrole,
+                "role": role.role_ref.model_dump(exclude={"parent"}),
                 "rank_value": role.rank_value,
                 "is_primary": role.is_primary,
                 "is_active": role.is_active,
             }
             for role in registration.roles
         ),
-        key=lambda entry: entry["role"],
+        key=lambda entry: (entry["role"]["dimension"], entry["role"]["role"]),
     )
 
 
@@ -98,8 +102,14 @@ def _answer_roles(roles: list[Any]) -> list[dict[str, Any]]:
     return sorted(
         (
             {
-                "role": _role_key(role.get("role") if isinstance(role, dict) else role.role),
-                "subrole": (role.get("subrole") if isinstance(role, dict) else role.subrole),
+                "role": role.get("role") if isinstance(role, dict) else role.role,
+                "subrole": (
+                    role.get("subrole")
+                    if isinstance(role, dict)
+                    else workspace_sub_role_slug(role.role, role.subrole)
+                    if role.subrole
+                    else None
+                ),
                 "is_primary": bool(role.get("is_primary", False) if isinstance(role, dict) else role.is_primary),
             }
             for role in roles
@@ -113,14 +123,13 @@ def _requested_roles(roles: list[dict[str, Any]]) -> list[dict[str, Any]]:
         (
             {
                 "role": _role_key(role.get("role")),
-                "subrole": role.get("subrole"),
                 "rank_value": role.get("rank_value"),
                 "is_primary": bool(role.get("is_primary", False)),
                 "is_active": bool(role.get("is_active", True)),
             }
             for role in roles
         ),
-        key=lambda entry: entry["role"],
+        key=lambda entry: (entry["role"]["dimension"], entry["role"]["role"]),
     )
 
 
@@ -131,7 +140,7 @@ def _requested_value(attr: str, value: Any) -> Any:
 
 
 def profile_changes(
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
     requested: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Before/after images narrowed to the fields this request really changes.

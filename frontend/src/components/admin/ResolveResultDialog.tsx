@@ -1,14 +1,16 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useId, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ChevronDown, History } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useFormatter } from "@/lib/datetime/client";
 
 import { AdminReportPairCell } from "@/components/admin/AdminReportPairCell";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { InspectorSection } from "@/components/kit/InspectorField";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -19,22 +21,27 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Skeleton } from "@/components/ui/skeleton";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import type { EncounterReportsRow, EncounterSetResultInput } from "@/types/admin.types";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { stageNeedsWinner } from "@/lib/encounter/score";
+import { reportOf, scoreline } from "@/lib/encounter/reports";
+import { seatsBySlot } from "@/lib/encounter/seats";
 
 /**
- * How the score is decided. Mirrors the server's resolution order so what the
- * dialog previews is what the server stores — the two must not drift.
+ * How the score is decided: one participation's report is adopted (its
+ * `encounter_team_id`, as a string) or the score is typed (`"manual"`). Mirrors
+ * the server's resolution order so what the dialog previews is what the server
+ * stores — the two must not drift.
  */
-type Mode = "adopt_home" | "adopt_away" | "manual";
-const BEST_OF_LABEL = "BO";
+type Mode = string;
 
 export interface ResolveResultDialogProps {
   row: EncounterReportsRow | null;
@@ -60,9 +67,18 @@ export function ResolveResultDialog({
   onResolved
 }: Readonly<ResolveResultDialogProps>) {
   const t = useTranslations("adminTournaments.resolve");
+  const tActions = useTranslations("adminMatches.reports.actions");
   const format = useFormatter();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [reopenOpen, setReopenOpen] = useState(false);
+  // The reason is written verbatim into the audit journal, so it belongs to the
+  // encounter it was typed for: another row reads as empty rather than inheriting it.
+  const [reopenDraft, setReopenDraft] = useState<{ rowId: number | null; text: string }>({
+    rowId: null,
+    text: ""
+  });
+  const reopenReason = reopenDraft.rowId === row?.id ? reopenDraft.text : "";
+  const setReopenReason = (text: string) => setReopenDraft({ rowId: row?.id ?? null, text });
 
   const isConfirmed = row?.result_status === "confirmed";
 
@@ -83,9 +99,10 @@ export function ResolveResultDialog({
   });
 
   const reopenMutation = useMutation({
-    mutationFn: () => adminService.reopenEncounterResult(row!.id),
+    mutationFn: () => adminService.reopenEncounterResult(row!.id, reopenReason.trim()),
     onSuccess: () => {
       notify.success(t("reopened"));
+      setReopenDraft({ rowId: null, text: "" });
       setReopenOpen(false);
       onOpenChange(false);
       onResolved?.();
@@ -95,9 +112,7 @@ export function ResolveResultDialog({
 
   if (!row) return null;
 
-  const mapCodes = [row.home_report, row.away_report].flatMap((report) =>
-    (report?.map_codes ?? []).map((code) => ({ report, code }))
-  );
+  const seatIds = seatsBySlot(row.participations).map((seat) => seat.encounter_team_id);
 
   return (
     <>
@@ -112,42 +127,55 @@ export function ResolveResultDialog({
           <DialogHeader>
             <DialogTitle>{isConfirmed ? t("confirmed") : t("resolve")}</DialogTitle>
             <DialogDescription>
-              {row.name} {"·"} {row.stage_name ?? t("unassigned")} {"·"} {BEST_OF_LABEL}{row.best_of}
+              {t("description", {
+                name: row.name,
+                stage: row.stage_name ?? t("unassigned"),
+                bestOf: row.best_of
+              })}
             </DialogDescription>
           </DialogHeader>
 
           <AdminReportPairCell
-            homeReport={row.home_report}
-            awayReport={row.away_report}
-            scoresMatch={row.scores_match}
+            participations={row.participations}
+            reports={row.reports}
+            standingsMatch={row.standings_match}
             seriesScoreValid={row.series_score_valid}
           />
 
-          {mapCodes.length > 0 ? (
-            <div className="rounded-lg border border-border/60 p-3">
-              <p className={EYEBROW_CLASS}>
-                {t("replayCodes")}
-              </p>
-              <ul className="mt-2 space-y-1">
-                {mapCodes.map(({ report, code }) => (
-                  <li key={`${report!.id}-${code.id}`} className="flex gap-2 text-xs">
+          {row.replay_codes.length > 0 ? (
+            <InspectorSection title={t("replayCodes")}>
+              <ul className="space-y-1">
+                {row.replay_codes.map((entry) => (
+                  <li
+                    key={`${entry.position}-${entry.encounter_team_id}`}
+                    className="flex gap-2 text-xs"
+                  >
                     <span className="text-muted-foreground">
                       {t("replayMap", {
-                        side: report!.side === "away" ? t("away") : t("home"),
-                        mapIndex: code.map_index
+                        seat:
+                          row.participations.find((seat) => seat.encounter_team_id === entry.encounter_team_id)
+                            ?.name ?? t("retiredSeat"),
+                        mapIndex: entry.position
                       })}
                     </span>
-                    <span className="font-mono">{code.code}</span>
+                    <span className="font-mono">{entry.code}</span>
                   </li>
                 ))}
               </ul>
-            </div>
+            </InspectorSection>
           ) : null}
 
           {isConfirmed ? (
-            <p className="text-sm text-muted-foreground">
-              {t("alreadyConfirmed")}
-            </p>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">{t("alreadyConfirmed")}</p>
+              <Label htmlFor="reopen-reason">{t("reopenReason")}</Label>
+              <Input
+                id="reopen-reason"
+                value={reopenReason}
+                maxLength={500}
+                onChange={(event) => setReopenReason(event.target.value)}
+              />
+            </div>
           ) : (
             // Keyed by encounter: switching rows must start from that row's
             // evidence, and a `key` does that without an effect that writes
@@ -160,59 +188,62 @@ export function ResolveResultDialog({
             />
           )}
 
-          <div className="rounded-lg border border-border/60">
-            <button
-              type="button"
-              className={cn(EYEBROW_CLASS, "flex w-full items-center gap-2 p-2 text-left")}
-              aria-expanded={historyOpen}
-              onClick={() => setHistoryOpen((current) => !current)}
-            >
-              <History className="size-3.5" aria-hidden />
-              {t("history")}
-              <ChevronDown
-                className={`ml-auto size-3.5 transition-transform ${historyOpen ? "rotate-180" : ""}`}
-                aria-hidden
-              />
-            </button>
-            {historyOpen ? (
-              <div className="border-t border-border/60 p-2">
-                {auditQuery.isLoading ? (
-                  <p className="text-xs text-muted-foreground">{t("loading")}</p>
-                ) : (auditQuery.data?.length ?? 0) === 0 ? (
+          <Collapsible open={historyOpen} onOpenChange={setHistoryOpen} asChild>
+            <section className="border-t border-border/60 pt-3">
+              <h3>
+                <CollapsibleTrigger
+                  className={cn(
+                    eyebrowClass("muted"),
+                    "group flex w-full items-center gap-1.5 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  )}
+                >
+                  <ChevronRight aria-hidden className="size-3.5 group-data-[state=open]:rotate-90" />
+                  {t("history")}
+                </CollapsibleTrigger>
+              </h3>
+              <CollapsibleContent className="mt-2">
+                {auditQuery.isPending ? (
+                  <Skeleton className="h-4 w-full" />
+                ) : auditQuery.isError ? (
+                  <PageStateCard state="error" onAction={() => void auditQuery.refetch()} />
+                ) : auditQuery.data.length === 0 ? (
                   // Encounters that predate the audit trail have nothing to
                   // show; saying so beats an empty box that reads as a failure.
                   <p className="text-xs text-muted-foreground">{t("noChanges")}</p>
                 ) : (
                   <ul className="space-y-1">
-                    {auditQuery.data!.map((entry) => (
+                    {auditQuery.data.map((entry) => (
                       <li key={entry.id} className="text-xs text-muted-foreground">
                         {t.rich("historyEntry", {
-                          actionText: entry.action,
+                          actionText: tActions(entry.action),
+                          actor: entry.actor_name ?? t("automatedProcess"),
+                          standing: scoreline(entry.after, seatIds),
+                          when: format.dateTime(new Date(entry.created_at), {
+                            dateStyle: "medium",
+                            timeStyle: "short"
+                          }),
                           action: (chunks) => <span className="font-medium text-foreground">{chunks}</span>,
-                          actor: entry.actor_name ?? t("automatedProcess")
-                        })} {"·"} {" "}
-                        <span className="font-mono tabular-nums">
-                          {entry.home_score_after} {"–"} {entry.away_score_after}
-                        </span>{" "}
-                        {"·"} {" "}
-                        {format.dateTime(new Date(entry.created_at), {
-                          dateStyle: "medium",
-                          timeStyle: "short"
+                          score: (chunks) => <span className="tabular-nums">{chunks}</span>
                         })}
                       </li>
                     ))}
                   </ul>
                 )}
-              </div>
-            ) : null}
-          </div>
+              </CollapsibleContent>
+            </section>
+          </Collapsible>
 
           {isConfirmed ? (
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
                 {t("close")}
               </Button>
-              <Button type="button" variant="secondary" onClick={() => setReopenOpen(true)}>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={reopenReason.trim() === ""}
+                onClick={() => setReopenOpen(true)}
+              >
                 {t("reopen")}
               </Button>
             </DialogFooter>
@@ -253,40 +284,52 @@ function ResolveForm({
 }>) {
   const t = useTranslations("adminTournaments.resolve");
   const modeFieldId = useId();
-  // Preselect the side with evidence. When only one captain has reported that
-  // report is all there is, so defaulting to manual entry would make the
+  const seats = seatsBySlot(row.participations);
+  const seatIds = seats.map((seat) => seat.encounter_team_id);
+  // A duel's standing is whole games; a lobby's is points, which may be fractional.
+  const wholeScores = seats.length === 2;
+  // Preselect the first seat with evidence. When only one captain has reported
+  // that report is all there is, so defaulting to manual entry would make the
   // commonest case the most laborious.
-  const [mode, setMode] = useState<Mode>(
-    row.home_report ? "adopt_home" : row.away_report ? "adopt_away" : "manual"
-  );
-  const [homeScore, setHomeScore] = useState(
-    String(row.home_report?.home_score ?? row.away_report?.home_score ?? "")
-  );
-  const [awayScore, setAwayScore] = useState(
-    String(row.home_report?.away_score ?? row.away_report?.away_score ?? "")
+  const firstReport = seats.map((seat) => reportOf(row.reports, seat.encounter_team_id)).find((report) => report);
+  const [mode, setMode] = useState<Mode>(firstReport ? String(firstReport.encounter_team_id) : "manual");
+  const [scores, setScores] = useState<Record<number, string>>(() =>
+    Object.fromEntries(
+      seatIds.map((id) => [
+        id,
+        String(firstReport?.results.find((line) => line.encounter_team_id === id)?.score ?? "")
+      ])
+    )
   );
   const [closeness, setCloseness] = useState("");
+  // The journal's line for this decision; the server refuses a result without one.
+  const [reason, setReason] = useState("");
 
-  const preview = useMemo(() => {
-    if (mode === "adopt_home" && row.home_report) {
-      return { home: row.home_report.home_score, away: row.home_report.away_score };
+  const adopted = mode === "manual" ? null : (reportOf(row.reports, Number(mode)) ?? null);
+  const preview = (() => {
+    if (adopted) {
+      return seatIds.map(
+        (id) => adopted.results.find((line) => line.encounter_team_id === id)?.score ?? 0
+      );
     }
-    if (mode === "adopt_away" && row.away_report) {
-      return { home: row.away_report.home_score, away: row.away_report.away_score };
-    }
-    if (mode !== "manual") return null;
-    const home = Number(homeScore);
-    const away = Number(awayScore);
-    if (homeScore === "" || awayScore === "") return null;
-    if (!Number.isInteger(home) || !Number.isInteger(away) || home < 0 || away < 0) return null;
-    return { home, away };
-  }, [row, mode, homeScore, awayScore]);
+    const entered = seatIds.map((id) => scores[id] ?? "");
+    if (entered.some((value) => value.trim() === "")) return null;
+    const numbers = entered.map(Number);
+    return numbers.every(
+      (value) => Number.isFinite(value) && value >= 0 && (!wholeScores || Number.isInteger(value))
+    )
+      ? numbers
+      : null;
+  })();
 
   // An elimination bracket needs a winner and the finalizer rejects a draw with
   // a 400. Blocking here means the admin learns it while the score is still in
   // front of them, rather than after a round trip.
   const drawBlocked =
-    preview != null && preview.home === preview.away && stageNeedsWinner(row.stage_type);
+    preview != null &&
+    wholeScores &&
+    preview[0] === preview[1] &&
+    stageNeedsWinner(row.stage_type);
 
   const closenessNumber = closeness === "" ? null : Number(closeness);
   const closenessInvalid =
@@ -294,35 +337,36 @@ function ResolveForm({
     (!Number.isInteger(closenessNumber) || closenessNumber < 1 || closenessNumber > 10);
 
   const options: Array<{ value: Mode; label: string; disabled: boolean; detail: string }> = [
-    {
-      value: "adopt_home",
-      label: t("adoptReport", { side: row.home_team?.name ?? t("home") }),
-      disabled: row.home_report == null,
-      detail: row.home_report
-        ? `${row.home_report.home_score} \u2013 ${row.home_report.away_score}`
-        : t("noReport")
-    },
-    {
-      value: "adopt_away",
-      label: t("adoptReport", { side: row.away_team?.name ?? t("away") }),
-      disabled: row.away_report == null,
-      detail: row.away_report
-        ? `${row.away_report.home_score} \u2013 ${row.away_report.away_score}`
-        : t("noReport")
-    },
+    ...seats.map((seat) => {
+      const report = reportOf(row.reports, seat.encounter_team_id);
+      return {
+        value: String(seat.encounter_team_id),
+        label: t("adoptReport", { name: seat.name }),
+        disabled: report == null,
+        detail: report ? scoreline(report.results, seatIds) : t("noReport")
+      };
+    }),
     { value: "manual", label: t("manualScore"), disabled: false, detail: "" }
   ];
 
   function submit() {
     const closenessField = closenessNumber ?? undefined;
-    if (mode === "adopt_home" || mode === "adopt_away") {
-      const report = mode === "adopt_home" ? row.home_report : row.away_report;
-      // `adopt_report_team_id` rather than the score it happens to hold: the
-      // audit records which side was believed, not just the number.
-      onConfirm({ adopt_report_team_id: report?.team_id, closeness: closenessField });
+    if (adopted) {
+      // `adopt_report_team_id` rather than the numbers it happens to hold: the
+      // audit records whose report was believed, not just the standing.
+      onConfirm({
+        reason: reason.trim(),
+        results: [],
+        adopt_report_team_id: adopted.encounter_team_id,
+        closeness: closenessField
+      });
       return;
     }
-    onConfirm({ home_score: preview?.home, away_score: preview?.away, closeness: closenessField });
+    onConfirm({
+      reason: reason.trim(),
+      results: seatIds.map((id, index) => ({ encounter_team_id: id, score: preview?.[index] ?? 0 })),
+      closeness: closenessField
+    });
   }
 
   return (
@@ -330,7 +374,7 @@ function ResolveForm({
       <fieldset className="space-y-2">
         <legend
           id={`${modeFieldId}-legend`}
-          className={EYEBROW_CLASS}
+          className={eyebrowClass("muted")}
         >
           {t("whichScore")}
         </legend>
@@ -338,7 +382,7 @@ function ResolveForm({
             already on screen, and duplicating it would announce it twice. */}
         <RadioGroup
           value={mode}
-          onValueChange={(next) => setMode(next as Mode)}
+          onValueChange={(next) => setMode(next)}
           aria-labelledby={`${modeFieldId}-legend`}
         >
           {options.map((option) => (
@@ -360,7 +404,7 @@ function ResolveForm({
               >
                 <span>{option.label}</span>
                 {option.detail ? (
-                  <span className="font-mono text-xs text-muted-foreground">{option.detail}</span>
+                  <span className="text-xs tabular-nums text-muted-foreground">{option.detail}</span>
                 ) : null}
               </Label>
             </div>
@@ -369,26 +413,21 @@ function ResolveForm({
 
         {mode === "manual" ? (
           <div className="flex flex-wrap items-end gap-2 pt-1">
-            <div className="space-y-1">
-              <Label htmlFor="resolve-home">{t("home")}</Label>
-              <Input
-                id="resolve-home"
-                inputMode="numeric"
-                className="h-8 w-20"
-                value={homeScore}
-                onChange={(event) => setHomeScore(event.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="resolve-away">{t("away")}</Label>
-              <Input
-                id="resolve-away"
-                inputMode="numeric"
-                className="h-8 w-20"
-                value={awayScore}
-                onChange={(event) => setAwayScore(event.target.value)}
-              />
-            </div>
+            {seats.map((seat) => (
+              <div key={seat.encounter_team_id} className="space-y-1">
+                <Label htmlFor={`${modeFieldId}-score-${seat.encounter_team_id}`}>{seat.name}</Label>
+                <Input
+                  id={`${modeFieldId}-score-${seat.encounter_team_id}`}
+                  inputMode={wholeScores ? "numeric" : "decimal"}
+                  size="sm"
+                  className="w-20"
+                  value={scores[seat.encounter_team_id] ?? ""}
+                  onChange={(event) =>
+                    setScores((current) => ({ ...current, [seat.encounter_team_id]: event.target.value }))
+                  }
+                />
+              </div>
+            ))}
           </div>
         ) : null}
 
@@ -397,7 +436,8 @@ function ResolveForm({
           <Input
             id="resolve-closeness"
             inputMode="numeric"
-            className="h-8 w-20"
+            size="sm"
+            className="w-20"
             value={closeness}
             onChange={(event) => setCloseness(event.target.value)}
             placeholder={t("auto")}
@@ -407,16 +447,26 @@ function ResolveForm({
             {t("closenessHelp")}
           </p>
         </div>
+
+        <div className="space-y-1 pt-1">
+          <Label htmlFor={`${modeFieldId}-reason`}>{t("reason")}</Label>
+          <Input
+            id={`${modeFieldId}-reason`}
+            value={reason}
+            maxLength={500}
+            onChange={(event) => setReason(event.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">{t("reasonHelp")}</p>
+        </div>
       </fieldset>
 
       <p className="text-sm" aria-live="polite">
         {preview ? (
           <>
             {t.rich("willRecordScore", {
-              home: preview.home,
-              away: preview.away,
+              standing: preview.join(" \u2013 "),
               score: (chunks) => (
-                <span className="font-mono font-semibold tabular-nums">{chunks}</span>
+                <span className="font-semibold tabular-nums">{chunks}</span>
               )
             })}
           </>
@@ -436,7 +486,9 @@ function ResolveForm({
       <DialogFooter>
         <Button
           type="button"
-          disabled={preview == null || drawBlocked || closenessInvalid || pending}
+          disabled={
+            preview == null || drawBlocked || closenessInvalid || reason.trim() === "" || pending
+          }
           onClick={submit}
         >
           {pending ? <Spinner /> : null}

@@ -1,4 +1,3 @@
-import type { RosterSlotCode, RosterSlotMap } from "@/lib/roster/shape";
 import type { MixBalancerPreferences, MixRatingMode } from "@/services/mix-preferences.service";
 
 /**
@@ -32,16 +31,8 @@ export const MAX_RESULT_VARIANTS = DEFAULT_RESULT_VARIANTS;
 /** Ceiling the server enforces on the rank-adjustment-per-win. */
 export const MAX_POINTS_PER_WIN = 1000;
 
-/** Display names for the slot codes, matching the roster-shape vocabulary. */
-export const SLOT_LABELS: Record<RosterSlotCode, string> = {
-  tank: "Tank",
-  damage: "Damage",
-  support: "Support",
-  flex: "Flex",
-};
-
 /** Stored tilt, clamped to the range the server enforces. */
-export function tiltOf(preferences: MixBalancerPreferences | null | undefined): number {
+function tiltOf(preferences: MixBalancerPreferences | null | undefined): number {
   const stored = preferences?.mix_comfort_tilt;
   if (typeof stored !== "number" || !Number.isFinite(stored)) {
     return DEFAULT_COMFORT_TILT;
@@ -50,13 +41,13 @@ export function tiltOf(preferences: MixBalancerPreferences | null | undefined): 
 }
 
 /** Stored weights, with anything unusable dropped rather than rendered as NaN. */
-export function roleWeightsOf(
+function roleWeightsOf(
   preferences: MixBalancerPreferences | null | undefined,
 ): Record<string, number> {
-  const stored = preferences?.role_settings;
-  if (stored == null || typeof stored !== "object") {
-    return {};
-  }
+  const stored = {
+    ...preferences?.role_settings,
+    ...(preferences?.open_slot_settings ? { flex: preferences.open_slot_settings } : {}),
+  };
   return Object.fromEntries(
     Object.entries(stored).flatMap(([code, settings]): [string, number][] => {
       const weight = settings?.mix_weight;
@@ -68,7 +59,7 @@ export function roleWeightsOf(
 }
 
 /** Stored option count, clamped; unset reads as the engine's own number. */
-export function variantsOf(preferences: MixBalancerPreferences | null | undefined): number {
+function variantsOf(preferences: MixBalancerPreferences | null | undefined): number {
   const stored = preferences?.max_result_variants;
   if (typeof stored !== "number" || !Number.isFinite(stored)) {
     return DEFAULT_RESULT_VARIANTS;
@@ -76,16 +67,9 @@ export function variantsOf(preferences: MixBalancerPreferences | null | undefine
   return Math.min(MAX_RESULT_VARIANTS, Math.max(1, Math.round(stored)));
 }
 
-/** The stored roster shape override; `null` follows each mix's workspace. */
-export function roleMaskOf(
-  preferences: MixBalancerPreferences | null | undefined,
-): RosterSlotMap | null {
-  const stored = preferences?.role_mask;
-  return stored != null && typeof stored === "object" ? stored : null;
-}
 
 /** Stored points-per-win; `null` (and a stored `0`) means the knob is off. */
-export function pointsPerWinOf(
+function pointsPerWinOf(
   preferences: MixBalancerPreferences | null | undefined,
 ): number | null {
   const stored = preferences?.points_per_win;
@@ -115,9 +99,10 @@ export type MixPrefsDraft = {
   tilt: number;
   weights: Record<string, number>;
   variants: number;
-  roleMask: RosterSlotMap | null;
   pointsPerWin: number | null;
   ratingMode: MixRatingMode;
+  banPresets: Record<string, string>;
+  formationDefaults: MixBalancerPreferences["formation_defaults"];
 };
 
 /** The draft a stored row (or an empty one) opens as. */
@@ -126,9 +111,10 @@ export function draftOf(preferences: MixBalancerPreferences | null | undefined):
     tilt: tiltOf(preferences),
     weights: roleWeightsOf(preferences),
     variants: variantsOf(preferences),
-    roleMask: roleMaskOf(preferences),
     pointsPerWin: pointsPerWinOf(preferences),
     ratingMode: preferences?.rating_mode === "ranker" ? "ranker" : "points",
+    banPresets: { ...(preferences?.hero_ban_presets ?? {}) },
+    formationDefaults: { ...(preferences?.formation_defaults ?? {}) },
   };
 }
 
@@ -136,7 +122,7 @@ export function draftOf(preferences: MixBalancerPreferences | null | undefined):
 export function preferencesPayload(draft: MixPrefsDraft): MixBalancerPreferences {
   const weighted = Object.fromEntries(
     Object.entries(draft.weights)
-      .filter(([, weight]) => weight !== DEFAULT_ROLE_WEIGHT)
+      .filter(([code, weight]) => code !== "flex" && weight !== DEFAULT_ROLE_WEIGHT)
       .map(([code, weight]): [string, { mix_weight: number }] => [code, { mix_weight: weight }]),
   );
   // Clamped before the default check: the default IS the ceiling, so anything
@@ -146,12 +132,25 @@ export function preferencesPayload(draft: MixPrefsDraft): MixBalancerPreferences
     mix_comfort_tilt: draft.tilt === DEFAULT_COMFORT_TILT ? null : draft.tilt,
     role_settings: Object.keys(weighted).length > 0 ? weighted : null,
     max_result_variants: variants === DEFAULT_RESULT_VARIANTS ? null : variants,
-    role_mask: draft.roleMask,
+    open_slot_settings:
+      draft.weights.flex == null || draft.weights.flex === DEFAULT_ROLE_WEIGHT
+        ? null
+        : { mix_weight: draft.weights.flex },
     points_per_win:
       draft.pointsPerWin == null || draft.pointsPerWin <= 0
         ? null
         : Math.min(MAX_POINTS_PER_WIN, Math.round(draft.pointsPerWin)),
     // Not a knob with a default to clear: the server stores one of two modes.
     rating_mode: draft.ratingMode,
+    // Sorted: the server's jsonb answers games in its own key order, and the panel compares serialized rows.
+    hero_ban_presets: Object.fromEntries(
+      Object.entries(draft.banPresets).sort(([left], [right]) => (left < right ? -1 : 1)),
+    ),
+    // Rebuilt rather than passed through: the panel compares serialized rows, so each game's own keys are ordered too.
+    formation_defaults: Object.fromEntries(
+      Object.entries(draft.formationDefaults)
+        .sort(([left], [right]) => (left < right ? -1 : 1))
+        .map(([code, { team_formation, draft_pick_seconds }]) => [code, { team_formation, draft_pick_seconds }]),
+    ),
   };
 }

@@ -5,9 +5,6 @@ __all__ = (
     "DivisionStatistics",
     "PlayerStatistics",
     "OverallStatistics",
-    "DashboardActiveTournamentStats",
-    "DashboardIssues",
-    "DashboardStats",
 )
 
 
@@ -22,9 +19,8 @@ class TournamentStatistics(BaseModel):
 class DivisionStatistics(BaseModel):
     id: int
     name: str
-    tank_avg_div: float | None
-    damage_avg_div: float | None
-    support_avg_div: float | None
+    #: Average division by top-level role code of the game's rated dimension; a role nobody played is absent.
+    role_avg_divs: dict[str, float]
 
 
 class PlayerStatistics(BaseModel):
@@ -38,37 +34,11 @@ class OverallStatistics(BaseModel):
     teams: int
     players: int
     champions: int
-    # Played volume. ``encounters`` counts finished (COMPLETED) ones only;
+    # Played volume. ``encounters`` counts finished (COMPLETED) duels only
+    # (``completed_encounters_clauses``, the ``/encounters`` hero's number);
     # ``days`` is the distinct calendar days the tournaments cover, so a shared
     # weekend counts once; ``hours`` is whole hours of logged map time.
     encounters: int
     maps: int
     days: int
     hours: int
-
-
-class DashboardActiveTournamentStats(BaseModel):
-    tournament_id: int
-    encounters_total: int
-    encounters_missing_logs: int
-    log_coverage_percent: int
-
-
-class DashboardIssues(BaseModel):
-    encounters_missing_logs: int
-    teams_without_players: int
-    tournaments_without_stages: int
-    users_without_identities: int
-
-
-class DashboardStats(BaseModel):
-    tournaments_total: int
-    tournaments_active: int
-    teams_total: int
-    players_total: int
-    encounters_total: int
-    heroes_total: int
-    gamemodes_total: int
-    maps_total: int
-    active_tournament_stats: DashboardActiveTournamentStats | None
-    issues: DashboardIssues

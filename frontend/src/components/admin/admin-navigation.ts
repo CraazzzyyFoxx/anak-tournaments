@@ -41,12 +41,11 @@ export type AdminNavItem = {
   href: string;
   /**
    * Path prefix that marks this entry active, when `href` points deeper than
-   * the section it owns (`/admin/settings/general` is the landing section of
-   * `/admin/settings`, and `/admin/settings/divisions` must still light it up).
+   * the section it owns (`/admin/content/heroes` is the landing section of
+   * `/admin/content`, and `/admin/content/unresolved` must still light it up).
    */
   activePrefix?: string;
   icon: LucideIcon;
-  description: string;
   /** Extra search terms for the command palette (D11). */
   aliases?: string[];
   /** Views of a `?view=`/sub-route browser, listed separately in the palette. */
@@ -112,7 +111,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         title: "nav.dashboard",
         href: "/admin",
         icon: LayoutDashboard,
-        description: "nav.dashboardDescription",
+        aliases: ["issues"],
         permissions: overviewPermissions,
         workspaceAdminVisible: true,
       },
@@ -120,7 +119,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         title: "nav.tournaments",
         href: "/admin/tournaments",
         icon: Trophy,
-        description: "nav.tournamentsDescription",
+        aliases: ["stages", "schedule"],
         permissions: ["tournament.read"],
       },
     ],
@@ -132,7 +131,6 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         title: "nav.people",
         href: "/admin/people",
         icon: UserCircle,
-        description: "nav.peopleDescription",
         // `player.read`'s cross-tournament table became the Participations tab
         // of a person's card, so the old /admin/players aliases live here now.
         aliases: ["identities", "discord", "battletag", "twitch", "players", "participations"],
@@ -148,8 +146,6 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         title: "nav.ranks",
         href: "/admin/ranks",
         icon: Gauge,
-        description:
-          "nav.ranksDescription",
         // "rank" belongs to Collectors; aliases are unique across the sidebar.
         aliases: ["canon", "author ranks", "hidden rating", "effective", "sr", "mmr"],
         // `team.update`, not `rank.read`: the table exposes each organiser's
@@ -161,15 +157,13 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         title: "nav.teams",
         href: "/admin/teams",
         icon: Users,
-        description: "nav.teamsDescription",
+        aliases: ["rosters"],
         permissions: ["team.read"],
       },
       {
         title: "nav.matches",
         href: "/admin/matches",
         icon: Swords,
-        description:
-          "nav.matchesDescription",
         aliases: ["encounters", "match reports", "parsed maps", "logs", "results"],
         views: [
           { key: "encounters", label: "nav.encounters", href: "/admin/matches?view=encounters" },
@@ -184,7 +178,6 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         title: "nav.achievements",
         href: "/admin/achievements",
         icon: Award,
-        description: "nav.achievementsDescription",
         permissions: ["achievement.read"],
       },
     ],
@@ -194,11 +187,9 @@ export const adminNavigationGroups: AdminNavGroup[] = [
     items: [
       {
         title: "nav.settings",
-        href: "/admin/settings/general",
+        href: "/admin/settings",
         activePrefix: "/admin/settings",
         icon: Settings2,
-        description:
-          "nav.settingsDescription",
         aliases: [
           "divisions",
           "balancer",
@@ -214,6 +205,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
           "subscription providers",
         ],
         views: [
+          { key: "overview", label: "nav.overview", href: "/admin/settings" },
           { key: "general", label: "nav.general", href: "/admin/settings/general" },
           { key: "branding", label: "nav.branding", href: "/admin/settings/branding" },
           { key: "visibility", label: "nav.visibilitySeo", href: "/admin/settings/visibility" },
@@ -230,7 +222,6 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         title: "nav.members",
         href: "/admin/members",
         icon: UserCog,
-        description: "nav.membersDescription",
         workspaceAdminVisible: true,
       },
     ],
@@ -243,20 +234,22 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         href: "/admin/content/heroes",
         activePrefix: "/admin/content",
         icon: Gamepad2,
-        description: "nav.gameContentDescription",
         aliases: [
           "heroes",
+          "champions",
+          "characters",
           "maps",
           "gamemodes",
+          "modes",
           "unresolved names",
           "log names",
           "translations",
           "alias queue",
         ],
         views: [
-          { key: "heroes", label: "nav.heroes", href: "/admin/content/heroes" },
+          { key: "heroes", label: "nav.characters", href: "/admin/content/heroes" },
           { key: "maps", label: "nav.maps", href: "/admin/content/maps" },
-          { key: "gamemodes", label: "nav.gamemodes", href: "/admin/content/gamemodes" },
+          { key: "gamemodes", label: "nav.modes", href: "/admin/content/gamemodes" },
           { key: "unresolved", label: "nav.unresolvedNames", href: "/admin/content/unresolved" },
         ],
         superuserOnly: true,
@@ -266,7 +259,6 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         href: "/admin/collectors/rank",
         activePrefix: "/admin/collectors",
         icon: Activity,
-        description: "nav.collectorsDescription",
         // `canAccessAdminRoute` treats a permission list as OR
         // (`permissions.some`, `hooks/usePermissions.ts`), so one entry covers
         // all three collectors. `globalOnly` belongs to the streams prefix in
@@ -285,7 +277,6 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         href: "/admin/access",
         activePrefix: "/admin/access",
         icon: Shield,
-        description: "nav.accessDescription",
         aliases: ["staff", "roles", "permissions", "api keys", "sessions", "oauth", "accounts"],
         views: accessSectionViews,
         permissions: accessAdminPermissions,
@@ -295,15 +286,12 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         title: "nav.workspaces",
         href: "/admin/workspaces",
         icon: Building2,
-        description: "nav.workspacesDescription",
         workspaceAdminVisible: true,
       },
       {
         title: "nav.announcements",
         href: "/admin/announcements",
         icon: Megaphone,
-        description:
-          "nav.announcementsDescription",
         aliases: ["announcement", "banner", "notice", "broadcast"],
         permissions: ["announcement.read"],
         workspaceAdminVisible: true,
@@ -312,8 +300,6 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         title: "nav.notifications",
         href: "/admin/notifications",
         icon: Bell,
-        description:
-          "nav.notificationsDescription",
         aliases: ["notification", "inbox", "retire", "registration approved"],
         permissions: ["notification.read"],
         workspaceAdminVisible: true,
@@ -322,8 +308,6 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         title: "nav.auditLog",
         href: "/admin/audit",
         icon: History,
-        description:
-          "nav.auditLogDescription",
         aliases: ["audit", "who changed this", "change log", "trail"],
         permissions: ["audit.read"],
         workspaceAdminVisible: true,
@@ -482,9 +466,13 @@ export function getVisibleAdminNavigationGroups(
     .filter((group) => group.items.length > 0);
 }
 
-/** Search haystack for the admin command palette: title + description + aliases (D11). */
+/**
+ * Search haystack for the admin command palette (D11): the entry's translated
+ * label, so a query in the reader's language finds it, plus its aliases.
+ */
 export function adminNavItemSearchValue(
-  item: Pick<AdminNavItem, "title" | "description" | "aliases">,
+  label: string,
+  item: Pick<AdminNavItem, "aliases">,
 ): string {
-  return [item.title, item.description, ...(item.aliases ?? [])].join(" ");
+  return [label, ...(item.aliases ?? [])].join(" ");
 }

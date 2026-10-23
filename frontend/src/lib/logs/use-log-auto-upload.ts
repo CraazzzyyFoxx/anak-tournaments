@@ -11,7 +11,7 @@ import { useLogDirectory } from "./use-log-directory";
 
 export type AutoUploadEntryState = "waiting" | "uploading" | "uploaded" | "rejected" | "failed";
 
-export interface AutoUploadEntry {
+interface AutoUploadEntry {
   name: string;
   state: AutoUploadEntryState;
   at: number;

@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { AlertTriangle, CheckCircle2, Shuffle, Users } from "lucide-react";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 
@@ -9,9 +11,7 @@ import {
   BalancingPoolSidebar,
   type BalancingPoolSidebarHandle
 } from "@/app/balancer/components/BalancingPoolSidebar";
-import { PlayerEditModal } from "@/app/balancer/components/PlayerEditSheet";
 import { WorkspacePlayersSidebar } from "@/app/balancer/components/WorkspacePlayersSidebar";
-import { BalancerConfigDrawer } from "@/app/balancer/components/BalancerConfigDrawer";
 import { PresetRunPanel } from "@/app/balancer/components/PresetRunPanel";
 import { TeamDistributionPanel } from "@/app/balancer/components/TeamDistributionPanel";
 import { VariantSelector } from "@/app/balancer/components/VariantSelector";
@@ -20,13 +20,16 @@ import { useBalancerJob } from "@/app/balancer/components/useBalancerJob";
 import { useBalancerMutations } from "@/app/balancer/components/useBalancerMutations";
 import {
   balancerRealtimeTopic,
-  useBalancerRealtime,
+  useBalancerRealtime
 } from "@/app/balancer/components/useBalancerRealtime";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { mergeStatusOptions } from "@/lib/registration/balancer-statuses";
-import { orderSlotCodes } from "@/lib/roster/shape";
+import { ratedDimension, slotCodeOrder } from "@/lib/roster/ontology";
+import { slotCodesOf } from "@/lib/roster/shape";
 import { tournamentOverviewQueryOptions } from "@/lib/tournament/overview-query";
 import { notify } from "@/lib/notify";
 import balancerAdminService from "@/services/balancer-admin.service";
@@ -41,14 +44,12 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { BalancerActionsPanel } from "./BalancerActionsPanel";
 import { BalancerEditorPanel } from "./BalancerEditorPanel";
 import { BalancerPresenceStack } from "./BalancerPresenceStack";
-import { BalanceImageExportDialog } from "./BalanceImageExportDialog";
 import {
-  BalancerOperationDialog,
   createOperationSteps,
   updateOperationStepStatus,
   type BalancerOperationStep,
   type BalancerOperationStepStatus
-} from "./BalancerOperationDialog";
+} from "./operation-steps";
 import {
   CUSTOM_PRESET,
   areBalancerConfigsEqual,
@@ -65,7 +66,6 @@ import {
   upsertSavedVariant,
   buildBalancerPageCollections
 } from "./balancer-page-selectors";
-import { PRESET_LABELS } from "@/components/balancer/balancer-page-helpers";
 import {
   buildTeamNamesText,
   buildVariantFromSavedBalance,
@@ -85,10 +85,31 @@ import {
   useIsWideBalancerLayout
 } from "./useBalancerLayout";
 
+// Dialogs and sheets that render nothing until opened: lazy chunks, so they
+// (and the image rasteriser behind the export dialog) are not first-load JS.
+const PlayerEditModal = dynamic(
+  () => import("@/app/balancer/components/PlayerEditSheet").then((m) => m.PlayerEditModal),
+  { ssr: false }
+);
+const BalancerConfigDrawer = dynamic(
+  () => import("@/app/balancer/components/BalancerConfigDrawer").then((m) => m.BalancerConfigDrawer),
+  { ssr: false }
+);
+const BalanceImageExportDialog = dynamic(
+  () => import("./BalanceImageExportDialog").then((m) => m.BalanceImageExportDialog),
+  { ssr: false }
+);
+const BalancerOperationDialog = dynamic(
+  () => import("./BalancerOperationDialog").then((m) => m.BalancerOperationDialog),
+  { ssr: false }
+);
+
 export function BalancerMainPageClient() {
+  const t = useTranslations("balancerTool.page");
   const tournamentId = useBalancerTournamentId();
-  const divisionGrid = useDivisionGrid();
-  const workspaceId = useWorkspaceStore((state) => state.entityWorkspaceId ?? state.currentWorkspaceId);
+  const workspaceId = useWorkspaceStore(
+    (state) => state.entityWorkspaceId ?? state.currentWorkspaceId
+  );
   const { canAccessPermission } = usePermissions();
   const currentUserId = useAuthProfileStore((state) => state.user?.id ?? null);
   const queryClient = useQueryClient();
@@ -140,12 +161,6 @@ export function BalancerMainPageClient() {
     if (isPlayersSidebarCollapsed) playersPanelRef.current?.collapse();
   }, [railPercent, isPoolSidebarCollapsed, isPlayersSidebarCollapsed]);
 
-  const balancerConfigQuery = useQuery({
-    queryKey: balancerQueryKeys.publicConfig(),
-    queryFn: () => balancerService.getConfig(),
-    staleTime: Number.POSITIVE_INFINITY
-  });
-
   const registrationsQuery = useQuery({
     queryKey: balancerQueryKeys.registrations(tournamentId),
     queryFn: () =>
@@ -170,15 +185,32 @@ export function BalancerMainPageClient() {
     refetchOnWindowFocus: false
   });
 
-  // Only for the roster shape: the per-role weight table offers a row per role
-  // this tournament actually fields. Same query the public shell uses, so it is
-  // usually a cache hit rather than a read of its own.
+  // Owner metadata supplies both roster shape and the player editor's grid pin.
+  // Reuse the public shell's query and embedded version rather than refetching it.
   const tournamentQuery = useQuery({
     ...tournamentOverviewQueryOptions(tournamentId as number),
     enabled: tournamentId !== null
   });
+  const divisionGrid = useDivisionGrid(tournamentQuery.data?.discipline);
+  // The solver config of the tournament's game: its defaults and presets carry that game's role weights.
+  const configDiscipline = tournamentQuery.data?.discipline ?? null;
+  const balancerConfigQuery = useQuery({
+    queryKey: balancerQueryKeys.publicConfig(configDiscipline),
+    queryFn: ({ signal }) => balancerService.getConfig(configDiscipline as string, signal),
+    enabled: configDiscipline !== null,
+    staleTime: Number.POSITIVE_INFINITY
+  });
+  const ontology = useDisciplineMetadata(
+    tournamentQuery.data?.workspace_id ?? "all",
+    tournamentQuery.data?.discipline ?? null
+  ).data ?? null;
+  const slotLabel = useSlotLabel(ontology);
+  // Whose handle answers name a player; `null` while the game's metadata loads or for a game with no identity.
+  const identityProvider = ontology?.discipline.identity_provider ?? null;
+  // The buckets a balance file may carry: the owner game's role codes and the open slot. `null` while they load.
+  const slotCodes = ontology ? slotCodeOrder(ontology) : null;
   const roleCodes = tournamentQuery.data?.roster_shape
-    ? orderSlotCodes(tournamentQuery.data.roster_shape.slots)
+    ? slotCodesOf(tournamentQuery.data.roster_shape.slots)
     : null;
 
   const customStatusesQuery = useQuery({
@@ -267,8 +299,8 @@ export function BalancerMainPageClient() {
     invalidPlayerStates,
     flexPoolCount
   } = useMemo(
-    () => buildBalancerPageCollections(registrations, divisionGrid),
-    [divisionGrid, registrations]
+    () => buildBalancerPageCollections(registrations, divisionGrid, slotLabel, identityProvider),
+    [divisionGrid, registrations, slotLabel, identityProvider]
   );
 
   const workspaceBalancerConfig = workspaceBalancerConfigQuery.data ?? null;
@@ -280,10 +312,11 @@ export function BalancerMainPageClient() {
           state.player,
           applicationsById.get(state.player.application_id) ?? null,
           workspaceBalancerConfig,
-          divisionGrid
+          divisionGrid,
+          slotLabel
         )
       })),
-    [allPlayerValidationStates, applicationsById, workspaceBalancerConfig, divisionGrid]
+    [allPlayerValidationStates, applicationsById, workspaceBalancerConfig, divisionGrid, slotLabel]
   );
 
   const activeVariant = useMemo(
@@ -307,9 +340,9 @@ export function BalancerMainPageClient() {
   const quickEditPlayer = useMemo(
     () =>
       quickEditRegistration
-        ? createSyntheticPlayerFromRegistration(quickEditRegistration, divisionGrid)
+        ? createSyntheticPlayerFromRegistration(quickEditRegistration, divisionGrid, identityProvider)
         : null,
-    [quickEditRegistration, divisionGrid]
+    [quickEditRegistration, divisionGrid, identityProvider]
   );
   const playerStatusOptions = useMemo(
     () => ({
@@ -333,14 +366,16 @@ export function BalancerMainPageClient() {
     () => !areBalancerConfigsEqual(draftConfig, savedTournamentConfig),
     [draftConfig, savedTournamentConfig]
   );
-  const selectedPresetLabel =
-    selectedPreset === CUSTOM_PRESET
-      ? "Custom"
-      : (PRESET_LABELS[selectedPreset] ??
-        (balancerConfigQuery.data?.presets[selectedPreset] ? selectedPreset : "Custom"));
+  // Presets the catalog names read translated; a server preset it does not know reads as its key.
+  const presetKey = `presets.${selectedPreset}` as "presets.DEFAULT";
+  const selectedPresetLabel = t.has(presetKey)
+    ? t(presetKey)
+    : balancerConfigQuery.data?.presets[selectedPreset]
+      ? selectedPreset
+      : t("presets.CUSTOM");
   const saveConfigMutation = useMutation({
     mutationFn: async () => {
-      if (!tournamentId) throw new Error("Select a tournament first");
+      if (!tournamentId) throw new Error(t("errors.noTournament"));
       const saved = await balancerAdminService.upsertTournamentConfig(tournamentId, {
         config_json: sanitizeBalancerConfig(draftConfig) as Record<string, unknown>
       });
@@ -352,7 +387,7 @@ export function BalancerMainPageClient() {
       await queryClient.invalidateQueries({
         queryKey: balancerQueryKeys.tournamentConfig(tournamentId)
       });
-      notify.success("Balancer settings saved");
+      notify.success(t("toasts.settingsSaved"));
     }
   });
 
@@ -365,7 +400,7 @@ export function BalancerMainPageClient() {
       includePrivate: boolean;
     }) => {
       const selectedTournamentId = tournamentId;
-      if (!selectedTournamentId) throw new Error("Select a tournament first");
+      if (!selectedTournamentId) throw new Error(t("errors.noTournament"));
       const payload = await balancerAdminService.exportPlayers(
         selectedTournamentId,
         format,
@@ -376,8 +411,8 @@ export function BalancerMainPageClient() {
     onSuccess: ({ payload, tournamentId: exportedTournamentId }) => {
       const playerCount = Object.keys(payload.players).length;
       downloadPlayersExport(payload, exportedTournamentId);
-      notify.success("Players exported", {
-        description: `${playerCount} player${playerCount === 1 ? "" : "s"} downloaded as ${payload.format}.`
+      notify.success(t("toasts.playersExported"), {
+        description: t("toasts.playersExportedDescription", { count: playerCount, format: payload.format })
       });
     }
   });
@@ -462,7 +497,9 @@ export function BalancerMainPageClient() {
     isConfigDirty,
     onTournamentConfigSaved: handleConfigSavedFromRun,
     activeVariant,
-    onJobCreated: registerLocalJob
+    onJobCreated: registerLocalJob,
+    slotCodes,
+    ratedDimension: ontology ? (ratedDimension(ontology)?.code ?? null) : null
   });
 
   const canRunBalance = useMemo(
@@ -555,11 +592,11 @@ export function BalancerMainPageClient() {
   const handleCopyNames = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(buildTeamNamesText(activeVariant?.payload ?? null));
-      notify.success("Team names copied");
+      notify.success(t("toasts.namesCopied"));
     } catch {
-      notify.error("Unable to copy the team names. Your browser blocked clipboard access — copy them from the balance instead.");
+      notify.error(t("toasts.namesCopyFailed"));
     }
-  }, [activeVariant]);
+  }, [activeVariant, t]);
 
   const handleTournamentExportStageChange = useCallback(
     (stepId: string, status: BalancerOperationStepStatus) => {
@@ -585,17 +622,18 @@ export function BalancerMainPageClient() {
       {
         onSuccess: ({ exportResult }) => {
           setTournamentExportSummary(
-            `${exportResult.imported_teams} teams exported to the tournament. ${exportResult.removed_teams} previously exported teams removed.`
+            t("operation.exportSummary", {
+              imported: exportResult.imported_teams,
+              removed: exportResult.removed_teams
+            })
           );
         },
         onError: (error) => {
-          setTournamentExportError(
-            getErrorMessage(error, "Failed to export teams to the tournament")
-          );
+          setTournamentExportError(getErrorMessage(error, t("errors.exportFailed")));
         }
       }
     );
-  }, [exportToTournamentMutation, handleTournamentExportStageChange]);
+  }, [exportToTournamentMutation, handleTournamentExportStageChange, t]);
 
   const savedBalanceId = savedBalanceQuery.data?.id ?? null;
   const startRanksExport = useCallback(() => {
@@ -615,16 +653,16 @@ export function BalancerMainPageClient() {
         {
           onSuccess: (result) => {
             setJsonImportSummary(
-              `${result.teamCount} teams loaded from ${file.name}. Review the balance, then save or export it to the tournament.`
+              t("operation.importSummary", { count: result.teamCount, file: file.name })
             );
           },
           onError: (error) => {
-            setJsonImportError(getErrorMessage(error, "Failed to read the balance JSON"));
+            setJsonImportError(getErrorMessage(error, t("errors.importFailed")));
           }
         }
       );
     },
-    [handleJsonImportStageChange, importBalanceMutation]
+    [handleJsonImportStageChange, importBalanceMutation, t]
   );
 
   const quickPoolActionsPending =
@@ -657,11 +695,8 @@ export function BalancerMainPageClient() {
   if (!tournamentId) {
     return (
       <Alert>
-        <AlertTitle>Select a tournament</AlertTitle>
-        <AlertDescription>
-          Open a tournament from the tournament hub to work with registrations and the Balancing
-          Pool.
-        </AlertDescription>
+        <AlertTitle>{t("selectTournament.title")}</AlertTitle>
+        <AlertDescription>{t("selectTournament.description")}</AlertDescription>
       </Alert>
     );
   }
@@ -673,6 +708,8 @@ export function BalancerMainPageClient() {
       collapsed={isWideLayout && isPoolSidebarCollapsed}
       onToggleCollapsed={isWideLayout ? handleToggleSidebarCollapsed : undefined}
       allPlayerValidationStates={enrichedPlayerValidationStates}
+      ontology={ontology}
+      divisionGrid={divisionGrid}
       applications={applications}
       registrationsById={registrationsById}
       balancerStatusOptions={playerStatusOptions.balancer}
@@ -692,10 +729,11 @@ export function BalancerMainPageClient() {
   // would be a viewport-wide strip of vertical text — so the rail only exists
   // beside the editor.
   const playersElement =
-    workspaceId == null ? null : (
+    workspaceId == null || !tournamentQuery.data ? null : (
       <WorkspacePlayersSidebar
         key={workspaceId}
         workspaceId={workspaceId}
+        discipline={tournamentQuery.data.discipline}
         canEdit={canAccessPermission("team.update", workspaceId)}
         collapsed={isWideLayout && isPlayersSidebarCollapsed}
         onToggleCollapsed={
@@ -723,10 +761,10 @@ export function BalancerMainPageClient() {
     <div className="flex min-h-0 min-w-0 flex-col gap-3">
       <PresetRunPanel
         counters={[
-          { label: "Pool", value: poolPlayers.length, icon: Users },
-          { label: "Ready", value: readyPlayers.length, icon: CheckCircle2 },
-          { label: "Need Fix", value: invalidPlayerStates.length, icon: AlertTriangle },
-          { label: "Flex", value: flexPoolCount, icon: Shuffle }
+          { label: t("counters.pool"), value: poolPlayers.length, icon: Users },
+          { label: t("counters.ready"), value: readyPlayers.length, icon: CheckCircle2 },
+          { label: t("counters.needFix"), value: invalidPlayerStates.length, icon: AlertTriangle },
+          { label: t("counters.flex"), value: flexPoolCount, icon: Shuffle }
         ]}
         presetOptions={visiblePresetOptions}
         selectedPreset={selectedPreset}
@@ -758,6 +796,7 @@ export function BalancerMainPageClient() {
         activeVariant={activeVariant}
         balanceEditorRef={balanceEditorRef}
         divisionGrid={divisionGrid}
+        ontology={ontology}
         selectedPlayerId={selectedPlayerId}
         collapsedTeamIds={collapsedTeamIds}
         poolPlayerCount={poolPlayers.length}
@@ -801,6 +840,10 @@ export function BalancerMainPageClient() {
         <PlayerEditModal
           player={quickEditPlayer}
           registration={quickEditRegistration}
+          discipline={tournamentQuery.data?.discipline}
+          divisionGridVersionId={tournamentQuery.data?.division_grid_version_id}
+          ontology={ontology}
+          divisionGridVersion={tournamentQuery.data?.division_grid_version}
           statusOptions={playerStatusOptions}
           open={editingPlayerId !== null}
           onOpenChange={(open) => {
@@ -826,6 +869,7 @@ export function BalancerMainPageClient() {
         onSave={() => saveConfigMutation.mutate()}
         onReset={handleResetConfig}
         roleCodes={roleCodes}
+        ontology={ontology}
       />
 
       <BalanceImageExportDialog
@@ -833,32 +877,34 @@ export function BalancerMainPageClient() {
         onOpenChange={setIsImageExportOpen}
         payload={activeVariant?.payload ?? null}
         divisionGrid={divisionGrid}
+        ontology={ontology}
         tournamentId={tournamentId}
       />
 
       <BalancerOperationDialog
         open={isTournamentExportOpen}
         onOpenChange={setIsTournamentExportOpen}
-        title="Export to tournament"
-        description="Save the selected balance and create tournament teams from it."
+        title={t("operation.exportTitle")}
+        description={t("operation.exportDescription")}
         steps={tournamentExportSteps}
         isRunning={exportToTournamentMutation.isPending}
         summary={tournamentExportSummary}
+        advisories={exportToTournamentMutation.data?.exportResult.advisories}
         error={tournamentExportError}
-        retryLabel="Retry export"
+        retryLabel={t("operation.retryExport")}
         onRetry={startTournamentExport}
       />
 
       <BalancerOperationDialog
         open={isJsonImportOpen}
         onOpenChange={setIsJsonImportOpen}
-        title="Load balance JSON"
-        description="Load a previously downloaded balance JSON as a preview variant. Nothing is written to the tournament until you save or export it."
+        title={t("operation.importTitle")}
+        description={t("operation.importDescription")}
         steps={jsonImportSteps}
         isRunning={importBalanceMutation.isPending}
         summary={jsonImportSummary}
         error={jsonImportError}
-        retryLabel="Retry import"
+        retryLabel={t("operation.retryImport")}
         onRetry={lastJsonImportFile ? () => startJsonImport(lastJsonImportFile) : undefined}
       />
 
@@ -888,7 +934,11 @@ export function BalancerMainPageClient() {
               {sidebarElement}
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel id="balancer-pool-content-panel" minSize={40} className="grid min-h-0 pl-3">
+            <ResizablePanel
+              id="balancer-pool-content-panel"
+              minSize={40}
+              className="grid min-h-0 pl-3"
+            >
               {balancerContentElement}
             </ResizablePanel>
             {playersElement ? (

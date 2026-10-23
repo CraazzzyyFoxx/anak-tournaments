@@ -43,12 +43,17 @@ jobs:
         working-directory: backend
         run: |
           set -e
-          for svc in shared app-service parser-service balancer-service tournament-service analytics-service identity-service discord-service stream-service; do
+          for svc in shared app-service stats-service balancer-service tournament-service analytics-service identity-service discord-service stream-service; do
             if [ "$svc" = "shared" ]; then src="shared"; else src="$svc/src"; fi
             echo "::group::pytest $svc"
             uv run coverage run --parallel-mode --source="$src" -m pytest "$svc/tests"
             echo "::endgroup::"
           done
+          # The cross-service gates (module boundaries, D99 literals, repository
+          # boundaries, migration/script tests) live in the root suite.
+          echo "::group::pytest backend/tests"
+          uv run coverage run --parallel-mode --source=scripts -m pytest tests
+          echo "::endgroup::"
           uv run coverage combine
           uv run coverage report
           uv run coverage json -o coverage.json

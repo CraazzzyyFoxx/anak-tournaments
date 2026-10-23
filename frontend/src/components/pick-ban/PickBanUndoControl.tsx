@@ -13,18 +13,20 @@ import { Spinner } from "@/components/ui/spinner";
 
 import type { PickBanItemLike } from "./PickBanGrid";
 import { PickBanItemThumb } from "./PickBanItemThumb";
-import type { PickBanSide } from "./pick-ban-model";
+import { seatName, type PickBanSeat } from "./pick-ban-model";
 
 interface PickBanUndoControlProps {
   kind: PickBanKind;
   encounterId: number;
   /** `state.undo`. Absent, stepless or with no `item_ids` renders nothing. */
   undo: PickBanUndo | undefined;
-  /** Null for anyone who captains neither side — they read, they never consent. */
-  viewerSide: PickBanSide | null;
+  /** Null for anyone who captains no participation — they read, they never consent. */
+  viewerTeamId: number | null;
   itemsById: Record<number, PickBanItemLike | undefined>;
-  /** Resolves a side to its team name, for the "who asked" copy. */
-  sideName: (side: PickBanSide) => string;
+  /** The room's side labels in `state.sides` order: a `side_pick` undo reverts side indices, not items. */
+  sideLabels: string[];
+  /** The room's participations, for the "who asked" copy. */
+  seats: PickBanSeat[];
   /** Query keys to refetch once the consent (or the undo itself) lands. */
   invalidateKeys: unknown[][];
   className?: string;
@@ -35,8 +37,8 @@ interface PickBanUndoControlProps {
  *
  * A misclicked ban used to cost the whole round: the only remedy was an
  * organizer resetting the session. This is the captains' own, surgical
- * alternative — and deliberately a two-sided one, because the last action is
- * information the opponent has already played around. One side asks, the other
+ * alternative — and deliberately a mutual one, because the last action is
+ * information the opponent has already played around. One participation asks, the other
  * agrees, the backend reverts exactly that action (and the `decider` it may have
  * triggered) and reopens the step.
  *
@@ -50,9 +52,10 @@ export function PickBanUndoControl({
   kind,
   encounterId,
   undo,
-  viewerSide,
+  viewerTeamId,
   itemsById,
-  sideName,
+  sideLabels,
+  seats,
   invalidateKeys,
   className
 }: Readonly<PickBanUndoControlProps>) {
@@ -75,16 +78,16 @@ export function PickBanUndoControl({
     return null;
   }
 
-  const requestedBy = undo.requested_by;
-  const mine = requestedBy != null && requestedBy === viewerSide;
-  const theirs = requestedBy != null && requestedBy !== viewerSide;
-  const opponent: PickBanSide = viewerSide === "away" ? "home" : "away";
+  const requestedBy = undo.requested_by_team_id;
+  const mine = requestedBy != null && requestedBy === viewerTeamId;
+  const theirs = requestedBy != null && requestedBy !== viewerTeamId;
+  const opponent = seats.find((seat) => seat.id !== viewerTeamId)?.id ?? null;
   const pending = mutation.isPending;
 
   const line = theirs
-    ? t("undo.asked", { team: sideName(requestedBy as PickBanSide) })
+    ? t("undo.asked", { team: seatName(seats, requestedBy) })
     : mine
-      ? t("undo.waiting", { team: sideName(opponent) })
+      ? t("undo.waiting", { team: seatName(seats, opponent) })
       : t("undo.label");
 
   return (
@@ -113,6 +116,13 @@ export function PickBanUndoControl({
               along, which is the case a captain would otherwise not expect. */}
           <span className="flex min-w-0 flex-wrap items-center gap-1.5">
             {undo.item_ids.map((itemId) => {
+              if (undo.action === "side_pick") {
+                return (
+                  <span key={itemId} className="text-xs font-medium text-[color:var(--aqt-fg-muted)]">
+                    {sideLabels[itemId] ?? `#${itemId}`}
+                  </span>
+                );
+              }
               const name = itemsById[itemId]?.name ?? t(`${kind}.itemNumber`, { id: itemId });
               return (
                 <span key={itemId} className="flex min-w-0 items-center gap-1">
@@ -127,7 +137,7 @@ export function PickBanUndoControl({
         </div>
       </div>
 
-      {viewerSide != null ? (
+      {viewerTeamId != null ? (
         <div className="flex shrink-0 items-center gap-2 sm:ml-auto">
           {theirs ? (
             <>

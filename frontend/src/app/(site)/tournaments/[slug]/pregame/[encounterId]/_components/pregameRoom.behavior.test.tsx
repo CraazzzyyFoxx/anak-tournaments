@@ -9,9 +9,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
+import type * as OverwatchMatchUI from "@/disciplines/overwatch/match";
+import type * as MatchCharactersModule from "@/disciplines/overwatch/match/MatchCharacters";
+import { loadMatchUI } from "@/disciplines/registry/match";
 import en from "@/i18n/messages/en.json";
+import { ApiError } from "@/lib/api/error";
+import { notify } from "@/lib/notify";
+import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import type { Encounter } from "@/types/encounter.types";
 import type {
   PickBanEntry,
@@ -37,6 +43,7 @@ const undoLastAction = vi.fn();
 const submitDraft = vi.fn();
 const disputeStep = vi.fn();
 const adminPickBanSubmit = vi.fn();
+const adminPickBanAct = vi.fn();
 const adminPickBanReopen = vi.fn();
 const resetPickBanSession = vi.fn();
 const adminPickBanPause = vi.fn();
@@ -50,6 +57,7 @@ const getEncounter = vi.fn();
 const getMatch = vi.fn();
 const getAllMaps = vi.fn();
 const getAllHeroes = vi.fn();
+const getMetadata = vi.fn();
 const getMyRole = vi.fn();
 const getReports = vi.fn();
 const submitReport = vi.fn();
@@ -89,7 +97,7 @@ vi.mock("@/services/captain.service", () => ({
 vi.mock("@/services/admin.service", () => ({
   default: {
     resetPickBanSession: (...args: unknown[]) => resetPickBanSession(...args),
-    adminPickBanAct: vi.fn(),
+    adminPickBanAct: (...args: unknown[]) => adminPickBanAct(...args),
     adminPickBanElectOpener: vi.fn(),
     adminPickBanSubmit: (...args: unknown[]) => adminPickBanSubmit(...args),
     adminPickBanReopen: (...args: unknown[]) => adminPickBanReopen(...args),
@@ -107,11 +115,16 @@ vi.mock("@/services/encounter.service", () => ({
     getMatch: (...args: unknown[]) => getMatch(...args)
   }
 }));
-vi.mock("@/services/map.service", () => ({
-  default: { getAll: (...args: unknown[]) => getAllMaps(...args) }
+// One native catalog read serves both kinds; the room asks for its encounter's own game.
+vi.mock("@/services/catalog.service", () => ({
+  default: {
+    list: (discipline: string, kind: string, ...rest: unknown[]) =>
+      kind === "map" ? getAllMaps(discipline, kind, ...rest) : getAllHeroes(discipline, kind, ...rest)
+  }
 }));
-vi.mock("@/services/hero.service", () => ({
-  default: { getAll: (...args: unknown[]) => getAllHeroes(...args) }
+// The room names its game's module through native metadata; only the declared classes and capabilities matter here.
+vi.mock("@/services/discipline.service", () => ({
+  default: { list: async () => [], metadata: (...args: unknown[]) => getMetadata(...args) }
 }));
 // The room now mounts `RoomChat` beside every phase. These cases are about the
 // phases, so the viewer is a spectator here (403 -> `null`) and the panel keeps
@@ -133,6 +146,19 @@ vi.mock("@/hooks/usePermissions", () => ({
 vi.mock("@/lib/notify", () => ({
   notify: { apiError: vi.fn(), success: vi.fn(), error: vi.fn(), info: vi.fn() }
 }));
+// A player's previous-map heroes are the game's match module's `matchCharacters` slot. The module and its lazy slot
+// are two chunk loads, each a module-runner round trip that settled outside the room's acts. The module is loaded in
+// `beforeAll`; the slot is the real renderer without the lazy boundary, so it renders on the widget's first commit.
+vi.mock("@/disciplines/overwatch/match", async (importOriginal) => {
+  const { default: ui } = await importOriginal<typeof OverwatchMatchUI>();
+  const { default: matchCharacters } = await vi.importActual<typeof MatchCharactersModule>(
+    "@/disciplines/overwatch/match/MatchCharacters"
+  );
+  return { default: { ...ui, slots: { ...ui.slots, matchCharacters } } };
+});
+beforeAll(async () => {
+  await loadMatchUI("overwatch");
+});
 
 const ROOM = en.pickBan.room;
 
@@ -142,22 +168,56 @@ const HEROES = [101, 102, 103].map((id) => ({
   name: `Hero ${id}`,
   slug: `hero-${id}`,
   image_path: "",
-  type: "Damage",
-  role: "damage"
+  attrs: { class: "damage" }
 }));
 
 /** Three heroes with two distinct roles: enough to tell a role rule from an item one. */
 const HERO_CATALOG = [
-  { id: 201, name: "Tank A", type: "Tank", role: "tank", image_path: "" },
-  { id: 202, name: "Tank B", type: "Tank", role: "tank", image_path: "" },
-  { id: 203, name: "Support A", type: "Support", role: "support", image_path: "" }
+  { id: 201, name: "Tank A", attrs: { class: "tank" }, image_path: "" },
+  { id: 202, name: "Tank B", attrs: { class: "tank" }, image_path: "" },
+  { id: 203, name: "Support A", attrs: { class: "support" }, image_path: "" }
 ];
+
+// The two participations of the fixture encounter: slot 1 and slot 2.
+const HOME = 71;
+const AWAY = 72;
+
+/** The encounter's live seats, with a standing each. */
+function seats(scoreOne = 0, scoreTwo = 0) {
+  return [
+    {
+      id: HOME,
+      slot: 1,
+      team_id: 7,
+      name: "Bright Wolves",
+      seed: 1,
+      score: scoreOne,
+      placement: null,
+      active: true,
+      team: { id: 7, name: "Bright Wolves", avg_sr: 3000, captain_id: 1, players: [] }
+    },
+    {
+      id: AWAY,
+      slot: 2,
+      team_id: 8,
+      name: "Quiet Foxes",
+      seed: 4,
+      score: scoreTwo,
+      placement: null,
+      active: true,
+      team: { id: 8, name: "Quiet Foxes", avg_sr: 3000, captain_id: 2, players: [] }
+    }
+  ];
+}
 
 function encounter(): Encounter {
   return {
     id: 4242,
-    home_team: { id: 7, name: "Bright Wolves", avg_sr: 3000, captain_id: 1, players: [] },
-    away_team: { id: 8, name: "Quiet Foxes", avg_sr: 3000, captain_id: 2, players: [] },
+    slot_count: 2,
+    teams: seats(),
+    games: [],
+    matches: [],
+    discipline: "overwatch",
     tournament: { id: 3, workspace_id: 1 }
   } as unknown as Encounter;
 }
@@ -169,9 +229,10 @@ function entry(overrides: Partial<PickBanEntry>): PickBanEntry {
     round: null,
     order: 0,
     action_index: null,
-    picked_by: null,
-    protected_by: null,
-    team_id: null,
+    picked_by_kind: null,
+    picked_by_team_id: null,
+    protected_by_kind: null,
+    protected_by_team_id: null,
     status: "available",
     carried_from_round: null,
     ...overrides
@@ -184,14 +245,21 @@ function game(overrides: Partial<PickBanGame> & { position: number }): PickBanGa
     id: 900 + overrides.position,
     map_id: 21,
     state: "awaiting_result",
-    accepted_home_score: null,
-    accepted_away_score: null,
     result_source: null,
     result_version: 1,
     confirmed_at: null,
-    reports: [],
+    results: [],
+    claims: [],
     ...overrides
   };
+}
+
+/** One game's numbers on the two seats, slot 1 first. */
+function lines(one: number, two: number) {
+  return [
+    { encounter_team_id: HOME, score: one, placement: null, column_values: {} },
+    { encounter_team_id: AWAY, score: two, placement: null, column_values: {} }
+  ];
 }
 
 /** A confirmed position, the way the server reports one both captains agreed. */
@@ -200,13 +268,12 @@ function confirmed(position: number, mapId: number, home: number, away: number):
     position,
     map_id: mapId,
     state: "confirmed",
-    accepted_home_score: home,
-    accepted_away_score: away,
     result_source: "captain_agreement",
     confirmed_at: "2026-08-01T11:00:00Z",
-    reports: [
-      { side: "home", home_score: home, away_score: away },
-      { side: "away", home_score: home, away_score: away }
+    results: lines(home, away),
+    claims: [
+      { claimant_team_id: HOME, basis_version: 1, results: lines(home, away) },
+      { claimant_team_id: AWAY, basis_version: 1, results: lines(home, away) }
     ]
   });
 }
@@ -216,12 +283,10 @@ function session(overrides: Partial<PickBanSession> = {}): PickBanSession {
     id: 1,
     kind: "map",
     status: "active",
-    first_side: "home",
+    first_team_id: HOME,
     awaiting_choice: false,
-    pending_loser_side: null,
+    pending_chooser_team_id: null,
     seed_source: "bracket_slot",
-    home_seed: 1,
-    away_seed: 4,
     slot_reserves: null,
     started_at: "2026-08-01T10:00:00Z",
     current_step_started_at: null,
@@ -237,7 +302,8 @@ function step(overrides: Partial<PickBanResolvedStep> & { index: number }): Pick
     phase_id: "main",
     step_id: `s${overrides.index}`,
     action: "ban",
-    sides: ["home"],
+    actors: [HOME],
+    actors_token: null,
     count: 1,
     min: 1,
     blind: false,
@@ -253,7 +319,7 @@ function step(overrides: Partial<PickBanResolvedStep> & { index: number }): Pick
 }
 
 function submission(
-  overrides: Partial<PickBanSubmission> & { step_index: number; side: PickBanSubmission["side"] }
+  overrides: Partial<PickBanSubmission> & { step_index: number; encounter_team_id: number }
 ): PickBanSubmission {
   return { attempt: 1, state: "revealed", items: [], ...overrides };
 }
@@ -267,7 +333,7 @@ function submission(
  */
 function acts(
   specs: {
-    side: "home" | "away";
+    side: "home" | "away"; // which seat of the fixture
     itemId: number;
     action?: "ban" | "protect";
     round?: number | null;
@@ -279,13 +345,13 @@ function acts(
         index,
         round: spec.round === undefined ? 1 : spec.round,
         action: spec.action ?? "ban",
-        sides: [spec.side]
+        actors: [spec.side === "home" ? HOME : AWAY]
       })
     ),
     submissions: specs.map((spec, index) =>
       submission({
         step_index: index,
-        side: spec.side,
+        encounter_team_id: spec.side === "home" ? HOME : AWAY,
         items: [{ item_id: spec.itemId, target_player_id: null }]
       })
     )
@@ -300,11 +366,11 @@ function blindRound(
   overrides: Partial<PickBanResolvedStep> = {}
 ): Pick<
   PickBanState,
-  "sequence" | "current_step" | "current_step_index" | "acting_sides" | "current_round" | "pool"
+  "sequence" | "current_step" | "current_step_index" | "acting_team_ids" | "current_round" | "pool"
 > {
   const blind = step({
     index: 0,
-    sides: ["home", "away"],
+    actors: [HOME, AWAY],
     count: 2,
     min: 2,
     blind: true,
@@ -314,7 +380,7 @@ function blindRound(
     sequence: [blind],
     current_step: blind,
     current_step_index: 0,
-    acting_sides: ["home", "away"],
+    acting_team_ids: [HOME, AWAY],
     current_round: 1,
     pool: HERO_CATALOG.map((hero, index) =>
       entry({ id: 30 + index, item_id: hero.id, round: 1 })
@@ -325,17 +391,17 @@ function blindRound(
 function readyState(overrides: Partial<PickBanState>): PickBanState {
   return {
     session: session(),
-    readiness: { home: true, away: true },
+    readiness: { [HOME]: true, [AWAY]: true },
     sequence: [],
     pool: [],
     submissions: [],
-    viewer_side: "home",
+    viewer_team_id: HOME,
     viewer_can_act: false,
     allowed_actions: [],
     current_step_index: 0,
     current_step: null,
     expected_action: null,
-    acting_sides: [],
+    acting_team_ids: [],
     step_progress: null,
     step_deadline: null,
     current_round: null,
@@ -343,15 +409,16 @@ function readyState(overrides: Partial<PickBanState>): PickBanState {
     eligible: null,
     draft_issues: [],
     targets: null,
+    sides: [],
     dispute: { available: false, step_index: null, attempts_used: 0, max: 0 },
-    undo: { requested_by: null, step_index: null, item_ids: [], action: null, side: null },
+    undo: { requested_by_team_id: null, step_index: null, item_ids: [], action: null, encounter_team_id: null },
     ...overrides
   };
 }
 
 function unavailableState(
   reason: NonNullable<PickBanState["reason"]>,
-  readiness = { home: false, away: false }
+  readiness: Record<string, boolean> = { [HOME]: false, [AWAY]: false }
 ): PickBanState {
   return {
     session: null,
@@ -360,13 +427,13 @@ function unavailableState(
     sequence: [],
     pool: [],
     submissions: [],
-    viewer_side: null,
+    viewer_team_id: null,
     viewer_can_act: false,
     allowed_actions: [],
     current_step_index: null,
     current_step: null,
     expected_action: null,
-    acting_sides: [],
+    acting_team_ids: [],
     step_progress: null,
     step_deadline: null,
     current_round: null,
@@ -374,21 +441,31 @@ function unavailableState(
     eligible: null,
     draft_issues: [],
     targets: null,
+    sides: [],
     dispute: { available: false, step_index: null, attempts_used: 0, max: 0 },
-    undo: { requested_by: null, step_index: null, item_ids: [], action: null, side: null }
+    undo: { requested_by_team_id: null, step_index: null, item_ids: [], action: null, encounter_team_id: null }
   };
 }
 
 let container: HTMLDivElement;
 let root: Root;
 let scrollIntoView: Mock;
+/** The room's query client, so a case can make the server's next answer land without waiting for a poll. */
+let roomClient: QueryClient;
 
 beforeEach(() => {
   vi.clearAllMocks();
   getAllMaps.mockResolvedValue({ results: MAPS });
   getAllHeroes.mockResolvedValue({ results: HEROES });
   getEncounter.mockResolvedValue(encounter());
-  getMyRole.mockResolvedValue({ side: null });
+  getMetadata.mockImplementation(async (_axis: unknown, code: string) => ({
+    discipline: { code, character_classes: ["tank", "damage", "support"], capabilities: {} },
+    dimensions: [],
+    roles: []
+  }));
+  getMyRole.mockResolvedValue({ encounter_team_id: null, slot: null });
+  // The viewer is signed in unless a case says otherwise: only an account is asked for its seat.
+  useAuthProfileStore.setState({ status: "authenticated" });
   getReports.mockResolvedValue({ reports: [], form: undefined });
   search = new URLSearchParams();
   usePermissionsMock.mockReturnValue({
@@ -418,6 +495,13 @@ async function settle(ticks = 3) {
   }
 }
 
+/** The Overwatch bans board is a module slot — a lazy chunk — so wait for it to mount. */
+async function untilBans() {
+  for (let tries = 0; tries < 100 && !document.body.querySelector("[data-hero-bans]"); tries += 1) {
+    await settle(1);
+  }
+}
+
 /** Past the blind draft's ~300ms autosave debounce, then let the response land. */
 async function debounce() {
   await act(async () => {
@@ -430,6 +514,7 @@ async function debounce() {
 
 async function render(props: { seriesReport?: boolean } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  roomClient = client;
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
@@ -482,9 +567,9 @@ describe("readiness gate", () => {
   });
 
   it("shows the ready button for a captain who has not confirmed yet", async () => {
-    getMyRole.mockResolvedValue({ side: "home" });
+    getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
     mockStates(
-      unavailableState("not_ready", { home: false, away: true }),
+      unavailableState("not_ready", { [HOME]: false, [AWAY]: true }),
       unavailableState("not_configured")
     );
     await render();
@@ -503,9 +588,9 @@ describe("readiness gate", () => {
   });
 
   it("shows a waiting-on-opponent message instead of a button once the viewer's own side is ready", async () => {
-    getMyRole.mockResolvedValue({ side: "home" });
+    getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
     mockStates(
-      unavailableState("not_ready", { home: true, away: false }),
+      unavailableState("not_ready", { [HOME]: true, [AWAY]: false }),
       unavailableState("not_configured")
     );
     await render();
@@ -519,7 +604,7 @@ describe("readiness gate", () => {
   });
 
   it("hides the ready button entirely for a non-captain spectator", async () => {
-    getMyRole.mockResolvedValue({ side: null });
+    getMyRole.mockResolvedValue({ encounter_team_id: null, slot: null });
     mockStates(unavailableState("not_ready"), unavailableState("not_configured"));
     await render();
 
@@ -529,10 +614,19 @@ describe("readiness gate", () => {
     expect(button).toBeUndefined();
   });
 
+  it("asks an anonymous spectator for no seat: only an account can captain", async () => {
+    useAuthProfileStore.setState({ status: "anonymous" });
+    mockStates(unavailableState("not_ready"), unavailableState("not_configured"));
+    await render();
+
+    expect(document.body.textContent).toContain(ROOM.notReadyTitle);
+    expect(getMyRole).not.toHaveBeenCalled();
+  });
+
   it("renders the real room behind the gate — matchup and per-side state, no skeletons", async () => {
-    getMyRole.mockResolvedValue({ side: "home" });
+    getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
     mockStates(
-      unavailableState("not_ready", { home: true, away: false }),
+      unavailableState("not_ready", { [HOME]: true, [AWAY]: false }),
       unavailableState("not_configured")
     );
     await render();
@@ -546,6 +640,18 @@ describe("readiness gate", () => {
     // Nothing pretends to be loading: this state only clears when a human in
     // another browser confirms, so a shimmer would never resolve.
     expect(document.body.querySelector(".animate-pulse")).toBeNull();
+  });
+
+  it("reads the maps and characters of the encounter's own game, never a default one", async () => {
+    getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
+    mockStates(unavailableState("not_ready", { [HOME]: true, [AWAY]: false }), unavailableState("not_configured"));
+    await render();
+
+    expect(getAllMaps).toHaveBeenCalled();
+    expect(getAllHeroes).toHaveBeenCalled();
+    for (const call of [...getAllMaps.mock.calls, ...getAllHeroes.mock.calls]) expect(call[0]).toBe("overwatch");
+    expect(getAllMaps.mock.calls[0][1]).toBe("map");
+    expect(getAllHeroes.mock.calls[0][1]).toBe("character");
   });
 });
 
@@ -578,8 +684,8 @@ describe("phase selection", () => {
     "routes BO$bestOf $home:$away to $phase without a series summary",
     ({ bestOf, home, away, phase }) => {
       const loop = derivePregameLoop(
-        { ...encounter(), best_of: bestOf, score: { home, away } },
-        unavailableState("not_configured", { home: true, away: true }),
+        { ...encounter(), best_of: bestOf, teams: seats(home, away) },
+        unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
         readyState({
           session: session({ kind: "hero", status: "completed" }),
           is_complete: true,
@@ -595,7 +701,7 @@ describe("phase selection", () => {
     mockStates(
       readyState({
         session: session({ kind: "map" }),
-        sequence: [step({ index: 0 }), step({ index: 1, sides: ["away"] })],
+        sequence: [step({ index: 0 }), step({ index: 1, actors: [AWAY] })],
         pool: [entry({ id: 1, item_id: 21 }), entry({ id: 2, item_id: 22 })]
       }),
       readyState({ session: session({ kind: "hero" }) })
@@ -635,7 +741,7 @@ describe("phase selection", () => {
     // The other placement: mid-sequence, where the misclick happens. Both read
     // the same server-side `undo` block, so neither screen holds its own idea
     // of what is pending.
-    getMyRole.mockResolvedValue({ side: "away" });
+    getMyRole.mockResolvedValue({ encounter_team_id: AWAY, slot: 2 });
     mockStates(
       readyState({
         session: session({ kind: "map" }),
@@ -644,20 +750,20 @@ describe("phase selection", () => {
       }),
       readyState({
         session: session({ kind: "hero" }),
-        sequence: [step({ index: 0 }), step({ index: 1, sides: ["away"] })],
-        viewer_side: "away",
+        sequence: [step({ index: 0 }), step({ index: 1, actors: [AWAY] })],
+        viewer_team_id: AWAY,
         pool: [
           entry({
             id: 3,
             item_id: 101,
             round: 1,
             status: "banned",
-            picked_by: "home",
+            picked_by_kind: "team", picked_by_team_id: HOME,
             action_index: 0
           }),
           entry({ id: 4, item_id: 102, round: 1 })
         ],
-        undo: { requested_by: null, step_index: 0, item_ids: [101], action: "ban", side: "home" }
+        undo: { requested_by_team_id: null, step_index: 0, item_ids: [101], action: "ban", encounter_team_id: HOME }
       })
     );
     await render();
@@ -681,11 +787,11 @@ describe("phase selection", () => {
     // be chosen and everything else is inert instead of a 400 after a click.
     getAllHeroes.mockResolvedValue({
       results: [
-        { id: 201, name: "Tank A", type: "Tank", role: "tank", image_path: "" },
-        { id: 203, name: "Support A", type: "Support", role: "support", image_path: "" }
+        { id: 201, name: "Tank A", attrs: { class: "tank" }, image_path: "" },
+        { id: 203, name: "Support A", attrs: { class: "support" }, image_path: "" }
       ]
     });
-    getMyRole.mockResolvedValue({ side: "home" });
+    getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
     mockStates(
       readyState({
         session: session({ kind: "map" }),
@@ -697,8 +803,8 @@ describe("phase selection", () => {
         sequence: [step({ index: 0 })],
         current_step: step({ index: 0 }),
         current_step_index: 0,
-        acting_sides: ["home"],
-        viewer_side: "home",
+        acting_team_ids: [HOME],
+        viewer_team_id: HOME,
         viewer_can_act: true,
         allowed_actions: ["ban"],
         expected_action: "ban",
@@ -723,20 +829,20 @@ describe("phase selection", () => {
     // serializes the other side's unrevealed draft, and the room must not
     // invent a stand-in for it either. A filled count is all there is.
     getAllHeroes.mockResolvedValue({ results: HERO_CATALOG });
-    getMyRole.mockResolvedValue({ side: "home" });
+    getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
     mockStates(
-      unavailableState("not_configured", { home: true, away: true }),
+      unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
       readyState({
         session: session({ kind: "hero" }),
         ...blindRound(),
-        viewer_side: "home",
+        viewer_team_id: HOME,
         viewer_can_act: true,
         allowed_actions: ["ban"],
-        step_progress: { home: { locked: false, filled: 1 }, away: { locked: false, filled: 2 } },
+        step_progress: { [HOME]: { locked: false, filled: 1 }, [AWAY]: { locked: false, filled: 2 } },
         submissions: [
           submission({
             step_index: 0,
-            side: "home",
+            encounter_team_id: HOME,
             state: "draft",
             items: [{ item_id: 201, target_player_id: null }]
           })
@@ -757,20 +863,20 @@ describe("phase selection", () => {
 
   it("refuses the lock while the server still has an objection to the draft", async () => {
     getAllHeroes.mockResolvedValue({ results: HERO_CATALOG });
-    getMyRole.mockResolvedValue({ side: "home" });
+    getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
     mockStates(
-      unavailableState("not_configured", { home: true, away: true }),
+      unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
       readyState({
         session: session({ kind: "hero" }),
         ...blindRound(),
-        viewer_side: "home",
+        viewer_team_id: HOME,
         viewer_can_act: true,
         allowed_actions: ["ban"],
         draft_issues: ["one hero per opponent player"],
         submissions: [
           submission({
             step_index: 0,
-            side: "home",
+            encounter_team_id: HOME,
             state: "draft",
             items: [
               { item_id: 201, target_player_id: null },
@@ -794,50 +900,73 @@ describe("phase selection", () => {
 
   it.each([
     { hasLog: true, hasGames: true },
+    { hasLog: true, hasGames: false },
     { hasLog: false, hasGames: true },
     { hasLog: false, hasGames: false }
   ])("shows only the previous map's heroes (log: $hasLog, positions: $hasGames)", async ({ hasLog, hasGames }) => {
     const loggedHeroes = HERO_CATALOG.map((hero) => ({ ...hero, image_path: `https://example.test/${hero.id}.png` }));
     getAllHeroes.mockResolvedValue({ results: HERO_CATALOG });
-    getMyRole.mockResolvedValue({ side: "home" });
+    getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
     getEncounter.mockResolvedValue({
       ...encounter(),
       best_of: 5,
       games: hasGames ? [game({ position: 1, map_id: 21 }), game({ position: 2, map_id: 22 })] : [],
-      // Every Match the API sends carries its score; the series slots read it.
+      // Stats matches are logs; official results and replay codes belong to games.
       matches: [
-        { id: 501, map_id: 21, map_index: null, source: "log_parser", score: { home: 0, away: 0 } },
-        { id: 503, map_id: 22, map_index: 2, source: "captain_report", score: { home: 0, away: 0 } },
-        { id: 504, map_id: 23, map_index: null, source: "log_parser", score: { home: 0, away: 0 } },
-        ...(hasLog
-          ? [{ id: 502, map_id: 22, map_index: null, source: "log_parser", score: { home: 0, away: 0 } }]
-          : [])
+        { id: 501, map_id: 21, map_index: 1, participants: [] },
+        { id: 504, map_id: 23, map_index: 3, participants: [] },
+        ...(hasLog ? [{ id: 502, map_id: 22, map_index: 2, participants: [] }] : [])
       ]
     });
-    getMatch.mockImplementation(async (id: number) => ({
-      home_team: { players: [{ id: 57, heroes: { 0: [loggedHeroes[2]] } }] },
-      away_team: {
-        players: [{
-          id: 55,
-          heroes: id === 502
-            ? { 0: [loggedHeroes[0]], 1: [loggedHeroes[0], loggedHeroes[1]] }
-            : { 0: [loggedHeroes[2]] }
-        }]
-      }
-    }));
+    // Registrations 57 and 55 are the global players 57 and 55 through their seats' source-team rosters; the
+    // observed members played the characters (above a minute) in the segments listed.
+    getMatch.mockImplementation(async (id: number) => {
+      const played = (team: number, member: number, segments: [number, number][]) =>
+        segments.map(([segment, hero]) => ({
+          encounter_team_id: team,
+          workspace_member_id: member,
+          entity_id: loggedHeroes[hero].id,
+          segment,
+          stat_code: "hero_time_played",
+          value: 120
+        }));
+      return {
+        id,
+        workspace_id: 1,
+        discipline: "overwatch",
+        encounter: {
+          teams: [
+            { id: HOME, team: { players: [{ id: 57, user_id: 57 }] } },
+            { id: AWAY, team: { players: [{ id: 55, user_id: 55 }] } }
+          ]
+        },
+        statistics: {
+          members: [
+            { encounter_team_id: HOME, workspace_member_id: 570, player_id: 57, handle_snapshot: "Home", observed_role: null },
+            { encounter_team_id: AWAY, workspace_member_id: 550, player_id: 55, handle_snapshot: "Away", observed_role: null }
+          ],
+          segments: [],
+          entities: loggedHeroes,
+          facts: [
+            ...played(HOME, 570, [[0, 2]]),
+            ...played(AWAY, 550, id === 502 ? [[0, 0], [1, 0], [1, 1]] : [[0, 2]])
+          ]
+        }
+      };
+    });
     mockStates(
-      unavailableState("not_configured", { home: true, away: true }),
+      unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
       readyState({
         session: session({ kind: "hero" }),
         ...blindRound({ target: "opponent_player", round: 3 }),
         current_round: 3,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         viewer_can_act: true,
         allowed_actions: ["ban"],
         eligible: { item_ids: [201, 202], by_target: { "55": [201, 202] } },
         targets: {
-          home: [],
-          away: [{ player_id: 55, name: "Foxy", role: "tank", sub_role: null, is_substitution: false, division: 7 }]
+          [HOME]: [],
+          [AWAY]: [{ player_id: 55, name: "Foxy", role: { dimension: "player_role", role: "tank" }, is_substitution: false, division: 7 }]
         }
       })
     );
@@ -853,33 +982,31 @@ describe("phase selection", () => {
 
   it("bans for the opponent player the captain chose, and says so on the wire", async () => {
     getAllHeroes.mockResolvedValue({ results: HERO_CATALOG });
-    getMyRole.mockResolvedValue({ side: "home" });
+    getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
     submitDraft.mockResolvedValue(readyState({ session: session({ kind: "hero" }) }));
     mockStates(
-      unavailableState("not_configured", { home: true, away: true }),
+      unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
       readyState({
         session: session({ kind: "hero" }),
         ...blindRound({ target: "opponent_player" }),
-        viewer_side: "home",
+        viewer_team_id: HOME,
         viewer_can_act: true,
         allowed_actions: ["ban"],
         eligible: { item_ids: [201, 202], by_target: { "55": [201], "56": [202] } },
         targets: {
-          home: [],
-          away: [
+          [HOME]: [],
+          [AWAY]: [
             {
               player_id: 55,
               name: "Foxy",
-              role: "tank",
-              sub_role: null,
+              role: { dimension: "player_role", role: "tank" },
               is_substitution: false,
               division: 7
             },
             {
               player_id: 56,
               name: "Vixen",
-              role: "tank",
-              sub_role: null,
+              role: { dimension: "player_role", role: "tank" },
               is_substitution: true,
               division: 12
             }
@@ -915,19 +1042,19 @@ describe("phase selection", () => {
     // what is choosable (so `draft_issues` is empty) — a room that re-checked
     // the step's raw `min` would hold a Lock the server accepts disabled forever.
     getAllHeroes.mockResolvedValue({ results: HERO_CATALOG });
-    getMyRole.mockResolvedValue({ side: "home" });
+    getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
     submitDraft.mockResolvedValue(readyState({ session: session({ kind: "hero" }) }));
     mockStates(
-      unavailableState("not_configured", { home: true, away: true }),
+      unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
       readyState({
         session: session({ kind: "hero" }),
         ...blindRound({ target: "opponent_player", count: 5, min: 5 }),
-        viewer_side: "home",
+        viewer_team_id: HOME,
         viewer_can_act: true,
         allowed_actions: ["ban"],
         eligible: { item_ids: [], by_target: {} },
         draft_issues: [],
-        targets: { home: [], away: [] }
+        targets: { [HOME]: [], [AWAY]: [] }
       })
     );
     await render();
@@ -951,11 +1078,11 @@ describe("phase selection", () => {
     // reads the board and finds a ban they paid for missing from their column.
     getAllHeroes.mockResolvedValue({ results: HERO_CATALOG });
     mockStates(
-      unavailableState("not_configured", { home: true, away: true }),
+      unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
       readyState({
         session: session({ kind: "hero" }),
         sequence: [
-          step({ index: 0, sides: ["home", "away"], count: 2, min: 2, blind: true }),
+          step({ index: 0, actors: [HOME, AWAY], count: 2, min: 2, blind: true }),
           step({ index: 1 })
         ],
         current_step_index: 1,
@@ -964,7 +1091,7 @@ describe("phase selection", () => {
         submissions: [
           submission({
             step_index: 0,
-            side: "home",
+            encounter_team_id: HOME,
             items: [
               { item_id: 201, target_player_id: null },
               { item_id: 202, target_player_id: null }
@@ -972,7 +1099,7 @@ describe("phase selection", () => {
           }),
           submission({
             step_index: 0,
-            side: "away",
+            encounter_team_id: AWAY,
             items: [
               { item_id: 202, target_player_id: null },
               { item_id: 203, target_player_id: null }
@@ -980,9 +1107,9 @@ describe("phase selection", () => {
           })
         ],
         pool: [
-          entry({ id: 3, item_id: 201, round: 1, status: "banned", picked_by: "home" }),
-          entry({ id: 4, item_id: 202, round: 1, status: "banned", picked_by: "home" }),
-          entry({ id: 5, item_id: 203, round: 1, status: "banned", picked_by: "away" })
+          entry({ id: 3, item_id: 201, round: 1, status: "banned", picked_by_kind: "team", picked_by_team_id: HOME }),
+          entry({ id: 4, item_id: 202, round: 1, status: "banned", picked_by_kind: "team", picked_by_team_id: HOME }),
+          entry({ id: 5, item_id: 203, round: 1, status: "banned", picked_by_kind: "team", picked_by_team_id: AWAY })
         ]
       })
     );
@@ -990,8 +1117,8 @@ describe("phase selection", () => {
 
     const reveal = document.body.querySelector<HTMLElement>("[data-pick-ban-reveal]");
     expect(reveal).toBeTruthy();
-    const sides = Array.from(reveal!.querySelectorAll<HTMLElement>("[data-reveal-side]"));
-    expect(sides.map((side) => side.dataset.revealSide)).toEqual(["home", "away"]);
+    const sides = Array.from(reveal!.querySelectorAll<HTMLElement>("[data-reveal-team]"));
+    expect(sides.map((side) => side.dataset.revealTeam)).toEqual([String(HOME), String(AWAY)]);
     // Tank B is on both columns and marked on both; the rest are not.
     expect(reveal!.querySelectorAll('[data-reveal-item="202"][data-matched="true"]')).toHaveLength(2);
     expect(reveal!.querySelector('[data-reveal-item="201"]')?.dataset.matched).toBeUndefined();
@@ -1003,19 +1130,19 @@ describe("phase selection", () => {
     return readyState({
       session: session({ kind: "hero" }),
       sequence: [
-        step({ index: 0, sides: ["home", "away"], count: 1, min: 1, blind: true }),
+        step({ index: 0, actors: [HOME, AWAY], count: 1, min: 1, blind: true }),
         step({ index: 1 })
       ],
       current_step_index: 1,
       current_step: step({ index: 1 }),
       current_round: 1,
-      viewer_side: "home",
+      viewer_team_id: HOME,
       dispute,
       submissions: [
-        submission({ step_index: 0, side: "home", items: [{ item_id: 201, target_player_id: null }] }),
-        submission({ step_index: 0, side: "away", items: [{ item_id: 203, target_player_id: null }] })
+        submission({ step_index: 0, encounter_team_id: HOME, items: [{ item_id: 201, target_player_id: null }] }),
+        submission({ step_index: 0, encounter_team_id: AWAY, items: [{ item_id: 203, target_player_id: null }] })
       ],
-      pool: [entry({ id: 3, item_id: 201, round: 1, status: "banned", picked_by: "home" })]
+      pool: [entry({ id: 3, item_id: 201, round: 1, status: "banned", picked_by_kind: "team", picked_by_team_id: HOME })]
     });
   }
 
@@ -1023,10 +1150,10 @@ describe("phase selection", () => {
 
   it("offers the redo when the server says this viewer may ask for it", async () => {
     getAllHeroes.mockResolvedValue({ results: HERO_CATALOG });
-    getMyRole.mockResolvedValue({ side: "home" });
+    getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
     disputeStep.mockResolvedValue(readyState({ session: session({ kind: "hero" }) }));
     mockStates(
-      unavailableState("not_configured", { home: true, away: true }),
+      unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
       revealedBlind({ available: true, step_index: 0, attempts_used: 0, max: 1 })
     );
     await render();
@@ -1041,9 +1168,9 @@ describe("phase selection", () => {
     // `available` is the server's whole answer — enabled, attempts left, and
     // nothing played on top of the step. The room never second-guesses it.
     getAllHeroes.mockResolvedValue({ results: HERO_CATALOG });
-    getMyRole.mockResolvedValue({ side: "home" });
+    getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
     mockStates(
-      unavailableState("not_configured", { home: true, away: true }),
+      unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
       revealedBlind({ available: false, step_index: 0, attempts_used: 1, max: 1 })
     );
     await render();
@@ -1059,8 +1186,8 @@ describe("phase selection", () => {
     mockStates(
       readyState({
         session: session({ kind: "map" }),
-        viewer_side: "home",
-        sequence: [step({ index: 0 }), step({ index: 1, sides: ["away"] }), step({ index: 2, action: "decider", sides: ["system"] })],
+        viewer_team_id: HOME,
+        sequence: [step({ index: 0 }), step({ index: 1, actors: [AWAY] }), step({ index: 2, action: "decider", actors: [null] })],
         current_round: 2,
         games: [confirmed(1, 21, 2, 1)],
         pool: [
@@ -1089,8 +1216,8 @@ describe("phase selection", () => {
   it("draws a protected hero as protected, never as banned", async () => {
     getAllHeroes.mockResolvedValue({
       results: [
-        { id: 201, name: "Tank A", type: "Tank", role: "tank", image_path: "" },
-        { id: 202, name: "Tank B", type: "Tank", role: "tank", image_path: "" }
+        { id: 201, name: "Tank A", attrs: { class: "tank" }, image_path: "" },
+        { id: 202, name: "Tank B", attrs: { class: "tank" }, image_path: "" }
       ]
     });
     mockStates(
@@ -1101,7 +1228,7 @@ describe("phase selection", () => {
       }),
       readyState({
         session: session({ kind: "hero" }),
-        sequence: [step({ index: 0, action: "protect" }), step({ index: 1, sides: ["away"] })],
+        sequence: [step({ index: 0, action: "protect" }), step({ index: 1, actors: [AWAY] })],
         current_round: 1,
         pool: [
           entry({
@@ -1109,7 +1236,7 @@ describe("phase selection", () => {
             item_id: 201,
             round: 1,
             status: "protected",
-            protected_by: "home",
+            protected_by_kind: "team", protected_by_team_id: HOME,
             action_index: 0
           }),
           entry({
@@ -1117,7 +1244,7 @@ describe("phase selection", () => {
             item_id: 202,
             round: 1,
             status: "banned",
-            picked_by: "away",
+            picked_by_kind: "team", picked_by_team_id: AWAY,
             action_index: 1
           })
         ]
@@ -1145,7 +1272,7 @@ describe("phase selection", () => {
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
       }),
       readyState({
@@ -1173,7 +1300,7 @@ describe("phase selection", () => {
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
       }),
       readyState({
@@ -1186,19 +1313,20 @@ describe("phase selection", () => {
           { side: "home", itemId: 104, round: 2 }
         ]),
         pool: [
-          entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by: "home" }),
-          entry({ id: 4, item_id: 102, round: 1, status: "banned", picked_by: "away" }),
-          entry({ id: 5, item_id: 103, round: 1, status: "protected", protected_by: "away" }),
+          entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by_kind: "team", picked_by_team_id: HOME }),
+          entry({ id: 4, item_id: 102, round: 1, status: "banned", picked_by_kind: "team", picked_by_team_id: AWAY }),
+          entry({ id: 5, item_id: 103, round: 1, status: "protected", protected_by_kind: "team", protected_by_team_id: AWAY }),
           // Another round's ban: the lobby for THIS map must not carry it.
-          entry({ id: 6, item_id: 104, round: 2, status: "banned", picked_by: "home" })
+          entry({ id: 6, item_id: 104, round: 2, status: "banned", picked_by_kind: "team", picked_by_team_id: HOME })
         ]
       })
     );
     await render();
+    await untilBans();
 
     expect(document.body.textContent).toContain(ROOM.heroBans.eyebrow);
     const sides = Array.from(document.body.querySelectorAll<HTMLElement>("[data-hero-bans]"));
-    expect(sides.map((tile) => tile.dataset.heroBans)).toEqual(["home", "away"]);
+    expect(sides.map((tile) => tile.dataset.heroBans)).toEqual(["1", "2"]);
     expect(sides[0].textContent).toContain("Hero 101");
     expect(sides[1].textContent).toContain("Hero 102");
     expect(sides[1].textContent).toContain("Hero 103");
@@ -1226,7 +1354,7 @@ describe("phase selection", () => {
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         games: [confirmed(1, 21, 2, 1), game({ position: 2, map_id: 22 })],
         pool: [
           entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 }),
@@ -1236,7 +1364,7 @@ describe("phase selection", () => {
       readyState({
         session: session({ kind: "hero" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         ...acts([{ side: "away", itemId: 202, round: 2 }]),
         pool: [
           entry({
@@ -1244,15 +1372,16 @@ describe("phase selection", () => {
             item_id: 201,
             round: 2,
             status: "banned",
-            picked_by: "home",
+            picked_by_kind: "team", picked_by_team_id: HOME,
             carried_from_round: 1
           }),
-          entry({ id: 4, item_id: 202, round: 2, status: "banned", picked_by: "away" }),
+          entry({ id: 4, item_id: 202, round: 2, status: "banned", picked_by_kind: "team", picked_by_team_id: AWAY }),
           entry({ id: 5, item_id: 203, round: 2, status: "available" })
         ]
       })
     );
     await render();
+    await untilBans();
 
     // The carried ban sits in the column of the side that spent it, wearing
     // the map it was spent on rather than passing as this round's work.
@@ -1286,10 +1415,10 @@ describe("phase selection", () => {
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
       }),
-      unavailableState("not_configured", { home: true, away: true })
+      unavailableState("not_configured", { [HOME]: true, [AWAY]: true })
     );
     await render();
 
@@ -1298,22 +1427,52 @@ describe("phase selection", () => {
     expect(document.body.querySelector("[data-hero-bans]")).toBeNull();
   });
 
-  it("offers the hero undo under the bans, and asks the opponent to agree", async () => {
-    getMyRole.mockResolvedValue({ side: "home" });
+  it("renders League's own bans board on the result screen, never Overwatch's", async () => {
+    getEncounter.mockResolvedValue({ ...encounter(), discipline: "lol" } as Encounter);
     mockStates(
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
       }),
       readyState({
         session: session({ kind: "hero" }),
         is_complete: true,
-        viewer_side: "home",
         ...acts([{ side: "home", itemId: 101 }]),
-        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by: "home" })],
-        undo: { requested_by: null, step_index: 0, item_ids: [101], action: "ban", side: "home" }
+        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by_kind: "team", picked_by_team_id: HOME })]
+      })
+    );
+    await render();
+    for (let tries = 0; tries < 100 && !document.body.querySelector("[data-character-bans]"); tries += 1) {
+      await settle(1);
+    }
+
+    expect(document.body.textContent).toContain(ROOM.mapResult.report);
+    expect(document.body.querySelector('[data-character-bans="1"]')?.textContent).toContain("Hero 101");
+    expect(document.body.textContent).toContain(ROOM.characterBans.eyebrow);
+    // The Overwatch board and its lobby copy stay out; nothing claims an error.
+    expect(document.body.querySelector("[data-hero-bans]")).toBeNull();
+    expect(document.body.textContent).not.toContain(ROOM.heroBans.copy);
+    expect(document.body.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("offers the hero undo under the bans, and asks the opponent to agree", async () => {
+    getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_team_id: HOME,
+        pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        viewer_team_id: HOME,
+        ...acts([{ side: "home", itemId: 101 }]),
+        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by_kind: "team", picked_by_team_id: HOME })],
+        undo: { requested_by_team_id: null, step_index: 0, item_ids: [101], action: "ban", encounter_team_id: HOME }
       })
     );
     await render();
@@ -1332,21 +1491,21 @@ describe("phase selection", () => {
   });
 
   it("shows the opponent's open request with agree and decline", async () => {
-    getMyRole.mockResolvedValue({ side: "home" });
+    getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
     mockStates(
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
       }),
       readyState({
         session: session({ kind: "hero" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         ...acts([{ side: "away", itemId: 101 }]),
-        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by: "away" })],
-        undo: { requested_by: "away", step_index: 0, item_ids: [101], action: "ban", side: "away" }
+        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by_kind: "team", picked_by_team_id: AWAY })],
+        undo: { requested_by_team_id: AWAY, step_index: 0, item_ids: [101], action: "ban", encounter_team_id: AWAY }
       })
     );
     await render();
@@ -1368,21 +1527,21 @@ describe("phase selection", () => {
   });
 
   it("tells the asking side it is waiting, and offers no agree button", async () => {
-    getMyRole.mockResolvedValue({ side: "home" });
+    getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
     mockStates(
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
       }),
       readyState({
         session: session({ kind: "hero" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         ...acts([{ side: "home", itemId: 101 }]),
-        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by: "home" })],
-        undo: { requested_by: "home", step_index: 0, item_ids: [101], action: "ban", side: "home" }
+        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by_kind: "team", picked_by_team_id: HOME })],
+        undo: { requested_by_team_id: HOME, step_index: 0, item_ids: [101], action: "ban", encounter_team_id: HOME }
       })
     );
     await render();
@@ -1397,16 +1556,16 @@ describe("phase selection", () => {
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
       }),
       readyState({
         session: session({ kind: "hero" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         sequence: [step({ index: 0 })],
-        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by: "home" })],
-        undo: { requested_by: null, step_index: null, item_ids: [], action: null, side: null }
+        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by_kind: "team", picked_by_team_id: HOME })],
+        undo: { requested_by_team_id: null, step_index: null, item_ids: [], action: null, encounter_team_id: null }
       })
     );
     await render();
@@ -1422,13 +1581,13 @@ describe("phase selection", () => {
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })],
         games: [
           game({
             position: 1,
             map_id: 21,
-            reports: [{ side: "home", home_score: 3, away_score: 1 }]
+            claims: [{ claimant_team_id: HOME, basis_version: 1, results: lines(3, 1) }]
           })
         ]
       }),
@@ -1468,7 +1627,7 @@ describe("phase selection", () => {
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         games: [game({ position: 1, map_id: 21, id: 77 })],
         pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
       }),
@@ -1493,20 +1652,26 @@ describe("phase selection", () => {
     await act(async () => submit!.click());
     await settle();
 
-    expect(reportGame).toHaveBeenCalledWith(4242, 77, { home_score: 0, away_score: 0 });
+    expect(reportGame).toHaveBeenCalledWith(4242, 77, {
+      basis_version: 1,
+      results: [
+        { encounter_team_id: HOME, score: 0 },
+        { encounter_team_id: AWAY, score: 0 }
+      ]
+    });
   });
 
   it("charts every settled map of the series with its accepted score", async () => {
     getEncounter.mockResolvedValue({
       ...encounter(),
       best_of: 3,
-      score: { home: 1, away: 0 }
+      teams: seats(1, 0)
     } as unknown as Encounter);
     mockStates(
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         games: [confirmed(1, 21, 3, 1), game({ position: 2, map_id: 22 })],
         pool: [
           entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 }),
@@ -1543,7 +1708,7 @@ describe("phase selection", () => {
     getEncounter.mockResolvedValue({
       ...encounter(),
       best_of: 3,
-      score: { home: 0, away: 0 },
+      teams: seats(0, 0),
       matches: [
         { map_id: 21, map_index: 1, score: { home: 1, away: 0 } },
         { map_id: 23, map_index: 3, score: { home: 0, away: 0 } }
@@ -1553,7 +1718,7 @@ describe("phase selection", () => {
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         // A slots veto settles the whole series at once: all three are `picked`,
         // none `played`. Map 21 is the one being played and reported right now.
         pool: [
@@ -1595,14 +1760,14 @@ describe("phase selection", () => {
     getEncounter.mockResolvedValue({
       ...encounter(),
       best_of: 3,
-      score: { home: 1, away: 1 },
+      teams: seats(1, 1),
       matches: []
     } as unknown as Encounter);
     mockStates(
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         games: [confirmed(1, 21, 2, 1), confirmed(2, 21, 0, 2), game({ position: 3, map_id: 21 })],
         pool: [
           entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 }),
@@ -1667,12 +1832,12 @@ describe("phase selection", () => {
     // names its opener, so the room shows a finished round 1 with nothing to
     // click. Only that captain got the modal — everyone else (the winner, a
     // spectator, the organizer holding the reset button) saw a hung room.
-    getMyRole.mockResolvedValue({ side: null });
+    getMyRole.mockResolvedValue({ encounter_team_id: null, slot: null });
     mockStates(
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
-        viewer_side: null,
+        viewer_team_id: null,
         games: [confirmed(1, 21, 2, 1), game({ position: 2, map_id: 22 })],
         pool: [
           entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 }),
@@ -1684,10 +1849,10 @@ describe("phase selection", () => {
           kind: "hero",
           status: "completed",
           awaiting_choice: true,
-          pending_loser_side: "away"
+          pending_chooser_team_id: AWAY
         }),
         is_complete: true,
-        viewer_side: null,
+        viewer_team_id: null,
         sequence: [step({ index: 0 })],
         pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned" })]
       })
@@ -1705,14 +1870,14 @@ describe("phase selection", () => {
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
-        viewer_side: viewerSide,
+        viewer_team_id: viewerSide === "home" ? HOME : viewerSide === "away" ? AWAY : null,
         games: [confirmed(1, 21, 2, 1)],
         pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
       }),
       readyState({
         session: session({ kind: "hero" }),
         is_complete: true,
-        viewer_side: viewerSide,
+        viewer_team_id: viewerSide === "home" ? HOME : viewerSide === "away" ? AWAY : null,
         sequence: [step({ index: 0 })],
         pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned" })]
       })
@@ -1727,7 +1892,7 @@ describe("phase selection", () => {
       ...encounter(),
       best_of: 1,
       result_status: resultStatus,
-      score: { home: 1, away: 0 }
+      teams: seats(1, 0)
     } as unknown as Encounter);
     settledSeries("home");
     await render();
@@ -1760,7 +1925,7 @@ describe("phase selection", () => {
     getEncounter.mockResolvedValue({
       ...encounter(),
       best_of: 1,
-      score: { home: 1, away: 0 }
+      teams: seats(1, 0)
     } as unknown as Encounter);
     settledSeries("home");
     await render({ seriesReport: false });
@@ -1779,13 +1944,13 @@ describe("phase selection", () => {
     getEncounter.mockResolvedValue({
       ...encounter(),
       best_of: 3,
-      score: { home: 2, away: 0 }
+      teams: seats(2, 0)
     } as unknown as Encounter);
     mockStates(
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
-        viewer_side: null,
+        viewer_team_id: null,
         games: [confirmed(1, 21, 2, 1), confirmed(2, 22, 2, 0)],
         pool: [
           entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 }),
@@ -1795,18 +1960,19 @@ describe("phase selection", () => {
       readyState({
         session: session({ kind: "hero" }),
         is_complete: true,
-        viewer_side: null,
+        viewer_team_id: null,
         ...acts([
           { side: "home", itemId: 101 },
           { side: "away", itemId: 102, round: 2 }
         ]),
         pool: [
-          entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by: "home" }),
-          entry({ id: 4, item_id: 102, round: 2, status: "banned", picked_by: "away" })
+          entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by_kind: "team", picked_by_team_id: HOME }),
+          entry({ id: 4, item_id: 102, round: 2, status: "banned", picked_by_kind: "team", picked_by_team_id: AWAY })
         ]
       })
     );
     await render();
+    await untilBans();
 
     const record = document.body.querySelector<HTMLElement>("[data-hero-record]");
     const text = record?.textContent ?? "";
@@ -1825,19 +1991,126 @@ describe("phase selection", () => {
     expect(text).not.toContain(ROOM.heroBans.seriesEyebrow);
   });
 
+  describe("the game's metadata, which its bans slot needs", () => {
+    const OW_METADATA = {
+      discipline: { code: "overwatch", character_classes: ["tank", "damage", "support"], capabilities: {} },
+      dimensions: [],
+      roles: []
+    };
+    const bansBy = (side: "home" | "away") => ({
+      pool: [
+        entry({
+          id: 3,
+          item_id: 101,
+          round: 1,
+          status: "banned",
+          picked_by_kind: "team",
+          picked_by_team_id: side === "home" ? HOME : AWAY
+        })
+      ]
+    });
+    /** The map-result screen: one map picked, its hero bans committed. */
+    function mapResultScreen() {
+      getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
+      mockStates(
+        readyState({
+          session: session({ kind: "map" }),
+          is_complete: true,
+          viewer_team_id: HOME,
+          pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
+        }),
+        readyState({
+          session: session({ kind: "hero" }),
+          is_complete: true,
+          viewer_team_id: HOME,
+          ...acts([{ side: "home", itemId: 101 }]),
+          ...bansBy("home")
+        })
+      );
+    }
+    /** The closing screen: the series is done, its bans are the record. */
+    function closingScreen() {
+      getEncounter.mockResolvedValue({ ...encounter(), best_of: 1, teams: seats(1, 0) } as unknown as Encounter);
+      mockStates(
+        readyState({
+          session: session({ kind: "map" }),
+          is_complete: true,
+          viewer_team_id: null,
+          games: [confirmed(1, 21, 1, 0)],
+          pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
+        }),
+        readyState({
+          session: session({ kind: "hero" }),
+          is_complete: true,
+          viewer_team_id: null,
+          ...acts([{ side: "home", itemId: 101 }]),
+          ...bansBy("home")
+        })
+      );
+    }
+    const retryButton = () =>
+      Array.from(document.body.querySelectorAll<HTMLElement>('[role="alert"] button')).find(
+        (button) => button.textContent?.trim() === ROOM.retry
+      );
+
+    for (const [name, screen, marker] of [
+      ["map-result", mapResultScreen, ROOM.mapResult.report],
+      ["closing", closingScreen, ROOM.heroBans.seriesTitle]
+    ] as const) {
+      it(`${name} screen: a failed metadata read says so, keeps the room, and a retry brings the bans back`, async () => {
+        screen();
+        getMetadata.mockRejectedValue(new Error("metadata down"));
+        await render();
+        await settle(5);
+
+        const alert = document.body.querySelector('[role="alert"]');
+        expect(alert?.textContent).toContain(ROOM.heroBans.metadataError);
+        expect(document.body.querySelector("[data-hero-bans]")).toBeNull();
+        // The rest of the screen is intact: only the bans' display settings are missing.
+        expect(document.body.textContent).toContain(marker);
+
+        getMetadata.mockResolvedValue(OW_METADATA);
+        await act(async () => retryButton()!.click());
+        await untilBans();
+
+        expect(document.body.querySelector("[data-hero-bans]")).not.toBeNull();
+        expect(document.body.textContent).toContain("Hero 101");
+        expect(document.body.textContent).not.toContain(ROOM.heroBans.metadataError);
+      });
+
+      it(`${name} screen: a slow metadata read shows neither bans nor an error, then the bans`, async () => {
+        screen();
+        const slow = Promise.withResolvers<typeof OW_METADATA>();
+        getMetadata.mockReturnValue(slow.promise);
+        await render();
+        await settle(5);
+
+        expect(document.body.querySelector("[data-hero-bans]")).toBeNull();
+        expect(document.body.textContent).not.toContain(ROOM.heroBans.metadataError);
+        expect(document.body.textContent).toContain(marker);
+
+        await act(async () => slow.resolve(OW_METADATA));
+        await untilBans();
+
+        expect(document.body.querySelector("[data-hero-bans]")).not.toBeNull();
+        expect(document.body.textContent).not.toContain(ROOM.heroBans.metadataError);
+      });
+    }
+  });
+
   it("states a flat hero pool once, not once per map", async () => {
     // A round-less pool bans for the whole series; repeating it under every map
     // would invent per-map decisions nobody made.
     getEncounter.mockResolvedValue({
       ...encounter(),
       best_of: 3,
-      score: { home: 2, away: 0 }
+      teams: seats(2, 0)
     } as unknown as Encounter);
     mockStates(
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
-        viewer_side: null,
+        viewer_team_id: null,
         games: [confirmed(1, 21, 2, 1), confirmed(2, 22, 2, 0)],
         pool: [
           entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 }),
@@ -1847,12 +2120,13 @@ describe("phase selection", () => {
       readyState({
         session: session({ kind: "hero" }),
         is_complete: true,
-        viewer_side: null,
+        viewer_team_id: null,
         ...acts([{ side: "home", itemId: 101, round: null }]),
-        pool: [entry({ id: 3, item_id: 101, round: null, status: "banned", picked_by: "home" })]
+        pool: [entry({ id: 3, item_id: 101, round: null, status: "banned", picked_by_kind: "team", picked_by_team_id: HOME })]
       })
     );
     await render();
+    await untilBans();
 
     const record = document.body.querySelector<HTMLElement>("[data-hero-record]");
     expect(record?.textContent).toContain(ROOM.heroBans.seriesEyebrow);
@@ -1871,14 +2145,14 @@ describe("phase selection", () => {
         ? readyState({
             session: session({ kind: "map" }),
             is_complete: true,
-            viewer_side: null,
+            viewer_team_id: null,
             games: [confirmed(1, 21, 2, 1)],
             pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
           })
         : readyState({
             session: session({ kind: "hero" }),
             is_complete: true,
-            viewer_side: null,
+            viewer_team_id: null,
             sequence: [step({ index: 0 })],
             pool: [entry({ id: 3, item_id: 101, round: 1, status: "available" })]
           })
@@ -1897,14 +2171,14 @@ describe("phase selection", () => {
     getEncounter.mockResolvedValue({
       ...encounter(),
       best_of: 3,
-      score: { home: 1, away: 0 },
+      teams: seats(1, 0),
       matches: []
     } as unknown as Encounter);
     mockStates(
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         games: [confirmed(1, 21, 2, 1), game({ position: 2, map_id: 22 })],
         pool: [
           entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 }),
@@ -1914,7 +2188,7 @@ describe("phase selection", () => {
       readyState({
         session: session({ kind: "hero" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         sequence: [step({ index: 0 })],
         pool: [
           entry({ id: 3, item_id: 101, round: 1, status: "banned" }),
@@ -1946,16 +2220,16 @@ describe("phase selection", () => {
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })],
         games: [
           game({
             position: 1,
             map_id: 21,
             state: "disputed",
-            reports: [
-              { side: "home", home_score: 2, away_score: 1 },
-              { side: "away", home_score: 0, away_score: 2 }
+            claims: [
+              { claimant_team_id: HOME, basis_version: 1, results: lines(2, 1) },
+              { claimant_team_id: AWAY, basis_version: 1, results: lines(0, 2) }
             ]
           })
         ]
@@ -1963,7 +2237,7 @@ describe("phase selection", () => {
       readyState({
         session: session({ kind: "hero" }),
         is_complete: true,
-        viewer_side: "home",
+        viewer_team_id: HOME,
         sequence: [step({ index: 0 })],
         pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned" })]
       })
@@ -1990,16 +2264,16 @@ describe("phase selection", () => {
     getEncounter.mockResolvedValue({
       ...encounter(),
       best_of: 3,
-      score: { home: 0, away: 0 }
+      teams: seats(0, 0)
     } as unknown as Encounter);
     mockStates(
-      unavailableState("not_configured", { home: true, away: true }),
+      unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
       readyState({
         session: session({ kind: "hero", status: "completed" }),
         is_complete: true,
         pool: [
-          entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by: "home" }),
-          entry({ id: 4, item_id: 102, round: 1, status: "banned", picked_by: "away" })
+          entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by_kind: "team", picked_by_team_id: HOME }),
+          entry({ id: 4, item_id: 102, round: 1, status: "banned", picked_by_kind: "team", picked_by_team_id: AWAY })
         ]
       })
     );
@@ -2017,7 +2291,7 @@ describe("phase selection", () => {
         is_complete: true,
         pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 1 })]
       }),
-      unavailableState("waiting_map", { home: true, away: true })
+      unavailableState("waiting_map", { [HOME]: true, [AWAY]: true })
     );
     await render();
 
@@ -2036,7 +2310,7 @@ describe("return navigation", () => {
         sequence: [step({ index: 0 })],
         pool: [entry({ id: 1, item_id: 21 })]
       }),
-      unavailableState("not_configured", { home: true, away: true })
+      unavailableState("not_configured", { [HOME]: true, [AWAY]: true })
     );
     await render();
   }
@@ -2069,7 +2343,7 @@ describe("merged header layout", () => {
     mockStates(
       readyState({
         session: session({ kind: "map" }),
-        sequence: [step({ index: 0 }), step({ index: 1, sides: ["away"] })],
+        sequence: [step({ index: 0 }), step({ index: 1, actors: [AWAY] })],
         pool: [entry({ id: 1, item_id: 21 }), entry({ id: 2, item_id: 22 })]
       }),
       readyState({ session: session({ kind: "hero" }) })
@@ -2099,14 +2373,13 @@ describe("Hero Pool tile redesign", () => {
   it("filters icon-only hero tiles by role via the Filters chip group", async () => {
     getAllHeroes.mockResolvedValue({
       results: [
-        { id: 101, name: "Ana", slug: "ana", image_path: "", type: "Support", role: "support" },
+        { id: 101, name: "Ana", slug: "ana", image_path: "", attrs: { class: "support" } },
         {
           id: 102,
           name: "Reinhardt",
           slug: "reinhardt",
           image_path: "",
-          type: "Tank",
-          role: "tank"
+          attrs: { class: "tank" }
         }
       ]
     });
@@ -2114,7 +2387,7 @@ describe("Hero Pool tile redesign", () => {
       unavailableState("not_configured"),
       readyState({
         session: session({ kind: "hero" }),
-        sequence: [step({ index: 0 }), step({ index: 1, sides: ["away"] })],
+        sequence: [step({ index: 0 }), step({ index: 1, actors: [AWAY] })],
         pool: [entry({ id: 1, item_id: 101 }), entry({ id: 2, item_id: 102 })]
       })
     );
@@ -2170,7 +2443,7 @@ describe("captain actions", () => {
         sequence: [step({ index: 0, round: null })],
         current_step: step({ index: 0, round: null }),
         current_step_index: 0,
-        acting_sides: ["home"],
+        acting_team_ids: [HOME],
         pool: [entry({ id: 1, item_id: 21 })],
         expected_action: "ban",
         viewer_can_act: true,
@@ -2204,6 +2477,446 @@ describe("captain actions", () => {
   });
 });
 
+describe("side selection", () => {
+  const SIDE = en.pickBan.room.sides.lol;
+
+  /** A League side step: one side choice by `actors`, round 1 unless told otherwise. */
+  function sideStep(overrides: Partial<PickBanResolvedStep> & { index: number }): PickBanResolvedStep {
+    return step({ action: "side_pick", lifetime: null, ...overrides });
+  }
+
+  /** The hero room on its side step, with the champion pool the organizer had to save (R1). */
+  function sideRoom(overrides: Partial<PickBanState> = {}): PickBanState {
+    const current = sideStep({ index: 0 });
+    return readyState({
+      session: session({ kind: "hero" }),
+      sequence: [current],
+      current_step: current,
+      current_step_index: 0,
+      acting_team_ids: [HOME],
+      current_round: 1,
+      expected_action: "side_pick",
+      viewer_can_act: true,
+      allowed_actions: ["side_pick"],
+      sides: ["blue", "red"],
+      starting_sides: [],
+      pool: HEROES.map((hero, index) => entry({ id: 30 + index, item_id: hero.id, round: 1 })),
+      ...overrides
+    });
+  }
+
+  /** A choice group by the visible text that labels it. */
+  function choiceGroup(label: string): HTMLElement {
+    const found = Array.from(document.body.querySelectorAll<HTMLElement>('[role="group"]')).find(
+      (group) =>
+        document.getElementById(group.getAttribute("aria-labelledby") ?? "")?.textContent?.trim() === label
+    );
+    if (!found) throw new Error(`no choice group labelled "${label}"`);
+    return found;
+  }
+
+  const buttonIn = (scope: ParentNode, label: string) =>
+    Array.from(scope.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) => button.textContent?.trim() === label
+    );
+  const confirmSide = (side: string) => buttonIn(document.body, ROOM.captain.confirmSide.replace("{side}", side));
+
+  async function nextAnswer(hero: PickBanState) {
+    mockStates(unavailableState("not_configured", { [HOME]: true, [AWAY]: true }), hero);
+    await act(async () => {
+      await roomClient.invalidateQueries();
+    });
+    await settle();
+  }
+
+  beforeEach(() => {
+    getEncounter.mockResolvedValue({ ...encounter(), discipline: "lol" } as Encounter);
+    getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
+    performPickBanAction.mockResolvedValue(readyState({ session: session({ kind: "hero" }), is_complete: true }));
+  });
+
+  it("asks the captain for a side instead of a champion, and sends index 0 for the first side", async () => {
+    mockStates(unavailableState("not_configured", { [HOME]: true, [AWAY]: true }), sideRoom());
+    await render();
+
+    // No pool on a side step: no champion tile to misclick into a 400.
+    expect(document.body.textContent).not.toContain(ROOM.hero.title);
+    expect(document.body.querySelector('button[aria-label^="Hero 101"]')).toBeNull();
+
+    const group = choiceGroup(ROOM.captain.chooseSideHint);
+    const blue = buttonIn(group, SIDE.blue)!;
+    const red = buttonIn(group, SIDE.red)!;
+    // Native buttons: in the tab order, Enter/Space activate them, and the pressed state is announced.
+    for (const button of [blue, red]) {
+      expect(button.getAttribute("type")).toBe("button");
+      expect(button.disabled).toBe(false);
+      expect(button.getAttribute("aria-pressed")).toBe("false");
+    }
+    blue.focus();
+    expect(document.activeElement).toBe(blue);
+    expect(confirmSide("—")?.disabled).toBe(true);
+
+    await act(async () => blue.click());
+    await settle();
+    expect(blue.getAttribute("aria-pressed")).toBe("true");
+    expect(red.getAttribute("aria-pressed")).toBe("false");
+
+    await act(async () => confirmSide(SIDE.blue)!.click());
+    await settle();
+
+    expect(performPickBanAction).toHaveBeenCalledWith("hero", 4242, { item_id: 0, action: "side_pick" });
+  });
+
+  it("drops the chosen side when the room moves to another step", async () => {
+    mockStates(unavailableState("not_configured", { [HOME]: true, [AWAY]: true }), sideRoom());
+    await render();
+    await act(async () => buttonIn(choiceGroup(ROOM.captain.chooseSideHint), SIDE.red)!.click());
+    await settle();
+    expect(confirmSide(SIDE.red)).toBeTruthy();
+
+    // The next round's side step: same action, new step — the old choice must not carry over.
+    const next = sideStep({ index: 1, round: 2, actors: [HOME] });
+    await nextAnswer(
+      sideRoom({
+        sequence: [sideStep({ index: 0 }), next],
+        submissions: [submission({ step_index: 0, encounter_team_id: HOME, items: [{ item_id: 1, target_player_id: null }] })],
+        current_step: next,
+        current_step_index: 1,
+        current_round: 2
+      })
+    );
+
+    const group = choiceGroup(ROOM.captain.chooseSideHint);
+    expect(group.querySelector('[aria-pressed="true"]')).toBeNull();
+    expect(confirmSide("—")?.disabled).toBe(true);
+    expect(performPickBanAction).not.toHaveBeenCalled();
+  });
+
+  it("forgets the chosen side when its step closes and is undone back open, under the same step index", async () => {
+    // Custom side → ban room: the captain picks Red locally, the step is answered elsewhere, then mutually undone
+    // before any ban. The reopened step has the very same index and attempt; the old choice must not come back.
+    const side = sideStep({ index: 0 });
+    const ban = step({ index: 1, actors: [AWAY] });
+    const open = sideRoom({ sequence: [side, ban] });
+    mockStates(unavailableState("not_configured", { [HOME]: true, [AWAY]: true }), open);
+    await render();
+    await act(async () => buttonIn(choiceGroup(ROOM.captain.chooseSideHint), SIDE.red)!.click());
+    await settle();
+    expect(confirmSide(SIDE.red)).toBeTruthy();
+
+    await nextAnswer(
+      sideRoom({
+        sequence: [side, ban],
+        submissions: [submission({ step_index: 0, encounter_team_id: HOME, items: [{ item_id: 0, target_player_id: null }] })],
+        current_step: ban,
+        current_step_index: 1,
+        acting_team_ids: [AWAY],
+        expected_action: "ban",
+        viewer_can_act: false,
+        allowed_actions: []
+      })
+    );
+    await nextAnswer(open);
+
+    const group = choiceGroup(ROOM.captain.chooseSideHint);
+    expect(group.querySelector('[aria-pressed="true"]')).toBeNull();
+    expect(confirmSide("—")?.disabled).toBe(true);
+    expect(confirmSide(SIDE.red)).toBeUndefined();
+  });
+
+  it("keeps a champion picked on the step before out of the side step, and sends the side's index", async () => {
+    const ban = step({ index: 0 });
+    mockStates(
+      unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
+      sideRoom({
+        sequence: [ban, sideStep({ index: 1 })],
+        current_step: ban,
+        expected_action: "ban",
+        allowed_actions: ["ban"],
+        eligible: { item_ids: [101, 102, 103], by_target: null }
+      })
+    );
+    await render();
+    await act(async () => document.body.querySelector<HTMLButtonElement>('button[aria-label^="Hero 101"]')!.click());
+    await settle();
+    expect(buttonIn(document.body, ROOM.captain.confirmBan.replace("{item}", "Hero 101"))).toBeTruthy();
+
+    const side = sideStep({ index: 1 });
+    await nextAnswer(
+      sideRoom({
+        sequence: [ban, side],
+        current_step: side,
+        current_step_index: 1,
+        submissions: [submission({ step_index: 0, encounter_team_id: HOME, items: [{ item_id: 102, target_player_id: null }] })]
+      })
+    );
+
+    expect(document.querySelector('[aria-label="' + ROOM.commandBar + '"]')?.textContent).not.toContain("Hero 101");
+    expect(confirmSide("—")?.disabled).toBe(true);
+    await act(async () => buttonIn(choiceGroup(ROOM.captain.chooseSideHint), SIDE.red)!.click());
+    await settle();
+    await act(async () => confirmSide(SIDE.red)!.click());
+    await settle();
+
+    expect(performPickBanAction).toHaveBeenCalledWith("hero", 4242, { item_id: 1, action: "side_pick" });
+  });
+
+  it("shows a viewer who is not on the clock the sides, but not as choices", async () => {
+    getMyRole.mockResolvedValue({ encounter_team_id: AWAY, slot: 2 });
+    mockStates(
+      unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
+      sideRoom({ viewer_team_id: AWAY, viewer_can_act: false, allowed_actions: [] })
+    );
+    await render();
+
+    const group = choiceGroup(ROOM.captain.chooseSideHint);
+    expect(buttonIn(group, SIDE.blue)?.disabled).toBe(true);
+    expect(buttonIn(group, SIDE.red)?.disabled).toBe(true);
+    expect(confirmSide("—")).toBeUndefined();
+  });
+
+  it("speaks in sides on the timeline, the undo and the assignment, never in champions", async () => {
+    const chosen = sideStep({ index: 0 });
+    const ban = step({ index: 1, actors: [AWAY] });
+    mockStates(
+      unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
+      sideRoom({
+        sequence: [chosen, ban],
+        submissions: [submission({ step_index: 0, encounter_team_id: HOME, items: [{ item_id: 0, target_player_id: null }] })],
+        current_step: ban,
+        current_step_index: 1,
+        acting_team_ids: [AWAY],
+        expected_action: "ban",
+        viewer_can_act: false,
+        allowed_actions: [],
+        starting_sides: [{ game_id: 901, position: 1, sides: { [HOME]: "blue", [AWAY]: "red" } }],
+        undo: { requested_by_team_id: null, step_index: 0, item_ids: [0], action: "side_pick", encounter_team_id: HOME }
+      })
+    );
+    await render();
+
+    const row = document.body.querySelector('[data-pick-ban-step="0"]');
+    expect(row?.textContent).toContain(ROOM.step.side.side_pick.replace("{team}", "Bright Wolves"));
+    expect(row?.textContent).toContain(SIDE.blue);
+
+    const undo = Array.from(document.body.querySelectorAll("div")).find(
+      (node) => node.firstElementChild?.textContent === ROOM.undo.label
+    );
+    expect(undo?.textContent).toContain(SIDE.blue);
+
+    const assignment = document.body.querySelector('[data-side-assignment="1"]');
+    expect(assignment?.textContent).toContain(
+      ROOM.sideAssignment.replace("{side}", SIDE.blue).replace("{team}", "Bright Wolves")
+    );
+    expect(assignment?.textContent).toContain(
+      ROOM.sideAssignment.replace("{side}", SIDE.red).replace("{team}", "Quiet Foxes")
+    );
+    expect(document.body.textContent).not.toContain("Hero #0");
+    expect(document.body.textContent).not.toContain("Hero #1");
+  });
+
+  describe("for an organizer", () => {
+    beforeEach(() => {
+      getMyRole.mockResolvedValue({ encounter_team_id: null, slot: null });
+      usePermissionsMock.mockReturnValue({
+        isSuperuser: true,
+        isWorkspaceAdmin: () => true,
+        hasWorkspacePermission: () => true
+      });
+      adminPickBanAct.mockResolvedValue({});
+    });
+
+    const adminSection = () =>
+      Array.from(document.body.querySelectorAll("section")).find(
+        (section) => section.querySelector("h2")?.textContent === ROOM.admin.title
+      )!;
+
+    it("chooses a side for either team without a champion tile", async () => {
+      mockStates(
+        unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
+        sideRoom({ viewer_team_id: null, viewer_can_act: false, allowed_actions: [] })
+      );
+      await render();
+      await showAdminUi();
+
+      const panel = adminSection();
+      const actionField = Array.from(panel.querySelectorAll("div")).find(
+        (node) => node.firstElementChild?.textContent === ROOM.admin.actionLabel
+      );
+      expect(actionField?.textContent).toBe(`${ROOM.admin.actionLabel}${ROOM.action.side_pick}`);
+      expect(panel.textContent).not.toContain(ROOM.admin.selectItemFirst);
+
+      // The team override is kept; the side is the step's own choice.
+      await act(async () => buttonIn(panel, "Quiet Foxes")!.click());
+      await settle();
+      await act(async () => buttonIn(choiceGroup(ROOM.admin.sideChoiceLabel), SIDE.blue)!.click());
+      await settle();
+      await act(async () => buttonIn(panel, `${ROOM.admin.confirm}: ${SIDE.blue}`)!.click());
+      await settle();
+
+      expect(adminPickBanAct).toHaveBeenCalledWith(4242, {
+        kind: "hero",
+        encounter_team_id: AWAY,
+        item_id: 0,
+        action: "side_pick"
+      });
+    });
+
+    it("drops the organizer's side when the team it was chosen for changes, and when the step is reopened", async () => {
+      const open = sideRoom({ viewer_team_id: null, viewer_can_act: false, allowed_actions: [] });
+      mockStates(unavailableState("not_configured", { [HOME]: true, [AWAY]: true }), open);
+      await render();
+      await showAdminUi();
+      const panel = adminSection();
+      const adminSides = () => choiceGroup(ROOM.admin.sideChoiceLabel);
+      const perform = () =>
+        Array.from(panel.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+          button.textContent?.trim().startsWith(ROOM.admin.confirm)
+        )!;
+
+      // Chosen for the team on the clock, then the override moves to the other team: the choice is gone.
+      await act(async () => buttonIn(adminSides(), SIDE.blue)!.click());
+      await settle();
+      expect(perform().textContent?.trim()).toBe(`${ROOM.admin.confirm}: ${SIDE.blue}`);
+      await act(async () => buttonIn(panel, "Quiet Foxes")!.click());
+      await settle();
+      expect(adminSides().querySelector('[aria-pressed="true"]')).toBeNull();
+      expect(perform().disabled).toBe(true);
+
+      // Chosen again, then an organizer reopens the step (a new attempt, a new clock): gone again.
+      await act(async () => buttonIn(adminSides(), SIDE.red)!.click());
+      await settle();
+      expect(perform().disabled).toBe(false);
+      await nextAnswer({
+        ...open,
+        session: session({ kind: "hero", current_step_started_at: "2026-08-01T10:05:00Z" }),
+        submissions: [submission({ step_index: 0, encounter_team_id: AWAY, attempt: 2, state: "draft", items: [] })]
+      });
+      expect(adminSides().querySelector('[aria-pressed="true"]')).toBeNull();
+      expect(perform().disabled).toBe(true);
+      expect(adminPickBanAct).not.toHaveBeenCalled();
+    });
+
+    /** Round 1's side is picked: a side-only round has no step left until its game is played. */
+    function sidePicked(): PickBanState {
+      return sideRoom({
+        viewer_team_id: null,
+        viewer_can_act: false,
+        allowed_actions: [],
+        submissions: [submission({ step_index: 0, encounter_team_id: HOME, items: [{ item_id: 0, target_player_id: null }] })],
+        current_step: null,
+        current_step_index: null,
+        acting_team_ids: [],
+        expected_action: null,
+        is_complete: true,
+        starting_sides: [{ game_id: 901, position: 1, sides: { [HOME]: "blue", [AWAY]: "red" } }]
+      });
+    }
+
+    it("reopens a settled side pick whose game is not played yet", async () => {
+      adminPickBanReopen.mockResolvedValue({});
+      mockStates(
+        { ...unavailableState("not_configured", { [HOME]: true, [AWAY]: true }), games: [game({ position: 1 })] },
+        sidePicked()
+      );
+      await render();
+      await showAdminUi();
+
+      await act(async () => buttonIn(adminSection(), ROOM.admin.reopen)!.click());
+      await settle();
+      expect(adminPickBanReopen).toHaveBeenCalledWith(4242, "hero");
+    });
+
+    it.each([
+      ["claimed", game({ position: 1, claims: [{ claimant_team_id: HOME, basis_version: 1, results: lines(1, 0) }] })],
+      ["confirmed", confirmed(1, 21, 1, 0)]
+    ])("never offers to reopen a side its %s game was played on", async (_label, played) => {
+      mockStates(
+        { ...unavailableState("not_configured", { [HOME]: true, [AWAY]: true }), games: [played] },
+        sidePicked()
+      );
+      await render();
+      await showAdminUi();
+
+      expect(buttonIn(adminSection(), ROOM.admin.reset)).toBeTruthy();
+      expect(buttonIn(adminSection(), ROOM.admin.reopen)).toBeUndefined();
+    });
+
+    it("corrects a hero-only room's games, and names a correction the next game already depends on", async () => {
+      correctGameResult.mockRejectedValue(
+        new ApiError(409, [{ msg: "Game 2's pick-ban already started", code: "dependent_round_started" }])
+      );
+      const next = sideStep({ index: 1, round: 2 });
+      mockStates(
+        { ...unavailableState("not_configured", { [HOME]: true, [AWAY]: true }), games: [confirmed(1, 21, 2, 1)] },
+        sideRoom({
+          viewer_team_id: null,
+          viewer_can_act: false,
+          allowed_actions: [],
+          sequence: [sideStep({ index: 0 }), next],
+          current_step: next,
+          current_step_index: 1,
+          current_round: 2
+        })
+      );
+      await render();
+      await showAdminUi();
+
+      const row = document.body.querySelector<HTMLElement>('[data-game-correction="901"]');
+      expect(row).not.toBeNull();
+      const reason = row!.querySelector<HTMLInputElement>(`input[aria-label="${ROOM.admin.correctReason}"]`)!;
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(reason, "wrong winner");
+        reason.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => buttonIn(row!, ROOM.admin.correctSubmit)!.click());
+      await settle();
+
+      expect(correctGameResult).toHaveBeenCalledWith(4242, 901, expect.objectContaining({ reason: "wrong winner" }));
+      expect(notify.error).toHaveBeenCalledWith(ROOM.admin.dependentRoundStarted);
+      expect(notify.apiError).not.toHaveBeenCalled();
+    });
+
+    it("reads a side pick back in the room history by the side's name", async () => {
+      getPregameRoomHistory.mockResolvedValue({
+        encounter_id: 4242,
+        entries: [
+          {
+            id: "room:1",
+            at: "2026-10-02T11:58:00Z",
+            origin: "room",
+            kind: "hero",
+            action: "acted",
+            source: "captain",
+            side: null,
+            encounter_team_id: HOME,
+            actor_auth_user_id: 9,
+            actor_name: "Captain Bright",
+            reason: null,
+            data: { step_index: 0, round: 1, action: "side_pick", item_id: 0 }
+          }
+        ]
+      });
+      mockStates(
+        unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
+        sideRoom({ viewer_team_id: null, viewer_can_act: false, allowed_actions: [] })
+      );
+      await render();
+      await showAdminUi();
+      await act(async () =>
+        Array.from(document.body.querySelectorAll("button"))
+          .find((button) => button.textContent?.includes(ROOM.history.toggle))!
+          .click()
+      );
+      await settle();
+
+      const log = document.body.querySelector<HTMLElement>(`[aria-label="${ROOM.history.label}"]`);
+      expect(log?.textContent).toContain(`Bright Wolves ${ROOM.history.verb.side_pick} ${SIDE.blue}`);
+      expect(log?.textContent).not.toContain("#0");
+    });
+  });
+});
+
 describe("admin controls", () => {
   it("names the step's own action instead of offering the organizer a choice of three", async () => {
     // A v2 step names what it accepts, so "ban / pick / protect" next to a
@@ -2217,10 +2930,10 @@ describe("admin controls", () => {
       unavailableState("not_configured"),
       readyState({
         session: session({ kind: "hero" }),
-        sequence: [step({ index: 0, action: "protect", sides: ["away"] })],
-        current_step: step({ index: 0, action: "protect", sides: ["away"] }),
+        sequence: [step({ index: 0, action: "protect", actors: [AWAY] })],
+        current_step: step({ index: 0, action: "protect", actors: [AWAY] }),
         current_step_index: 0,
-        acting_sides: ["away"],
+        acting_team_ids: [AWAY],
         current_round: 1,
         pool: [entry({ id: 1, item_id: 101, round: 1 })]
       })
@@ -2282,7 +2995,7 @@ describe("admin controls", () => {
 
     expect(adminPickBanSubmit).toHaveBeenCalledWith(4242, {
       kind: "hero",
-      side: "home",
+      encounter_team_id: HOME,
       items: [
         { item_id: 201, target_player_id: null },
         { item_id: 203, target_player_id: null }
@@ -2321,21 +3034,19 @@ describe("admin controls", () => {
         session: session({ kind: "hero" }),
         ...blindRound({ target: "opponent_player" }),
         targets: {
-          home: [],
-          away: [
+          [HOME]: [],
+          [AWAY]: [
             {
               player_id: 55,
               name: "Foxy",
-              role: "tank",
-              sub_role: null,
+              role: { dimension: "player_role", role: "tank" },
               is_substitution: false,
               division: 7
             },
             {
               player_id: 56,
               name: "Vixen",
-              role: "tank",
-              sub_role: null,
+              role: { dimension: "player_role", role: "tank" },
               is_substitution: true,
               division: 12
             }
@@ -2368,7 +3079,7 @@ describe("admin controls", () => {
 
     expect(adminPickBanSubmit).toHaveBeenCalledWith(4242, {
       kind: "hero",
-      side: "home",
+      encounter_team_id: HOME,
       items: [
         { item_id: 202, target_player_id: 56 },
         { item_id: 201, target_player_id: 55 }
@@ -2400,7 +3111,7 @@ describe("admin controls", () => {
           kind: "hero",
           status: "completed",
           awaiting_choice: true,
-          pending_loser_side: "away"
+          pending_chooser_team_id: AWAY
         }),
         is_complete: true,
         sequence: [step({ index: 0 })],
@@ -2412,8 +3123,8 @@ describe("admin controls", () => {
 
     expect(document.body.textContent).toContain(ROOM.admin.electLabel);
     const panel = document.body.textContent ?? "";
-    expect(panel).toContain(ROOM.side.home);
-    expect(panel).toContain(ROOM.side.away);
+    expect(panel).toContain("Bright Wolves");
+    expect(panel).toContain("Quiet Foxes");
   });
 
   it("omits the reset/act panel for a non-admin captain", async () => {
@@ -2440,7 +3151,7 @@ describe("admin controls", () => {
       isWorkspaceAdmin: () => false,
       hasWorkspacePermission: () => true
     });
-    setEncounterReadiness.mockResolvedValue({ readiness: { home: false, away: true } });
+    setEncounterReadiness.mockResolvedValue({ readiness: { [HOME]: false, [AWAY]: true } });
     mockStates(unavailableState("not_ready"), unavailableState("not_configured"));
     await render();
 
@@ -2462,7 +3173,7 @@ describe("admin controls", () => {
     await act(async () => away!.click());
     await settle();
 
-    expect(setEncounterReadiness).toHaveBeenCalledWith(4242, { side: "away", ready: true });
+    expect(setEncounterReadiness).toHaveBeenCalledWith(4242, { encounter_team_id: AWAY, ready: true });
 
     await act(async () => toggle!.click());
     await settle();
@@ -2471,7 +3182,7 @@ describe("admin controls", () => {
   });
 
   it("keeps the readiness override off the waiting screen for a captain", async () => {
-    getMyRole.mockResolvedValue({ side: "home" });
+    getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
     mockStates(unavailableState("not_ready"), unavailableState("not_configured"));
     await render();
 
@@ -2491,14 +3202,14 @@ describe("admin controls", () => {
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
-        viewer_side: null,
+        viewer_team_id: null,
         games: [confirmed(1, 21, 2, 1)],
         pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
       }),
       readyState({
         session: session({ kind: "hero" }),
         is_complete: true,
-        viewer_side: null,
+        viewer_team_id: null,
         sequence: [step({ index: 0 })],
         pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned" })]
       })
@@ -2541,7 +3252,7 @@ describe("organizer session controls", () => {
         sequence: [open],
         current_step: open,
         current_step_index: 0,
-        acting_sides: ["home"],
+        acting_team_ids: [HOME],
         current_round: 1,
         step_deadline: new Date(Date.now() + 45_000).toISOString(),
         pool: [entry({ id: 1, item_id: 101, round: 1 })]
@@ -2648,9 +3359,11 @@ describe("organizer session controls", () => {
     await settle();
 
     expect(adminTechnicalLoss).toHaveBeenCalledWith(4242, {
-      loser_side: "away",
-      home_score: 2,
-      away_score: 0,
+      loser_team_id: AWAY,
+      results: [
+        { encounter_team_id: HOME, score: 2 },
+        { encounter_team_id: AWAY, score: 0 }
+      ],
       reason: "no show"
     });
   });
@@ -2744,7 +3457,7 @@ describe("room history", () => {
         historyEntry({
           id: "room:1",
           action: "acted",
-          side: "home",
+          encounter_team_id: HOME,
           actor_auth_user_id: 9,
           actor_name: "Captain Bright",
           data: { step_index: 0, action: "ban", item_id: 21 }

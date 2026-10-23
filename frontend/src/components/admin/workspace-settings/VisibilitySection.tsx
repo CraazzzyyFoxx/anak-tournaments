@@ -1,19 +1,18 @@
 "use client";
 
-import { Card, CardContent } from "@/components/ui/card";
 import { useTranslations } from "next-intl";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { SaveBar } from "@/components/kit/SaveBar";
+import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { WorkspaceSettingsFrame } from "./WorkspaceSettingsFrame";
 import { useWorkspaceSettingsForm } from "./useWorkspaceSettingsForm";
+
+const NEWCOMER_SCOPES = [
+  { value: "global", label: "platformWide", help: "platformWideHelp" },
+  { value: "workspace", label: "workspaceOnly", help: "workspaceOnlyHelp" }
+] as const;
 
 /**
  * Who can find this workspace, and whose history counts when a roster decides
@@ -21,7 +20,9 @@ import { useWorkspaceSettingsForm } from "./useWorkspaceSettingsForm";
  *
  * Newcomer scope reads like a rating knob rather than a visibility one, but it
  * is the same question in reverse — how much of the platform this workspace
- * considers itself part of — and it has no other home.
+ * considers itself part of — and it has no other home. Its two options are
+ * radios that each state their consequence: as a two-button toggle the
+ * difference lived in one paragraph the reader had to map back onto them.
  */
 export function VisibilitySection({ workspaceId }: Readonly<{ workspaceId: number | null }>) {
   const t = useTranslations("adminWorkspace.workspaceSettings.visibility");
@@ -32,48 +33,55 @@ export function VisibilitySection({ workspaceId }: Readonly<{ workspaceId: numbe
     <WorkspaceSettingsFrame workspaceId={workspaceId} settings={settings}>
       {({ form: values }) => (
         <>
-          <Card>
-            <CardContent className="flex flex-col gap-4 pt-6">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <Label htmlFor="workspace-is-hidden">{t("hidden")}</Label>
-                  <p className="max-w-prose text-xs text-muted-foreground">
-                    {t("hiddenHelp")}
-                  </p>
-                </div>
-                <Switch
-                  id="workspace-is-hidden"
-                  checked={values.is_hidden}
-                  onCheckedChange={(checked) => patch({ is_hidden: checked })}
-                />
-              </div>
+          <SettingGroup id="listing" title={t("groups.discovery.title")}>
+            <SettingRow htmlFor="workspace-is-hidden" label={t("hidden")} hint={t("hiddenHelp")}>
+              <Switch
+                id="workspace-is-hidden"
+                checked={values.is_hidden}
+                onCheckedChange={(checked) => patch({ is_hidden: checked })}
+              />
+            </SettingRow>
+          </SettingGroup>
 
-              <div>
-                <Label htmlFor="workspace-newcomer-scope">{t("newcomerScope")}</Label>
-                <Select
-                  value={values.newcomer_scope}
-                  onValueChange={(value) =>
-                    patch({ newcomer_scope: value as "global" | "workspace" })
-                  }
-                >
-                  <SelectTrigger id="workspace-newcomer-scope" className="mt-1.5 w-full">
-                    <SelectValue placeholder={t("selectScope")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="global">{t("platformWide")}</SelectItem>
-                    <SelectItem value="workspace">{t("workspaceOnly")}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="mt-1 max-w-prose text-xs text-muted-foreground">
-                  {t("scopeHelp")}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          <SettingGroup
+            id="newcomers"
+            title={t("groups.newcomers.title")}
+            description={t("scopeHelp")}
+          >
+            <RadioGroup
+              value={values.newcomer_scope}
+              onValueChange={(value) => patch({ newcomer_scope: value as "global" | "workspace" })}
+              aria-label={t("newcomerScope")}
+              className="gap-4"
+            >
+              {NEWCOMER_SCOPES.map((scope) => {
+                const id = `newcomer-scope-${scope.value}`;
+                return (
+                  <div key={scope.value} className="flex items-start gap-3">
+                    <RadioGroupItem
+                      id={id}
+                      value={scope.value}
+                      aria-describedby={`${id}-help`}
+                      className="mt-0.5"
+                    />
+                    <div className="min-w-0">
+                      <Label htmlFor={id} className="text-sm font-medium">
+                        {t(scope.label)}
+                      </Label>
+                      <p id={`${id}-help`} className="mt-0.5 max-w-prose text-xs text-muted-foreground">
+                        {t(scope.help)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </RadioGroup>
+          </SettingGroup>
 
           <SaveBar
             dirty={settings.dirty}
             summary={settings.summary}
+            error={settings.error}
             saving={settings.saving}
             onDiscard={settings.discard}
             onSave={settings.save}

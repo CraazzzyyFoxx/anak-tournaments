@@ -1,15 +1,16 @@
 import { Suspense } from "react";
 
+import { loadGameScopeInit } from "@/lib/site/discipline-server";
 import { resolveStatsScope } from "@/lib/site/tenant-host";
 
 import HeroLeaderboardContent from "./components/HeroLeaderboardContent";
 
 const HeroesComparePage = async () => {
-  const scope = await resolveStatsScope();
+  const [scope, initial] = await Promise.all([resolveStatsScope(), loadGameScopeInit()]);
 
   return (
     <Suspense fallback={null}>
-      <HeroLeaderboardContent scope={scope} />
+      <HeroLeaderboardContent scope={scope} initial={initial} />
     </Suspense>
   );
 };

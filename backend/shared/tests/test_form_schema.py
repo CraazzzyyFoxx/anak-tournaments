@@ -75,12 +75,6 @@ def test_public_keys_and_canonical_json_are_order_independent_for_dedupe():
     assert a.canonical_json() == b.canonical_json()
 
 
-def test_default_schema_matches_todays_default_form():
-    keys = [f.key for f in default_schema().fields()]
-    assert keys == ["identity_battlenet", "identity_discord", "identity_twitch", "roles", "public_notes"]
-    assert [s.key for s in default_schema().sections] == ["accounts", "roles", "details"]
-
-
 def test_identity_keys_round_trip_for_every_provider():
     """Battle.net is an identity like any other; only its visibility is fixed."""
     assert "battlenet" in IDENTITY_PROVIDERS
@@ -89,6 +83,29 @@ def test_identity_keys_round_trip_for_every_provider():
     assert builtin_spec("identity_battlenet").fixed_visibility == "public"
     assert builtin_spec("identity_discord").fixed_visibility is None
     assert identity_provider("identity_nope") is None and builtin_spec("identity_nope") is None
+
+
+@pytest.mark.parametrize(
+    ("provider", "handle", "other_provider"),
+    [("battlenet", "Player#1234", "riot"), ("riot", "  Hide On Bush # KR1 ", "battlenet")],
+)
+def test_default_form_requires_its_own_game_identity(provider, handle, other_provider):
+    schema = default_schema(provider)
+    key = identity_key(provider)
+    # The roles question is independent of identity validation.
+    valid = normalize_answers(schema, {key: [handle]}, partial=True)
+    assert valid.errors == []
+    assert valid.values[key] == [handle.strip().replace(" # ", "#")]
+    missing = normalize_answers(schema, {identity_key(other_provider): ["Other#1234"]})
+    assert (key, "required") in _codes(missing)
+    assert schema.field(identity_key(other_provider)) is None
+    with pytest.raises(ValidationError, match="visibility"):
+        _schema(FormField(key=key, kind="builtin", visibility="organizers"))
+
+
+def test_riot_form_rejects_an_invalid_handle():
+    result = normalize_answers(default_schema("riot"), {"identity_riot": ["Name#K_1"]}, partial=True)
+    assert ("identity_riot", "invalid_format") in _codes(result)
 
 
 def test_roles_params_defaults_reproduce_todays_optional_mode():
@@ -203,9 +220,9 @@ def test_role_ranks_are_coerced_per_role_and_never_tied_to_the_roles_answer():
     assert _codes(normalize_answers(schema, {"current_rank": {}})) == {("current_rank", "required")}
     assert _codes(normalize_answers(schema, {"current_rank": "3200"})) == {("current_rank", "invalid_type")}
     assert _codes(normalize_answers(schema, {"current_rank": {"tank": "3200.5"}})) == {("current_rank", "invalid_type")}
-    assert _codes(normalize_answers(schema, {"current_rank": {"healer": "3200"}})) == {
-        ("current_rank", "invalid_option")
-    }
+    # This pure layer accepts another discipline's codes; the registration service checks its vocabulary.
+    assert normalize_answers(schema, {"current_rank": {"healer": "3200"}}).values == {"current_rank": {"healer": 3200}}
+    assert _codes(normalize_answers(schema, {"current_rank": {"": "3200"}})) == {("current_rank", "invalid_option")}
 
 
 def test_a_required_rank_block_wants_a_rank_on_every_declared_role_and_only_those():

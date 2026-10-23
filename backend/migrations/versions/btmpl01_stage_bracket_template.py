@@ -4,8 +4,8 @@ Revision ID: btmpl01
 Revises: bsplit01
 Create Date: 2026-10-01 00:00:00.000000
 
-Spec §5.3. The bracket an organizer drew by hand, stored as the format-neutral
-blueprint of ``shared.services.bracket.template``: matches with ``U#``/``L#``
+The bracket an organizer drew by hand, stored as the format-neutral blueprint
+of tournament-service's ``src.domain.bracket.template``: matches with ``U#``/``L#``
 seed placeholders and winner/loser edges between them. Every path that builds a
 bracket shape for the stage -- planned rounds, the preview and generation --
 reads it instead of running the format's generator.

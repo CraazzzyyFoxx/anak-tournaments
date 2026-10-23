@@ -19,25 +19,33 @@ export const adminQueryKeys = {
     ["admin", "challonge-sync-log", tournamentId] as const,
   challongeTeamSyncPreview: (tournamentId: KeyPart) =>
     ["admin", "challonge-team-sync-preview", tournamentId] as const,
-  dashboardStats: (workspaceId: KeyPart) => ["admin", "dashboard", "stats", workspaceId] as const,
-  dashboardTournaments: (workspaceId: KeyPart) =>
-    ["admin", "dashboard", "tournaments", workspaceId] as const,
+  /** Prefix of the organizer dashboard and its activity feed: one realtime flush refetches both. */
+  dashboardRoot: () => ["admin", "dashboard"] as const,
+  dashboard: (workspaceId: KeyPart) => ["admin", "dashboard", "overview", workspaceId] as const,
+  dashboardActivity: (workspaceId: KeyPart, excludeActorId: KeyPart) =>
+    ["admin", "dashboard", "activity", workspaceId, excludeActorId] as const,
+  /** Outside `dashboardRoot` on purpose: trends move when a tournament finishes, not on realtime flushes. */
+  dashboardTrends: (workspaceId: KeyPart) => ["admin", "dashboard-trends", workspaceId] as const,
+  /** Finished tournaments since the active ML artifacts were trained (platform health). */
+  mlTrainingLag: () => ["admin", "ml-training-lag"] as const,
   personAchievements: (personId: KeyPart) =>
     ["admin", "person", personId, "achievements"] as const,
   person: (personId: KeyPart) => ["admin", "person", personId] as const,
-  playerSubRolesAll: (workspaceId: KeyPart) =>
-    ["admin", "player-sub-roles", workspaceId, "all"] as const,
-  playerSubRoles: (workspaceId: KeyPart) => ["admin", "player-sub-roles", workspaceId] as const,
+  playerSubRolesAll: (workspaceId: KeyPart, discipline: KeyPart) =>
+    ["admin", "player-sub-roles", workspaceId, discipline, "all"] as const,
+  playerSubRoles: (workspaceId: KeyPart, discipline?: KeyPart) => discipline === undefined
+    ? ["admin", "player-sub-roles", workspaceId] as const
+    : ["admin", "player-sub-roles", workspaceId, discipline] as const,
   playerSubRolesRoot: () => ["admin", "player-sub-roles"] as const,
-  rankCollection: (workspaceId: KeyPart, userId: KeyPart) =>
-    ["admin", "rank", "collection", workspaceId, userId] as const,
-  rankCurrent: (userId: KeyPart) => ["admin", "rank", "current", userId] as const,
-  rankFetchLog: (workspaceId: KeyPart, status: KeyPart, source: KeyPart) =>
-    ["admin", "rank", "fetch-log", workspaceId, status, source] as const,
+  rankCollection: (workspaceId: KeyPart, discipline: KeyPart, userId: KeyPart) =>
+    ["admin", "rank", "collection", workspaceId, discipline, userId] as const,
+  rankFetchLog: (workspaceId: KeyPart, discipline: KeyPart, status: KeyPart, source: KeyPart) =>
+    ["admin", "rank", "fetch-log", workspaceId, discipline, status, source] as const,
   /** The flat rank-overview table; `params` is the whole filter/sort/page set. */
   rankOverview: (workspaceId: KeyPart, params: unknown) =>
     ["admin", "rank", "overview", workspaceId, params] as const,
-  rankStats: (workspaceId: KeyPart) => ["admin", "rank", "stats", workspaceId] as const,
+  rankStats: (workspaceId: KeyPart, discipline: KeyPart) =>
+    ["admin", "rank", "stats", workspaceId, discipline] as const,
   rankStatsAll: () => ["admin", "rank", "stats"] as const,
   rankUserSearch: (query: KeyPart) => ["admin", "rank", "user-search", query] as const,
   rank: () => ["admin", "rank"] as const,
@@ -83,6 +91,8 @@ export const adminQueryKeys = {
   tournamentTeams: (tournamentId: KeyPart) =>
     ["admin", "tournament", tournamentId, "teams"] as const,
   tournament: (tournamentId: KeyPart) => ["admin", "tournament", tournamentId] as const,
+  tournamentTeamFormat: (tournamentId: KeyPart, workspaceId: KeyPart, discipline: KeyPart) =>
+    ["admin", "tournament", tournamentId, "team-format", workspaceId, discipline] as const,
   tournamentEncountersCount: (tournamentId: KeyPart) =>
     ["admin", "tournament", tournamentId, "encounters", "count"] as const,
   tournamentEncounters: (tournamentId: KeyPart) =>
@@ -96,11 +106,6 @@ export const adminQueryKeys = {
     ["admin", "tournament", tournamentId, "standings"] as const,
   tournamentTeamsCount: (tournamentId: KeyPart) =>
     ["admin", "tournament", tournamentId, "teams", "count"] as const,
-  tournamentWizardDivisionGrids: (workspaceId: KeyPart) =>
-    ["admin", "tournaments", "create", "division-grids", workspaceId] as const,
-  tournamentWizardResume: (workspaceId: KeyPart) =>
-    ["admin", "tournaments", "wizard-resume", workspaceId] as const,
-  tournamentWizardResumeAll: () => ["admin", "tournaments", "wizard-resume"] as const,
   users: () => ["admin", "users"] as const,
   matchDetail: (matchId: KeyPart, workspaceId: KeyPart) =>
     ["admin-matches", "detail", matchId, workspaceId] as const,
@@ -112,14 +117,13 @@ export const adminQueryKeys = {
   workspace: (workspaceId: KeyPart) => ["admin-workspace", workspaceId] as const,
   workspaces: () => ["admin-workspaces"] as const,
   workspaceOwner: (workspaceId: KeyPart) => ["workspace-owner", workspaceId] as const,
-  playerSubRolesPublic: (workspaceId: KeyPart) => ["player-sub-roles", workspaceId] as const,
+  playerSubRolesPublic: (workspaceId: KeyPart, discipline: KeyPart) => ["player-sub-roles", workspaceId, discipline] as const,
   /** The parser's unresolved log names, and the badge counting them. */
   catalogAliasMisses: () => ["admin", "catalog-alias-misses"] as const,
-  /** One catalogue entity's list: `heroes`, `maps` or `gamemodes`. */
-  contentEntity: (entity: KeyPart) => ["admin", entity] as const,
-  /** The alias-resolution picker for one catalogue entity. */
-  contentAliasTargets: (entity: KeyPart) => ["admin", entity, "alias-targets"] as const,
   /** The parser console, mounted workspace-wide rather than per tournament. */
   workspaceLogHistory: (workspaceId: KeyPart) =>
     ["admin", "workspace", workspaceId, "log-history"] as const,
+  /** A tournament's encounters, as the log bind dialog's picker lists them. */
+  logLinkEncounters: (workspaceId: KeyPart, tournamentId: KeyPart) =>
+    ["admin", "log-link", "encounters", workspaceId, tournamentId] as const,
 };

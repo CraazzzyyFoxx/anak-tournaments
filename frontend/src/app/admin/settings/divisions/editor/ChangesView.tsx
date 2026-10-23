@@ -3,15 +3,16 @@
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
-import { EYEBROW_CLASS } from "@/components/kit/tone";
-import { cn } from "@/lib/utils";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 
-import { diffBands, owShortLabel, rankRangeLabel, type Band } from "./draftReducer";
+import { diffBands, nativeShortLabel, rankRangeLabel, type Band, type Ladder } from "./draftReducer";
 
-/** Both coordinates of a band in one cell: "1900–1999 · GO1–GO3". */
-const spanLabel = (band: Band) => `${rankRangeLabel(band)} · ${owShortLabel(band)}`;
+/** Both coordinates of a band in one cell: "1900–1999 · GO1–GO3"; the range alone when it has no native run. */
+const spanLabel = (ladder: Ladder | null, band: Band) =>
+  [rankRangeLabel(band), ladder ? nativeShortLabel(ladder, band) : null].filter(Boolean).join(" · ");
 
 export interface ChangesViewProps {
+  ladder: Ladder | null;
   base: Band[];
   bands: Band[];
   baseLabel: string;
@@ -21,10 +22,10 @@ export interface ChangesViewProps {
  * The draft against the version it was created from (F12 ·3, Changes view).
  *
  * Grouped by what happened rather than listed row by row: "removed" is the one
- * that needs explaining — a division is never deleted, it is folded into a
+ * that needs explaining. A division is never deleted, it is folded into a
  * neighbour, and the players in it move there.
  */
-export function ChangesView({ base, bands, baseLabel }: Readonly<ChangesViewProps>) {
+export function ChangesView({ ladder, base, bands, baseLabel }: Readonly<ChangesViewProps>) {
   const t = useTranslations("adminSettings.divisions");
   const diff = diffBands(base, bands);
   const total =
@@ -48,7 +49,7 @@ export function ChangesView({ base, bands, baseLabel }: Readonly<ChangesViewProp
 
   return (
     <div className="flex flex-col gap-4">
-      <p className={cn(EYEBROW_CLASS, "font-mono")}>
+      <p className={eyebrowClass("muted")}>
         {t("changes.summary", { base: baseLabel, count: total })}
       </p>
 
@@ -56,9 +57,8 @@ export function ChangesView({ base, bands, baseLabel }: Readonly<ChangesViewProp
         {diff.added.map((band) => (
           <Row
             key={band.slug}
-            left="—"
             right={`${band.number}. ${band.name}`}
-            detail={spanLabel(band)}
+            detail={spanLabel(ladder, band)}
           />
         ))}
       </Group>
@@ -68,8 +68,7 @@ export function ChangesView({ base, bands, baseLabel }: Readonly<ChangesViewProp
           <Row
             key={band.slug}
             left={`${band.number}. ${band.name}`}
-            right="—"
-            detail={spanLabel(band)}
+            detail={spanLabel(ladder, band)}
           />
         ))}
       </Group>
@@ -78,8 +77,8 @@ export function ChangesView({ base, bands, baseLabel }: Readonly<ChangesViewProp
         {diff.moved.map(({ before, after }) => (
           <Row
             key={after.slug}
-            left={spanLabel(before)}
-            right={spanLabel(after)}
+            left={spanLabel(ladder, before)}
+            right={spanLabel(ladder, after)}
             detail={after.name}
           />
         ))}
@@ -91,7 +90,7 @@ export function ChangesView({ base, bands, baseLabel }: Readonly<ChangesViewProp
             key={after.slug}
             left={before.name}
             right={after.name}
-            detail={spanLabel(after)}
+            detail={spanLabel(ladder, after)}
           />
         ))}
       </Group>
@@ -99,6 +98,7 @@ export function ChangesView({ base, bands, baseLabel }: Readonly<ChangesViewProp
   );
 }
 
+/** `count` only decides whether the group shows: the rows under the title are the count. */
 function Group({
   title,
   count,
@@ -107,19 +107,18 @@ function Group({
   if (count === 0) return null;
   return (
     <section className="flex flex-col gap-1">
-      <h3 className="text-sm font-semibold">
-        {title} <span className="font-mono tabular-nums text-muted-foreground">{count}</span>
-      </h3>
-      <ul className="divide-y divide-border rounded-xl border border-border bg-card">{children}</ul>
+      <h3 className="text-sm font-semibold">{title}</h3>
+      <ul className="divide-y divide-border border-y border-border">{children}</ul>
     </section>
   );
 }
 
+/** One change as before → after; an added band has no before, a removed one no after. */
 function Row({
   left,
   right,
   detail
-}: Readonly<{ left: string; right: string; detail: string }>) {
+}: Readonly<{ left?: string; right?: string; detail: string }>) {
   return (
     <li className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 py-2 text-sm">
       <span className="min-w-0 truncate text-muted-foreground">{left}</span>
@@ -128,7 +127,7 @@ function Row({
       </span>
       <span className="min-w-0 truncate">
         {right}
-        <span className="ml-2 font-mono text-xs text-muted-foreground">{detail}</span>
+        <span className="ml-2 text-xs tabular-nums text-muted-foreground">{detail}</span>
       </span>
     </li>
   );

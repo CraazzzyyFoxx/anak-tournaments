@@ -4,6 +4,7 @@ import { ChevronDown, HelpCircle, LogOut, Monitor, Smartphone } from "lucide-rea
 import { useNow, useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
+import { SettingGroup } from "@/components/kit/SettingRow";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
@@ -15,10 +16,8 @@ import { cn } from "@/lib/utils";
 import type { AccountSession } from "@/types/auth.types";
 import { Spinner } from "@/components/ui/spinner";
 
-import { SETTINGS_GROUP_HEADING_CLASS, SettingsGroup } from "./SettingsGroup";
-
-const ROW_CLASS =
-  "flex items-center gap-3 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] px-3 py-2.5";
+/** One body row of the sessions group: hairlines come from the group's `divide-y`. */
+const ROW_CLASS = "flex items-center gap-3 py-3 first:pt-0 last:pb-0";
 
 type Meta = { text: string; title?: string };
 
@@ -143,17 +142,6 @@ export default function AccountSessionsSection() {
   const { data, isLoading, isError, refetch } = useAccountSessions();
   const revoke = useRevokeAccountSession();
 
-  if (isLoading) {
-    return (
-      <div className="space-y-3" aria-hidden>
-        <Skeleton className="h-5 w-40" />
-        {["a", "b", "c"].map((key) => (
-          <Skeleton key={key} className="h-15 rounded-lg" />
-        ))}
-      </div>
-    );
-  }
-
   if (isError) {
     return <PageStateCard state="error" title={t("loadFailed")} onAction={() => void refetch()} />;
   }
@@ -174,44 +162,59 @@ export default function AccountSessionsSection() {
   };
 
   return (
-    <div className="space-y-8">
-      <SettingsGroup title={t("activeTitle")} description={t("activeDesc")}>
-        <ul className="space-y-2">
-          {active.map((session) => (
-            <SessionRow
-              key={session.session_id}
-              session={session}
-              now={now}
-              pending={revoke.isPending && revoke.variables === session.session_id}
-              onRevoke={session.is_current ? undefined : handleRevoke}
-            />
-          ))}
-        </ul>
-        {hasOthers ? null : (
-          <p className="text-caption text-[color:var(--aqt-fg-dim)]">{t("noOtherActive")}</p>
-        )}
-      </SettingsGroup>
+    <SettingGroup id="security-sessions" level={4} title={t("activeTitle")} description={t("activeDesc")}>
+      {isLoading ? (
+        // Shaped like the device rows, so nothing moves when they land.
+        ["a", "b"].map((key) => (
+          <div key={key} aria-hidden className={ROW_CLASS}>
+            <Skeleton className="size-9 shrink-0" />
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-3 w-56 max-w-full" />
+            </div>
+          </div>
+        ))
+      ) : (
+        <>
+          {active.length > 0 ? (
+            <ul className="divide-y divide-border/60 py-3 first:pt-0 last:pb-0">
+              {active.map((session) => (
+                <SessionRow
+                  key={session.session_id}
+                  session={session}
+                  now={now}
+                  pending={revoke.isPending && revoke.variables === session.session_id}
+                  onRevoke={session.is_current ? undefined : handleRevoke}
+                />
+              ))}
+            </ul>
+          ) : null}
+          {hasOthers ? null : (
+            <p className="py-3 text-caption text-[color:var(--aqt-fg-dim)] first:pt-0 last:pb-0">
+              {t("noOtherActive")}
+            </p>
+          )}
 
-      {/* Ended sessions only matter when auditing, so they start collapsed. */}
-      {ended.length > 0 ? (
-        <details className="group space-y-3">
-          <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-            <h4 className={SETTINGS_GROUP_HEADING_CLASS}>{t("historyTitle")}</h4>
-            <span className="text-caption tabular-nums text-[color:var(--aqt-fg-dim)]">
-              {ended.length}
-            </span>
-            <ChevronDown
-              aria-hidden
-              className="size-4 text-[color:var(--aqt-fg-muted)] transition-transform group-open:rotate-180"
-            />
-          </summary>
-          <ul className="space-y-2">
-            {ended.map((session) => (
-              <SessionRow key={session.session_id} session={session} now={now} pending={false} />
-            ))}
-          </ul>
-        </details>
-      ) : null}
-    </div>
+          {/* Ended sessions only matter when auditing, so they start collapsed. */}
+          {ended.length > 0 ? (
+            <details className="group py-3 first:pt-0 last:pb-0">
+              <summary className="flex min-h-9 cursor-pointer list-none items-center gap-2 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+                <span className="text-body font-medium text-[color:var(--aqt-fg)]">{t("historyTitle")}</span>
+                <span className="aqt-tnum text-caption text-[color:var(--aqt-fg-dim)]">{ended.length}</span>
+                <ChevronDown
+                  aria-hidden
+                  className="ms-auto size-4 text-[color:var(--aqt-fg-muted)] transition-transform group-open:rotate-180"
+                />
+              </summary>
+              <ul className="mt-3 divide-y divide-border/60">
+                {ended.map((session) => (
+                  <SessionRow key={session.session_id} session={session} now={now} pending={false} />
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </>
+      )}
+    </SettingGroup>
   );
 }

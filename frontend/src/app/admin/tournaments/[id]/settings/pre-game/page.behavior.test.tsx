@@ -27,7 +27,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
-import type { PickBanConfig, PickBanRuleset, Stage } from "@/types/tournament.types";
+import { catalogEntity, catalogMap, catalogMode } from "@/test/catalog";
+import type { PickBanConfig, PickBanRulesCatalog, PickBanRuleset, Stage } from "@/types/tournament.types";
 
 import PreGameSettingsPage from "./page";
 
@@ -72,12 +73,12 @@ vi.mock("@/services/pickBan.service", () => ({
   }
 }));
 
-vi.mock("@/services/hero.service", () => ({
-  default: { getAll: (...args: unknown[]) => getHeroes(...args) }
-}));
-
-vi.mock("@/services/map.service", () => ({
-  default: { getAll: (...args: unknown[]) => getMaps(...args) }
+// One native catalog read serves both kinds; the editor asks for its tournament's own game.
+vi.mock("@/services/catalog.service", () => ({
+  default: {
+    list: (discipline: string, kind: string, ...rest: unknown[]) =>
+      kind === "map" ? getMaps(discipline, kind, ...rest) : getHeroes(discipline, kind, ...rest)
+  }
 }));
 
 vi.mock("@/lib/notify", () => ({
@@ -136,30 +137,28 @@ vi.mock("next/link", () => ({
   })
 }));
 
-const HEROES = ["Tracer", "Genji", "Reinhardt", "Ana", "Lucio", "Sombra"].map((name, index) => ({
-  id: index + 1,
-  name,
-  slug: name.toLowerCase(),
-  image_path: `/heroes/${index + 1}.png`,
-  type: "Damage",
-  role: "damage"
-}));
+const HEROES = ["Tracer", "Genji", "Reinhardt", "Ana", "Lucio", "Sombra"].map((name, index) =>
+  catalogEntity({
+    id: index + 1,
+    name,
+    slug: name.toLowerCase(),
+    image_path: `/heroes/${index + 1}.png`,
+    attrs: { class: "damage" }
+  })
+);
 
-const MAPS = ["Busan", "King's Row", "Ilios", "Hollywood"].map((name, index) => ({
-  id: index + 1,
-  name,
-  image_path: `/maps/${index + 1}.png`,
-  gamemode: { name: index % 2 === 0 ? "Control" : "Hybrid" },
-  in_competitive: true
-}));
+const MAPS = ["Busan", "King's Row", "Ilios", "Hollywood"].map((name, index) =>
+  catalogMap(index + 1, catalogMode(50 + (index % 2), index % 2 === 0 ? "Control" : "Hybrid"), {
+    name,
+    image_path: `/maps/${index + 1}.png`
+  })
+);
 // A brawl-only map, never offered in a ranked pool.
-const OFF_ROTATION_MAP = {
-  id: 99,
+const OFF_ROTATION_MAP = catalogMap(99, catalogMode(52, "Elimination"), {
   name: "Junkenstein's Revenge",
   image_path: "/maps/99.png",
-  gamemode: { name: "Elimination" },
-  in_competitive: false
-};
+  attrs: { in_competitive: false }
+});
 
 const STAGES = [
   {
@@ -174,7 +173,7 @@ const STAGES = [
     order: 1,
     is_active: true,
     is_completed: false,
-    best_of: { default: 3, by_round: {}, final: null },
+    best_of: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
     challonge_id: null,
     challonge_slug: null,
     items: []
@@ -191,7 +190,7 @@ const STAGES = [
     order: 2,
     is_active: false,
     is_completed: false,
-    best_of: { default: 5, by_round: {}, final: null },
+    best_of: { default: 5, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
     challonge_id: null,
     challonge_slug: null,
     items: []
@@ -326,10 +325,73 @@ const CATALOG = {
   ],
   groups: { hero: ["Tank", "Damage", "Support"], map: ["Control", "Hybrid"] },
   presets: [
-    { id: "hero_anti_one_trick", kind: "hero" as const, modes: ["pool" as const], ruleset: ANTI_ONE_TRICK },
-    { id: "map_bracket", kind: "map" as const, modes: ["pool" as const], ruleset: TOURNAMENT_MAP_CONFIG.ruleset }
+    {
+      id: "hero_anti_one_trick",
+      kind: "hero" as const,
+      modes: ["pool" as const],
+      ruleset: ANTI_ONE_TRICK,
+      first_ban_rotation: null,
+      mix_eligible: true
+    },
+    {
+      id: "map_bracket",
+      kind: "map" as const,
+      modes: ["pool" as const],
+      ruleset: TOURNAMENT_MAP_CONFIG.ruleset,
+      first_ban_rotation: null,
+      mix_eligible: false
+    }
   ]
 };
+
+/** League's module preset (contracts §1): one side choice by the opener, no champion consumed. */
+const LOL_PRESET_RULESET: PickBanRuleset = {
+  version: 2,
+  timer_seconds: 90,
+  on_timeout: "random_fill",
+  phases: [
+    {
+      id: "side_selection",
+      name: "Side selection",
+      when: {},
+      pool_filter: {},
+      generator: null,
+      steps: [
+        {
+          id: "choose_side",
+          action: "side_pick",
+          actors: "first",
+          count: 1,
+          min: null,
+          blind: false,
+          target: null,
+          lifetime: null,
+          timer_seconds: null,
+          on_timeout: null,
+          dispute: { enabled: false, max: 0 },
+          eligible: {},
+          constraints: []
+        }
+      ]
+    }
+  ]
+};
+const LOL_CATALOG = {
+  ...CATALOG,
+  groups: { hero: ["Mage", "Fighter"], map: [] },
+  presets: [
+    {
+      id: "lol_side_selection",
+      kind: "hero" as const,
+      modes: ["pool" as const],
+      ruleset: LOL_PRESET_RULESET,
+      first_ban_rotation: "result_loser_first" as const,
+      mix_eligible: true
+    },
+    CATALOG.presets[1]
+  ]
+};
+const CATALOG_BY_DISCIPLINE: Record<string, PickBanRulesCatalog> = { overwatch: CATALOG, lol: LOL_CATALOG };
 
 let container: HTMLDivElement;
 let root: Root;
@@ -366,6 +428,8 @@ interface MountOptions {
   encounters?: Array<{ stage_id: number | null; round: number; best_of: number }>;
   /** Initial query string, e.g. `?scope=tournament&kind=hero&step=sides`. */
   url?: string;
+  /** The tournament's own game; League unless a test is about another one. */
+  discipline?: string;
 }
 
 async function mount({
@@ -373,13 +437,14 @@ async function mount({
   maps = MAPS,
   stages = STAGES,
   encounters = ENCOUNTERS,
-  url = "?scope=tournament&kind=map&step=pool"
+  url = "?scope=tournament&kind=map&step=pool",
+  discipline = "lol"
 }: MountOptions = {}) {
   listConfigs.mockResolvedValue({ configs });
   getHeroes.mockResolvedValue({ results: HEROES });
   getMaps.mockResolvedValue({ results: maps });
   getStages.mockResolvedValue(stages);
-  getTournament.mockResolvedValue({ id: 84, workspace_id: 3, team_formation: "balancer" });
+  getTournament.mockResolvedValue({ id: 84, workspace_id: 3, team_formation: "balancer", discipline });
   getEncounters.mockResolvedValue({ results: encounters });
 
   search = new URL(url, "http://localhost").search;
@@ -405,6 +470,10 @@ async function mount({
 async function click(element: Element) {
   await act(async () => {
     element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    // Radix tabs select on mousedown, which `click()` alone never sends.
+    if (element.getAttribute("role") === "tab") {
+      element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    }
     (element as HTMLElement).click();
   });
   await settle(4);
@@ -447,15 +516,20 @@ function option(label: string): HTMLElement {
   return found;
 }
 
-/** The step strip's button for one step. */
-function stepButton(index: number, label: string) {
-  return only(`${index} · ${label}`);
+/** The step tabs' trigger for one step. */
+function stepButton(label: string): HTMLElement {
+  const found = [...document.querySelectorAll<HTMLElement>('[role="tab"]')].find(
+    (element) => (element.textContent ?? "").trim() === label
+  );
+  if (!found) throw new Error(`no step tab named "${label}"`);
+  return found;
 }
 
 /** The editor pane: everything right of the scope tree. */
 function editor(): HTMLElement {
-  const nav = container.querySelector('nav[aria-label="Configuration steps"]');
-  const found = nav?.parentElement;
+  const tabs = container.querySelector('[role="tablist"][aria-label="Configuration steps"]');
+  // tablist → Tabs root → the editor column.
+  const found = tabs?.parentElement?.parentElement;
   if (!(found instanceof HTMLElement)) throw new Error("the editor is not open");
   return found;
 }
@@ -514,7 +588,7 @@ beforeEach(() => {
   upsertConfig.mockResolvedValue({});
   deleteConfig.mockResolvedValue({});
   getStagePlannedRounds.mockResolvedValue([]);
-  getRulesCatalog.mockResolvedValue(CATALOG);
+  getRulesCatalog.mockImplementation(async (discipline: string) => CATALOG_BY_DISCIPLINE[discipline]);
   validateRuleset.mockResolvedValue({ valid: true, issues: [] });
   previewRuleset.mockResolvedValue({ maps: [], issues: [] });
 });
@@ -542,7 +616,7 @@ describe("Settings › Pre-game phase — URL is the state", () => {
     await mount({ url: "?kind=map" });
 
     expect(container.textContent).toContain(en.pickBan.admin.pickScopeTitle);
-    expect(container.querySelector('nav[aria-label="Configuration steps"]')).toBeNull();
+    expect(container.querySelector('[role="tablist"][aria-label="Configuration steps"]')).toBeNull();
     // The tournament node is the place to start, and it carries the scope.
     expect(treeLink("Whole tournament").getAttribute("href")).toContain("scope=tournament");
   });
@@ -568,8 +642,8 @@ describe("Settings › Pre-game phase — URL is the state", () => {
       url: "?scope=stage:10&kind=map&step=pool"
     });
 
-    expect(editor().querySelector("h2")?.textContent).toBe("Group stage — all rounds");
-    expect(editor().textContent).toContain("2 selected");
+    expect(editor().querySelector("h2")?.textContent).toBe("Group stage · all rounds");
+    expect(editor().querySelectorAll('button[aria-label^="Remove "]')).toHaveLength(2);
   });
 
   it("follows a scope link into the URL and re-reads it", async () => {
@@ -578,7 +652,7 @@ describe("Settings › Pre-game phase — URL is the state", () => {
     await click(treeLink("Playoffs"));
 
     expect(search).toContain("scope=stage:11");
-    expect(editor().querySelector("h2")?.textContent).toBe("Playoffs — all rounds");
+    expect(editor().querySelector("h2")?.textContent).toBe("Playoffs · all rounds");
   });
 
   it("switches Pool · Rules · Sides through ?step=", async () => {
@@ -586,11 +660,11 @@ describe("Settings › Pre-game phase — URL is the state", () => {
 
     expect(editor().textContent).toContain(en.pickBan.admin.poolSection);
 
-    await click(stepButton(2, "Rules"));
+    await click(stepButton("Rules"));
     expect(new URLSearchParams(search).get("step")).toBe("rules");
     expect(editor().textContent).toContain(en.pickBan.rules.hint);
 
-    await click(stepButton(3, "Sides"));
+    await click(stepButton("Sides"));
     expect(new URLSearchParams(search).get("step")).toBe("sides");
     expect(editor().textContent).toContain(en.pickBan.admin.rulesSection);
   });
@@ -598,7 +672,7 @@ describe("Settings › Pre-game phase — URL is the state", () => {
   it("restores the step named by the URL on load", async () => {
     await mount({ url: "?scope=tournament&kind=hero&step=sides" });
 
-    expect(stepButton(3, "Sides").getAttribute("aria-current")).toBe("step");
+    expect(stepButton("Sides").getAttribute("aria-selected")).toBe("true");
     expect(editor().textContent).toContain(en.pickBan.admin.rulesSection);
   });
 
@@ -606,6 +680,7 @@ describe("Settings › Pre-game phase — URL is the state", () => {
     await mount({ url: "?scope=tournament&kind=map&step=pool" });
 
     expect(getMaps).toHaveBeenCalledTimes(1);
+    expect(getMaps.mock.calls[0].slice(0, 2)).toEqual(["lol", "map"]);
     expect(getHeroes).not.toHaveBeenCalled();
 
     await click(only("Add maps"));
@@ -666,7 +741,7 @@ describe("Settings › Pre-game phase will not send a config the server rejects"
     await click(only("Save rules"));
     expect(upsertConfig).not.toHaveBeenCalled();
 
-    await click(stepButton(2, "Rules"));
+    await click(stepButton("Rules"));
     await click(only("Sequential ban"));
 
     expect(editor().textContent).not.toContain("has no steps");
@@ -700,7 +775,7 @@ describe("Settings › Pre-game phase will not send a config the server rejects"
     await click(only("Genji"));
     await click(only("Tracer"));
     await click(only("Ana"));
-    await click(stepButton(2, "Rules"));
+    await click(stepButton("Rules"));
     await click(only("Simultaneous blind ban"));
     await click(only("Save rules"));
 
@@ -761,7 +836,7 @@ describe("Settings › Pre-game phase keeps the stored rules", () => {
   // The 2026-10-03 regulation is a preset rather than a board an organizer
   // rebuilds by hand under deadline; loading it has to land every phase.
   it("loads a preset onto the board and saves it verbatim", async () => {
-    await mount({ url: "?scope=tournament&kind=hero&step=rules" });
+    await mount({ url: "?scope=tournament&kind=hero&step=rules", discipline: "overwatch" });
 
     await click(only(en.pickBan.rules.presets));
     await click(option(en.pickBan.rules.preset.hero_anti_one_trick));
@@ -778,6 +853,73 @@ describe("Settings › Pre-game phase keeps the stored rules", () => {
 
     const body = upsertConfig.mock.calls[0][1];
     expect(body.ruleset).toEqual(ANTI_ONE_TRICK);
+    // This module preset declares no rotation: the stored default stays what it was.
+    expect(body.first_ban_rotation).toBe("fixed");
+  });
+
+  it("asks for the tournament's own discipline, with a cancellation signal, and offers only its presets", async () => {
+    await mount({ url: "?scope=tournament&kind=hero&step=rules" });
+
+    expect(getRulesCatalog).toHaveBeenCalledTimes(1);
+    expect(getRulesCatalog.mock.calls[0][0]).toBe("lol");
+    expect(getRulesCatalog.mock.calls[0][1]).toBeInstanceOf(AbortSignal);
+    await click(only(en.pickBan.rules.presets));
+    expect(option(en.pickBan.rules.preset.lol_side_selection)).toBeTruthy();
+    expect(() => option(en.pickBan.rules.preset.hero_anti_one_trick)).toThrow();
+  });
+
+  it("applies the rotation a module preset declares, saves it, and reopens with it", async () => {
+    await mount({
+      configs: [CUSTOM_HERO_CONFIG],
+      url: "?scope=stage:11&kind=hero&step=rules"
+    });
+    expect(CUSTOM_HERO_CONFIG.first_ban_rotation).toBe("alternate");
+
+    await click(only(en.pickBan.rules.presets));
+    await click(option(en.pickBan.rules.preset.lol_side_selection));
+    // The side step reads as one on the board and in its inspector — never as a missing key.
+    const sidePick = `${en.pickBan.rules.action.side_pick} · ${en.pickBan.rules.actors.first}`;
+    const row = [...editor().querySelectorAll<HTMLElement>("button[aria-pressed]")].find((element) =>
+      (element.textContent ?? "").includes(sidePick)
+    );
+    expect(row).toBeTruthy();
+    await click(row!);
+    const actionLabel = [...editor().querySelectorAll("label")].find(
+      (element) => (element.textContent ?? "").trim() === en.pickBan.rules.step.action
+    );
+    const trigger = document.getElementById(actionLabel?.getAttribute("for") ?? "");
+    expect(trigger?.textContent).toContain(en.pickBan.rules.action.side_pick);
+    await click(only("Save rules"));
+
+    const body = upsertConfig.mock.calls[0][1];
+    expect(body.ruleset).toEqual(LOL_PRESET_RULESET);
+    expect(body.first_ban_rotation).toBe("result_loser_first");
+    expect(body.stage_id).toBe(11);
+
+    // Reopen against what the server stored: the Sides step reads the preset's rotation back.
+    act(() => root.unmount());
+    container.remove();
+    await mount({
+      configs: [{ ...CUSTOM_HERO_CONFIG, ruleset: body.ruleset, first_ban_rotation: body.first_ban_rotation }],
+      url: "?scope=stage:11&kind=hero&step=sides"
+    });
+    expect(editor().textContent).toContain(en.pickBan.admin.firstBanRotationValue.result_loser_first);
+  });
+
+  it("keeps the organizer's rotation when the chosen preset declares none", async () => {
+    await mount({
+      configs: [CUSTOM_HERO_CONFIG],
+      url: "?scope=stage:11&kind=hero&step=rules",
+      discipline: "overwatch"
+    });
+
+    await click(only(en.pickBan.rules.presets));
+    await click(option(en.pickBan.rules.preset.hero_anti_one_trick));
+    await click(only("Save rules"));
+
+    const body = upsertConfig.mock.calls[0][1];
+    expect(body.ruleset).toEqual(ANTI_ONE_TRICK);
+    expect(body.first_ban_rotation).toBe("alternate");
   });
 });
 
@@ -906,14 +1048,15 @@ describe("Settings › Pre-game phase's picker searches by name and adds/clears 
   it("the group filter narrows the picker to one game mode", async () => {
     await openMapPicker();
     // Busan / Ilios are Control, King's Row / Hollywood are Hybrid.
-    await click(only("Control (2)"));
+    // The chip's count is its own span: "Control" then "2".
+    await click(only("Control2"));
 
     expect(only("Busan")).toBeTruthy();
     expect(only("Ilios")).toBeTruthy();
     expect(() => only("King's Row")).toThrow();
     expect(() => only("Hollywood")).toThrow();
 
-    await click(only("All (4)"));
+    await click(only("All"));
     expect(only("King's Row")).toBeTruthy();
   });
 });
@@ -999,7 +1142,7 @@ describe("Settings › Pre-game phase predicts a round scope before the bracket 
     await openPlayoffs();
     await settle();
 
-    expect(tree().textContent).toContain("isn't built yet, and no teams are wired into it either");
+    expect(tree().textContent).toContain(en.pickBan.admin.roundHintUnknown);
   });
 });
 
@@ -1015,7 +1158,7 @@ describe("Settings › Pre-game phase prefills a narrower scope from the rules a
     });
 
     expect(editor().textContent).toContain("Prefilled from Whole tournament");
-    expect(editor().textContent).toContain("4 selected");
+    expect(editor().querySelectorAll('button[aria-label^="Remove "]')).toHaveLength(4);
     expect(editor().textContent).toContain("Busan");
   });
 
@@ -1052,8 +1195,8 @@ describe("Settings › Pre-game phase prefills a narrower scope from the rules a
       url: "?scope=round:10:1&kind=map&step=pool"
     });
 
-    expect(editor().textContent).toContain("Prefilled from Group stage — all rounds");
-    expect(editor().textContent).toContain("2 selected");
+    expect(editor().textContent).toContain("Prefilled from Group stage · all rounds");
+    expect(editor().querySelectorAll('button[aria-label^="Remove "]')).toHaveLength(2);
   });
 
   it("marks in the tree which scopes decide something and which only repeat", async () => {
@@ -1236,7 +1379,8 @@ describe("Settings › Pre-game phase authors every round of a stage at once", (
     const text = editor().textContent ?? "";
     expect(text).toContain("Round 1");
     expect(text).toContain("Round 2");
-    expect(text).toContain("3 matches");
+    // Round 1's three match groups, one row each.
+    expect(text).toContain("Match 3");
     // Round 2's own stored maps, not the stage-wide ones round 1 falls back to.
     expect(text).toContain("Hollywood");
   });
@@ -1289,7 +1433,7 @@ describe("Settings › Pre-game phase authors every round of a stage at once", (
     // Two rounds of three groups: every one of them is on screen asking to be
     // filled, rather than an empty list with a validation error under it.
     expect(byName("Add maps")).toHaveLength(6);
-    expect(text).toContain("no candidates");
+    expect(text).toContain("Match 1");
   });
 
   it("reopens on the groups its rounds store, with nothing at the stage level", async () => {
@@ -1396,7 +1540,7 @@ describe("Settings › Pre-game phase authors every round of a stage at once", (
     });
 
     const text = editor().textContent ?? "";
-    expect(text).toContain("apply to every round of it");
+    expect(text).toContain(en.pickBan.admin.roundsUnknownStageWide);
     expect(text).toContain("Match 1");
     expect(text).not.toContain("Round 1");
   });
@@ -1421,7 +1565,7 @@ describe("Settings › Pre-game phase only guards edits an organizer made", () =
     await click(treeLink("Round 2"));
 
     expect(document.body.textContent).not.toContain("Discard unsaved changes?");
-    expect(editor().textContent).toContain("Group stage — round 2");
+    expect(editor().textContent).toContain("Group stage · round 2");
   });
 
   it("still stops a scope switch that would lose an edit", async () => {
@@ -1435,6 +1579,6 @@ describe("Settings › Pre-game phase only guards edits an organizer made", () =
     await click(treeLink("Round 2"));
 
     expect(document.body.textContent).toContain("Discard unsaved changes?");
-    expect(editor().textContent).toContain("Group stage — round 1");
+    expect(editor().textContent).toContain("Group stage · round 1");
   });
 });

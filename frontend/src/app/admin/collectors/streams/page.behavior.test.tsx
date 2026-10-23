@@ -66,7 +66,16 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
+  default: ({
+    href,
+    children,
+    prefetch: _prefetch,
+    ...rest
+  }: {
+    href: string;
+    children: ReactNode;
+    prefetch?: boolean | null;
+  }) => (
     <a href={href} {...rest}>
       {children}
     </a>
@@ -161,10 +170,13 @@ describe("StreamCollectorPage", () => {
     expect(getStreamPollHealth).toHaveBeenCalled();
     expect(container.textContent).toContain("Last tick OK");
     // The tick log sits under the health, and shows the failure the latest
-    // tick's status has already overwritten.
+    // tick's status has already overwritten: the wording, with the raw token
+    // kept as the tooltip for reading it next to the service logs.
     expect(getStreamPollTicks).toHaveBeenCalled();
     expect(container.textContent).toContain("Task history");
-    expect(container.textContent).toContain("unauthorized");
+    expect(container.querySelector('[title="unauthorized"]')?.textContent).toBe(
+      "Twitch rejected the credentials"
+    );
   });
 
   it("refuses a workspace-scoped stream.read holder: the poller is platform-wide", async () => {
@@ -172,7 +184,7 @@ describe("StreamCollectorPage", () => {
     workspaceGrants = ["stream.read"];
     const container = await mount();
 
-    expect(container.textContent).toContain("global stream.read");
+    expect(container.textContent).toContain("The poller is platform-wide");
     expect(getStreamPollHealth).not.toHaveBeenCalled();
     expect(getStreamPollTicks).not.toHaveBeenCalled();
   });

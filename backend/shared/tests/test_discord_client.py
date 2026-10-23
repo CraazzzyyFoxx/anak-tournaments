@@ -1,17 +1,20 @@
-"""``DiscordClient``: discord-service first, Discord REST only when it is silent.
+"""``DiscordClient``: every Discord read is one RPC to discord-service, nothing else.
 
-Stdlib unittest like its siblings. The REST hop is stubbed at ``_http_get`` so
-nothing here touches the network.
+Stdlib unittest like its siblings. The broker is a mock whose ``request``
+returns a FastStream-shaped message (``decode()`` hands back the body).
 """
 
 from __future__ import annotations
 
+import asyncio
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
+from shared.messaging.config import DISCORD_GUILD_ROLES_QUEUE, DISCORD_MEMBER_ROLES_QUEUE, DISCORD_VOICE_MOVE_QUEUE
 from shared.schemas.rpc import rpc_error, rpc_ok
 from shared.services.discord_client import DiscordClient
-from shared.services.subscriptions.providers.discord_role import (
+from shared.services.discord_errors import (
+    DiscordError,
     DiscordForbidden,
     DiscordNotConfigured,
     DiscordUnavailable,
@@ -30,7 +33,7 @@ def _broker(*replies):
 
 
 class TestMembers(IsolatedAsyncioTestCase):
-    async def test_batch_prefetch_serves_every_member_read_from_one_rpc(self):
+    async def test_prefetch_serves_every_member_read_from_one_rpc(self):
         broker = _broker(
             _reply(
                 rpc_ok(
@@ -41,143 +44,101 @@ class TestMembers(IsolatedAsyncioTestCase):
                 )
             )
         )
-        client = DiscordClient(broker=broker, bot_token="t")
+        client = DiscordClient(broker=broker)
 
-        with patch.object(DiscordClient, "_http_get", AsyncMock()) as rest:
-            assert await client.prefetch("g", ["b", "a", "a"])
-            assert await client.member_roles("g", "a") == ["2"]
-            with self.assertRaises(MemberNotFound):
-                await client.member_roles("g", "b")
-            assert await client.is_member("g", "a") is True
-            assert await client.is_member("g", "b") is False
-            # The role-id set rode along in the batch: no second RPC for it.
-            assert await client.guild_role_ids("g") == {"1", "2"}
+        await client.prefetch("g", ["b", "a", "a", ""])
+        assert await client.member_roles("g", "a") == ["2"]
+        with self.assertRaises(MemberNotFound):
+            await client.member_roles("g", "b")
+        # The role-id set rode along in the batch: no second RPC for it.
+        assert await client.guild_role_ids("g") == {"1", "2"}
 
         broker.request.assert_awaited_once()
-        assert broker.request.await_args.args[0] == {"guild_id": "g", "user_ids": ["a", "b"]}
-        rest.assert_not_awaited()
+        assert broker.request.await_args.args[:2] == (
+            {"guild_id": "g", "user_ids": ["a", "b"]},
+            DISCORD_MEMBER_ROLES_QUEUE,
+        )
 
-    async def test_rest_answers_when_discord_service_is_down(self):
-        broker = _broker(RuntimeError("no broker"), RuntimeError("no broker"))
-        client = DiscordClient(broker=broker, bot_token="t")
-        rest = AsyncMock(side_effect=[{"roles": ["7"]}, MemberNotFound("404")])
+    async def test_prefetch_of_nobody_asks_nothing(self):
+        broker = _broker()
+        await DiscordClient(broker=broker).prefetch("g", ["", None])  # type: ignore[list-item]
+        broker.request.assert_not_awaited()
 
-        with patch.object(DiscordClient, "_http_get", rest):
-            assert await client.member_roles("g", "a") == ["7"]
-            assert await client.is_member("g", "b") is False
-            # Memoized: asking again costs nothing.
-            assert await client.member_roles("g", "a") == ["7"]
+    async def test_an_unknown_member_is_asked_about_once(self):
+        broker = _broker(_reply(rpc_ok({"guild_role_ids": [], "members": {"a": {"found": True, "roles": ["7"]}}})))
+        client = DiscordClient(broker=broker)
 
-        assert rest.await_count == 2
+        assert await client.member_roles("g", "a") == ["7"]
+        assert await client.member_roles("g", "a") == ["7"]
+        broker.request.assert_awaited_once()
 
-    async def test_peer_error_is_not_a_verdict(self):
-        """``guild_not_found`` from discord-service means "ask Discord yourself"."""
-        client = DiscordClient(broker=_broker(_reply(rpc_error("not_found", "guild_not_found"))), bot_token="t")
-        with patch.object(DiscordClient, "_http_get", AsyncMock(return_value={"roles": ["9"]})):
-            assert await client.member_roles("g", "a") == ["9"]
-
-    async def test_no_broker_and_no_token_is_not_configured(self):
-        client = DiscordClient()
-        with self.assertRaises(DiscordNotConfigured):
+    async def test_a_member_the_bot_does_not_mention_is_not_found(self):
+        client = DiscordClient(broker=_broker(_reply(rpc_ok({"guild_role_ids": [], "members": {}}))))
+        with self.assertRaises(MemberNotFound):
             await client.member_roles("g", "a")
 
 
-class TestGuildReads(IsolatedAsyncioTestCase):
-    async def test_rest_role_and_channel_shapes_match_discord_service(self):
-        client = DiscordClient(bot_token="t")
-        rest = AsyncMock(
-            side_effect=[
-                [
-                    {"id": 1, "name": "low", "color": 0, "position": 0, "managed": False},
-                    {"id": 2, "name": "high", "color": 0xFF, "position": 5, "managed": True},
-                ],
-                [
-                    {"id": 10, "type": 4, "name": "Cat", "position": 0},
-                    {"id": 11, "type": 0, "name": "b", "position": 2, "parent_id": 10},
-                    {"id": 13, "type": 2, "name": "voice", "position": 1, "parent_id": 10},
-                    {"id": 14, "type": 15, "name": "forum", "position": 3},
-                ],
-            ]
-        )
-        with patch.object(DiscordClient, "_http_get", rest):
-            roles = await client.guild_roles("g")
-            channels = await client.guild_channels("g")
+class TestErrors(IsolatedAsyncioTestCase):
+    async def test_no_broker_is_not_configured(self):
+        client = DiscordClient()
+        with self.assertRaises(DiscordNotConfigured):
+            await client.member_roles("g", "a")
+        with self.assertRaises(DiscordNotConfigured):
+            await client.voice_move("5", category_id="10", moves=[], drain=None)
 
-        assert roles == [
-            {"id": "2", "name": "high", "color": "#0000ff", "position": 5, "managed": True},
-            {"id": "1", "name": "low", "color": None, "position": 0, "managed": False},
-        ]
-        # The REST fallback knows the channels but not the bot's member, so no
-        # permission verdict is "all granted"; forums are not pickable at all.
-        assert channels == [
-            {
-                "id": "10",
-                "name": "Cat",
-                "type": "category",
-                "category_id": None,
-                "category_name": None,
-                "position": 0,
-                "missing_permissions": None,
-            },
-            {
-                "id": "13",
-                "name": "voice",
-                "type": "voice",
-                "category_id": "10",
-                "category_name": "Cat",
-                "position": 1,
-                "missing_permissions": None,
-            },
-            {
-                "id": "11",
-                "name": "b",
-                "type": "text",
-                "category_id": "10",
-                "category_name": "Cat",
-                "position": 2,
-                "missing_permissions": None,
-            },
-        ]
+    async def test_a_transport_failure_or_silence_is_unavailable(self):
+        for failure in (RuntimeError("no broker"), TimeoutError("no answer"), _reply("not an envelope")):
+            with self.assertRaises(DiscordUnavailable, msg=repr(failure)):
+                await DiscordClient(broker=_broker(failure)).guild_roles("g")
 
-    async def test_guild_info_survives_an_unreadable_owner(self):
-        client = DiscordClient(bot_token="t")
-        rest = AsyncMock(
-            side_effect=[
-                {"name": "S", "icon": "abc", "owner_id": "5", "approximate_member_count": 42},
-                DiscordForbidden("403"),
-            ]
-        )
-        with patch.object(DiscordClient, "_http_get", rest):
-            info = await client.guild_info("g")
-
-        assert info == {
-            "guild_id": "g",
-            "connected": True,
-            "name": "S",
-            "icon_url": "https://cdn.discordapp.com/icons/g/abc.png",
-            "member_count": 42,
-            "owner_id": "5",
-            "owner_name": None,
-            "owner_avatar_url": None,
+    async def test_peer_errors_keep_their_meaning(self):
+        """``not_found``: the bot is not in that guild -- an organizer fault, not an outage."""
+        cases = {
+            "not_found": DiscordForbidden,
+            "bad_request": DiscordError,
+            "internal": DiscordUnavailable,
         }
+        for code, expected in cases.items():
+            client = DiscordClient(broker=_broker(_reply(rpc_error(code, "nope"))))
+            with self.assertRaises(DiscordError, msg=code) as raised:
+                await client.member_roles("g", "a")
+            assert type(raised.exception) is expected, code
 
-    async def test_a_guild_the_bot_cannot_see_is_forbidden(self):
-        client = DiscordClient(bot_token="t")
-        response = MagicMock(status_code=404)
-        http = MagicMock()
-        http.__aenter__ = AsyncMock(return_value=MagicMock(get=AsyncMock(return_value=response)))
-        http.__aexit__ = AsyncMock(return_value=False)
-        with patch("shared.services.discord_client.httpx.AsyncClient", return_value=http):
-            with self.assertRaises(DiscordForbidden):
-                await client.guild_roles("g")
+
+class TestGuildReads(IsolatedAsyncioTestCase):
+    async def test_guild_role_ids_are_fetched_once_for_a_concurrent_batch(self):
+        calls = 0
+
+        async def request(*_args, **_kwargs):
+            nonlocal calls
+            calls += 1
+            await asyncio.sleep(0)
+            return _reply(rpc_ok({"roles": [{"id": "1"}, {"id": 2}]}))
+
+        broker = AsyncMock()
+        broker.request.side_effect = request
+        client = DiscordClient(broker=broker)
+
+        results = await asyncio.gather(*(client.guild_role_ids("g") for _ in range(5)))
+
+        assert results == [{"1", "2"}] * 5
+        assert calls == 1
+        assert broker.request.await_args.args[:2] == ({"guild_id": "g"}, DISCORD_GUILD_ROLES_QUEUE)
+
+    async def test_guild_reads_hand_back_the_bots_own_shapes(self):
+        roles = [{"id": "2", "name": "high", "color": "#0000ff", "position": 5, "managed": True}]
+        channels = [{"id": "11", "name": "b", "type": "text", "missing_permissions": ["send_messages"]}]
+        client = DiscordClient(broker=_broker(_reply(rpc_ok({"roles": roles})), _reply(rpc_ok({"channels": channels}))))
+
+        assert await client.guild_roles("g") == roles
+        assert await client.guild_channels("g") == channels
 
 
 class TestVoiceMove(IsolatedAsyncioTestCase):
     async def test_the_bot_answers_per_person_for_the_documented_body(self):
         broker = _broker(_reply(rpc_ok({"results": [{"discord_user_id": "7", "status": "moved"}]})))
-        client = DiscordClient(broker=broker)
 
-        results = await client.voice_move(
+        results = await DiscordClient(broker=broker).voice_move(
             "5",
             category_id="10",
             moves=[{"discord_user_id": "7", "channel_id": "2"}],
@@ -185,18 +146,18 @@ class TestVoiceMove(IsolatedAsyncioTestCase):
         )
 
         assert results == [{"discord_user_id": "7", "status": "moved"}]
-        assert broker.request.await_args.args[0] == {
-            "guild_id": "5",
-            "category_id": "10",
-            "moves": [{"discord_user_id": "7", "channel_id": "2"}],
-            "drain": {"channel_ids": ["2"], "to_channel_id": "1"},
-        }
+        assert broker.request.await_args.args[:2] == (
+            {
+                "guild_id": "5",
+                "category_id": "10",
+                "moves": [{"discord_user_id": "7", "channel_id": "2"}],
+                "drain": {"channel_ids": ["2"], "to_channel_id": "1"},
+            },
+            DISCORD_VOICE_MOVE_QUEUE,
+        )
 
     async def test_a_dead_broker_is_unavailable_not_an_empty_move(self):
-        broker = _broker(TimeoutError("no answer"))
         with self.assertRaises(DiscordUnavailable):
-            await DiscordClient(broker=broker).voice_move("5", category_id="10", moves=[], drain=None)
-
-    async def test_without_a_broker_there_is_no_rest_fallback(self):
-        with self.assertRaises(DiscordUnavailable):
-            await DiscordClient(bot_token="t").voice_move("5", category_id="10", moves=[], drain=None)
+            await DiscordClient(broker=_broker(TimeoutError("no answer"))).voice_move(
+                "5", category_id="10", moves=[], drain=None
+            )

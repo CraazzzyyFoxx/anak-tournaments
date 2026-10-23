@@ -27,6 +27,10 @@ from shared.services.subscriptions.entitlements import (  # noqa: E402
     StoredEntitlement,
 )
 from src.services.registration.subscription_codes import redeem_challenge_code  # noqa: E402
+from src.services.registration.subscription_status import (  # noqa: E402
+    REDEEM_ATTEMPT_LIMIT,
+    assert_redeem_attempt_allowed,
+)
 
 NOW = datetime(2026, 8, 3, 12, 0, tzinfo=UTC)
 WS = 7
@@ -135,6 +139,7 @@ class TestRejection(IsolatedAsyncioTestCase):
         with self.assertRaises(HTTPException) as ctx:
             await _redeem(store, "nope")
         assert ctx.exception.status_code == 400
+        assert [item["code"] for item in ctx.exception.detail] == ["subscription_code_rejected"]
         assert store.upserts == []
 
     async def test_expired_code_is_rejected(self):
@@ -251,7 +256,7 @@ class TestVerificationMethodGatesRedemption(IsolatedAsyncioTestCase):
         store = _Store({"boosty": _config(_code("secret", 2), method=VerificationMethod.LIVE)})
         with self.assertRaises(HTTPException) as caught:
             await _redeem(store, "secret")
-        assert "не кодом" in caught.exception.detail
+        assert [item["code"] for item in caught.exception.detail] == ["subscription_code_not_accepted"]
 
     async def test_code_only_accepts_the_code(self):
         store = _Store({"boosty": _config(_code("secret", 2), method=VerificationMethod.CODE)})
@@ -273,4 +278,30 @@ class TestVerificationMethodGatesRedemption(IsolatedAsyncioTestCase):
         store = _Store({"boosty": _config(_code("secret", 1), method=VerificationMethod.CODE)})
         with self.assertRaises(HTTPException) as caught:
             await _redeem(store, "wrong")
-        assert "не кодом" not in caught.exception.detail
+        assert [item["code"] for item in caught.exception.detail] == ["subscription_code_rejected"]
+
+
+class _Counter:
+    """The two Redis calls the limiter makes."""
+
+    def __init__(self):
+        self.count = 0
+
+    async def incr(self, key):
+        self.count += 1
+        return self.count
+
+    async def expire(self, key, seconds):
+        return True
+
+
+class TestRedeemRateLimit(IsolatedAsyncioTestCase):
+    async def test_the_attempt_past_the_limit_is_refused_with_a_code(self):
+        """The client translates the code; a bare sentence left English users reading Russian."""
+        redis = _Counter()
+        for _ in range(REDEEM_ATTEMPT_LIMIT):
+            await assert_redeem_attempt_allowed(workspace_id=WS, auth_user_id=USER, redis=redis)
+        with self.assertRaises(HTTPException) as caught:
+            await assert_redeem_attempt_allowed(workspace_id=WS, auth_user_id=USER, redis=redis)
+        assert caught.exception.status_code == 429
+        assert [item["code"] for item in caught.exception.detail] == ["subscription_redeem_rate_limited"]

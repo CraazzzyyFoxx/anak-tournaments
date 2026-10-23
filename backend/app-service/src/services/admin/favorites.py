@@ -3,20 +3,17 @@
 Auth-account scoped, not player scoped: a favorite is keyed by the caller's own
 ``auth_user_id``, so it needs no player of the caller's own to exist and survives
 that player being re-linked or merged.
-
-This lived inline in ``rpc/users_admin.py`` with its own ``session.add`` /
-``session.delete`` / ``session.commit``; the transport now decodes the request and
-calls one method.
 """
 
 from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import FavoritePlayerRepository, UserRepository
-from src import models, schemas
+from src import schemas
 
 __all__ = ("FavoritePlayerService", "favorites")
 

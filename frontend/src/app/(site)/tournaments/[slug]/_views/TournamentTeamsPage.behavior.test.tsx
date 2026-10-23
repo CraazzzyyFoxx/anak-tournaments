@@ -25,6 +25,8 @@ import type { TeamGroup, Tournament, TournamentStatus } from "@/types/tournament
 
 import TournamentTeamsPage from "./TournamentTeamsPage";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
@@ -117,7 +119,7 @@ function makeTournament(status: TournamentStatus): Tournament {
     teams_count: 3,
     division_grid_version_id: null,
     division_grid_version: null,
-    roster_slots_json: null,
+    discipline: "overwatch",
     roster_shape: SHAPE,
     roster_locked_by_draft: null
   };
@@ -132,10 +134,11 @@ function player(id: number, name: string, role: string, division: number): Playe
     created_at: new Date(0),
     updated_at: null,
     name,
-    sub_role: role === "Tank" ? "main_tank" : null,
     rank: 4,
     division,
-    role,
+    role: role === "Tank"
+      ? { dimension: "player_role", role: "tank_main_tank", parent: "tank" }
+      : { dimension: "player_role", role: role.toLowerCase() },
     tournament_id: TOURNAMENT_ID,
     user_id: id + 500,
     team_id: 0,
@@ -204,16 +207,25 @@ const FREAKS = team(3, "Freak deck", 3705, 3, GROUP_B, [
 
 const TEAMS = [EMERALD, BAN_KOTA, FREAKS];
 
-/** Emerald beat Ban kota twice; Freaks played nothing settled. */
-function encounter(id: number, home: Team, away: Team, score: { home: number; away: number }): Encounter {
+/** Emerald beat Ban kota twice; Freaks played nothing settled. `scores` are slot 1 and slot 2. */
+function encounter(id: number, one: Team, two: Team, scores: [number, number]): Encounter {
+  const seat = (slot: number, team: Team, score: number) => ({
+    id: id * 10 + slot,
+    slot,
+    team_id: team.id,
+    name: team.name,
+    seed: null,
+    score,
+    placement: null,
+    active: true,
+    team
+  });
   return {
     id,
     created_at: new Date(0),
     updated_at: null,
     name: `E${id}`,
-    home_team_id: home.id,
-    away_team_id: away.id,
-    score,
+    slot_count: 2,
     round: 1,
     best_of: 3,
     tournament_id: TOURNAMENT_ID,
@@ -224,21 +236,26 @@ function encounter(id: number, home: Team, away: Team, score: { home: number; aw
     closeness: null,
     has_logs: false,
     result_status: "confirmed",
+    result_source: "series_claim",
+    result_version: 1,
     scheduled_at: null,
     started_at: null,
     ended_at: null,
+    played_at: null,
+    is_live: false,
+    is_final: false,
     current_map_index: null,
     confirmed_at: null,
     matches: [],
-    home_team: home,
-    away_team: away,
+    games: [],
+    teams: [seat(1, one, scores[0]), seat(2, two, scores[1])],
     tournament: makeTournament("completed")
   };
 }
 
 const ENCOUNTERS = [
-  encounter(10, EMERALD, BAN_KOTA, { home: 2, away: 0 }),
-  encounter(11, EMERALD, FREAKS, { home: 2, away: 1 })
+  encounter(10, EMERALD, BAN_KOTA, [2, 0]),
+  encounter(11, EMERALD, FREAKS, [2, 1])
 ];
 
 let container: HTMLDivElement;
@@ -329,6 +346,15 @@ describe("the list is the default view", () => {
 
     expect(cardNames()).toEqual(["Emerald and a dot", "Ban kota", "Freak deck"]);
     expect(container.querySelectorAll("details > summary")).toHaveLength(0);
+  });
+
+  it("names the section with a heading in both views, like every other tab", async () => {
+    for (const query of ["", "view=cards"]) {
+      await render(query);
+
+      const headings = Array.from(container.querySelectorAll("h2")).map((node) => node.textContent);
+      expect(headings).toEqual([en.common.teams]);
+    }
   });
 
   it("links a row's roster to that team's matches", async () => {
@@ -442,6 +468,20 @@ describe("the W-L column", () => {
     const rows = Array.from(container.querySelectorAll("details > summary"));
     expect(rows[0]?.textContent).toContain("—");
     expect(rows[0]?.textContent).not.toContain("0–0");
+  });
+});
+
+describe("an unranked player", () => {
+  it("reads an em dash and draws no crest in the rank column", async () => {
+    const duelist: Player = { ...player(901, "Duelist#1", "Damage", 0), rank: null, division: null };
+    getTeams.mockResolvedValue({ results: [{ ...FREAKS, players: [duelist] }] });
+    await render("view=cards");
+
+    const row = Array.from(container.querySelectorAll("table.roster tr")).find((tr) =>
+      tr.textContent?.includes("Duelist")
+    );
+    expect(row?.querySelector("[data-division]")).toBeNull();
+    expect(row?.lastElementChild?.textContent).toBe("—");
   });
 });
 

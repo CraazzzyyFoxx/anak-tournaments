@@ -52,7 +52,7 @@ rpc → services → domain → repository → models
   [`backend/docs/repository-boundaries.md`](./backend/docs/repository-boundaries.md):
   repositories take an `AsyncSession`, return ORM rows, flush but never commit, and import no
   Pydantic schema, cache client, outbox publisher, or service settings.
-- `app-service` additionally enforces a sub-domain hierarchy through import-linter — see
+- `app-service` and `stats-service` (its public read surface) additionally enforce a sub-domain hierarchy through import-linter — see
   [`backend/docs/architecture/layering.md`](./backend/docs/architecture/layering.md).
 - The gateway is the only HTTP/WebSocket surface. A new REST route is a route entry plus an
   RPC method, never a new listening port; see [`gateway/README.md`](./gateway/README.md).
@@ -80,7 +80,8 @@ incident came from exactly that. Ship it in two deploys:
    (`OWT_APPLY_<THING>_DROP=1`), and it removes the ORM field in the same deploy. Verify the
    deployed image, not the checkout, and check data parity before applying. Never run
    `upgrade head` without the flag first: that stamps the revision as applied and the real
-   drop then needs a fresh migration.
+   drop then needs a fresh migration. Safer, as `legacy01` does: without the flag, raise when the
+   storage still holds rows (nothing dropped, nothing stamped) and drop when it is empty.
 
 ## Generated artifacts
 
@@ -89,7 +90,7 @@ Three files are committed but derived, and CI fails if they drift:
 | Artifact | Source of truth | Regenerate |
 | --- | --- | --- |
 | Gateway OpenAPI manifest | the services' Pydantic models | `cd backend && bash scripts/export_openapi_schemas.sh` |
-| `frontend/src/lib/divisions/ow-ladder.generated.json` | `backend/shared/domain/ow_ladder.py` | `cd backend && uv run python scripts/export_ow_ladder.py` |
+| `frontend/src/disciplines/overwatch/ladder/ow-ladder.generated.json` | `backend/shared/disciplines/overwatch/ladder.py` | `cd backend && uv run python scripts/export_ow_ladder.py` |
 | Entity diagrams in `docs/database_erd.md` | `Base.metadata` (`backend/shared/models/`) | `cd backend && uv run python scripts/export_erd.py` |
 
 A new model **package** needs a new section in `docs/database_erd.md` — a heading, a sentence

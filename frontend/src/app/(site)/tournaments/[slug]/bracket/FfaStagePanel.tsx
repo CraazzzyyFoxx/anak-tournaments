@@ -6,9 +6,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
 import FfaLobbyTable, { lobbyGamePositions } from "@/components/ffa/FfaLobbyTable";
+import { LinkTabs } from "@/components/kit/LinkTabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { SegmentedLinks, type SegmentedLinkItem } from "@/components/ui/segmented";
+import { Card } from "@/components/ui/card";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { cn } from "@/lib/utils";
@@ -16,6 +18,7 @@ import ffaService from "@/services/ffa.service";
 import type { Stage } from "@/types/tournament.types";
 
 import { isStagePreview } from "./bracketData";
+import type { BracketTabs } from "./bracketStages.model";
 
 /**
  * An `ffa_league` stage on the public bracket.
@@ -33,7 +36,7 @@ export function FfaStagePanel({
 }: Readonly<{
   tournamentId: number;
   stage: Stage;
-  bracketTabs?: readonly SegmentedLinkItem[];
+  bracketTabs?: BracketTabs;
 }>) {
   const t = useTranslations();
   const lobbiesQuery = useQuery({
@@ -44,21 +47,22 @@ export function FfaStagePanel({
   const lobbies = lobbiesQuery.data ?? [];
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]">
+    <Card variant="flat" className="overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-4">
-        {bracketTabs && bracketTabs.length > 1 ? (
+        {bracketTabs && bracketTabs.items.length > 1 ? (
           <div className="flex min-w-0 flex-col items-start gap-2">
             <div className="flex flex-wrap items-center gap-3">
-              <SegmentedLinks
-                items={bracketTabs}
-                label={t("tournamentDetail.stageTabsLabel")}
-                size="default"
+              <LinkTabs
+                variant="pill"
+                items={bracketTabs.items}
+                activeKey={bracketTabs.activeKey}
+                ariaLabel={t("tournamentDetail.stageTabsLabel")}
               />
               {isPreview && <Badge variant="outline">{t("common.bracketPreview")}</Badge>}
             </div>
-            <p className="text-xs uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+            <Eyebrow as="p" tone="dim">
               {t("ffa.stageLobbies")}
-            </p>
+            </Eyebrow>
           </div>
         ) : (
           <div className="min-w-0">
@@ -70,9 +74,9 @@ export function FfaStagePanel({
                 </Badge>
               )}
             </h3>
-            <p className="mt-1 text-xs uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+            <Eyebrow as="p" tone="dim" className="mt-1">
               {t("ffa.stageLobbies")}
-            </p>
+            </Eyebrow>
           </div>
         )}
       </div>
@@ -152,6 +156,6 @@ export function FfaStagePanel({
           })
         )}
       </div>
-    </div>
+    </Card>
   );
 }

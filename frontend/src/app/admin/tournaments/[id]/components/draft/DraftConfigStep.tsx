@@ -15,13 +15,13 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import FlexIcon from "@/components/icons/FlexIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { TONE_CLASS } from "@/components/kit/tone";
-import { getRoleIconName, ROLE_ACCENT } from "@/lib/roster/roles";
-import { cn } from "@/lib/utils";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import { isRoleSlot, slotCodesOf, type RosterShape } from "@/lib/roster/shape";
 import type { DraftAutopickStrategy, DraftFormatSettings } from "@/types/draft.types";
-import { isRoleSlotCode, orderSlotCodes, type RosterShape } from "@/lib/roster/shape";
 
 import type { DraftRoundRule } from "./setup-model";
 import type { DraftSetupConfig } from "./setup-types";
@@ -31,6 +31,8 @@ interface DraftConfigStepProps {
   onChange: (next: DraftSetupConfig) => void;
   /** Resolved on the server from the tournament; never editable here (T14 owns it). */
   rosterShape: RosterShape;
+  /** The owner game's role dictionary: the names and glyphs of the shape's slots. */
+  ontology: RoleOntology | null;
   /** The tournament's format rule, resolved to the round count; read-only here. */
   format: DraftFormatSettings;
   tournamentId: number;
@@ -44,11 +46,13 @@ export function DraftConfigStep({
   value,
   onChange,
   rosterShape,
+  ontology,
   format,
   tournamentId,
   locked = false
 }: Readonly<DraftConfigStepProps>) {
   const t = useTranslations("draftAdmin");
+  const slotLabel = useSlotLabel(ontology);
   // Straight off the server shape: deriving rounds from a size here is exactly
   // the mirror this feature removes.
   const rounds = rosterShape.draft_rounds;
@@ -59,32 +63,23 @@ export function DraftConfigStep({
 
   return (
     <div className="space-y-6">
-      {locked && (
-        <div className={cn("rounded-xl border px-4 py-3 text-sm", TONE_CLASS.warning)}>
-          {t("configLocked")}
-        </div>
-      )}
+      {locked && <p className="text-caption text-warning">{t("configLocked")}</p>}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label>{t("teamSize")}</Label>
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm tabular-nums">
             <span className="font-semibold">{rosterShape.team_size}</span>
-            {orderSlotCodes(rosterShape.slots).map((code) => {
-              const label = isRoleSlotCode(code) ? t(`roles.${code}`) : t("roles.flex");
+            {slotCodesOf(rosterShape.slots).map((code) => {
+              const label = slotLabel(code);
               return (
                 <span
                   key={code}
                   className="inline-flex items-center gap-1 text-muted-foreground"
                   title={label}
                 >
-                  {isRoleSlotCode(code) ? (
-                    <PlayerRoleIcon
-                      role={getRoleIconName(code)}
-                      size={16}
-                      color={ROLE_ACCENT[code]}
-                      decorative
-                    />
+                  {isRoleSlot(code) ? (
+                    <PlayerRoleIcon role={code} ontology={ontology} size={16} decorative />
                   ) : (
                     <FlexIcon width={16} height={16} />
                   )}
@@ -141,33 +136,21 @@ export function DraftConfigStep({
             {t("pickTime")}
           </span>
         </div>
-        <div
-          className="flex flex-wrap items-center gap-3"
-          role="group"
-          aria-labelledby={pickTimeLabelId}
-        >
-          {/* One segmented control instead of four standalone buttons: the presets
-              are a single choice, so they must not read as four separate widgets
-              next to the custom field. */}
-          <div className="inline-flex h-9 items-center gap-0.5 rounded-md border border-border/70 bg-card p-0.5">
+        <div className="flex flex-wrap items-center gap-3">
+          <ToggleGroup
+            type="single"
+            variant="pill"
+            size="sm"
+            aria-labelledby={pickTimeLabelId}
+            value={String(value.pickTimeSeconds)}
+            onValueChange={(next) => patch({ pickTimeSeconds: Number(next) })}
+          >
             {PICK_TIME_PRESETS.map((seconds) => (
-              <button
-                key={seconds}
-                type="button"
-                disabled={locked}
-                aria-pressed={value.pickTimeSeconds === seconds}
-                onClick={() => patch({ pickTimeSeconds: seconds })}
-                className={cn(
-                  "inline-flex h-8 min-w-13 items-center justify-center rounded-[5px] px-3 text-sm font-medium tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-60",
-                  value.pickTimeSeconds === seconds
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {seconds}s
-              </button>
+              <ToggleGroupItem key={seconds} value={String(seconds)} disabled={locked} className="tabular-nums">
+                {`${seconds}s`}
+              </ToggleGroupItem>
             ))}
-          </div>
+          </ToggleGroup>
           <div className="flex items-center gap-2">
             <Label htmlFor="draft-pick-time" className="text-xs font-normal text-muted-foreground">
               {t("customPickTime")}
@@ -180,7 +163,7 @@ export function DraftConfigStep({
               disabled={locked}
               value={value.pickTimeSeconds}
               onValueChange={(next) => patch({ pickTimeSeconds: next ?? 45 })}
-              className="h-9 w-20 tabular-nums"
+              className="w-20 tabular-nums"
             />
           </div>
         </div>
@@ -193,30 +176,21 @@ export function DraftConfigStep({
             {t("overtime")}
           </span>
         </div>
-        <div
-          className="flex flex-wrap items-center gap-3"
-          role="group"
-          aria-labelledby={overtimeLabelId}
-        >
-          <div className="inline-flex h-9 items-center gap-0.5 rounded-md border border-border/70 bg-card p-0.5">
+        <div className="flex flex-wrap items-center gap-3">
+          <ToggleGroup
+            type="single"
+            variant="pill"
+            size="sm"
+            aria-labelledby={overtimeLabelId}
+            value={String(value.overtimeSeconds)}
+            onValueChange={(next) => patch({ overtimeSeconds: Number(next) })}
+          >
             {OVERTIME_PRESETS.map((seconds) => (
-              <button
-                key={seconds}
-                type="button"
-                disabled={locked}
-                aria-pressed={value.overtimeSeconds === seconds}
-                onClick={() => patch({ overtimeSeconds: seconds })}
-                className={cn(
-                  "inline-flex h-8 min-w-13 items-center justify-center rounded-[5px] px-3 text-sm font-medium tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-60",
-                  value.overtimeSeconds === seconds
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
+              <ToggleGroupItem key={seconds} value={String(seconds)} disabled={locked} className="tabular-nums">
                 {seconds === 0 ? t("overtimeOff") : `${seconds}s`}
-              </button>
+              </ToggleGroupItem>
             ))}
-          </div>
+          </ToggleGroup>
           <div className="flex items-center gap-2">
             <Label htmlFor="draft-overtime" className="text-xs font-normal text-muted-foreground">
               {t("customOvertime")}
@@ -229,7 +203,7 @@ export function DraftConfigStep({
               disabled={locked}
               value={value.overtimeSeconds}
               onValueChange={(next) => patch({ overtimeSeconds: next ?? 0 })}
-              className="h-9 w-20 tabular-nums"
+              className="w-20 tabular-nums"
             />
           </div>
         </div>
@@ -257,12 +231,12 @@ export function DraftConfigStep({
         </p>
       </div>
 
-      <details className="group rounded-xl border border-border/70 bg-muted/20">
+      <details className="group rounded-xl border border-border">
         <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium">
           {t("advanced")}
           <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden />
         </summary>
-        <div className="space-y-4 border-t border-border/60 px-4 py-4">
+        <div className="space-y-4 border-t border-border px-4 py-4">
           <div className="flex items-start justify-between gap-4">
             <div>
               <Label htmlFor="draft-admin-override">{t("allowOverride")}</Label>

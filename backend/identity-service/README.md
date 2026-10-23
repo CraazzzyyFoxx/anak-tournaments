@@ -28,10 +28,17 @@ ORM/kernel this service builds on.
 - **Sessions** — list, revoke a single session, logout, and logout-all (revoke every session
   for the user). Refresh tokens are persisted in Postgres and revocable; revoking a session
   also blacklists its `sid` in Redis for the remaining access-token lifetime.
-- **OAuth** — Discord, Twitch and Battle.net (a provider is advertised only when its enable
-  flag is on and all credentials are present): authorization URL, callback exchange, account
-  link/unlink, and listing connected providers. State is signed, and the OAuth handoff to
-  custom domains is completed via single-use, browser-bound Redis tickets.
+- **OAuth** — Discord, Twitch, Battle.net, Riot (Riot Sign-On) and Steam (OpenID 2.0; a provider
+  is advertised only when its enable flag is on and every credential it needs is present; Steam
+  needs none besides `OAUTH_REDIRECT`): authorization URL, callback exchange, account
+  link/unlink, and listing connected providers. A Riot sign-in stores the PUUID as the verified
+  `riot` social account's `provider_user_id` and the Riot ID as its handle. Steam returns no
+  `code`: the callback page forwards its `openid.*` parameters as the code, which is checked
+  (claimed id, signed fields, `op_endpoint`, `return_to`) and verified with Steam's
+  `check_authentication`; the verified `steam` social account's subject and handle are both the
+  decimal SteamID3 account id, the persona name and avatar (from deadlock-api, best effort) only
+  display. State is signed, and the OAuth handoff to custom domains is completed via single-use,
+  browser-bound Redis tickets.
 - **SSO exchange** — redeems a one-time SSO ticket so a custom-domain OAuth callback can hand
   the session back to the tenant origin without exposing tokens in the redirect.
 - **RBAC** — permissions, roles, role↔permission grants, user↔role assignments, and a
@@ -71,9 +78,26 @@ bearer `access_token` (injected by the gateway) and resolve the active user befo
 The full method list with request/response schemas is published at `/api/docs`, generated from
 `src/openapi_schemas.py` (`OPERATIONS`) and `src/openapi_docs.py` (`DOCS`).
 
-The service consumes only its own RPC queues: it subscribes to no event/job queue, publishes no
-domain events or outbox rows, writes no Redis realtime topics, and runs no scheduled work. Every
-state change is driven by an inbound RPC call.
+Besides its own RPC queues it consumes two event queues:
+
+- `workspace_member_changed` (`src/rpc/workspace_member_events.py`, DLQ `workspace_member_changed.dlq`):
+  app-service's `WorkspaceMemberChangedEvent`, on which it drops the cached RBAC payload of every listed user.
+  app-service also sends the same event as the internal RPC `rpc.identity.workspace_member_changed` (no gateway
+  route) right after committing and waits for it, so the actor's very next request already sees the change; the
+  queued copy is the durable fallback.
+- `steam_account_changed` (`src/rpc/steam_names.py`, DLQ `steam_account_changed.dlq`): `SteamAccountChangedEvent`,
+  staged by `shared.services.social_identity` when any service creates a Steam `players.social_account` or changes its
+  account id. It writes the account's persona name into `display_name` (`src/services/steam_profiles.py`). The same
+  refresh runs over every Steam account at startup and then daily (`serve.py`, `steam_display_names`).
+
+It publishes no domain events. The one outbox row it can write is that same `SteamAccountChangedEvent`, when an OAuth
+sign-in creates a Steam account without a persona name; the other services' drains relay it. Its one Redis realtime
+topic is
+`user:{id}:rbac` (`rbac.changed`, ephemeral): every RBAC-cache drop — membership events, role,
+permission and deny edits, account deletion, profile merge, `invalidate_session` — announces it
+after the entry is gone, and the gateway evicts every token and workspace membership it cached
+for that user and re-checks that user's live WebSocket subscriptions (`gateway/internal/principal`,
+`gateway/internal/ws` `TopicRevoker`).
 
 ## Data owned
 
@@ -82,8 +106,9 @@ Writes the whole `auth` schema: `user`, `refresh_token`, `oauth_connections`, `a
 `user_permission_deny`.
 
 Also writes parts of `players`: `players.user` (a player row is provisioned at registration and
-its `auth_user_id` is set/cleared by linking) and `players.social_account` when an OAuth
-identity is claimed or released. Appends to `public.audit_log` for administrative mutations.
+its `auth_user_id` is set/cleared by linking), `players.social_account` when an OAuth
+identity is claimed or released, and `players.social_account.display_name` (Steam persona names).
+Appends to `public.audit_log` for administrative mutations.
 
 Reads only: `public.workspace` and `public.workspace_member` for tenancy and membership
 resolution.
@@ -101,7 +126,11 @@ diagram.
   SSO / pending-link tickets.
 - **RabbitMQ** — the RPC transport (`rpc.identity.*`) and the shared broker topology.
 - **S3** — avatar object storage.
-- **External APIs** — Discord, Twitch and Battle.net OAuth token/userinfo endpoints, reached
+- **External APIs** — Discord, Twitch, Battle.net and Riot (`auth.riotgames.com`, account-v1 on
+  `https://{RIOT_ACCOUNT_CLUSTER}.api.riotgames.com`) OAuth token/userinfo endpoints, Steam OpenID
+  (`steamcommunity.com/openid/login`) and Steam profiles: the Steam Web API
+  (`api.steampowered.com/ISteamUser/GetPlayerSummaries/v2`) when `STEAM_WEB_API_KEY` is set, else
+  deadlock-api (`api.deadlock-api.com/v1/players/steam`), reached
   through the outbound `proxy` container when the shared `PROXY_TYPE` / `PROXY_*` settings are
   configured; the production compose block `depends_on` it.
 
@@ -119,9 +148,12 @@ only the service-specific overrides:
   token of a live session may be replayed once more instead of counting as a reuse attack; `0`
   restores hard single-use.
 
-Settings that change behaviour elsewhere: `DISCORD_/TWITCH_/BATTLENET_OAUTH_ENABLED` gate which
-providers are advertised, `SERVICE_CLIENTS` defines which machine callers may mint service
-tokens, and `RPC_PREFETCH_COUNT` bounds in-flight requests per process.
+Settings that change behaviour elsewhere: `DISCORD_/TWITCH_/BATTLENET_/RIOT_/STEAM_OAUTH_ENABLED` gate which
+providers are advertised; Riot also needs `RIOT_CLIENT_ID` / `RIOT_CLIENT_SECRET` and reads the
+Riot ID from account-v1 on `RIOT_ACCOUNT_CLUSTER` (default `europe`); Steam needs no credentials (its
+OpenID realm is the scheme and host of `OAUTH_REDIRECT`). `STEAM_WEB_API_KEY` (optional) switches Steam persona names
+and avatars from deadlock-api's keyless copy to the Steam Web API. `SERVICE_CLIENTS` defines which
+machine callers may mint service tokens, and `RPC_PREFETCH_COUNT` bounds in-flight requests per process.
 
 ## Running
 
@@ -142,7 +174,10 @@ mounted `identity-service/` and `shared/` sources.
 - **RBAC cache.** Resolved permissions, denies and workspace memberships are cached in Redis
   under a versioned key (`rbac:v3:user:<id>`) with a 60-second TTL, and invalidated explicitly
   on every RBAC mutation, account deletion, and via `invalidate_session` from another service.
-  The version prefix is what retires entries whose payload shape changed. The cache is
+  The version prefix is what retires entries whose payload shape changed. Every drop also bumps
+  `rbac:gen:<id>`; a fill reads that generation before its database reads and writes the entry
+  only while it is unchanged (one Lua compare-and-set), so a validation that read the database
+  just before a membership commit cannot put the old RBAC back after the drop. The cache is
   best-effort: a Redis outage costs extra database work, never a failed request.
 - **Refresh-token rotation.** Rotation is single-use with reuse detection — replaying a
   revoked token revokes the whole session family. Two escape hatches keep honest clients out of

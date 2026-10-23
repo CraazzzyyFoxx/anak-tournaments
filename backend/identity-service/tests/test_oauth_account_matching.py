@@ -196,7 +196,7 @@ def test_find_or_create_oauth_user_reuses_existing_user_by_provider_user_id() ->
     )
 
     assert auth_user is existing_user
-    assert session.flush_calls == 0
+    assert session.flush_calls == 1  # the new connection's insert only: no user created
     assert len(session.added) == 1
     oauth_connection = session.added[0]
     assert oauth_connection.auth_user_id == existing_user.id
@@ -350,4 +350,4 @@ def test_find_or_create_oauth_user_never_overwrites_conflicting_player_link() ->
     # The player's link must remain pointed at its original (different) owner —
     # never silently reassigned to existing_user.
     assert player.auth_user_id == other_owner_id
-    assert session.flush_calls == 0
+    assert session.flush_calls == 1  # the new connection's insert only: no backfill

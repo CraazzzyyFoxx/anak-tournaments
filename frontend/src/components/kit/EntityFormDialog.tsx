@@ -21,6 +21,8 @@ interface EntityFormDialogProps {
   submitLabel?: string;
   cancelLabel?: string;
   isSubmitting?: boolean;
+  /** The form cannot go through yet (nothing picked); the submit button greys out. */
+  submitDisabled?: boolean;
   submittingLabel?: string;
   errorMessage?: string;
   /**
@@ -39,6 +41,8 @@ interface EntityFormDialogProps {
    */
   guardNavigation?: boolean;
   contentClassName?: string;
+  /** An action of the entity itself (switch off, delete), set apart at the footer's start. */
+  footerStart?: React.ReactNode;
   children: React.ReactNode;
   isReadOnly?: boolean;
 }
@@ -49,10 +53,11 @@ export function EntityFormDialog({
   title,
   description,
   onSubmit,
-  submitLabel = "Save",
-  cancelLabel = "Cancel",
+  submitLabel,
+  cancelLabel,
   isSubmitting = false,
-  submittingLabel = "Saving…",
+  submitDisabled = false,
+  submittingLabel,
   errorMessage,
   fieldErrors,
   isDirty = false,
@@ -60,10 +65,15 @@ export function EntityFormDialog({
   dirtyDescription,
   guardNavigation = true,
   contentClassName,
+  footerStart,
   children,
   isReadOnly = false,
 }: Readonly<EntityFormDialogProps>) {
   const t = useTranslations("kit.entityForm");
+  const tc = useTranslations("common");
+  const submitText = submitLabel ?? tc("save");
+  const submittingText = submittingLabel ?? tc("saving");
+  const cancelText = cancelLabel ?? (isReadOnly ? tc("close") : tc("cancel"));
   const router = useRouter();
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
   const [pendingNavigationHref, setPendingNavigationHref] = useState<string | null>(null);
@@ -140,7 +150,8 @@ export function EntityFormDialog({
         >
           <DialogHeader className="shrink-0 border-b border-border/60 pb-4">
             <DialogTitle>{title}</DialogTitle>
-            {description && <DialogDescription>{description}</DialogDescription>}
+            {/* `wrap-anywhere`: a description naming a file (a log, an import) has no spaces to break at. */}
+            {description && <DialogDescription className="wrap-anywhere">{description}</DialogDescription>}
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -169,18 +180,19 @@ export function EntityFormDialog({
             ) : null}
 
             <DialogFooter className="mt-4 shrink-0 border-t border-border/60 pt-4">
+              {footerStart ? <div className="flex flex-col sm:mr-auto">{footerStart}</div> : null}
               <Button type="button" variant="outline" onClick={handleCancel} disabled={isSubmitting}>
-                {isReadOnly && cancelLabel === "Cancel" ? t("close") : cancelLabel}
+                {cancelText}
               </Button>
               {!isReadOnly && (
-                <Button type="submit" disabled={isSubmitting}>
+                <Button type="submit" disabled={isSubmitting || submitDisabled}>
                   {isSubmitting ? (
                     <>
                       <Spinner />
-                      {submittingLabel}
+                      {submittingText}
                     </>
                   ) : (
-                    submitLabel
+                    submitText
                   )}
                 </Button>
               )}

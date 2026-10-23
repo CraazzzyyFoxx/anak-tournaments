@@ -30,6 +30,10 @@ type ttlCache[K comparable, V any] struct {
 	now        func() time.Time
 	m          map[K]*list.Element // value: *cacheEntry[K, V]
 	ll         *list.List          // front = oldest-set, back = most-recently-set
+	// gen counts evictWhere calls. A miss snapshots it (generation) before its
+	// query and stores through setIfCurrent, so an answer read before an
+	// eviction is never cached after it.
+	gen uint64
 }
 
 type cacheEntry[K comparable, V any] struct {
@@ -80,6 +84,29 @@ func (c *ttlCache[K, V]) get(k K) (V, bool) {
 func (c *ttlCache[K, V]) set(k K, v V) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.setLocked(k, v)
+}
+
+// generation is the eviction count a miss must hand to setIfCurrent; read it
+// BEFORE the query whose answer will be stored.
+func (c *ttlCache[K, V]) generation() uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.gen
+}
+
+// setIfCurrent is set, unless evictWhere ran since gen was read: that answer
+// may predate the change the eviction announced, and the next lookup simply
+// queries again.
+func (c *ttlCache[K, V]) setIfCurrent(k K, v V, gen uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.gen == gen {
+		c.setLocked(k, v)
+	}
+}
+
+func (c *ttlCache[K, V]) setLocked(k K, v V) {
 	now := c.now()
 	if el, ok := c.m[k]; ok {
 		ent := el.Value.(*cacheEntry[K, V])
@@ -97,12 +124,31 @@ func (c *ttlCache[K, V]) set(k K, v V) {
 }
 
 // del drops k, if present, ahead of its expiry. Used when a cached answer is
-// known to have been contradicted (see Store.InvalidateRoomSpectatorRead).
+// known to have been contradicted (see Store.InvalidateRoomAccess).
 func (c *ttlCache[K, V]) del(k K) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if el, ok := c.m[k]; ok {
 		c.removeLocked(el)
+	}
+}
+
+// evictWhere drops every key match accepts and fences the misses already in
+// flight (see gen). Used when the realtime bus announces that a whole family
+// of answers changed (see Store.EvictUser).
+//
+// ponytail: linear scan under the lock; key the cache by user if RBAC changes
+// ever become frequent enough for it to show.
+func (c *ttlCache[K, V]) evictWhere(match func(K) bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.gen++
+	for el := c.ll.Front(); el != nil; {
+		next := el.Next()
+		if match(el.Value.(*cacheEntry[K, V]).key) {
+			c.removeLocked(el)
+		}
+		el = next
 	}
 }
 

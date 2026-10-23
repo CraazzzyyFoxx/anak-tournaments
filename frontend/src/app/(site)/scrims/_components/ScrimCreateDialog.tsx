@@ -40,6 +40,7 @@ import { notify } from "@/lib/notify";
 import { withReturnTo } from "@/lib/auth/return-to";
 import { stageRoundShape } from "@/lib/bracket/view";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
+import { useDisciplines } from "@/hooks/useDisciplineMetadata";
 import encounterService from "@/services/encounter.service";
 import scrimService from "@/services/scrim.service";
 import tournamentService from "@/services/tournament.service";
@@ -87,15 +88,38 @@ export function ScrimCreateDialog({
   const workspaceId = workspaces.some((workspace) => workspace.id === candidateWorkspaceId)
     ? candidateWorkspaceId
     : null;
+  // The game the room is played in: one of the games enabled for the chosen community. The room's pool is
+  // drawn from that game's catalog and the server stamps it on the room; nothing here assumes a game.
+  const disciplinesQuery = useDisciplines(workspaceId ?? "all");
+  const enabledDisciplines = useMemo(
+    () => (workspaceId == null ? [] : (disciplinesQuery.data ?? []).filter((entry) => entry.enabled)),
+    [workspaceId, disciplinesQuery.data]
+  );
+  const [chosenDiscipline, setChosenDiscipline] = useState<string | null>(null);
+  const discipline =
+    enabledDisciplines.find((entry) => entry.code === chosenDiscipline)?.code ??
+    enabledDisciplines[0]?.code ??
+    null;
   const [label, setLabel] = useState("");
   const [bestOf, setBestOf] = useState(DEFAULT_BEST_OF);
-  const [homeName, setHomeName] = useState("");
-  const [awayName, setAwayName] = useState("");
+  const [ownName, setOwnName] = useState("");
+  const [opponentName, setOpponentName] = useState("");
   const [source, setSource] = useState<PoolSource>("copy");
   const [copyTournamentId, setCopyTournamentId] = useState<number | null>(null);
   const [copyStageId, setCopyStageId] = useState<number | null>(null);
   const [copyRound, setCopyRound] = useState<number | null>(null);
   const [pool, setPool] = useState<ScrimPoolDraft>(emptyScrimPoolDraft);
+  // A pool and a copied tournament's scope are one game's catalog ids. The game changes through the dropdown AND
+  // by itself (a community with other games enabled, a catalog still loading), so what is dropped is keyed to the
+  // effective game, not to the control that happened to be touched: nothing chosen for another game carries over.
+  const [draftDiscipline, setDraftDiscipline] = useState<string | null>(discipline);
+  if (draftDiscipline !== discipline) {
+    setDraftDiscipline(discipline);
+    setPool(emptyScrimPoolDraft);
+    setCopyTournamentId(null);
+    setCopyStageId(null);
+    setCopyRound(null);
+  }
 
   const tournamentsQuery = useQuery({
     queryKey: scrimQueryKeys.tournamentsLookup(workspaceId),
@@ -143,9 +167,9 @@ export function ScrimCreateDialog({
   );
 
   const poolIssues = source === "custom" ? validateScrimPoolDraft(pool) : [];
-  const namesFilled = label.trim() !== "" && homeName.trim() !== "" && awayName.trim() !== "";
+  const namesFilled = label.trim() !== "" && ownName.trim() !== "" && opponentName.trim() !== "";
   const canSubmit =
-    workspaceId != null && namesFilled &&
+    workspaceId != null && discipline != null && namesFilled &&
     (source === "copy" ? copyTournamentId != null : poolIssues.length === 0);
 
   const createMutation = useMutation({
@@ -165,7 +189,7 @@ export function ScrimCreateDialog({
   });
 
   const submit = () => {
-    if (workspaceId == null || !canSubmit) return;
+    if (workspaceId == null || discipline == null || !canSubmit) return;
     const poolInput: ScrimPoolInput =
       source === "copy"
         ? {
@@ -190,10 +214,10 @@ export function ScrimCreateDialog({
 
     createMutation.mutate({
       workspace_id: workspaceId,
+      discipline,
       label: label.trim(),
       best_of: bestOf,
-      home_team_name: homeName.trim(),
-      away_team_name: awayName.trim(),
+      team_names: [ownName.trim(), opponentName.trim()],
       pool: poolInput
     });
   };
@@ -217,24 +241,45 @@ export function ScrimCreateDialog({
             {scopedWorkspaceId == null ? (
               <Field>
                 <FieldLabel htmlFor={`${ids}-workspace`}>{t("communityLabel")}</FieldLabel>
-                <select
-                  id={`${ids}-workspace`}
-                  className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm"
-                  value={workspaceId ?? ""}
+                <Select
+                  value={workspaceId != null ? String(workspaceId) : ""}
                   required
-                  onChange={(event) => {
-                    setChosenWorkspaceId(event.target.value ? Number(event.target.value) : null);
+                  onValueChange={(value) => {
+                    setChosenWorkspaceId(value ? Number(value) : null);
                     setCopyTournamentId(null);
                     setCopyStageId(null);
                     setCopyRound(null);
                   }}
                 >
-                  <option value="">{t("communityPlaceholder")}</option>
-                  {workspaces.map((workspace) => (
-                    <option key={workspace.id} value={workspace.id}>{workspace.name}</option>
-                  ))}
-                </select>
+                  <SelectTrigger id={`${ids}-workspace`}>
+                    <SelectValue placeholder={t("communityPlaceholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {workspaces.map((workspace) => (
+                      <SelectItem key={workspace.id} value={String(workspace.id)}>
+                        {workspace.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <FieldDescription>{t("communityHint")}</FieldDescription>
+              </Field>
+            ) : null}
+            {enabledDisciplines.length > 1 ? (
+              <Field>
+                <FieldLabel htmlFor={`${ids}-game`}>{t("gameLabel")}</FieldLabel>
+                <Select value={discipline ?? ""} onValueChange={setChosenDiscipline}>
+                  <SelectTrigger id={`${ids}-game`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {enabledDisciplines.map((entry) => (
+                      <SelectItem key={entry.code} value={entry.code}>
+                        {entry.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </Field>
             ) : null}
             <Field>
@@ -251,26 +296,26 @@ export function ScrimCreateDialog({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field>
-                <FieldLabel htmlFor={`${ids}-home`}>{t("homeLabel")}</FieldLabel>
+                <FieldLabel htmlFor={`${ids}-own`}>{t("ownLabel")}</FieldLabel>
                 <Input
-                  id={`${ids}-home`}
-                  value={homeName}
-                  onChange={(event) => setHomeName(event.target.value)}
-                  placeholder={t("homePlaceholder")}
+                  id={`${ids}-own`}
+                  value={ownName}
+                  onChange={(event) => setOwnName(event.target.value)}
+                  placeholder={t("ownPlaceholder")}
                   maxLength={120}
                 />
-                <FieldDescription>{t("homeHint")}</FieldDescription>
+                <FieldDescription>{t("ownHint")}</FieldDescription>
               </Field>
               <Field>
-                <FieldLabel htmlFor={`${ids}-away`}>{t("awayLabel")}</FieldLabel>
+                <FieldLabel htmlFor={`${ids}-opponent`}>{t("opponentLabel")}</FieldLabel>
                 <Input
-                  id={`${ids}-away`}
-                  value={awayName}
-                  onChange={(event) => setAwayName(event.target.value)}
-                  placeholder={t("awayPlaceholder")}
+                  id={`${ids}-opponent`}
+                  value={opponentName}
+                  onChange={(event) => setOpponentName(event.target.value)}
+                  placeholder={t("opponentPlaceholder")}
                   maxLength={120}
                 />
-                <FieldDescription>{t("awayHint")}</FieldDescription>
+                <FieldDescription>{t("opponentHint")}</FieldDescription>
               </Field>
             </div>
 
@@ -380,13 +425,14 @@ export function ScrimCreateDialog({
                   </Select>
                 </Field>
               </div>
-            ) : (
+            ) : discipline != null ? (
               <ScrimPoolEditor
+                discipline={discipline}
                 pool={pool}
                 disabled={createMutation.isPending}
                 onChange={setPool}
               />
-            )}
+            ) : null}
 
             {poolIssues.length > 0 ? (
               <Alert variant="destructive">

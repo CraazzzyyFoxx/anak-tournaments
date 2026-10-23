@@ -12,34 +12,23 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
-    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db, enums
+from shared.models.encounter.scoring_rule import ScoringRule
 from shared.models.tournament.tournament import Tournament
 
 if typing.TYPE_CHECKING:
     from shared.models.tournament.team import Team
 
 
-# text[] / float8[] in Postgres. JSON under SQLite, where several test harnesses
+# text[] in Postgres. JSON under SQLite, where several test harnesses
 # build this schema: a PostgreSQL ARRAY has no SQLite bind, so a list would
 # reach the driver raw.
 _TEXT_ARRAY = ARRAY(String()).with_variant(JSON(), "sqlite")
-_FLOAT_ARRAY = ARRAY(Float()).with_variant(JSON(), "sqlite")
 
-#: What an ffa_league stage pays for until the organizer says otherwise: one
-#: column called "score", and points = that column. Mirrors migration ffa0002.
-DEFAULT_FFA_COLUMNS: tuple[dict[str, typing.Any], ...] = (
-    {"key": "score", "label": "Счёт", "public": True, "better": "higher"},
-)
-DEFAULT_FFA_FORMULA = "score"
-#: No ``::jsonb`` cast: Postgres coerces the bare literal to the column's type
-#: anyway, and several tests build ``tournament.stage`` on SQLite, where the
-#: cast is a syntax error inside ``DEFAULT``.
-_DEFAULT_FFA_COLUMNS_SQL = """'[{"key": "score", "label": "Счёт", "public": true, "better": "higher"}]'"""
 
 __all__ = (
     "Stage",
@@ -83,10 +72,27 @@ class Stage(db.TimeStampIntegerMixin):
         CheckConstraint("seed_ranking IN ('slot', 'avg_sr', 'total_sr', 'random')", name="ck_stage_seed_ranking"),
         CheckConstraint("best_of_default >= 1", name="ck_stage_best_of_default"),
         CheckConstraint("best_of_final IS NULL OR best_of_final >= 1", name="ck_stage_best_of_final"),
+        CheckConstraint("swiss_qualify_wins IS NULL OR swiss_qualify_wins >= 1", name="ck_stage_swiss_qualify_wins"),
+        CheckConstraint(
+            "swiss_eliminate_losses IS NULL OR swiss_eliminate_losses >= 1", name="ck_stage_swiss_eliminate_losses"
+        ),
+        CheckConstraint(
+            "best_of_swiss_qualify IS NULL OR best_of_swiss_qualify >= 1", name="ck_stage_best_of_swiss_qualify"
+        ),
+        CheckConstraint(
+            "best_of_swiss_eliminate IS NULL OR best_of_swiss_eliminate >= 1", name="ck_stage_best_of_swiss_eliminate"
+        ),
+        #: Target of ``tournament.bracket_encounter``'s composite FK.
+        UniqueConstraint("id", "tournament_id", name="uq_stage_id_tournament"),
         {"schema": "tournament"},
     )
 
     tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"), index=True)
+    # Deferred: a stage and the rule it points at are written in one
+    # transaction, and the rule may be inserted after the stage.
+    scoring_rule_id: Mapped[int] = mapped_column(
+        BigInteger(), ForeignKey("encounter.scoring_rule.id", deferrable=True, initially="DEFERRED")
+    )
     name: Mapped[str] = mapped_column(String())
     description: Mapped[str | None] = mapped_column(String(), nullable=True)
     stage_type: Mapped[enums.StageType] = mapped_column(STAGE_TYPE_ENUM)
@@ -107,7 +113,7 @@ class Stage(db.TimeStampIntegerMixin):
     # generate_encounters`` can populate a stage's encounters while it is
     # still Draft (a preview of the bracket shape before the stage goes
     # live) -- captains cannot report or veto against those encounters
-    # until this flips True (``shared.services.bracket.usability``).
+    # until this flips True (tournament-service ``src.services.bracket.usability``).
     is_published: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="false")
     is_completed: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="false")
 
@@ -123,6 +129,12 @@ class Stage(db.TimeStampIntegerMixin):
     loss_points: Mapped[float | None] = mapped_column(Float(), nullable=True)
     #: What a Swiss bye pays; NULL = the stage's win points.
     swiss_bye_points: Mapped[float | None] = mapped_column(Float(), nullable=True)
+    #: Swiss only: a team with this many wins (byes included) is through and
+    #: paired no more; NULL = it plays on.
+    swiss_qualify_wins: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    #: Swiss only: a team with this many losses is out and paired no more;
+    #: NULL = it plays on.
+    swiss_eliminate_losses: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     #: Double elimination only: ``with_reset`` plays a second Grand Final when
     #: the lower-bracket team wins the first.
     de_grand_final_type: Mapped[str] = mapped_column(String(16), default="no_reset", server_default="no_reset")
@@ -132,23 +144,13 @@ class Stage(db.TimeStampIntegerMixin):
     best_of_default: Mapped[int] = mapped_column(Integer(), default=3, server_default="3")
     #: An elimination stage's last round; NULL = resolved like any other round.
     best_of_final: Mapped[int | None] = mapped_column(Integer(), nullable=True)
-    #: FFA league only: points for 1st, 2nd, ... place; empty = the formula
-    #: pays nothing for placement.
-    ffa_placement_points: Mapped[list[float]] = mapped_column(_FLOAT_ARRAY, default=list, server_default="{}")
-    #: FFA league only: what the organizer enters per game -- ``{"key", "label",
-    #: "public", "better"}`` per column, validated by ``FfaScoring`` (plan §3.1).
-    ffa_columns: Mapped[list[dict[str, typing.Any]]] = mapped_column(
-        JSONB,
-        default=lambda: [dict(column) for column in DEFAULT_FFA_COLUMNS],
-        server_default=text(_DEFAULT_FFA_COLUMNS_SQL),
-    )
-    #: FFA league only: the expression a game's points are computed with.
-    ffa_formula: Mapped[str] = mapped_column(
-        String(500), default=DEFAULT_FFA_FORMULA, server_default=DEFAULT_FFA_FORMULA
-    )
+    #: Swiss only: a match one of whose teams is one win from ``swiss_qualify_wins``
+    #: / one loss from ``swiss_eliminate_losses``; NULL = resolved like any other.
+    best_of_swiss_qualify: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    best_of_swiss_eliminate: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     #: The Challonge group this stage mirrors (Challonge sync's only link to it).
     challonge_group_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
-    # A custom bracket drawn in the admin editor (``shared.services.bracket.template``);
+    # A custom bracket drawn in the admin editor (tournament-service ``src.domain.bracket.template``);
     # NULL = the format's generator draws it.
     bracket_template: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
@@ -166,10 +168,36 @@ class Stage(db.TimeStampIntegerMixin):
         passive_deletes=True,
         order_by="StageRoundBestOf.round",
     )
+    #: Levels 1-2 of the scoring: what one game pays and when the
+    #: encounter is over. Loaded with the stage because ``scoring`` -- which
+    #: every stage read carries -- is built from it.
+    scoring_rule: Mapped[ScoringRule] = relationship(lazy="selectin")
 
     @property
-    def scoring(self) -> dict[str, float | None]:
-        return {"win": self.win_points, "draw": self.draw_points, "loss": self.loss_points}
+    def scoring(self) -> dict[str, typing.Any]:
+        """How this stage scores, as one API block.
+
+        Levels 1-2 come from ``encounter.scoring_rule`` (the row every encounter
+        of the stage also points at), level 3 -- the points a result pays in the
+        table -- from the stage's own columns. One block because an organizer
+        edits them as one thing, and because splitting them put the FFA half
+        under a name (``ffa_scoring``) that stopped being true the moment a duel
+        had a rule row too.
+
+        ``preset``/``formula`` read as the ``wins`` preset while the rule is not
+        loaded yet (a stage being built in memory); a flushed stage always has
+        one.
+        """
+        rule = self.__dict__.get("scoring_rule")
+        return {
+            "win": self.win_points,
+            "draw": self.draw_points,
+            "loss": self.loss_points,
+            "preset": rule.preset if rule is not None else "wins",
+            "columns": [dict(column) for column in (rule.columns or ())] if rule is not None else [],
+            "placement_points": [float(points) for points in (rule.placement_points or ())] if rule is not None else [],
+            "formula": rule.game_formula if rule is not None else "win",
+        }
 
     @property
     def has_custom_bracket(self) -> bool:
@@ -181,22 +209,8 @@ class Stage(db.TimeStampIntegerMixin):
             "default": self.best_of_default,
             "by_round": {row.round: row.best_of for row in self.round_best_of},
             "final": self.best_of_final,
-        }
-
-    @property
-    def ffa_scoring(self) -> dict[str, typing.Any]:
-        """The ``ffa_scoring`` block of the API, rebuilt from the columns.
-
-        An empty column list is a placement-only league and is shown as such;
-        only a stage not yet flushed (column still ``None``, the server default
-        not applied) reads the default block.
-        """
-        return {
-            "columns": [
-                dict(column) for column in (self.ffa_columns if self.ffa_columns is not None else DEFAULT_FFA_COLUMNS)
-            ],
-            "placement_points": list(self.ffa_placement_points or ()),
-            "formula": self.ffa_formula or DEFAULT_FFA_FORMULA,
+            "swiss_qualify": self.best_of_swiss_qualify,
+            "swiss_eliminate": self.best_of_swiss_eliminate,
         }
 
 
@@ -220,7 +234,11 @@ class StageRoundBestOf(db.Base):
 
 class StageItem(db.TimeStampIntegerMixin):
     __tablename__ = "stage_item"
-    __table_args__ = ({"schema": "tournament"},)
+    __table_args__ = (
+        #: Target of ``tournament.bracket_encounter``'s composite FK.
+        UniqueConstraint("id", "stage_id", name="uq_stage_item_id_stage"),
+        {"schema": "tournament"},
+    )
 
     stage_id: Mapped[int] = mapped_column(ForeignKey(Stage.id, ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String())

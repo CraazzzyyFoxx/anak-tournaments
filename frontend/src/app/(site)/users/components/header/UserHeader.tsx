@@ -1,22 +1,30 @@
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { getTranslations } from "next-intl/server";
 import { ArrowDown, ArrowUp, Check } from "lucide-react";
 import { User, UserProfile } from "@/types/user.types";
-import { getSocialProviderConfig, socialProfileUrl, sortSocialAccounts } from "@/lib/social/providers";
-import { playerRoleTint } from "@/lib/roster/player-role";
+import { getSocialProviderConfig, socialAccountLabel, socialProfileUrl, sortSocialAccounts } from "@/lib/social/providers";
+import { findRole, registrationRoles, roleName, rolePresentation } from "@/lib/roster/ontology";
+import disciplineService from "@/services/discipline.service";
 import { SocialIcon } from "@/components/social/SocialIcon";
-import { getPlayerImage } from "@/lib/player";
+import { getPlayerImage, splitHandle } from "@/lib/player";
 import DivisionIcon from "@/components/DivisionIcon";
-import { FormStreak, ProfileStat, type FormResult } from "@/app/(site)/users/components/shared/atoms";
+import { FormStreak, ProfileStat, type FormResult } from "@/components/profile/atoms";
 import ProfileToolbar from "@/app/(site)/users/components/header/ProfileToolbar";
 import userService from "@/services/user.service";
 import { HeroFrame } from "@/components/site/PageHero";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import type { StatsScope } from "@/lib/site/stats-scope";
+import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
+import { encounterPerspective } from "@/app/(site)/users/components/shared/encounter-perspective";
 
 interface UserHeaderProps {
   profile: UserProfile;
   user: User;
   scope: StatsScope;
+  /** The profile's game, or `null` for the cross-game header (no role, no game metadata). */
+  discipline: string | null;
+  /** The workspace axis the profile is viewed on: its ontology names the primary role (sub-roles included). */
+  axis: WorkspaceAxis;
 }
 
 const formatPlace = (value: number | null | undefined) => {
@@ -26,26 +34,27 @@ const formatPlace = (value: number | null | undefined) => {
   return value.toFixed(1);
 };
 
-const deriveFormStreak = async (userId: number, scope: StatsScope): Promise<FormResult[]> => {
+const deriveFormStreak = async (
+  userId: number,
+  discipline: string | null,
+  scope: StatsScope
+): Promise<FormResult[]> => {
   try {
+    // The streak reads each encounter's seats (scores and rosters) only: no matches, no tournament.
     const encounters = await userService.getUserEncounters(
       userId,
+      discipline,
       1,
       10,
       "played_at",
       "desc",
-      undefined,
+      ["teams", "teams.players"],
       undefined,
       scope
     );
     return encounters.results.slice(0, 10).reverse().map((enc): FormResult => {
-      const homePlayers = enc.home_team?.players ?? [];
-      const isUserHome = homePlayers.some((p) => p.user_id === userId);
-      const userScore = isUserHome ? enc.score.home : enc.score.away;
-      const oppScore = isUserHome ? enc.score.away : enc.score.home;
-      if (userScore > oppScore) return "W";
-      if (userScore < oppScore) return "L";
-      return "D";
+      const { kind } = encounterPerspective(enc, userId);
+      return kind === "win" ? "W" : kind === "loss" ? "L" : "D";
     });
   } catch {
     return [];
@@ -57,9 +66,9 @@ const primaryRoleOf = (profile: UserProfile) => {
   return profile.roles.reduce((best, current) => (current.tournaments > best.tournaments ? current : best));
 };
 
-const UserHeader = async ({ profile, user, scope }: UserHeaderProps) => {
-  const t = await getTranslations();
-  const [name, tag] = user.name.split("#");
+const UserHeader = async ({ profile, user, scope, discipline, axis }: UserHeaderProps) => {
+  const [t, tRoles] = await Promise.all([getTranslations(), getTranslations("common.roles")]);
+  const { name, suffix: tag } = splitHandle(user.name);
   const primaryRole = primaryRoleOf(profile);
   const avatarSrc = getPlayerImage(profile, user);
 
@@ -67,43 +76,56 @@ const UserHeader = async ({ profile, user, scope }: UserHeaderProps) => {
 
   // No seasons in the system — show the trend from the most recent tournament:
   // its map winrate vs the user's career map winrate. One lightweight fetch.
-  const lastSummary = profile.tournaments.length
-    ? [...profile.tournaments].sort((a, b) => b.id - a.id)[0]
-    : null;
-  // The form streak and the last-tournament fetch are independent — run them
+  // The server sends the cards newest event first (by date: ids follow creation, not play).
+  const lastSummary = profile.tournaments[0] ?? null;
+  // The form streak, the last-tournament fetch and the game's metadata are independent — run them
   // in parallel instead of awaiting sequentially.
-  const [formStreak, lastTournament] = await Promise.all([
-    deriveFormStreak(user.id, scope),
+  const [formStreak, lastTournament, metadata] = await Promise.all([
+    deriveFormStreak(user.id, discipline, scope),
     lastSummary
       ? userService.getUserTournament(user.id, lastSummary.id).catch(() => null)
-      : Promise.resolve(null)
+      : Promise.resolve(null),
+    discipline === null ? Promise.resolve(null) : disciplineService.metadata(axis, discipline).catch(() => null)
   ]);
   const lastWinrate =
     lastTournament && lastTournament.maps > 0 ? (lastTournament.maps_won / lastTournament.maps) * 100 : null;
   const winrateDelta = lastWinrate !== null && winrate !== null ? lastWinrate - winrate : null;
 
-  // `playerRoleTint` is null only when there is no role at all, so a Flex
-  // primary role tints flex instead of falling through to damage.
-  const roleTint = playerRoleTint(primaryRole?.role);
+  // The profile's game names and tints its primary role in the viewed workspace's ontology (so a workspace
+  // sub-role resolves; a tenant host reads its own); a role it does not know keeps its code and no tint.
+  const roleNode = metadata && primaryRole?.role ? findRole(metadata, primaryRole.role) : null;
+  const roleColor = metadata && roleNode ? rolePresentation(metadata.roles, roleNode.id).color : null;
+  const roleLabel = primaryRole?.role
+    ? roleNode
+      ? roleName(roleNode, (code) => (tRoles.has(code as never) ? tRoles(code as never) : null))
+      : primaryRole.role.role
+    : null;
+  // The header hairline's and share card's spectrum is the game's own role colours in declared order.
+  const spectrum = metadata
+    ? registrationRoles(metadata)
+        .map((role) => rolePresentation(metadata.roles, role.id).color)
+        .filter((color): color is string => color !== null)
+    : [];
 
   return (
-    <HeroFrame className="aqt-player" variant="profile" tint={roleTint ? `var(--aqt-${roleTint})` : undefined}>
+    <HeroFrame className="aqt-player" variant="profile" tint={roleColor ?? undefined} spectrum={spectrum}>
       <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-4 gap-y-6 px-5 py-5 md:gap-x-6 md:px-8 md:py-7 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center lg:gap-x-10">
         <div className="relative size-[72px] shrink-0 md:size-[104px]">
           <div className="relative h-full w-full overflow-hidden rounded-[14px] border border-[color:var(--aqt-border-2)] md:rounded-[18px]">
             <Image src={avatarSrc} alt={t("users.profile.header.avatarAlt", { name })} fill sizes="104px" className="object-cover" priority />
           </div>
-          {primaryRole ? (
+          {primaryRole && primaryRole.division != null && discipline !== null ? (
             <div
               className="absolute -bottom-2 -right-2"
               title={t("users.profile.header.divisionTitle", {
-                role: primaryRole.role,
+                role: roleLabel ?? "",
                 division: String(primaryRole.division)
               })}
             >
               <DivisionIcon
                 division={primaryRole.division}
                 tournamentGrid={primaryRole.division_grid_version}
+                discipline={discipline}
                 width={44}
                 height={44}
                 className="size-9 md:size-11"
@@ -117,7 +139,7 @@ const UserHeader = async ({ profile, user, scope }: UserHeaderProps) => {
             <span className="min-w-0 truncate" title={name}>{name}</span>
             {tag ? (
               <span className="whitespace-nowrap text-[0.46em] font-medium tracking-[0.02em] text-[color:var(--aqt-fg-faint)]">
-                #{tag}
+                {tag}
               </span>
             ) : null}
           </h1>
@@ -130,7 +152,7 @@ const UserHeader = async ({ profile, user, scope }: UserHeaderProps) => {
                 const chip = (
                   <>
                     <SocialIcon provider={account.provider} size={12} decorative />
-                    <span className="truncate">{account.username}</span>
+                    <span className="truncate">{socialAccountLabel(account)}</span>
                     {account.is_verified ? (
                       <Check size={12} aria-label={verifiedLabel} className="shrink-0 text-[color:var(--aqt-teal)]" />
                     ) : null}
@@ -139,7 +161,12 @@ const UserHeader = async ({ profile, user, scope }: UserHeaderProps) => {
                 const chipClass =
                   "inline-flex max-w-[16rem] items-center gap-1.5 rounded-[7px] border border-[color:var(--aqt-border-2)] px-2 py-1 text-caption font-medium text-[color:var(--aqt-fg-muted)]";
                 return (
-                  <li key={account.id} title={account.is_verified ? `${providerLabel} · ${verifiedLabel}` : providerLabel}>
+                  <li
+                    key={account.id}
+                    title={[providerLabel, account.display_name ? account.username : null, account.is_verified ? verifiedLabel : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  >
                     {url ? (
                       <a
                         href={url}
@@ -165,8 +192,9 @@ const UserHeader = async ({ profile, user, scope }: UserHeaderProps) => {
             card={{
               name,
               tag: tag ?? null,
-              role: primaryRole?.role ?? null,
-              roleTint,
+              role: roleLabel,
+              roleColor,
+              spectrum,
               division: primaryRole?.division ?? null,
               winrate,
               avgPlacement: profile.avg_placement,
@@ -224,9 +252,7 @@ const UserHeader = async ({ profile, user, scope }: UserHeaderProps) => {
           </div>
 
           <div className="flex w-full flex-wrap items-center gap-3 border-t border-[color:var(--aqt-border)] pt-3">
-            <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-              {t("users.profile.header.formLast", { count: String(formStreak.length) })}
-            </span>
+            <Eyebrow>{t("users.profile.header.formLast", { count: String(formStreak.length) })}</Eyebrow>
             {formStreak.length > 0 ? (
               <FormStreak results={formStreak} />
             ) : (

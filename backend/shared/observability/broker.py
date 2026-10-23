@@ -66,7 +66,7 @@ _worker_broker: Any | None = None
 def set_worker_broker(broker: Any) -> None:
     """Register the current process's connected RabbitMQ broker.
 
-    Call once from the worker's ``serve.py`` at startup.
+    Call once from the process's ``serve*.py`` at startup.
     """
     global _worker_broker
     _worker_broker = broker
@@ -84,7 +84,7 @@ def require_broker(broker: Any | None = None) -> Any:
     if _worker_broker is None:
         raise RuntimeError(
             "No RabbitMQ broker available: pass broker=... explicitly or call "
-            "set_worker_broker(broker) at worker startup (serve.py)."
+            "set_worker_broker(broker) at process startup (serve*.py)."
         )
     return _worker_broker
 

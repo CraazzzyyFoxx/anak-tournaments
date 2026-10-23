@@ -3,14 +3,15 @@
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
+import { Card, CardContent } from "@/components/ui/card";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
 import type { Workspace } from "@/types/workspace.types";
-import { Spinner } from "@/components/ui/spinner";
 import type { WorkspaceSettingsFormState } from "./fields";
 import type { WorkspaceSettingsForm } from "./useWorkspaceSettingsForm";
 
-export interface WorkspaceSettingsFrameContext {
+interface WorkspaceSettingsFrameContext {
   workspace: Workspace;
   workspaceId: number;
   form: WorkspaceSettingsFormState;
@@ -51,10 +52,20 @@ export function WorkspaceSettingsFrame({
   }
 
   if (!isLoaded || settings.isLoading) {
+    // Form-shaped: label + control rows in the section card, so nothing
+    // reflows when the record lands.
     return (
-      <div className="flex items-center justify-center py-24 text-muted-foreground">
-        <Spinner className="mr-2 size-5" /> {t("loading")}
-      </div>
+      <Card aria-busy="true">
+        <CardContent className="flex flex-col gap-5 pt-6">
+          <span className="sr-only">{t("loading")}</span>
+          {[0, 1, 2].map((row) => (
+            <div key={row} className="flex flex-col gap-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-9 w-full" />
+            </div>
+          ))}
+        </CardContent>
+      </Card>
     );
   }
 
@@ -70,11 +81,7 @@ export function WorkspaceSettingsFrame({
 
   if (settings.isError) {
     return (
-      <PageStateCard
-        state="error"
-        title={t("loadErrorTitle")}
-        description={t("loadErrorDescription")}
-      />
+      <PageStateCard state="error" title={t("loadErrorTitle")} onAction={settings.refetch} />
     );
   }
 

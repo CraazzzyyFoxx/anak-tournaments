@@ -34,7 +34,8 @@ DOCS: dict[str, dict] = {
         "description": (
             "Permission: admin-panel access plus `team.create` on the balance's workspace. "
             "Materializes a saved balance into tournament teams, returning removed/imported counts "
-            "and emitting a teams-changed realtime event."
+            "and emitting a teams-changed realtime event. Returns advisories for format violations "
+            "and names unresolved or duplicate members skipped by the export."
         ),
     },
     "rpc.balancer.admin.balance_ranks_export": {
@@ -59,7 +60,11 @@ DOCS: dict[str, dict] = {
             "Permission: admin-panel access plus workspace `team.update`, and additionally "
             "`workspace.update` when the Discord channel actually changes. "
             "Creates or updates the workspace-level rank-delta threshold, hide-from-pool flag and the "
-            "workspace-wide Discord channel for mix matchups."
+            "workspace-wide Discord channel for mix matchups. A newly set Discord id (mix channel, voice "
+            "category, general voices) must be a text channel, category or voice channel of the "
+            "workspace's own guild: 409 discord_guild_not_linked when the workspace has no guild, 422 "
+            "discord_channel_not_in_guild, 503 discord_unavailable when Discord cannot be asked. "
+            "Clearing a value or keeping it unchanged asks Discord nothing."
         ),
     },
     "rpc.balancer.admin.workspace_ranker_get": {
@@ -91,7 +96,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.admin.teams_import": {
         "summary": "Import teams file",
-        "description": "Permission: admin-panel access plus workspace `team.create`. Bulk-imports tournament teams from a multipart JSON upload (atravkovs or internal format, auto-detected) and emits a teams-changed realtime event.",
+        "description": "Permission: admin-panel access plus workspace `team.create`. Bulk-imports tournament teams from a multipart JSON upload (atravkovs or internal format, auto-detected) and emits a teams-changed realtime event. Returns advisories for format violations and names skipped unresolved or duplicate members.",
     },
     "rpc.balancer.jobs.create": {
         "summary": "Create balance job",
@@ -154,24 +159,24 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.draft.suggestions": {
         "summary": "Get pick suggestions",
-        "description": "Permission: workspace `team.read`. Ranks the top five available players by fit for the current pick; 409 if the draft has no current pick.",
+        "description": "Permission: a tournament workspace's `team.read`, or the mix's hosts. Ranks the top five available players by fit for the current pick; 409 if the draft has no current pick.",
     },
     "rpc.balancer.draft.feasibility": {
         "summary": "Get draft feasibility",
-        "description": "Permission: workspace `team.create`. Reports whether every remaining team-role slot can be filled.",
+        "description": "Permission: a tournament workspace's `team.read`, or the mix's hosts. Reports whether every remaining team-role slot can be filled.",
     },
     "rpc.balancer.draft.pick_options": {
         "summary": "Get safe draft pick options",
-        "description": "Permission: the on-clock captain of the pick's team, or a workspace admin. Returns safe and blocked player-role choices for the current pick.",
+        "description": "Permission: the on-clock captain of the pick's team, or a workspace admin. Returns safe and blocked player-role choices for the current pick. A tournament's workspace admin or a mix's host may pick for whichever team is on the clock.",
     },
     "rpc.balancer.draft.player_role_edit": {
         "summary": "Preview or add a draft player role",
-        "description": "Permission: workspace `team.create`. Previews or commits an emergency role addition to the draft snapshot with optimistic versioning and private audit reason.",
+        "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Previews or commits an emergency role addition to the draft snapshot with optimistic versioning and private audit reason; 422 `role_edit_tournament_only` on a mix's draft, whose ranks are edited in the mix.",
     },
     "rpc.balancer.draft.team_fit": {
         "summary": "Get team fit scores",
         "description": (
-            "Permission: the team's own captain, or workspace `team.read`. Scores every available "
+            "Permission: that team's own captain, or whoever runs the draft. Scores every available "
             "player against every role this team can still seat, normalized 1..99 across the "
             "response (50 when all candidates tie). `role` is null under a role-less (all-flex) "
             "roster shape, where each player has exactly one entry. Empty once the team's roster is "
@@ -181,7 +186,7 @@ DOCS: dict[str, dict] = {
     "rpc.balancer.draft.queue_get": {
         "summary": "Get captain pick queue",
         "description": (
-            "Permission: the team's own captain, or workspace `team.create`. Returns the team's "
+            "Permission: that team's own captain, or whoever runs the draft. Returns the team's "
             "private autopick priority in stored order, filtered to players still available, plus "
             "`autopick_preview` -- exactly what autopick would take -- while this team is on the "
             "clock. Never part of the public board."
@@ -190,7 +195,7 @@ DOCS: dict[str, dict] = {
     "rpc.balancer.draft.queue_set": {
         "summary": "Set captain pick queue",
         "description": (
-            "Permission: the team's own captain, or workspace `team.create`. Replaces the queue "
+            "Permission: that team's own captain, or whoever runs the draft. Replaces the queue "
             "with the given order (max 60, duplicates collapsed to their first placement); 422 when "
             "an id is not an available non-captain player of this draft, 409 once the draft is "
             "completed or cancelled. Publishes no realtime event -- a queue is private to its team."
@@ -199,7 +204,7 @@ DOCS: dict[str, dict] = {
     "rpc.balancer.draft.journal": {
         "summary": "Get draft organizer journal",
         "description": (
-            "Permission: workspace `team.create`. Returns the session's audit trail newest first -- "
+            "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Returns the session's audit trail newest first -- "
             "picks, autopicks, overrides, clock extensions and every lifecycle move -- with the "
             "acting account's name resolved (null for the clock and other system actions). `limit` "
             "defaults to 100 and is clamped to 500."
@@ -227,27 +232,27 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.draft.start": {
         "summary": "Start draft session",
-        "description": "Permission: workspace `team.create`, and only a superuser may start outside the tournament's draft phase. Starts the draft and opens the first pick, publishing a pick-started realtime event with the clock deadline.",
+        "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser), and only a superuser may start a tournament's draft outside its draft phase (a mix draft has no phase). Starts the draft and opens the first pick, publishing a pick-started realtime event with the clock deadline.",
     },
     "rpc.balancer.draft.pause": {
         "summary": "Pause draft session",
-        "description": "Permission: workspace `team.create`. Pauses an in-progress draft and publishes a draft-paused realtime event.",
+        "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Pauses an in-progress draft and publishes a draft-paused realtime event.",
     },
     "rpc.balancer.draft.resume": {
         "summary": "Resume draft session",
-        "description": "Permission: workspace `team.create`. Resumes a paused draft and publishes a draft-resumed realtime event.",
+        "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Resumes a paused draft and publishes a draft-resumed realtime event.",
     },
     "rpc.balancer.draft.cancel": {
         "summary": "Cancel draft session",
-        "description": "Permission: workspace `team.create`. Cancels the draft and publishes a draft-cancelled realtime event.",
+        "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Cancels the draft and publishes a draft-cancelled realtime event.",
     },
     "rpc.balancer.draft.rollback": {
         "summary": "Rollback draft pick",
-        "description": "Permission: workspace `team.create`. Rolls back the most recent draft action and publishes a rollback realtime event.",
+        "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Rolls back the most recent draft action and publishes a rollback realtime event. A mix draft refuses to roll back the pick that seated its team's current captain (409 rollback_frees_captain): the host replaces the captain with a player who stays first.",
     },
     "rpc.balancer.draft.export": {
         "summary": "Export draft to teams",
-        "description": "Permission: workspace `team.create`. Finalizes the drafted rosters into tournament teams and publishes a draft-completed realtime event.",
+        "description": "Permission: workspace `team.create`. Finalizes the drafted rosters into tournament teams and publishes a draft-completed realtime event. The returned session includes advisories for format violations and names skipped unresolved or duplicate members.",
     },
     "rpc.balancer.draft.export_ranks": {
         "summary": "Re-export draft ranks",
@@ -258,25 +263,26 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.draft.pick_select": {
         "summary": "Select draft pick",
-        "description": "Permission: the on-clock captain of the pick's team, or a workspace admin. Makes a pick for the current slot, enforcing role fit and optimistic version, then broadcasts pick-made/next-pick events.",
+        "description": "Permission: the on-clock captain of the pick's team, or a workspace admin. Makes a pick for the current slot, enforcing role fit and optimistic version, then broadcasts pick-made/next-pick events. A tournament's workspace admin or a mix's host may pick for whichever team is on the clock.",
     },
     "rpc.balancer.draft.pick_autopick": {
         "summary": "Autopick draft pick",
-        "description": "Permission: workspace `team.create`. Auto-selects the best-fit available player for a pick using the session's autopick strategy and broadcasts the result.",
+        "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Auto-selects the best-fit available player for a pick using the session's autopick strategy and broadcasts the result.",
     },
     "rpc.balancer.draft.pick_extend": {
         "summary": "Extend draft pick clock",
-        "description": "Permission: workspace `team.create`. Adds seconds to the current on-clock pick — to its deadline while the draft is live, to the frozen remainder while it is paused — and broadcasts the new deadline.",
+        "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Adds seconds to the current on-clock pick — to its deadline while the draft is live, to the frozen remainder while it is paused — and broadcasts the new deadline.",
     },
     "rpc.balancer.draft.pick_override": {
         "summary": "Override draft pick",
-        "description": "Permission: workspace `team.create`. Overrides a pick to an arbitrary player, bypassing captain/clock constraints, and broadcasts a pick-made event.",
+        "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Overrides a pick to an arbitrary player, bypassing captain/clock constraints, and broadcasts a pick-made event.",
     },
     "rpc.balancer.custom.create": {
         "summary": "Create custom game",
         "description": (
             "Permission: workspace membership plus `custom_game.create`. "
-            "Opens a pickup mix in the workspace and returns it with its roster; the caller becomes "
+            "Opens a pickup mix of the requested game (`discipline`, required) in the workspace and returns it with "
+            "its roster; the caller becomes "
             "its host, and member_ids may be empty to start from an empty lineup. With "
             "clone_from_game_id the new mix starts from a "
             "previous mix of the same workspace -- its pool (everyone back in the pool), per-seat "
@@ -286,7 +292,16 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.custom.list": {
         "summary": "List custom games",
-        "description": "Permission: public; no authentication required. Returns every mix in the workspace with its settings and host display name, but without rosters.",
+        "description": (
+            "Permission: public; no authentication required. One keyset page of the workspace's mixes, newest "
+            "first: `{items, next_before_id}`. Each item carries the mix's settings and host display name (no "
+            "roster), `players_count` (distinct members seated across its recorded matches), `roster_count`, the "
+            "most recently played `maps` (at most 4, with `maps_count` for all of them) and every lobby's "
+            "`matches_count`. Optional query: `discipline` (an installed game), `status` (`open` = draft or "
+            "balanced, `history` = completed or cancelled; anything else is a 422), `q` (case-insensitive "
+            "substring of the mix name or the host's display name), `limit` (1..100, default 30) and `before_id` "
+            "(pass the previous page's `next_before_id`; null means there is no further page)."
+        ),
     },
     "rpc.balancer.custom.get": {
         "summary": "Get custom game",
@@ -296,6 +311,14 @@ DOCS: dict[str, dict] = {
             "order, the ranks the balancer would use and which layer each came from. "
             "Resolves ownership from the mix id; an optional workspace_id restricts the read "
             "and returns 404 if the mix belongs to another workspace."
+            " It carries the mix's hero_ban_preset (null = no bans)."
+            " It carries hero_fearless (spec §11.4)."
+            " Each lobby carries state (idle | ready | pregame | live), live_seats (the live match's participations"
+            " {id, slot, name}) and opener_index (the lineup team that bans first in the next match, null without"
+            " bans)."
+            " A lobby's `state` reads `draft_setup` / `draft_live` while its draft runs, with `draft_session_id`;"
+            " a drafted lineup's document carries `source: \"draft\"`. A player in a drafting lobby's pool reads"
+            " that lobby as `current_lobby`; an unpicked player who stepped away leaves the pool."
         ),
     },
     "rpc.balancer.custom.update_roster": {
@@ -309,7 +332,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.custom.update_player": {
         "summary": "Update custom game player",
-        "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Patches one seat's participation state, role order or flex flag and returns the refreshed mix; 404 when the member is not on this mix's roster.",
+        "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Patches one seat's participation state, role order, flex flag or away flag and returns the refreshed mix; 404 when the member is not on this mix's roster. An away flag that flips reaches the lobby's running draft: a picked player stepping away, or a pool left unable to fill every role, pauses a live draft (a return never does), and its board re-reads the seats either way.",
     },
     "rpc.balancer.custom.set_participation": {
         "summary": "Set custom game participation",
@@ -368,12 +391,85 @@ DOCS: dict[str, dict] = {
             "when the caller has no seat."
         ),
     },
+    "rpc.balancer.custom.self_away": {
+        "summary": "Step away from my mix",
+        "description": (
+            "Permission: a seated account; the account links are required as for a role edit, the host's 'players "
+            "edit their own roles' switch is not. Sets or clears the caller's own away flag: an away player keeps "
+            "their row, roles and must-play mark, but no balance, lobby split or rotation seats them until they are "
+            "back, and every match recorded meanwhile counts them as busy (neither played nor sat out). It never "
+            "clears itself. It reaches the lobby's running draft as the host's away flag does. 404 when the caller "
+            "has no seat, 409 once the mix is over."
+        ),
+    },
     "rpc.balancer.custom.set_self_service": {
         "summary": "Set custom game self-service switches",
         "description": (
             "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
             "Sets whether players may seat themselves (closed, into the pool, or onto the bench) and "
             "whether a seated player may re-order their own roles, then returns the refreshed mix."
+        ),
+    },
+    "rpc.balancer.custom.set_ban_preset": {
+        "summary": "Set custom game ban preset",
+        "description": (
+            "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
+            "Sets the hero ban preset the lobbies' next Start opens a room on -- a hero preset of the mix's own "
+            "game that bans no player on map 1 (deadlock_hero_bans, deadlock_bans_pick, lol_side_selection, "
+            "lol_draft, lol_captains, the Overwatch hero presets) -- or null for no bans, and returns the refreshed "
+            "mix. A live match keeps the room it started with. 422 unknown_ban_preset for any other code."
+            " hero_fearless, when sent, turns Fearless on or off for the next room: a player cannot pick a hero they"
+            " were recorded on earlier in the mix."
+        ),
+    },
+    "rpc.balancer.custom.set_draft_settings": {
+        "summary": "Set custom game team formation",
+        "description": (
+            "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
+            "Sets how the mix's lobbies form teams by default -- 'balance' (the solver) or 'draft' (a captain "
+            "draft) -- and the draft's pick clock in seconds (10..600), then returns the refreshed mix. A running "
+            "draft keeps its clock; both apply from the next formation. 422 for any other value."
+        ),
+    },
+    "rpc.balancer.custom.draft_seed": {
+        "summary": "Draft a custom game lobby",
+        "description": (
+            "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Re-forms one "
+            "lobby (`lobby_index`) as a captain draft: its seated set -- present, non-benched players, must-play "
+            "first, then rotation order, minus whoever another lobby plays; exactly whom a balance of the lobby "
+            "would seat -- with the two strongest as captains, the weaker picking first, snake order on the mix's "
+            "pick clock. The lobby's lineup is cleared and its running draft cancelled; it reads `draft_setup` "
+            "until a host starts the draft (`POST /api/v1/balancer/draft/sessions/{session_id}/start`). The last "
+            "pick writes the lobby's lineup; a finished mix draft is never paused or rolled back (409 "
+            "mix_draft_completed: re-form instead). 409 match_live; 422 empty_lineup, missing_ranked_role or a split "
+            "code."
+        ),
+    },
+    "rpc.balancer.custom.draft_split": {
+        "summary": "Split custom game pool into lobby drafts",
+        "description": (
+            "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Splits the "
+            "seated set over every lobby by strength and seeds one captain draft per lobby, forming no team. Every "
+            "running draft is cancelled and every lineup cleared. 422 single_lobby or a split code "
+            "(not_enough_players, too_many_must_play, too_many_pinned, roles_infeasible); 409 match_live."
+        ),
+    },
+    "rpc.balancer.custom.draft_captain": {
+        "summary": "Replace a custom game draft captain",
+        "description": (
+            "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Before the "
+            "draft starts, any present pool player (`player_id`, a draft player id) captains `team_id` and the "
+            "draft re-seeds with the weaker captain picking first, leaving out whoever stepped away; during it, a "
+            "player already on that team takes over its picks and its crown, and the picks made stand. 404 "
+            "draft_not_found; 409 already_captain or not_in_pool; 422 captain_not_on_team."
+        ),
+    },
+    "rpc.balancer.custom.draft_add_player": {
+        "summary": "Add a waiting player to a custom game draft",
+        "description": (
+            "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Adds a present "
+            "player no lobby seats to the lobby's draft as an available pick -- before the start too -- the way out "
+            "of a draft short of a role. 404 not_on_roster or draft_not_found; 409 player_away or already_seated."
         ),
     },
     "rpc.balancer.custom.balance": {
@@ -387,6 +483,8 @@ DOCS: dict[str, dict] = {
             "workspace canon. 422 when the lineup is empty, a seated player has no ranked role, the "
             "mix has one lobby (`single_lobby`) or the pool cannot be split (`not_enough_players`, "
             "`too_many_must_play`, `too_many_pinned`, `roles_infeasible`)."
+            " 409 match_live when the lobby -- for scope all, any lobby -- has a live match."
+            " An away player is never a candidate. A balanced lobby's running draft is cancelled."
         ),
     },
     "rpc.balancer.custom.set_team_names": {
@@ -402,6 +500,7 @@ DOCS: dict[str, dict] = {
             "outcome names one explicitly, and clears it either way. The lobby_index field names which "
             "lobby's roll this is; a single-lobby mix leaves it at 0. 404 when "
             "the map is not in the catalogue."
+            " 409 match_live while the lobby's match is live."
         ),
     },
     "rpc.balancer.custom.set_variant_index": {
@@ -413,15 +512,17 @@ DOCS: dict[str, dict] = {
             "404 when the index points past the stored options, and 409 seat_conflict when the option "
             "would seat somebody another of the mix's lobbies has already put on the floor. Re-balancing "
             "resets it to the first option."
+            " 409 match_live while the lobby's match is live."
         ),
     },
     "rpc.balancer.custom.post_discord": {
         "summary": "Post custom game lineup to Discord",
         "description": (
             "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
-            "Queues an embed of one balance option's teams, the next map and the points at stake "
-            "to the workspace-wide mix channel and returns immediately -- delivery is the bot's, "
-            "and nothing about the mix changes. A multi-lobby mix names the lobby in the embed title and "
+            "Queues the lobby's lineup post -- the balance option the lobby is showing, the next map "
+            "and the points at stake -- to the workspace-wide mix channel and returns immediately: "
+            "discord-service renders the card, keeps it in step with the board and delivers it, and "
+            "nothing about the mix changes. A multi-lobby mix names the lobby on the card and "
             "numbers the match within that lobby. 409 when the workspace has "
             "no mix channel configured and 404 when the balance option is missing."
         ),
@@ -430,11 +531,12 @@ DOCS: dict[str, dict] = {
         "summary": "Open custom game signup in Discord",
         "description": (
             "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
-            "Opens self-signup in the given mode (into the pool or onto the bench) and queues a card "
-            "with Join / My roles / Leave buttons to the workspace-wide mix channel. The card is "
-            "static: every click re-reads the mix, so it refuses correctly once signup closes or the "
-            "mix ends. A mix has one signup card: posting again deletes the previous one from the "
-            "channel first. 409 when the workspace has no mix channel configured."
+            "Opens self-signup in the given mode (into the pool or onto the bench) and queues the "
+            "signup card with Join / My roles / Leave buttons to the workspace-wide mix channel. "
+            "discord-service renders it and keeps it in step with the roster; every click re-reads "
+            "the mix, so it refuses correctly once signup closes or the mix ends. A mix has one "
+            "signup card: posting again deletes the previous one from the channel first. 409 when "
+            "the workspace has no mix channel configured."
         ),
     },
     "rpc.balancer.custom.delete_discord_post": {
@@ -484,26 +586,67 @@ DOCS: dict[str, dict] = {
         "description": (
             "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
             "Swaps two seated players between teams inside one balance option, same role only, and "
-            "returns the refreshed mix. 404 when the option or either seat is "
-            "missing, 422 when the seats hold different roles or sit on the same team."
+            "returns the refreshed mix; a swap that moves a team's captain re-captains both teams. "
+            "404 when the option or either seat is missing, 422 when the seats hold different roles or sit on the "
+            "same team."
+            " 409 match_live while the lobby's match is live."
+        ),
+    },
+    "rpc.balancer.custom.set_captain": {
+        "summary": "Make custom game captain",
+        "description": (
+            "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
+            "Makes one seated player the captain of their team in the option the lobby is showing and returns the "
+            "refreshed mix. A balance captains each team by its strongest seat; a swap that moves a captain "
+            "re-captains both teams. 404 when that option does not seat the player."
+            " 409 match_live while the lobby's match is live."
+        ),
+    },
+    "rpc.balancer.custom.start_match": {
+        "summary": "Start custom game match",
+        "description": (
+            "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
+            "Starts the lobby's match on the option it is showing: an open encounter with both teams' rosters "
+            "(captains flagged) and one game on the lobby's next map. The lineup is then frozen until the result is "
+            "recorded or the match is cancelled. When the lobby has both team voices, its seated players are then "
+            "moved into them (as voice_move; a Discord failure leaves the match started). 409 match_live when the lobby "
+            "already has a live match, 404 when the shown option is gone, 422 unless it seats two teams."
+            " Both seats are marked ready. With a hero ban preset the team that bans first (the last round's loser when"
+            " the same two teams meet again, else the lower average rating; flip_opener swaps it) is seated in slot 1"
+            " and tournament-service opens the ban room; the lobby reads pregame until the room is done."
+        ),
+    },
+    "rpc.balancer.custom.cancel_match": {
+        "summary": "Cancel custom game match",
+        "description": (
+            "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
+            "Throws the lobby's live match away: its encounter is deleted with its game and rosters, nothing is "
+            "recorded and no rank, pin or map moves; the lineup is ready to start again. 409 no_live_match when "
+            "nothing was started."
         ),
     },
     "rpc.balancer.custom.record_outcome": {
         "summary": "Record custom game match",
         "description": (
             "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
-            "Freezes one played match of a balance option into the mix's history, moving both teams' "
-            "ranks in the host's book -- by points_per_win when a winner is given, or seat by seat by the "
-            "mix ranker when the host's rating_mode is 'ranker' -- advancing the workspace's hidden "
-            "ratings, and redeeming every "
-            "seat's must_play pin back to the pool. The match is stamped with the lobby that played it "
-            "and with whoever was playing another lobby at that moment, whom rotation then counts as "
-            "neither played nor sat out. Repeatable until the mix is closed."
+            "Records the result of the lobby's live match -- the one Start match opened on the lineup it froze -- and "
+            "completes its encounter, moving both teams' ranks in the host's book (by points_per_win when a winner is "
+            "given, or seat by seat by the mix ranker when the host's rating_mode is 'ranker'), advancing the "
+            "workspace's hidden ratings and redeeming every seat's must_play pin back to the pool. The match is "
+            "stamped with its lobby and with whoever was playing another lobby at that moment, whom rotation then "
+            "counts as neither played nor sat out. The lobby's next map is cleared. 409 no_live_match when nothing was "
+            "started. Repeatable until the mix is closed. The winner names the lineup team (1 or 2), whichever slot "
+            "Start seated it in."
         ),
     },
     "rpc.balancer.custom.match_history": {
         "summary": "List custom game matches",
-        "description": "Permission: public; no authentication required. Returns every match recorded for the mix, newest first, with team names, scores, winner and map.",
+        "description": (
+            "Permission: public; no authentication required. Returns every round recorded for the mix, newest first: "
+            "its two teams by slot (slot 1 banned first) with name and score, its hero bans {slot, item_id} in order, "
+            "whose hero each pick was {slot, member_id, name, item_id} in pick order, "
+            "the winning slot (null for a draw), lobby, map, recorder and the rank points it applied."
+        ),
     },
     "rpc.balancer.custom.undo_match": {
         "summary": "Undo custom game match",
@@ -531,17 +674,25 @@ DOCS: dict[str, dict] = {
         "description": (
             "Permission: public; no authentication required. "
             "Per-member wins/losses/draws, win rate, current streak and the per-role split across "
-            "every mix this workspace has run, best record first. The optional since query parameter "
-            "(ISO 8601) narrows it to matches recorded on or after that moment; without it the whole "
-            "history counts. Read-only."
+            "the mixes this workspace has run, best record first. The optional `discipline` query parameter narrows "
+            "it to one enabled game (422 `discipline_not_enabled` for another): seats, roles and `identity` (the "
+            "member's handle for that game's identity provider) are that game's. Without it (or `all`) the "
+            "scoreboard spans every game, `identity` is the member's first handle in any game's provider, and "
+            "`by_role` is null -- role codes of different games are different roles. The optional since query "
+            "parameter (ISO 8601) narrows it to matches played (started) on or after that moment; without it the "
+            "whole history counts. Each member also carries `player_id` (the global player, null once the member is "
+            "no longer on the roster) and `form`: their newest results first (in the order they were recorded), at "
+            "most 10, each `{outcome, match_id, played_at, recorded_at}`. Top-level `mixes` and `matches` count the "
+            "distinct mixes and recorded matches inside the same window. Read-only."
         ),
     },
     "rpc.balancer.custom.close": {
         "summary": "Close custom game",
         "description": (
             "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
-            "Marks the mix completed so no further writes land. Nothing is destroyed -- the mix and "
-            "every match it recorded stay readable -- so this is the reversible end of a mix."
+            "Cancels every live match and every running draft, then marks the mix completed so no further writes "
+            "land. Nothing is destroyed -- the mix and every match it recorded stay readable -- so this is the "
+            "reversible end of a mix."
         ),
     },
     "rpc.balancer.custom.set_lobby_count": {
@@ -552,6 +703,7 @@ DOCS: dict[str, dict] = {
             "ones untouched; shrinking deletes every lobby past the new count together with its "
             "stored matchup and clears the pins that named them. Matches already recorded for a "
             "deleted lobby stay in the history and in the statistics."
+            " 409 match_live when a lobby it would drop has a live match."
         ),
     },
     "rpc.balancer.custom.rename": {
@@ -578,7 +730,11 @@ DOCS: dict[str, dict] = {
             "Returns a page of the workspace roster carrying two rank dictionaries that are never "
             "merged: `ranks` is the workspace canon and `author_ranks` is one author's own book, "
             "which is what lets a row say whether a number is its own or inherited. Another "
-            "organiser's book is readable through `author_user_id`."
+            "organiser's book is readable through `author_user_id`. "
+            "Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks "
+            "are held on and whose identity provider names each row's `identity`; omitted, the workspace's "
+            "first enabled discipline (422 `discipline_not_enabled` for another). Observation-only anchors "
+            "are not roster members and never listed."
         ),
     },
     "rpc.balancer.players.summary": {
@@ -587,7 +743,17 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.players.upsert": {
         "summary": "Upsert workspace player",
-        "description": "Permission: workspace member holding team.create or custom_game.create (a mix host); setting display_name requires team.create. Creates or reuses a workspace member for a BattleTag and returns it shaped exactly like a roster row; 422 when battle_tag is missing or blank.",
+        "description": (
+            "Permission: workspace member holding team.create or custom_game.create (a mix host); setting "
+            "display_name requires team.create. Admits (or reuses) the workspace member a game identity "
+            "denotes and returns it shaped exactly like a roster row. The body is "
+            "`{discipline, identity: {provider, handle}, display_name?}`; `discipline` must be enabled for the "
+            "workspace (422 `discipline_not_enabled`), `identity.provider` must be that discipline's identity "
+            "provider (422 `identity.provider_mismatch`) and the handle must fit its grammar (422 with the "
+            "provider's format code, e.g. `identity.riot.format`). Several distinct players carrying the handle "
+            "is 409 `identity_conflict`; no player yet creates an unlinked one. Unknown keys (such as "
+            "`battle_tag`) are 422."
+        ),
     },
     "rpc.balancer.players.set_ranks": {
         "summary": "Set workspace player ranks",
@@ -598,7 +764,9 @@ DOCS: dict[str, dict] = {
             "and takes no author id, so nobody can rewrite another organiser's ranks. `clear` deletes "
             "roles from the layer instead of zeroing them, so a cleared author rank falls back to "
             "canon, while an omitted role is left alone. 404 when the member belongs to another "
-            "workspace."
+            "workspace. The body's `discipline` is required (422 when omitted) and picks whose rated roles "
+            "the ranks are held on; it must be enabled for the workspace (422 `discipline_not_enabled`). "
+            "A role code outside that discipline's rated module roles -- `flex` included -- is 422 `unknown_role`."
         ),
     },
     "rpc.balancer.players.authors": {
@@ -610,13 +778,19 @@ DOCS: dict[str, dict] = {
         "description": (
             "Permission: workspace member holding `team.update` -- the same grant writing the canon "
             "needs, because this read puts every author's private book on one screen. Read-only. "
-            "One flat row per rank value across nine layers (canon, author, ow, hidden, "
+            "One flat row per rank value across nine layers (canon, author, native, hidden, "
             "effective_tournament, effective_mix, registration, tournament, casual); the six current "
             "layers are the default. The two effective layers are computed in SQL and agree with the "
-            "resolver the balancer runs on: effective_tournament is canon over OW on the workspace "
-            "grid, effective_mix is the author's book over the canon over OW on the same workspace grid. "
-            "`division` is resolved on the workspace's effective grid for every row. Filtering, "
-            "sorting, the exact total and the page all run in the database."
+            "resolver the balancer runs on: effective_tournament is canon over the game's native rank on the "
+            "workspace grid, effective_mix is the author's book over the canon over the native rank on the same "
+            "workspace grid. "
+            "`division` is resolved on the workspace's effective grid of the row's game. Filtering, "
+            "sorting, the exact total and the page all run in the database. "
+            "Optional `discipline` reads one enabled game (422 `discipline_not_enabled` for another); without it "
+            "the rows are the union over every game the workspace runs, each tagged with its `discipline`, and "
+            "`role`, `div_min`, `div_max` and `sort=rank_value|division` are a 422 (`<param> requires "
+            "discipline`): those values live on different grids. A game with no grid here lists its rows with a "
+            "null `division`, and a `div_min`/`div_max` on it is a 422 `division_grid_required`."
         ),
     },
     "rpc.balancer.teams.export_registered": {
@@ -635,10 +809,12 @@ DOCS: dict[str, dict] = {
             "Permission: self-service -- any authenticated (active) account reads its own "
             "preferences only. "
             "Returns the signed-in account's own mix settings -- the rank-balance/role-comfort tilt, "
-            "the per-role weights, how many balance options to keep, the roster shape its mixes "
-            "field, how far a decided match moves its rank book and whether the mix ranker moves it "
-            "instead (rating_mode) -- plus roster_shape, the read-only resolution of that shape. A null "
-            "value means the setting was never saved and the default applies."
+            "the per-role weights, the open-slot weight, how many balance options to keep, how far a "
+            "decided match moves its rank book and whether the mix ranker moves it instead "
+            "(rating_mode). A null value means the setting was never saved and the default applies. "
+            "The team format is not here: it is frozen on each mix."
+            " hero_ban_presets maps a game to the hero ban preset a new mix of it starts with."
+            " formation_defaults maps a game to how a new mix of it forms teams (team_formation, draft_pick_seconds)."
         ),
     },
     "rpc.balancer.prefs.upsert": {
@@ -646,10 +822,13 @@ DOCS: dict[str, dict] = {
         "description": (
             "Permission: self-service -- any authenticated (active) account writes its own "
             "preferences only. "
-            "Replaces all six of the caller's mix settings at once and returns the stored result "
-            "with the re-resolved roster_shape; a null clears one back to the default, and 0 points "
+            "Replaces all eight of the caller's mix settings at once and returns the stored result, "
+            "exactly what the next read returns; a null clears one back to the default, and 0 points "
             "per win stores as unset. They apply to every mix this account hosts -- a mix runs on "
-            "its host's preferences whoever presses the button. 422 on an impossible roster shape."
+            "its host's preferences whoever presses the button. 422 on an unknown field or an "
+            "out-of-range value."
+            " 422 when a hero_ban_presets entry is not a hero preset of its own game."
+            " 422 when formation_defaults names a game that is not installed or a pick clock outside 10..600."
         ),
     },
     "rpc.balancer.draft.chat_history": {

@@ -2,6 +2,7 @@ package balancer
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -163,6 +164,22 @@ func TestRosterRoutes(t *testing.T) {
 	}
 }
 
+// TestMixListForwardsItsFilters pins the mix list's query surface: a param this
+// table drops reaches the worker as absent, so the page silently gets every mix
+// (or the first page again) instead of the tab, search or page it asked for.
+func TestMixListForwardsItsFilters(t *testing.T) {
+	for _, route := range RosterRoutes {
+		if route.Queue != "rpc.balancer.custom.list" {
+			continue
+		}
+		if !slices.Equal(route.Query, []string{"discipline", "status", "q", "limit", "before_id"}) {
+			t.Fatalf("custom.list forwards %v", route.Query)
+		}
+		return
+	}
+	t.Fatal("custom.list route is not registered")
+}
+
 // TestWorkspaceRankerRoutes pins the mix ranker's admin endpoints: the workspace
 // id must reach the worker as data["id"] (IDParam) because that is what its
 // RBAC gate reads, and only the upsert carries a body.
@@ -201,6 +218,7 @@ func TestMixSelfServiceRoutes(t *testing.T) {
 		"POST /api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/me":                        "rpc.balancer.custom.self_join",
 		"DELETE /api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/me":                      "rpc.balancer.custom.self_leave",
 		"PATCH /api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/me":                       "rpc.balancer.custom.self_update",
+		"PUT /api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/me/away":                    "rpc.balancer.custom.self_away",
 		"PUT /api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/self-service":               "rpc.balancer.custom.set_self_service",
 		"POST /api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/discord/signup":            "rpc.balancer.custom.post_signup",
 		"DELETE /api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/discord/posts/{post_id}": "rpc.balancer.custom.delete_discord_post",

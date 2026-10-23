@@ -1,19 +1,21 @@
 "use client";
 
 import { useId } from "react";
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { useTranslations } from "next-intl";
 import { ArrowLeft, Bell, Check, ChevronsUpDown } from "lucide-react";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Popover, PopoverClose, PopoverTrigger } from "@/components/ui/popover";
+import { RowButton } from "@/components/ui/row-button";
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem
 } from "@/components/ui/sidebar";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
+import { useQueryParams } from "@/hooks/useQueryParams";
 import {
   ACCOUNT_MENU_ITEM_CLASS,
   AccountMenuPanel,
@@ -23,7 +25,9 @@ import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
 import { filterAccessibleWorkspaces, useWorkspaceStore } from "@/stores/workspace.store";
 import { useAccountSettingsModalStore } from "@/stores/account-settings-modal.store";
 import { SITE_FAVICON, SITE_NAME } from "@/config/site";
+import { DISCIPLINE_PARAM } from "@/lib/site/discipline-scope";
 import { initials } from "@/lib/utils";
+import type { WorkspaceListItem } from "@/types/workspace.types";
 
 // Role names come from two RBAC scopes: global roles ("admin", "moderator" —
 // see AppRole in usePermissions) and
@@ -92,7 +96,7 @@ export function SidebarWorkspaceLogoItem({ href }: Readonly<{ href: string }>) {
                 />
               </div>
             )}
-            <span className="truncate text-sm font-semibold tracking-tight text-sidebar-foreground group-data-[collapsible=icon]:hidden">
+            <span className="truncate text-sm font-semibold text-sidebar-foreground group-data-[collapsible=icon]:hidden">
               {currentWorkspace?.name ?? SITE_NAME}
             </span>
           </HoverPrefetchLink>
@@ -111,10 +115,10 @@ export function SidebarBackToSite() {
           asChild
           size="sm"
           tooltip={t("returnToSite")}
-          className="h-7 rounded-md px-2.5 text-sm text-sidebar-foreground/40 hover:text-sidebar-foreground/70 hover:bg-sidebar-accent/40"
+          className="h-7 rounded-md px-2.5 text-sm text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/40"
         >
           <HoverPrefetchLink href="/">
-            <ArrowLeft aria-hidden className="size-4 text-sidebar-foreground/30" />
+            <ArrowLeft aria-hidden className="size-4 text-sidebar-foreground/50" />
             <span>{t("returnToSite")}</span>
           </HoverPrefetchLink>
         </SidebarMenuButton>
@@ -135,9 +139,16 @@ export function SidebarUserDropdown() {
     currentWorkspaceId,
     setCurrentWorkspace
   } = useWorkspaceStore();
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
 
   const workspaces = filterAccessibleWorkspaces(allWorkspaces, status, user);
   const currentWorkspace = workspaces.find((w) => w.id === currentWorkspaceId);
+  const pickWorkspace = (next: WorkspaceListItem) => {
+    setCurrentWorkspace(next.id);
+    // A game filter the new community does not run would narrow its list to nothing.
+    const game = searchParams?.get(DISCIPLINE_PARAM);
+    if (game && !next.disciplines_enabled.includes(game)) setParams({ [DISCIPLINE_PARAM]: null });
+  };
   const roleLabel = t(`roles.${getRoleLabel({
     isSuperuser: user?.isSuperuser ?? false,
     globalRoles: user?.roles ?? [],
@@ -168,14 +179,14 @@ export function SidebarUserDropdown() {
                   <span className="truncate text-sm font-medium text-sidebar-foreground">
                     {user?.username ?? tDashboard("user")}
                   </span>
-                  <span className="truncate text-xs text-sidebar-foreground/40">
+                  <span className="truncate text-xs text-sidebar-foreground/60">
                     {roleLabel}
                     {currentWorkspace ? ` · ${currentWorkspace.name}` : ""}
                   </span>
                 </div>
                 <ChevronsUpDown
                   aria-hidden
-                  className="ml-auto size-3.5 text-sidebar-foreground/25 group-data-[collapsible=icon]:hidden"
+                  className="ml-auto size-3.5 text-sidebar-foreground/50 group-data-[collapsible=icon]:hidden"
                 />
               </SidebarMenuButton>
             </PopoverTrigger>
@@ -188,14 +199,13 @@ export function SidebarUserDropdown() {
                 actions={
                   // The admin shell has no notification bell, so its settings live here.
                   <PopoverClose asChild>
-                    <button
-                      type="button"
+                    <RowButton
                       className={ACCOUNT_MENU_ITEM_CLASS}
                       onClick={() => openSettings("notifications")}
                     >
                       <Bell className="size-4 shrink-0" aria-hidden />
                       <span className="min-w-0 flex-1 truncate">{tCommon("notificationSettings")}</span>
-                    </button>
+                    </RowButton>
                   </PopoverClose>
                 }
               >
@@ -211,9 +221,8 @@ export function SidebarUserDropdown() {
                       </p>
                       {workspaces.map((ws) => (
                         <PopoverClose key={ws.id} asChild>
-                          <button
-                            type="button"
-                            onClick={() => setCurrentWorkspace(ws.id)}
+                          <RowButton
+                            onClick={() => pickWorkspace(ws)}
                             aria-current={ws.id === currentWorkspaceId ? "true" : undefined}
                             className={ACCOUNT_MENU_ITEM_CLASS}
                           >
@@ -222,7 +231,7 @@ export function SidebarUserDropdown() {
                             {ws.id === currentWorkspaceId && (
                               <Check aria-hidden className="size-4 shrink-0 text-[color:var(--aqt-teal)]" />
                             )}
-                          </button>
+                          </RowButton>
                         </PopoverClose>
                       ))}
                     </div>

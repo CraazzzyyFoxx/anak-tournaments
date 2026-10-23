@@ -1,6 +1,5 @@
 """Shared time middleware for request processing time tracking.
 
-Replaces duplicate implementations across services with a single shared version.
 Measures request processing time and adds X-Process-Time header to responses.
 """
 

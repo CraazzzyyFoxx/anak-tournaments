@@ -30,7 +30,7 @@ const syncBalanceTimeout = 90 * time.Second
 
 // PublicRoutes need no auth (mirrors GET /config in src/routes/balancer.py).
 var PublicRoutes = []edge.RouteSpec{
-	{Method: "GET", Pattern: "/api/v1/balancer/config", Queue: "rpc.balancer.config", Auth: edge.AuthNone, Timeout: fastReadTimeout},
+	{Method: "GET", Pattern: "/api/v1/balancer/config", Queue: "rpc.balancer.config", Query: []string{"discipline"}, Auth: edge.AuthNone, Timeout: fastReadTimeout},
 }
 
 // AdminRoutes are the workspace-scoped admin balancer endpoints from
@@ -83,7 +83,7 @@ var RosterRoutes = []edge.RouteSpec{
 	// none of these handlers looks at the caller -- the ranks they return are
 	// the host's own book, resolved from the mix's host_user_id. Every write
 	// below stays AuthRequired plus host-or-co-host in the worker.
-	{Method: "GET", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games", Queue: "rpc.balancer.custom.list", Path: []string{"workspace_id"}, Auth: edge.AuthNone, Timeout: fastReadTimeout},
+	{Method: "GET", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games", Queue: "rpc.balancer.custom.list", Path: []string{"workspace_id"}, Query: []string{"discipline", "status", "q", "limit", "before_id"}, Auth: edge.AuthNone, Timeout: fastReadTimeout},
 	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games", Queue: "rpc.balancer.custom.create", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	// Workspace-wide mix scoreboard, not a per-game read. ServeMux precedence
 	// already gives this literal segment the win over {game_id} whatever the
@@ -115,9 +115,21 @@ var RosterRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/me", Queue: "rpc.balancer.custom.self_join", IDParam: "game_id", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/me", Queue: "rpc.balancer.custom.self_leave", IDParam: "game_id", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "PATCH", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/me", Queue: "rpc.balancer.custom.self_update", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	// The player's own away switch (spec §7.4): gated like a role edit minus the host's switch.
+	{Method: "PUT", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/me/away", Queue: "rpc.balancer.custom.self_away", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	// Host-only: whether players may seat themselves at all, and whether a
 	// seated one may re-order their own roles.
 	{Method: "PUT", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/self-service", Queue: "rpc.balancer.custom.set_self_service", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	// Host-only: the hero ban preset a Start opens a room on (spec §4.3).
+	{Method: "PUT", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/ban-preset", Queue: "rpc.balancer.custom.set_ban_preset", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	// Host-only: how the lobbies form teams by default and the draft's pick clock (spec §4.3).
+	{Method: "PUT", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/draft-settings", Queue: "rpc.balancer.custom.set_draft_settings", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	// A lobby's captain draft (spec §9.2-9.5): seed one lobby, split the pool over every lobby, replace a captain,
+	// add a waiting player. The draft itself runs on /api/v1/balancer/draft/sessions/{session_id}/...
+	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/draft", Queue: "rpc.balancer.custom.draft_seed", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/draft/split", Queue: "rpc.balancer.custom.draft_split", IDParam: "game_id", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
+	{Method: "PUT", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/draft/captain", Queue: "rpc.balancer.custom.draft_captain", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/draft/players", Queue: "rpc.balancer.custom.draft_add_player", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	// One click: open signup AND post the card that announces it. A separate
 	// "open" write would let a host post a card whose buttons refuse everybody.
 	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/discord/signup", Queue: "rpc.balancer.custom.post_signup", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
@@ -133,8 +145,14 @@ var RosterRoutes = []edge.RouteSpec{
 	// every pin, since a pin to a lobby the mix no longer runs would quietly
 	// exclude that player from the next balance.
 	{Method: "PUT", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/lobbies", Queue: "rpc.balancer.custom.set_lobby_count", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	// A lobby's match: Start opens it on the shown lineup (and splits the team voices), Cancel throws it away; the
+	// result is /outcome.
+	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/match/start", Queue: "rpc.balancer.custom.start_match", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/match/cancel", Queue: "rpc.balancer.custom.cancel_match", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/outcome", Queue: "rpc.balancer.custom.record_outcome", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/teams/swap", Queue: "rpc.balancer.custom.swap_seats", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	// "Make captain": one seat of the lobby's shown option wears the crown.
+	{Method: "PUT", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/captain", Queue: "rpc.balancer.custom.set_captain", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/matches", Queue: "rpc.balancer.custom.match_history", IDParam: "game_id", Path: []string{"workspace_id"}, Auth: edge.AuthNone, Timeout: fastReadTimeout},
 	{Method: "DELETE", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/matches/{match_id}", Queue: "rpc.balancer.custom.undo_match", IDParam: "game_id", Path: []string{"workspace_id", "match_id"}, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/rotation", Queue: "rpc.balancer.custom.rotation", IDParam: "game_id", Path: []string{"workspace_id"}, AllQuery: true, Auth: edge.AuthNone, Timeout: fastReadTimeout},
@@ -165,7 +183,7 @@ var JobRoutes = []edge.RouteSpec{
 	// in the body, the teams come back in the response. No job id, no polling,
 	// no realtime topic — and no workspace read either, so `workspace_id` is
 	// here purely as the authorization scope.
-	{Method: "POST", Pattern: "/api/v1/balancer/balance", Queue: "rpc.balancer.balance", Query: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired, Timeout: syncBalanceTimeout},
+	{Method: "POST", Pattern: "/api/v1/balancer/balance", Queue: "rpc.balancer.balance", Query: []string{"workspace_id", "discipline"}, Body: true, Auth: edge.AuthRequired, Timeout: syncBalanceTimeout},
 }
 
 // DraftReadRoutes are the public draft spectating reads (no auth), from
@@ -177,8 +195,8 @@ var DraftReadRoutes = []edge.RouteSpec{
 }
 
 // DraftRoutes are the authenticated draft endpoints: suggestions (draft-session
-// read), admin lifecycle (keyed by tournament_id for the permission, session_id
-// for the action), and pick actions (keyed by pick_id). Permissions + captain
+// read), admin lifecycle (keyed by session_id; tournament-only admin keyed by
+// tournament_id), and pick actions (keyed by pick_id). Permissions + captain
 // identity for /select are enforced in the worker. The path segments
 // (tournaments/sessions/picks) are distinct, so no subtree matcher is needed.
 var DraftRoutes = []edge.RouteSpec{
@@ -194,17 +212,18 @@ var DraftRoutes = []edge.RouteSpec{
 	{Method: "PUT", Pattern: "/api/v1/balancer/draft/sessions/{session_id}/teams/{team_id}/queue", Queue: "rpc.balancer.draft.queue_set", IDParam: "session_id", Path: []string{"team_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/balancer/draft/sessions/{session_id}/journal", Queue: "rpc.balancer.draft.journal", IDParam: "session_id", Query: []string{"limit"}, Auth: edge.AuthRequired, Timeout: fastReadTimeout},
 	{Method: "POST", Pattern: "/api/v1/balancer/draft/sessions/{session_id}/players/{player_id}/roles", Queue: "rpc.balancer.draft.player_role_edit", IDParam: "player_id", Path: []string{"session_id"}, Body: true, Auth: edge.AuthRequired},
-	// lifecycle
+	// tournament-only admin
 	{Method: "GET", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions", Queue: "rpc.balancer.draft.session_list", IDParam: "tournament_id", Auth: edge.AuthRequired, Timeout: fastReadTimeout},
 	{Method: "POST", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions", Queue: "rpc.balancer.draft.session_create", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}", Queue: "rpc.balancer.draft.session_delete", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired, Success: 204},
 	{Method: "POST", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/seed", Queue: "rpc.balancer.draft.seed", IDParam: "session_id", Path: []string{"tournament_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "PATCH", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}", Queue: "rpc.balancer.draft.session_patch", IDParam: "session_id", Path: []string{"tournament_id"}, Body: true, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/start", Queue: "rpc.balancer.draft.start", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/pause", Queue: "rpc.balancer.draft.pause", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/resume", Queue: "rpc.balancer.draft.resume", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/cancel", Queue: "rpc.balancer.draft.cancel", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/rollback", Queue: "rpc.balancer.draft.rollback", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
+	// lifecycle, for a tournament's draft and a mix lobby's alike: the worker authorizes on the session's own owner.
+	{Method: "POST", Pattern: "/api/v1/balancer/draft/sessions/{session_id}/start", Queue: "rpc.balancer.draft.start", IDParam: "session_id", Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/balancer/draft/sessions/{session_id}/pause", Queue: "rpc.balancer.draft.pause", IDParam: "session_id", Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/balancer/draft/sessions/{session_id}/resume", Queue: "rpc.balancer.draft.resume", IDParam: "session_id", Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/balancer/draft/sessions/{session_id}/cancel", Queue: "rpc.balancer.draft.cancel", IDParam: "session_id", Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/balancer/draft/sessions/{session_id}/rollback", Queue: "rpc.balancer.draft.rollback", IDParam: "session_id", Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/export", Queue: "rpc.balancer.draft.export", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
 	// Rank-only re-export: leaves the exported teams in place, refreshes their ranks.
 	{Method: "POST", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/export-ranks", Queue: "rpc.balancer.draft.export_ranks", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},

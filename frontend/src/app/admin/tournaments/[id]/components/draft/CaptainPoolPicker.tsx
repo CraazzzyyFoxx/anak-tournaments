@@ -17,7 +17,8 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { resolveDivisionFromRank } from "@/lib/divisions/grid";
-import { getRoleIconName, ROLE_ACCENT } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { roleTint, slotCodeOrder, slotRank, type RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { DraftRole } from "@/types/draft.types";
 import type { DivisionGrid } from "@/types/workspace.types";
@@ -31,9 +32,10 @@ interface CaptainPoolPickerProps {
   onToggle: (id: number) => void;
   /** The TOURNAMENT's grid, so a rank resolves to the tier the draft uses. */
   divisionGrid: DivisionGrid;
+  /** The owner game's role dictionary: the filter chips, names and glyphs of the pool's roles. */
+  ontology: RoleOntology | null;
 }
 
-const FILTER_ROLES: DraftRole[] = ["tank", "damage", "support"];
 const SORTS: DraftCaptainSort[] = ["rank_desc", "rank_asc", "name"];
 
 /**
@@ -47,22 +49,24 @@ export function CaptainPoolPicker({
   selectedIds,
   teamCount,
   onToggle,
-  divisionGrid
+  divisionGrid,
+  ontology
 }: Readonly<CaptainPoolPickerProps>) {
   const t = useTranslations("draftAdmin");
+  const slotLabel = useSlotLabel(ontology);
   const [query, setQuery] = useState("");
   const [roles, setRoles] = useState<DraftRole[]>([]);
   const [selectedOnly, setSelectedOnly] = useState(false);
   const [sort, setSort] = useState<DraftCaptainSort>("rank_desc");
 
-  const roleCounts = useMemo(
-    () =>
-      FILTER_ROLES.map((role) => ({
-        role,
-        count: rows.filter((row) => row.roles.includes(role)).length
-      })),
-    [rows]
-  );
+  // One chip per role somebody in the pool plays, in the game's own order: the filter offers what exists.
+  const roleCounts = useMemo(() => {
+    const order = slotCodeOrder(ontology);
+    const seen = [...new Set(rows.flatMap((row) => row.roles))].sort(
+      (left, right) => slotRank(order, left) - slotRank(order, right)
+    );
+    return seen.map((role) => ({ role, count: rows.filter((row) => row.roles.includes(role)).length }));
+  }, [rows, ontology]);
   const visible = useMemo(
     () => filterCaptainRows(rows, { query, roles, sort, selectedOnly, selectedIds }),
     [query, roles, rows, selectedIds, selectedOnly, sort]
@@ -96,13 +100,8 @@ export function CaptainPoolPicker({
               )
             }
           >
-            <PlayerRoleIcon
-              role={getRoleIconName(role)}
-              size={14}
-              color={roles.includes(role) ? ROLE_ACCENT[role] : "var(--aqt-fg-muted)"}
-              decorative
-            />
-            {t(`roles.${role}`)}
+            <PlayerRoleIcon role={role} ontology={ontology} size={14} decorative />
+            {slotLabel(role)}
           </FilterChip>
         ))}
         <FilterChip
@@ -119,7 +118,7 @@ export function CaptainPoolPicker({
           value={query}
           onValueChange={setQuery}
           label={t("searchCaptains")}
-          placeholder={t("searchCaptains")}
+          placeholder={t("searchCaptainsPlaceholder")}
           containerClassName="min-w-52 flex-1"
         />
         <Select value={sort} onValueChange={(next) => setSort(next as DraftCaptainSort)}>
@@ -137,7 +136,7 @@ export function CaptainPoolPicker({
         </Select>
       </div>
 
-      <div className="max-h-96 divide-y divide-border/60 overflow-auto rounded-xl border border-border/70">
+      <div className="max-h-96 divide-y divide-border overflow-auto rounded-xl border border-border">
         {visible.map((row) => {
           const selected = selectedIds.includes(row.id);
           const disabled = !selected && full;
@@ -159,17 +158,11 @@ export function CaptainPoolPicker({
               />
               <span className="flex shrink-0 items-center gap-1">
                 {row.roles.map((role) => (
-                  <PlayerRoleIcon
-                    key={role}
-                    role={getRoleIconName(role)}
-                    size={15}
-                    color={ROLE_ACCENT[role]}
-                    label={t(`roles.${role}`)}
-                  />
+                  <PlayerRoleIcon key={role} role={role} ontology={ontology} size={15} label={slotLabel(role)} />
                 ))}
               </span>
               <span className="min-w-0 flex-1 truncate text-sm font-medium">{row.label}</span>
-              <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-xs tabular-nums">
+              <span className="inline-flex shrink-0 items-center gap-1.5 text-xs tabular-nums">
                 {division != null && (
                   <DivisionIcon
                     division={division}
@@ -183,14 +176,14 @@ export function CaptainPoolPicker({
                     role, since it is not always the one they rank highest on. */}
                 <span
                   className="min-w-10 text-right"
-                  style={{ color: row.rankRole ? ROLE_ACCENT[row.rankRole] : undefined }}
+                  style={{ color: row.rankRole ? roleTint(ontology, row.rankRole) : undefined }}
                   title={
                     row.rankRole
-                      ? t("captainRankOnRole", { role: t(`roles.${row.rankRole}`) })
+                      ? t("captainRankOnRole", { role: slotLabel(row.rankRole) })
                       : undefined
                   }
                 >
-                  {row.rank ?? "—"}
+                  {row.rank}
                 </span>
               </span>
             </label>

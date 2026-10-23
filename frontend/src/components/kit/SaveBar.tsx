@@ -3,10 +3,13 @@
 import { useCallback, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { AlertTriangle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { useUnsavedGuard } from "@/components/kit/useUnsavedGuard";
+import { useReportUnsaved } from "@/components/kit/SettingsContinuation";
 import { Spinner } from "@/components/ui/spinner";
 
 export interface SaveBarProps {
@@ -24,6 +27,11 @@ export interface SaveBarProps {
   edited?: boolean;
   /** What is about to be saved: "3 changed fields", "v4 draft · 9 divisions". */
   summary: ReactNode;
+  /**
+   * Why saving is refused or just failed. Takes the summary's place, in the
+   * bar itself: a toast for it landed on top of this bar's Discard button.
+   */
+  error?: string | null;
   onDiscard: () => void;
   onSave: () => void;
   saving?: boolean;
@@ -63,6 +71,7 @@ export function SaveBar({
   dirty,
   edited,
   summary,
+  error,
   onDiscard,
   onSave,
   saving = false,
@@ -76,22 +85,32 @@ export function SaveBar({
 
   const handleNavigationBlocked = useCallback((href: string) => setPendingHref(href), []);
 
+  const unsaved = (edited ?? dirty) && !saving;
   useUnsavedGuard({
-    dirty: (edited ?? dirty) && !saving,
+    dirty: unsaved,
     guardNavigation,
     onNavigationBlocked: handleNavigationBlocked
   });
+  // Holds back the next-page ghost's pull while there is something to lose.
+  useReportUnsaved(edited ?? dirty);
 
   if (!dirty) return null;
 
   return (
     <>
-      <div
+      <Card
         role="region"
         aria-label={t("unsavedChanges")}
-        className="sticky bottom-4 z-10 mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card/95 px-4 py-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/80"
+        className="sticky bottom-4 z-10 mt-4 flex flex-wrap items-center gap-3 bg-card/95 px-4 py-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/80"
       >
-        <p className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{summary}</p>
+        {error ? (
+          <p role="alert" className="flex min-w-0 flex-1 items-start gap-1.5 text-sm text-danger">
+            <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
+            <span className="min-w-0 [overflow-wrap:anywhere]">{error}</span>
+          </p>
+        ) : (
+          <p className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{summary}</p>
+        )}
         {secondary}
         <Button type="button" variant="outline" size="sm" onClick={onDiscard} disabled={saving}>
           {t("discard")}
@@ -100,7 +119,7 @@ export function SaveBar({
           {saving ? <Spinner /> : null}
           {primaryLabel ?? t("save")}
         </Button>
-      </div>
+      </Card>
 
       <ConfirmDialog
         open={pendingHref !== null}

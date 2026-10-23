@@ -1,23 +1,41 @@
 import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
 import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
 
 import { getTournamentOverviewState } from "./_data";
+import { tournamentStreamsQueryOptions } from "./_queries/tournamentStreams";
+import { mapPoolConfigsQueryOptions } from "@/lib/tournament/map-pool-query";
 import { tournamentOverviewQueryOptions } from "@/lib/tournament/overview-query";
+import { tournamentRegistrationFormQueryOptions } from "@/lib/tournament/registrations-query";
+import { areStreamsVisible, isTournamentStatusEnded } from "@/lib/tournament/status";
 
 type TournamentOverviewBoundaryProps = {
   slug: string;
+  children: ReactNode;
 };
 
-// Hydration-only: seeds the shared React Query cache with the SSR-fetched
-// overview so `useTournamentQuery` resolves instantly wherever it's called
-// (TournamentClientLayout and every tab page share the same query key).
-// Deliberately renders no children of its own; it is the FIRST child of the
-// layout's Suspense boundary and `TournamentClientLayout` is the second, which
-// is what makes the seed land before the read in both renderers (see
-// layout.tsx). Anything that moves the shell out of that boundary reintroduces
-// the hydration mismatch this ordering exists to prevent.
+// Seeds the request's React Query cache with the SSR-fetched overview and
+// renders the client shell INSIDE that seed, so `useTournamentQuery` resolves
+// from it in both renderers. The shell must be a child, not a sibling: the
+// server renders a suspended component's siblings before it resolves, so a
+// sibling shell built the overview query empty (pending) first, and
+// HydrationBoundary only fills an existing query in an effect — which never
+// runs on the server. Every cache-missing first visit then streamed the
+// skeleton while the browser rendered the page: a hydration mismatch that
+// threw the shell away.
+//
+// The same holds for every OTHER read the shell makes, and those also reach
+// the tab below it, so the seed carries all of them (under the shell's own
+// gates). An unseeded shell read is created empty on the server before the tab
+// resolves — the tab's own prefetch of that key then never applies there —
+// and in the browser the shell fetches it before the tab hydrates (React
+// hydrates the tab's Suspense boundary in a later pass), so the tab renders
+// the data, or an "updating" badge, the server never had. Seeded and fresh,
+// the shell makes no first-visit fetch at all. Per-viewer reads (the viewer's
+// own registration) stay out: this render is not the viewer's.
 export default async function TournamentOverviewBoundary({
-  slug
+  slug,
+  children
 }: Readonly<TournamentOverviewBoundaryProps>) {
   const overviewState = await getTournamentOverviewState(slug);
 
@@ -28,14 +46,28 @@ export default async function TournamentOverviewBoundary({
   }
 
   if (overviewState.kind === "error") {
-    // TournamentClientLayout's own `useTournamentQuery` will also fail
-    // client-side and render the shared error card itself.
-    return null;
+    // No seed: the shell's own `useTournamentQuery` fails client-side and
+    // renders the shared error card itself.
+    return children;
   }
 
+  const overview = overviewState.overview;
   const queryClient = new QueryClient();
-  const overviewOptions = tournamentOverviewQueryOptions(slug);
-  queryClient.setQueryData(overviewOptions.queryKey, overviewState.overview);
+  queryClient.setQueryData(tournamentOverviewQueryOptions(slug).queryKey, overview);
+  // A failed read is just left out (`prefetchQuery` swallows it, `dehydrate`
+  // drops it) and the shell retries it client-side.
+  await Promise.all([
+    // The Maps tab's present-or-absent gate in the nav.
+    queryClient.prefetchQuery(mapPoolConfigsQueryOptions(overview.id)),
+    // TournamentRegisterButton, rendered until the tournament ends.
+    isTournamentStatusEnded(overview.status)
+      ? null
+      : queryClient.prefetchQuery(tournamentRegistrationFormQueryOptions(overview)),
+    // The broadcast dock and the Stream tab, read only while streams show.
+    areStreamsVisible(overview.status)
+      ? queryClient.prefetchQuery(tournamentStreamsQueryOptions(overview.id))
+      : null
+  ]);
 
-  return <HydrationBoundary state={dehydrate(queryClient)} />;
+  return <HydrationBoundary state={dehydrate(queryClient)}>{children}</HydrationBoundary>;
 }

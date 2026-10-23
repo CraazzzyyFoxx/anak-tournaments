@@ -5,6 +5,12 @@ import { afterEach, expect, it, vi } from "vitest";
 import type { LogDirectoryHandle, LogFileHandle } from "./browser-directory";
 import { useLogAutoUpload, useLogAutoUploadStore } from "./use-log-auto-upload";
 
+declare global {
+  var IS_REACT_ACT_ENVIRONMENT: boolean;
+}
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
 const files = new Map<string, { lastModified: number; body: string }>();
 const folder: LogDirectoryHandle = {
   kind: "directory",

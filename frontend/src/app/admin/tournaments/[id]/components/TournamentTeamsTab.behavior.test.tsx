@@ -98,15 +98,9 @@ async function mount() {
         <TournamentTeamsTab
           tournamentId={64}
           teams={[] as Team[]}
-          stagesCount={1}
           hasChallongeSource
-          canCreateTeam
-          canUpdateTeam
-          canDeleteTeam
           canImportTeams
-          canCreatePlayer
-          canUpdatePlayer
-          canDeletePlayer
+          canManageTeams
         />
       </QueryClientProvider>
     );

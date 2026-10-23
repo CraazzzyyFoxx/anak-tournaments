@@ -6,6 +6,7 @@ import { flexRender, type Column, type Row } from "@tanstack/react-table";
 
 import { cn } from "@/components/data-table/host";
 import { ADMIN_ACTION_COLUMN_ID } from "@/components/data-table/columns";
+import { RowButton } from "@/components/ui/row-button";
 
 /**
  * Below `md` a wide table either scrolls sideways past the point of use or
@@ -60,13 +61,12 @@ export function AdminTableMobileList<TData>({
             )}
           >
             {onRowClick ? (
-              <button
-                type="button"
+              <RowButton
                 onClick={() => onRowClick(row)}
-                className="min-w-0 flex-1 space-y-0.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="-m-1 min-w-0 flex-1 space-y-0.5 rounded-md p-1"
               >
                 {body}
-              </button>
+              </RowButton>
             ) : (
               <div className="min-w-0 flex-1 space-y-0.5">{body}</div>
             )}

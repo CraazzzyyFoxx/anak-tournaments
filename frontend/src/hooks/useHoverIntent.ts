@@ -104,5 +104,3 @@ export function useHoverIntent({
 
   return { open, setOpen, cancel, scheduleOpen, scheduleClose };
 }
-
-export default useHoverIntent;

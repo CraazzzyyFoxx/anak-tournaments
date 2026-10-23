@@ -5,8 +5,8 @@
 //     a stage's format after creation, and a non-superuser is told why rather
 //     than left with a control that silently does nothing;
 //  2. `?stage=` and `?section=` ARE the state: selecting pushes a linkable URL,
-//     and a section that does not apply to the stage's format falls back to
-//     General instead of rendering an empty panel. Without `?stage=` a wide
+//     and a tab that does not apply to the stage's format falls back to
+//     Settings instead of rendering an empty panel. Without `?stage=` a wide
 //     viewport opens the last stage; a narrow one keeps the list, because
 //     `MasterDetail`'s Back there is `history.back()`;
 //  3. one destructive operation end to end — the kebab opens the screen's ONE
@@ -93,7 +93,16 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ href, children, ...rest }: { href: string; children: unknown }) => (
+  default: ({
+    href,
+    children,
+    prefetch: _prefetch,
+    ...rest
+  }: {
+    href: string;
+    children: unknown;
+    prefetch?: boolean | null;
+  }) => (
     <a href={href} {...rest}>
       {children as never}
     </a>
@@ -123,12 +132,13 @@ function groupStage(): Stage {
     is_completed: false,
     ranking_preset: null,
     tiebreak_order: null,
-    scoring: { win: null, draw: null, loss: null },
+    scoring: { win: null, draw: null, loss: null, preset: null, columns: null, placement_points: null, formula: null },
     swiss_bye_points: null,
+    swiss_qualify_wins: null,
+    swiss_eliminate_losses: null,
     de_grand_final_type: "no_reset",
     seed_ranking: "slot",
-    best_of: { default: 3, by_round: {}, final: null },
-    ffa_scoring: { placement_points: [], score_points: 1, score_label: null },
+    best_of: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
     challonge_id: null,
     challonge_slug: null,
     items: [
@@ -170,12 +180,13 @@ function playoffStage(): Stage {
     is_completed: false,
     ranking_preset: null,
     tiebreak_order: null,
-    scoring: { win: null, draw: null, loss: null },
+    scoring: { win: null, draw: null, loss: null, preset: null, columns: null, placement_points: null, formula: null },
     swiss_bye_points: null,
+    swiss_qualify_wins: null,
+    swiss_eliminate_losses: null,
     de_grand_final_type: "no_reset",
     seed_ranking: "slot",
-    best_of: { default: 3, by_round: {}, final: null },
-    ffa_scoring: { placement_points: [], score_points: 1, score_label: null },
+    best_of: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
     challonge_id: null,
     challonge_slug: null,
     items: []
@@ -205,9 +216,9 @@ function Harness() {
   return <BracketTabPage />;
 }
 
-async function mount(search = "") {
+async function mount(search = "", stages: Stage[] = [groupStage(), playoffStage()]) {
   currentSearch = search;
-  getStages.mockResolvedValue([groupStage(), playoffStage()]);
+  getStages.mockResolvedValue(stages);
   getTournament.mockResolvedValue({ id: 84, name: "Cup", win_points: 1 });
   getStagesProgress.mockResolvedValue([]);
   getTeams.mockResolvedValue({ results: [{ id: 1, name: "Team One" }] });
@@ -281,7 +292,7 @@ describe("Bracket tab · permission gate", () => {
     const format = [...container.querySelectorAll("label")].find(
       (element) => (element.textContent ?? "").trim() === "Format"
     );
-    const trigger = format?.parentElement?.querySelector("button");
+    const trigger = format ? document.getElementById(format.htmlFor) : null;
     expect(trigger?.hasAttribute("disabled")).toBe(false);
     expect(bodyText()).not.toContain("Only superusers can modify stage type");
   });
@@ -293,7 +304,7 @@ describe("Bracket tab · permission gate", () => {
     const format = [...container.querySelectorAll("label")].find(
       (element) => (element.textContent ?? "").trim() === "Format"
     );
-    const trigger = format?.parentElement?.querySelector("button");
+    const trigger = format ? document.getElementById(format.htmlFor) : null;
     expect(trigger?.hasAttribute("disabled")).toBe(true);
     expect(bodyText()).toContain("Only superusers can modify stage type after creation.");
   });
@@ -321,6 +332,15 @@ describe("Bracket tab · URL is the state", () => {
     expect(container.querySelector('nav[aria-label="Playoff sections"]')).toBeNull();
   });
 
+  it("with no stages, points the organizer at Add stage instead of the public empty copy", async () => {
+    await mount("", []);
+
+    expect(bodyText()).toContain(en.adminBracket.page.noStages);
+    expect(bodyText()).toContain(en.adminBracket.page.addFirstStage);
+    expect(bodyText()).toContain(en.adminBracket.list.add);
+    expect(bodyText()).not.toContain(en.common.pageState.empty.description);
+  });
+
   it("selecting a stage pushes `?stage=` and opens that stage's editor", async () => {
     await mount();
 
@@ -338,7 +358,7 @@ describe("Bracket tab · URL is the state", () => {
     await mount("?stage=10&section=items");
 
     expect(sectionTab("Items")?.getAttribute("aria-current")).toBe("page");
-    expect(bodyText()).toContain("Groups, bracket lanes and the teams in their slots.");
+    expect(bodyText()).toContain("Edit matches");
     // Items links out instead of editing matches in place.
     expect(
       [...document.querySelectorAll("a")].some(
@@ -347,12 +367,12 @@ describe("Bracket tab · URL is the state", () => {
     ).toBe(true);
   });
 
-  it("falls back to General for a section the stage's format does not have", async () => {
-    // Tiebreakers rank a group stage; a double elimination has no standings.
-    await mount("?stage=20&section=tiebreakers");
+  it("falls back to Settings for a tab the stage's format does not have", async () => {
+    // Only an elimination bracket has a layout; stage 10 is a round robin.
+    await mount("?stage=10&section=layout");
 
-    expect(sectionTab("Tiebreakers")).toBeNull();
-    expect(sectionTab("General")?.getAttribute("aria-current")).toBe("page");
+    expect(sectionTab("Bracket layout")).toBeNull();
+    expect(sectionTab("Settings")?.getAttribute("aria-current")).toBe("page");
     expect(bodyText()).toContain("Bracket preview");
   });
 });

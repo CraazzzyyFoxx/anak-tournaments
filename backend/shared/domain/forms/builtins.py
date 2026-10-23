@@ -15,7 +15,7 @@ from typing import Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from shared.core.social import PROVIDERS, SocialProvider
+from shared.core.social import GAME_PROVIDERS, PROVIDERS, SocialProvider
 
 __all__ = (
     "BUILTIN_KEYS",
@@ -46,6 +46,8 @@ IDENTITY_PROVIDERS: tuple[str, ...] = (
     SocialProvider.BOOSTY,
     SocialProvider.VK,
     SocialProvider.YOUTUBE,
+    SocialProvider.RIOT,
+    SocialProvider.STEAM,
 )
 
 #: Upper bound an organizer may set on handles per identity field.
@@ -73,8 +75,7 @@ class TopHeroesParams(_Strict):
 class RolesParams(_Strict):
     primary_required: bool = True
     additional_required: bool = False
-    #: Legacy ``flex_role.enabled``; False ⇒ an all-primary (full-flex)
-    #: submission is refused.
+    #: False ⇒ an all-primary (full-flex) submission is refused.
     flex_allowed: bool = True
     flex_mode: Literal["optional", "all_roles", "forced"] = "optional"
     #: Role code -> allowed sub-role slugs; ``{}`` means every catalog slug.
@@ -122,8 +123,8 @@ def builtin_spec(key: str) -> BuiltinSpec | None:
     provider = identity_provider(key)
     if provider is None:
         return None
-    # The game handle is the roster's public face, as the BattleTag column was.
-    visibility = "public" if provider == SocialProvider.BATTLENET else None
+    # A game handle is the roster's public face.
+    visibility = "public" if provider in GAME_PROVIDERS else None
     return BuiltinSpec(key, visibility, IdentityParams)
 
 
@@ -137,14 +138,15 @@ def identity_max_count(provider: str, params: dict | None) -> int:
 
 
 #: Server-side defaults, applied when a field carries no explicit
-#: ``validation.regex``. Before the schema these patterns existed only in the
-#: browser, so a non-browser writer (sheet sync, admin API) could store a
-#: malformed handle; the server is now the one place that decides.
+#: ``validation.regex``. The server is the one place that decides, so a
+#: non-browser writer (sheet sync, admin API) cannot store a malformed handle.
 DEFAULT_PATTERNS: dict[str, str] = {
     identity_key(SocialProvider.BATTLENET): r"([^#]{2,12}#[0-9]{4,})",
     identity_key(SocialProvider.DISCORD): r"^[a-z0-9_.]{2,32}$",
     identity_key(SocialProvider.TWITCH): r"^[a-zA-Z0-9_]{4,25}$",
     identity_key(SocialProvider.BOOSTY): r"^[^#]{2,50}$",
+    identity_key(SocialProvider.RIOT): r"^[^#]{3,16}#[0-9a-z]{3,5}$",
+    identity_key(SocialProvider.STEAM): rf"^{PROVIDERS[SocialProvider.STEAM].handle_pattern}$",
     "url": r"^https?://.+$",
 }
 

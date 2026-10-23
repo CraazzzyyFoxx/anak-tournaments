@@ -37,9 +37,8 @@ function player(id: number): DraftPlayer {
     session_id: 1,
     registration_id: id * 10,
     user_id: id,
-    battle_tag: `P${id}`,
-    primary_role: "damage",
-    sub_role: null,
+    identity: { provider: "battlenet", handle: `P${id}` }, player_name: null,
+    primary_role: { dimension: "player_role", role: "damage" },
     is_flex: false,
     effective_rank: 3000,
     status: "available",
@@ -48,7 +47,7 @@ function player(id: number): DraftPlayer {
     secondary_roles: [],
     role_ranks: {},
     role_sources: {},
-    role_top_heroes: {},
+    role_top_characters: {},
     role_sub_roles: {},
     notes: null,
     custom_fields: [],
@@ -84,6 +83,8 @@ function makeBoard(): DraftBoard {
     session: {
       id: 1,
       tournament_id: 5,
+      custom_game_id: null,
+      lobby_index: null,
       workspace_id: 2,
       status: "live",
       format: "snake",
@@ -349,16 +350,25 @@ describe("draft safety state", () => {
       ev("draft.pick_made", {
         pick_id: 1,
         picked_player_id: 50,
-        target_role: "support",
+        target_role: { dimension: "player_role", role: "support" },
         target_rank_value: 2875,
         pick_version: 4
       })
     );
 
     const resolved = next.picks.find((p) => p.id === 1)!;
-    expect(resolved.target_role).toBe("support");
+    expect(resolved.target_role).toEqual({ dimension: "player_role", role: "support" });
     expect(resolved.target_rank_value).toBe(2875);
     expect(resolved.version).toBe(4);
+  });
+
+  it("an explicit open-slot event clears a previously cached role", () => {
+    const board = makeBoard();
+    board.picks[0].target_role = { dimension: "player_role", role: "support" };
+    const next = applyDraftEvent(board, ev("draft.pick_made", {
+      pick_id: board.picks[0].id, picked_player_id: 50, target_role: null
+    }));
+    expect(next.picks[0].target_role).toBeNull();
   });
 
   it("pauses on blocked while keeping the current pick unresolved", () => {
@@ -403,7 +413,7 @@ describe("draft safety state", () => {
       options: [
         {
           player_id: 50,
-          role: "support" as const,
+          role: { dimension: "player_role", role: "support" },
           is_safe: true,
           reason_code: null,
           unmatched_slots: [],

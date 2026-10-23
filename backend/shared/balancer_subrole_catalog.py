@@ -16,6 +16,8 @@ __all__ = ("SubroleCatalog", "resolve_subrole_catalog")
 async def resolve_subrole_catalog(
     session: AsyncSession,
     workspace_id: int,
+    *,
+    discipline: str,
 ) -> SubroleCatalog:
     """Return ``{reg_role_code: [{"slug", "label"}]}`` for active sub-roles."""
-    return await player_sub_role_service.catalog_for_workspace(session, workspace_id)
+    return await player_sub_role_service.catalog_for_workspace(session, workspace_id, discipline=discipline)

@@ -10,26 +10,27 @@ import {
   InternalBalancePlayer,
   SavedBalance
 } from "@/types/balancer-admin.types";
-import { BalanceResponse, BalancerConfig, PlayerData } from "@/types/balancer.types";
-import { playerRoleSlotCode } from "@/lib/roster/player-role";
-import { UserRoleType } from "@/types/user.types";
+import { BalanceResponse, BalancerConfig } from "@/types/balancer.types";
+import { OPEN_SLOT_CODE, solverSlotCode } from "@/lib/roster/shape";
+import { roleOf, subRoleSlugOf } from "@/lib/roster/role-ref";
 import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
-import { DEFAULT_DIVISION_GRID, getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
+import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import userService from "@/services/user.service";
 import balancerAdminService from "@/services/balancer-admin.service";
 import { DivisionGridNormalizer } from "@/lib/divisions/grid-normalizer";
 import { answerFlag, answerList, answerText } from "@/lib/forms/answers";
+import { identityKey } from "@/lib/forms/builtin-keys";
+import { splitHandle } from "@/lib/player";
+import { normalizeSocialHandle } from "@/lib/social/providers";
 
-const ROLE_ORDER: BalancerRoleCode[] = ["tank", "damage", "support"];
-const API_ROLE_KEYS: Record<BalancerRoleCode, "Tank" | "Damage" | "Support"> = {
-  tank: "Tank",
-  damage: "Damage",
-  support: "Support"
-};
+/** Names a slot code for display: the owner game's role name, or the open-slot label (`useSlotLabel(ontology)`). */
+export type SlotLabeler = (code: string) => string;
 
 export type BalanceVariant = {
   id: string;
   label: string;
+  /** What the UI names the variant by (translated at render); `label` is the fallback. */
+  labelSource?: { kind: "saved"; id: number } | { kind: "generated"; index: number } | { kind: "imported"; fileName: string };
   payload: InternalBalancePayload;
   source: "saved" | "generated" | "imported";
   config?: BalancerConfig | null;
@@ -43,31 +44,36 @@ export type BalanceVariant = {
   dirty?: boolean;
 };
 
+/** A validation finding. Its copy is written at render (`useIssueMessage`); the labels here are data it quotes. */
 export type PlayerValidationIssue =
   | {
       code: "missing_ranked_role";
-      message: string;
     }
   | {
       code: "application_role_mismatch";
-      message: string;
       applicationRoleCodes: BalancerRoleCode[];
       playerRoleCodes: BalancerRoleCode[];
+      /** The owner game's names for the codes above, in the same order. */
+      applicationRoleLabels: string[];
+      playerRoleLabels: string[];
     }
   | {
       code: "rank_delta_warning";
-      message: string;
       role: BalancerRoleCode;
+      /** The owner game's name for `role`. */
+      roleLabel: string;
       /** Division number of the balancer rank, in the workspace grid (for the icon). */
       currentDivision: number | null;
       /** Division number of the OW2 rank converted into the workspace grid (for the icon). */
       owDivision: number | null;
+      /** The two ranks' division names, or the raw rank where it falls off the grid. */
+      currentLabel: string;
+      owLabel: string;
       /** Absolute rank-point delta between the two. */
       delta: number;
     }
   | {
       code: "status_blocks_ready";
-      message: string;
     };
 
 export type PlayerRankHistoryPreviewEntry = {
@@ -79,7 +85,7 @@ export type PlayerRankHistoryPreviewEntry = {
   original_division_number: number | null;
   tournament_id: number | null;
   tournament_name: string | null;
-  source_role: UserRoleType | null;
+  source_role: BalancerRoleCode | null;
   tournament_grid_version: DivisionGridVersion | null;
   /** Where this entry came from: balancer history or analytics (getUserTournaments). */
   source: "balancer" | "analytics";
@@ -89,12 +95,6 @@ export type PlayerRankHistoryPreview = {
   user_id: number;
   entries: PlayerRankHistoryPreviewEntry[];
   average_rank_value: number | null;
-};
-
-export const ROLE_LABELS: Record<BalancerRoleCode, string> = {
-  tank: "Tank",
-  damage: "Damage",
-  support: "Support"
 };
 
 function sortRoleEntries(entries: BalancerPlayerRoleEntry[]): BalancerPlayerRoleEntry[] {
@@ -117,26 +117,10 @@ function playerHasRankedRole(player: BalancerPlayerRecord): boolean {
   );
 }
 
+/** A registration role as a role code: the owner game's own lower-case code. The open slot and blanks name no role. */
 function normalizeApplicationRole(role: string | null | undefined): BalancerRoleCode | null {
-  const normalized = role?.trim().toLowerCase();
-
-  if (!normalized) {
-    return null;
-  }
-
-  if (normalized === "tank") {
-    return "tank";
-  }
-
-  if (normalized === "damage") {
-    return "damage";
-  }
-
-  if (normalized === "support") {
-    return "support";
-  }
-
-  return null;
+  const code = role ? solverSlotCode(role) : "";
+  return code === "" || code === OPEN_SLOT_CODE ? null : code;
 }
 
 function uniqueRoleCodesInOrder(roleCodes: Iterable<BalancerRoleCode>): BalancerRoleCode[] {
@@ -152,16 +136,6 @@ function uniqueRoleCodesInOrder(roleCodes: Iterable<BalancerRoleCode>): Balancer
   }
 
   return ordered;
-}
-
-function formatRoleCodes(roleCodes: Iterable<BalancerRoleCode>): string {
-  const orderedRoleCodes = uniqueRoleCodesInOrder(roleCodes);
-
-  if (orderedRoleCodes.length === 0) {
-    return "None";
-  }
-
-  return orderedRoleCodes.map((roleCode) => ROLE_LABELS[roleCode]).join(" / ");
 }
 
 function getPlayerRoleCodes(player: BalancerPlayerRecord): BalancerRoleCode[] {
@@ -186,44 +160,29 @@ function getApplicationRoleCodes(
 
 export function buildPlayerSearchIndex(
   player: BalancerPlayerRecord,
-  application: BalancerApplication | null | undefined
+  application: BalancerApplication | null | undefined,
+  slotLabel: SlotLabeler
 ): string {
   const roleEntries = sortRoleEntries(player.role_entries_json);
   const activeRoleEntries = roleEntries.filter((entry) => isRoleEntryActive(entry));
-  const playerRoleLabels = activeRoleEntries.map((entry) => ROLE_LABELS[entry.role]);
+  const playerRoleLabels = activeRoleEntries.map((entry) => slotLabel(entry.role));
   const playerRoleCodes = activeRoleEntries.map((entry) => entry.role);
   const divisions = activeRoleEntries
     .map((entry) => entry.division_number)
     .filter((division): division is number => division !== null);
-  const applicationRoleLabels = getApplicationRoleCodes(application).map(
-    (roleCode) => ROLE_LABELS[roleCode]
+  const applicationRoleLabels = getApplicationRoleCodes(application).map((roleCode) =>
+    slotLabel(roleCode)
   );
 
   return [
-    player.battle_tag,
-    player.battle_tag_normalized,
+    player.identity,
+    player.identity_key,
+    ...player.additional_handles,
     player.is_flex ? "flex" : "",
     playerRoleLabels.join(" "),
     playerRoleCodes.join(" "),
     divisions.join(" "),
-    application?.battle_tag ?? "",
-    applicationRoleLabels.join(" ")
-  ]
-    .join(" ")
-    .trim()
-    .toLowerCase();
-}
-
-export function buildApplicationSearchIndex(application: BalancerApplication): string {
-  const applicationRoleLabels = getApplicationRoleCodes(application).map(
-    (roleCode) => ROLE_LABELS[roleCode]
-  );
-
-  return [
-    application.battle_tag,
-    application.battle_tag_normalized,
-    application.discord_nick ?? "",
-    application.twitch_nick ?? "",
+    application?.identity ?? "",
     applicationRoleLabels.join(" ")
   ]
     .join(" ")
@@ -292,23 +251,19 @@ function computeRankDeltasByRole(player: BalancerPlayerRecord): RoleRankDelta[] 
 export function getPlayerValidationIssues(
   player: BalancerPlayerRecord,
   application: BalancerApplication | null | undefined,
-  workspaceConfig?: { rank_delta_threshold: number | null } | null,
-  grid: DivisionGrid = DEFAULT_DIVISION_GRID
+  workspaceConfig: { rank_delta_threshold: number | null } | null | undefined,
+  /** The owner game's grid and role names: what the issues quote ranks and roles in. */
+  grid: DivisionGrid,
+  slotLabel: SlotLabeler
 ): PlayerValidationIssue[] {
   const issues: PlayerValidationIssue[] = [];
 
   if (!playerHasRankedRole(player)) {
-    issues.push({
-      code: "missing_ranked_role",
-      message: "No ranked roles configured"
-    });
+    issues.push({ code: "missing_ranked_role" });
   }
 
   if (player.ready_blocked) {
-    issues.push({
-      code: "status_blocks_ready",
-      message: "Current status blocks Ready"
-    });
+    issues.push({ code: "status_blocks_ready" });
   }
 
   if (application) {
@@ -318,9 +273,10 @@ export function getPlayerValidationIssues(
     if (!roleSequencesMatch(application, player.is_flex, playerRoleCodes, applicationRoleCodes)) {
       issues.push({
         code: "application_role_mismatch",
-        message: `Application: ${formatRoleCodes(applicationRoleCodes)}; balancer: ${formatRoleCodes(playerRoleCodes)}`,
         applicationRoleCodes,
-        playerRoleCodes
+        playerRoleCodes,
+        applicationRoleLabels: applicationRoleCodes.map(slotLabel),
+        playerRoleLabels: playerRoleCodes.map(slotLabel)
       });
     }
   }
@@ -334,15 +290,15 @@ export function getPlayerValidationIssues(
     for (const entry of violating) {
       const currentDivision = resolveDivisionFromRank(grid, entry.currentRank);
       const owDivision = resolveDivisionFromRank(grid, entry.owRank);
-      const currentLabel = getDivisionLabel(grid, currentDivision) ?? String(entry.currentRank);
-      const owLabel = getDivisionLabel(grid, owDivision) ?? String(entry.owRank);
       issues.push({
         code: "rank_delta_warning",
         role: entry.role,
+        roleLabel: slotLabel(entry.role),
         currentDivision,
         owDivision,
-        delta: entry.delta,
-        message: `${ROLE_LABELS[entry.role]}: ${currentLabel} → ${owLabel} (Δ${entry.delta} pts)`
+        currentLabel: getDivisionLabel(grid, currentDivision) ?? String(entry.currentRank),
+        owLabel: getDivisionLabel(grid, owDivision) ?? String(entry.owRank),
+        delta: entry.delta
       });
     }
   }
@@ -350,19 +306,51 @@ export function getPlayerValidationIssues(
   return issues;
 }
 
-function normalizeInternalPayload(payload: InternalBalancePayload): InternalBalancePayload {
+/** A role-keyed map re-keyed by lower-case slot code. */
+function rekeyBySlotCode<T>(map: Record<string, T>): Record<string, T> {
+  return Object.fromEntries(Object.entries(map).map(([role, value]) => [solverSlotCode(role), value]));
+}
+
+/**
+ * A player carries three role-keyed fields besides its bucket, and all three are compared against roster keys
+ * downstream (drop eligibility, off-role badges, re-rating on move), so they are re-keyed together with the bucket.
+ */
+function normalizeRosterPlayer(player: InternalBalancePlayer): InternalBalancePlayer {
+  const normalized: InternalBalancePlayer = {
+    ...player,
+    role_preferences: player.role_preferences.map((role) => solverSlotCode(role))
+  };
+  if (player.all_ratings) normalized.all_ratings = rekeyBySlotCode(player.all_ratings);
+  if (player.all_discomforts) normalized.all_discomforts = rekeyBySlotCode(player.all_discomforts);
+  return normalized;
+}
+
+/**
+ * The editor's payload from any spelling of a balance. A balance response is keyed by the roster slot codes of the
+ * tournament's own format (`shared/domain/roster_shape.py`: the owner game's lower-case role codes and `flex`), but
+ * the solver echoes the spelling of the mask it was given and a balance saved by an older editor says `Tank` for
+ * `tank`. So every bucket is keyed by its lower-case slot code (both spellings are one bucket), a player's
+ * role-keyed fields follow, and every team carries every bucket any team fields — no player of any game is
+ * dropped, and a move never meets a missing bucket.
+ */
+export function normalizeInternalPayload(payload: InternalBalancePayload): InternalBalancePayload {
+  const rosters = payload.teams.map((team) => {
+    const roster: Record<BalancerRosterKey, InternalBalancePlayer[]> = {};
+    for (const [key, players] of Object.entries(team.roster)) {
+      (roster[solverSlotCode(key)] ??= []).push(...(players ?? []).map(normalizeRosterPlayer));
+    }
+    return roster;
+  });
+  const keys = [...new Set(rosters.flatMap((roster) => Object.keys(roster)))];
+
   return {
     ...payload,
     teams: payload.teams.map((team, index) => ({
       ...team,
       id: team.id ?? index + 1,
-      roster: {
-        Tank: team.roster.Tank ?? [],
-        Damage: team.roster.Damage ?? [],
-        Support: team.roster.Support ?? [],
-        Flex: team.roster.Flex ?? []
-      }
-    }))
+      roster: Object.fromEntries(keys.map((key) => [key, rosters[index][key] ?? []]))
+    })),
+    ...(payload.benched_players ? { benched_players: payload.benched_players.map(normalizeRosterPlayer) } : {})
   };
 }
 
@@ -370,90 +358,65 @@ export function buildVariantFromSavedBalance(balance: SavedBalance): BalanceVari
   return {
     id: `saved-${balance.id}`,
     label: `Saved balance #${balance.id}`,
+    labelSource: { kind: "saved", id: balance.id },
     payload: normalizeInternalPayload(balance.result_json),
     source: "saved",
     config: balance.config_json as BalancerConfig | null
   };
 }
 
-/**
- * Solver role spelling -> the editor's roster key.
- *
- * A balance response is keyed by the canonical roster slot codes of
- * `shared/domain/roster_shape.py` (`tank`/`damage`/`support`/`flex`), because the
- * solver's role mask is a projection of the tournament roster shape. The editor
- * and every persisted `result_json` are keyed by the display names, so the
- * response is re-keyed on the way in. Both spellings are accepted: runs and
- * saved balances produced before the roster shape landed carry the display
- * names.
- */
-const ROSTER_KEY_BY_SOLVER_ROLE: Record<string, BalancerRosterKey> = {
-  ...API_ROLE_KEYS,
-  flex: "Flex",
-  Tank: "Tank",
-  Damage: "Damage",
-  Support: "Support",
-  Flex: "Flex"
-};
-
-/**
- * A response player carries three role-keyed fields besides its bucket, and all
- * three are compared against roster keys downstream (drop eligibility, off-role
- * badges, re-rating on move), so they are re-keyed together with the bucket.
- */
-function normalizeBalanceResponsePlayer(player: PlayerData): InternalBalancePlayer {
-  const normalized: InternalBalancePlayer = {
-    ...player,
-    role_preferences: player.role_preferences.map(
-      (role) => ROSTER_KEY_BY_SOLVER_ROLE[role] ?? role
-    )
-  };
-  for (const field of ["all_ratings", "all_discomforts"] as const) {
-    const map = player[field];
-    if (map) {
-      normalized[field] = Object.fromEntries(
-        Object.entries(map).map(([role, value]) => [ROSTER_KEY_BY_SOLVER_ROLE[role] ?? role, value])
-      );
-    }
-  }
-  return normalized;
-}
-
 export function convertBalanceResponseToInternalPayload(
   response: BalanceResponse
 ): InternalBalancePayload {
   return normalizeInternalPayload({
-    teams: response.teams.map((team) => {
-      const roster: Record<BalancerRosterKey, InternalBalancePlayer[]> = {
-        Tank: [],
-        Damage: [],
-        Support: [],
-        Flex: []
-      };
-      for (const [role, players] of Object.entries(team.roster)) {
-        const rosterKey = ROSTER_KEY_BY_SOLVER_ROLE[role];
-        if (rosterKey === undefined) {
-          continue;
-        }
-        roster[rosterKey].push(...players.map(normalizeBalanceResponsePlayer));
-      }
-      return {
-        id: team.id,
-        name: team.name,
-        average_mmr: team.average_mmr,
-        rating_variance: team.rating_variance,
-        total_discomfort: team.total_discomfort,
-        max_discomfort: team.max_discomfort,
-        roster
-      };
-    }),
+    teams: response.teams.map((team) => ({
+      id: team.id,
+      name: team.name,
+      average_mmr: team.average_mmr,
+      rating_variance: team.rating_variance,
+      total_discomfort: team.total_discomfort,
+      max_discomfort: team.max_discomfort,
+      format_violations: team.format_violations ?? [],
+      format_advisories: team.format_advisories ?? [],
+      roster: team.roster
+    })),
     statistics: response.statistics,
-    benched_players: (response.benched_players ?? []).map(normalizeBalanceResponsePlayer)
+    benched_players: response.benched_players ?? []
   });
 }
 
 function getRegistrationDisplayName(registration: AdminRegistration): string {
   return registration.primary_handle ?? registration.display_name ?? `registration-${registration.id}`;
+}
+
+/**
+ * Every handle the registration carries for the owner game's identity provider: the primary handle first, the extra
+ * accounts after, deduplicated case-insensitively. `fallback` stands in when the registration answered no handle of
+ * that provider (or the game has none).
+ */
+export function getRegistrationHandles(
+  registration: Pick<AdminRegistration, "answers">,
+  provider: string | null,
+  fallback: string
+): string[] {
+  const handles = provider ? answerList(registration.answers, identityKey(provider)) : [];
+  const seen = new Set<string>();
+  return [handles[0] ?? fallback, ...handles.slice(1)]
+    .map((handle) => handle?.trim())
+    .filter((handle): handle is string => Boolean(handle))
+    .filter((handle) => {
+      const key = handle.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+/** The identity fields of the synthetic records, read for the owner game's provider (`null`: the game has none). */
+function registrationIdentityFields(registration: AdminRegistration, provider: string | null) {
+  const fallback = getRegistrationDisplayName(registration);
+  const [identity = fallback, ...additional_handles] = getRegistrationHandles(registration, provider, fallback);
+  return { identity, identity_key: normalizeSocialHandle(provider ?? "", identity), additional_handles };
 }
 
 export function isRegistrationIncludedInBalancer(registration: AdminRegistration): boolean {
@@ -471,25 +434,25 @@ export function isRegistrationAvailableForBalancer(registration: AdminRegistrati
 
 export function createSyntheticPlayerFromRegistration(
   registration: AdminRegistration,
-  grid: DivisionGrid = DEFAULT_DIVISION_GRID
+  grid: DivisionGrid,
+  /** The owner game's identity provider: whose handle answers name the player. */
+  identityProvider: string | null
 ): BalancerPlayerRecord {
-  const battleTag = getRegistrationDisplayName(registration);
   const isFlex = registration.is_flex;
   return {
     id: registration.id,
     tournament_id: registration.tournament_id,
     application_id: registration.id,
-    battle_tag: battleTag,
-    battle_tag_normalized: battleTag.toLowerCase(),
+    ...registrationIdentityFields(registration, identityProvider),
     user_id: registration.user_id,
     // Roles come from the API exactly as the roster engine resolved them:
     // `is_active` IS "playable" and `rank_value` IS the resolved rank, flex
     // modes included. Nothing is re-derived here.
     role_entries_json: registration.roles.map((role) => ({
-      role: role.role,
-      subtype: role.subrole,
+      role: roleOf(role.role) as BalancerRoleCode,
+      subtype: subRoleSlugOf(role.role),
       priority: role.priority,
-      division_number: resolveDivisionFromRankHelper(role.rank_value, grid),
+      division_number: resolveDivisionFromRank(grid, role.rank_value),
       rank_value: role.rank_value,
       is_active: role.is_active,
       is_declared_active: role.is_declared_active,
@@ -505,28 +468,23 @@ export function createSyntheticPlayerFromRegistration(
 
 export function createSyntheticApplicationFromRegistration(
   registration: AdminRegistration,
-  player: BalancerPlayerRecord | null = null
+  player: BalancerPlayerRecord | null,
+  identityProvider: string | null
 ): BalancerApplication {
   const sortedRoles = [...registration.roles].sort((left, right) => left.priority - right.priority);
   const isFlex = registration.is_flex;
   const primaryRole = isFlex
     ? null
-    : (sortedRoles.find((role) => role.is_primary)?.role ?? sortedRoles[0]?.role ?? null);
-  const additionalRoles = isFlex
-    ? sortedRoles.map((role) => role.role)
-    : sortedRoles.filter((role) => role.role !== primaryRole).map((role) => role.role);
-  const battleTag = getRegistrationDisplayName(registration);
+    : roleOf(sortedRoles.find((role) => role.is_primary)?.role ?? sortedRoles[0]?.role);
+  const additionalRoles = sortedRoles
+    .map((role) => roleOf(role.role))
+    .filter((role) => isFlex || role !== primaryRole);
 
   return {
     id: registration.id,
     tournament_id: registration.tournament_id,
     tournament_sheet_id: 0,
-    battle_tag: battleTag,
-    battle_tag_normalized: battleTag.toLowerCase(),
-    // The sheet application record keeps its own smurf column; the extras of
-    // the registration's Battle.net answer are what fills it, the primary
-    // handle above being its first entry.
-    smurf_tags_json: answerList(registration.answers, "identity_battlenet").slice(1),
+    ...registrationIdentityFields(registration, identityProvider),
     twitch_nick: answerList(registration.answers, "identity_twitch")[0] ?? null,
     discord_nick: answerList(registration.answers, "identity_discord")[0] ?? null,
     stream_pov: answerFlag(registration.answers, "stream_pov"),
@@ -545,7 +503,7 @@ export function buildTeamNamesText(payload: InternalBalancePayload | null): stri
   if (!payload) {
     return "";
   }
-  return payload.teams.map((team) => team.name.split("#")[0]).join("\n");
+  return payload.teams.map((team) => splitHandle(team.name).name).join("\n");
 }
 
 export function downloadPayload(payload: InternalBalancePayload, tournamentId: number | null) {
@@ -577,30 +535,6 @@ export function downloadPlayersExport(
 }
 
 /**
- * Resolve division number from a rank value using the workspace division grid.
- * Falls back to DEFAULT_DIVISION_GRID when no grid is provided.
- */
-function resolveDivisionFromRankHelper(
-  rankValue: number | null,
-  grid: DivisionGrid = DEFAULT_DIVISION_GRID
-): number | null {
-  return resolveDivisionFromRank(grid, rankValue);
-}
-
-/**
- * A past tournament role -> the balancer registration role it seeds, or
- * `null` for `Flex`: a flex roster row carries ONE rank that stands for no
- * particular role (the player's maximum), so attributing it to tank, damage or
- * support would invent per-role history the tournament never recorded — the
- * same call the backend makes in
- * `registration/rank_sources.py::canonical_to_registration_role`.
- */
-function toBalancerRoleCode(role: UserRoleType): BalancerRoleCode | null {
-  const code = playerRoleSlotCode(role);
-  return code === "flex" ? null : code;
-}
-
-/**
  * Looks up a player's rank history using a two-step search:
  * 1. Balancer history — ranks from past balancer registrations (source "balancer"),
  *    scoped to `workspaceId` when numeric, otherwise `currentWorkspaceId`.
@@ -611,14 +545,20 @@ function toBalancerRoleCode(role: UserRoleType): BalancerRoleCode | null {
  * the user cannot be found or has no history.
  */
 export async function fetchPlayerRankHistoryPreview(
-  battleTag: string,
-  targetGridVersion: DivisionGridVersion | null = null,
-  grid: DivisionGrid = DEFAULT_DIVISION_GRID,
-  workspaceId?: number | null,
-  currentWorkspaceId?: number | null
+  identity: string,
+  targetGridVersion: DivisionGridVersion | null,
+  grid: DivisionGrid,
+  workspaceId: number | null | undefined,
+  currentWorkspaceId: number | null | undefined,
+  /** The game the preview is for: tournaments of any other game are never read as this game's ranks. */
+  discipline: string,
+  /** The game's selectable role codes in declared order: the roles a history can seed, listed in this order. */
+  roleCodes: readonly BalancerRoleCode[],
+  /** The game's rated role dimension: a history row of any other dimension is not one of this game's roles. */
+  ratedDimension: string
 ): Promise<PlayerRankHistoryPreview | null> {
   try {
-    const lookupName = battleTag.replace("#", "-");
+    const lookupName = identity.replace("#", "-");
     const user = await userService.getUserByName(lookupName);
     if (!user?.id) return null;
 
@@ -632,14 +572,19 @@ export async function fetchPlayerRankHistoryPreview(
       try {
         const balancerHistory = await balancerAdminService.getUserBalancerRankHistory(
           user.id,
-          balancerWorkspaceId
+          balancerWorkspaceId,
+          discipline
         );
         for (const entry of balancerHistory) {
-          if (latestPerRole.has(entry.role)) continue; // newest already kept
-          latestPerRole.set(entry.role, {
-            role: entry.role,
+          // The receiver already reads this game's registrations only; the dimension check keeps a role of another
+          // game from ever standing in for one of this game's under an identical code.
+          if (entry.role.dimension !== ratedDimension) continue;
+          const code = normalizeApplicationRole(roleOf(entry.role));
+          if (!code || latestPerRole.has(code)) continue; // newest already kept
+          latestPerRole.set(code, {
+            role: code,
             rank_value: entry.rank_value,
-            division_number: resolveDivisionFromRankHelper(entry.rank_value, grid),
+            division_number: resolveDivisionFromRank(grid, entry.rank_value),
             original_division_number: null,
             tournament_id: entry.tournament_id,
             tournament_name: entry.tournament_name,
@@ -655,41 +600,38 @@ export async function fetchPlayerRankHistoryPreview(
 
     // Step 2: Analytics fallback — past tournament ranks for roles not found in step 1,
     // most recent tournaments first.
-    const missingRoles = ROLE_ORDER.filter((role) => !latestPerRole.has(role));
+    const missingRoles = roleCodes.filter((role) => !latestPerRole.has(role));
     if (missingRoles.length > 0) {
-      const tournaments = await userService.getUserTournaments(user.id, workspaceId);
-      if (tournaments?.length) {
-        const sorted = [...tournaments].sort((a, b) => b.id - a.id);
-
-        const sourceVersionsById = new Map<number, DivisionGridVersion>();
-        for (const tournament of sorted) {
-          const v = tournament.division_grid_version;
-          if (v) sourceVersionsById.set(v.id, v);
-        }
-
+      // The read is this game's tournaments only, so every grid version it names is this game's.
+      const { results, division_grid_versions } = await userService.getUserTournaments(user.id, discipline, workspaceId);
+      if (results.length) {
         let normalizer: DivisionGridNormalizer | null = null;
         if (targetGridVersion) {
-          normalizer = await DivisionGridNormalizer.build(targetGridVersion, [
-            ...sourceVersionsById.values()
-          ]);
+          normalizer = await DivisionGridNormalizer.build(
+            { ...targetGridVersion, discipline },
+            division_grid_versions.map((version) => ({ ...version, discipline }))
+          );
         }
 
-        for (const tournament of sorted) {
-          const roleName = tournament.role as UserRoleType;
-          const roleCode = toBalancerRoleCode(roleName);
+        // The read lists them newest event first (by date: ids follow creation, not play).
+        for (const tournament of results) {
+          // A flex participation (or none) carries ONE rank that stands for no particular role (the player's
+          // maximum), so attributing it to a role would invent per-role history the tournament never recorded —
+          // the same call the backend makes in `registration/rank_sources.py::canonical_to_registration_role`.
+          const roleCode = tournament.role ? normalizeApplicationRole(roleOf(tournament.role)) : null;
           if (!roleCode) continue;
           if (latestPerRole.has(roleCode)) continue;
           const playerRecord = tournament.players.find((p) => p.user_id === user.id);
+          // An unranked participation says nothing about the role: an older event's rank stands.
           const rankValue = playerRecord?.rank ?? null;
-          if (rankValue !== null && rankValue > 0) {
-            const originalDivisionNumber = resolveDivisionFromRankHelper(
-              rankValue,
-              tournament.division_grid_version ?? grid
-            );
+          if (rankValue !== null) {
+            const sourceVersion =
+              division_grid_versions.find((version) => version.id === tournament.division_grid_version_id) ?? null;
+            const originalDivisionNumber = resolveDivisionFromRank(sourceVersion ?? grid, rankValue);
 
             let divisionNumber: number | null;
-            if (normalizer && tournament.division_grid_version) {
-              divisionNumber = normalizer.safeNormalize(tournament.division_grid_version.id, rankValue);
+            if (normalizer && sourceVersion) {
+              divisionNumber = normalizer.safeNormalize(sourceVersion.id, rankValue);
             } else {
               divisionNumber = originalDivisionNumber;
             }
@@ -701,8 +643,8 @@ export async function fetchPlayerRankHistoryPreview(
               original_division_number: originalDivisionNumber,
               tournament_id: tournament.id,
               tournament_name: tournament.name,
-              source_role: roleName,
-              tournament_grid_version: tournament.division_grid_version ?? null,
+              source_role: roleCode,
+              tournament_grid_version: sourceVersion,
               source: "analytics"
             });
           }
@@ -710,18 +652,16 @@ export async function fetchPlayerRankHistoryPreview(
       }
     }
 
-    if (latestPerRole.size === 0) {
+    const entries = roleCodes
+      .map((role) => latestPerRole.get(role))
+      .filter((entry): entry is PlayerRankHistoryPreviewEntry => entry !== undefined);
+    if (entries.length === 0) {
       return null;
     }
 
-    const entries = ROLE_ORDER.map((role) => latestPerRole.get(role)).filter(
-      (entry): entry is PlayerRankHistoryPreviewEntry => entry !== undefined
+    const average_rank_value = Math.round(
+      entries.reduce((sum, entry) => sum + entry.rank_value, 0) / entries.length
     );
-
-    const average_rank_value =
-      entries.length > 0
-        ? Math.round(entries.reduce((sum, entry) => sum + entry.rank_value, 0) / entries.length)
-        : null;
 
     return {
       user_id: user.id,

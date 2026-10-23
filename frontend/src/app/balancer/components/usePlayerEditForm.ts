@@ -3,20 +3,28 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Cookies from "js-cookie";
+import { useTranslations } from "next-intl";
 
 import {
   fetchPlayerRankHistoryPreview,
   type PlayerRankHistoryPreview,
   type PlayerRankHistoryPreviewEntry
 } from "@/components/balancer/workspace-helpers";
-import { useCurrentWorkspaceId, useDivisionGrid, useDivisionGridVersion } from "@/hooks/useCurrentWorkspace";
+import { ratedDimension, registrationRoles, showsRoles, type RoleOntology } from "@/lib/roster/ontology";
+import {
+  useCurrentWorkspaceId,
+  useDivisionGrid,
+  useDivisionGridVersion
+} from "@/hooks/useCurrentWorkspace";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import {
   getDivisionLabel,
   resolveDivisionFromRank as resolveDivisionFromRankInGrid,
   resolveRankFromDivision as resolveRankFromDivisionInGrid
 } from "@/lib/divisions/grid";
+import { divisionGridQueryKeys } from "@/lib/divisions/query-keys";
 import adminService from "@/services/admin.service";
+import workspaceService from "@/services/workspace.service";
 import type {
   AdminRegistration,
   BalancerPlayerRecord,
@@ -24,10 +32,10 @@ import type {
   BalancerPlayerUpdateInput,
   BalancerRoleCode
 } from "@/types/balancer-admin.types";
+import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
 
 import {
   MULTIPLE_WORKSPACES_COOKIE,
-  ROLE_OPTIONS,
   applyHistoryPreviewToRoleEntries,
   normalizeRoleEntries
 } from "./playerEditSheet.model";
@@ -51,6 +59,12 @@ export interface PlayerRankHistoryState {
 interface UsePlayerEditFormInput {
   player: BalancerPlayerRecord;
   registration: AdminRegistration | null;
+  discipline: string | undefined;
+  /** The owner game's role dictionary: the roles a player may be given. `null` while it loads. */
+  ontology: RoleOntology | null;
+  /** Undefined is unresolved owner metadata; null explicitly means no pin. */
+  divisionGridVersionId: number | null | undefined;
+  divisionGridVersion?: DivisionGridVersion | null;
   /** Sub-roles are only worth fetching while the sheet is on screen. */
   open: boolean;
   onSave: (playerId: number, payload: BalancerPlayerUpdateInput) => void;
@@ -63,50 +77,64 @@ interface UsePlayerEditFormInput {
 export function usePlayerEditForm({
   player,
   registration,
+  discipline,
+  ontology,
+  divisionGridVersionId,
+  divisionGridVersion,
   open,
   onSave
 }: UsePlayerEditFormInput) {
-  const divisionGrid = useDivisionGrid();
-  const divisionGridVersion = useDivisionGridVersion();
+  const t = useTranslations("balancerTool.playerEdit.history");
+  const workspaceGrid = useDivisionGrid(discipline);
+  const workspaceGridVersion = useDivisionGridVersion(discipline);
+  const suppliedPin =
+    divisionGridVersionId != null && divisionGridVersion?.id === divisionGridVersionId
+      ? divisionGridVersion
+      : null;
+  const pinnedVersionQuery = useQuery({
+    queryKey: divisionGridQueryKeys.version(divisionGridVersionId ?? null),
+    queryFn: () => workspaceService.getDivisionGridVersion(divisionGridVersionId!),
+    enabled:
+      open && discipline !== undefined && divisionGridVersionId != null && suppliedPin === null
+  });
+  const divisionGrid = useMemo<DivisionGrid>(() => {
+    if (discipline === undefined || divisionGridVersionId === undefined) return { tiers: [] };
+    if (divisionGridVersionId === null) return workspaceGrid;
+    return suppliedPin ?? (pinnedVersionQuery.isSuccess ? pinnedVersionQuery.data : { tiers: [] });
+  }, [
+    discipline,
+    divisionGridVersionId,
+    workspaceGrid,
+    suppliedPin,
+    pinnedVersionQuery.isSuccess,
+    pinnedVersionQuery.data
+  ]);
   const workspaceId = useCurrentWorkspaceId();
 
   const { data: subRoles } = useQuery({
-    queryKey: adminQueryKeys.playerSubRoles(workspaceId),
-    queryFn: () => adminService.getPlayerSubRoles({ workspace_id: workspaceId! }),
-    enabled: Boolean(workspaceId && open)
+    queryKey: adminQueryKeys.playerSubRoles(workspaceId, discipline),
+    queryFn: ({ signal }) => adminService.getPlayerSubRoles({ workspace_id: workspaceId!, discipline: discipline! }, signal),
+    enabled: Boolean(workspaceId && open && discipline)
   });
 
   const subtypeOptions = useMemo(() => {
-    const options: Record<BalancerRoleCode, Array<{ value: string; label: string }>> = {
-      tank: [],
-      damage: [],
-      support: []
-    };
-
-    if (subRoles) {
-      for (const sr of subRoles) {
-        const roleKey = sr.role as BalancerRoleCode;
-        if (options[roleKey]) {
-          options[roleKey].push({
-            value: sr.slug,
-            label: sr.label
-          });
-        }
-      }
+    const options: Record<BalancerRoleCode, Array<{ value: string; label: string }>> = {};
+    for (const sr of subRoles ?? []) {
+      (options[sr.role] ??= []).push({ value: sr.slug, label: sr.label });
     }
     return options;
   }, [subRoles]);
 
   const resolveDivision = (rankValue: number | null) =>
     resolveDivisionFromRankInGrid(divisionGrid, rankValue);
-  const resolveRankFromDivision = (divisionNumber: number | null) =>
-    resolveRankFromDivisionInGrid(divisionGrid, divisionNumber);
+  const resolveWorkspaceRankFromDivision = (divisionNumber: number | null) =>
+    resolveRankFromDivisionInGrid(workspaceGrid, divisionNumber);
   const getDivisionName = (divisionNumber: number | null) =>
     getDivisionLabel(divisionGrid, divisionNumber);
 
   // Normalised division name: always look up in the workspace (target) grid.
   const getHistoryDivisionName = (divisionNumber: number | null) =>
-    getDivisionLabel(divisionGrid, divisionNumber);
+    getDivisionLabel(workspaceGrid, divisionNumber);
 
   // Original division name: look up in the source tournament's own grid first,
   // then fall back to the workspace grid.
@@ -119,10 +147,10 @@ export function usePlayerEditForm({
       const tierName = getDivisionLabel(entry.tournament_grid_version, divisionNumber);
       if (tierName) return tierName;
     }
-    return getDivisionLabel(divisionGrid, divisionNumber);
+    return getDivisionLabel(workspaceGrid, divisionNumber);
   };
 
-  const [roleEntries, setRoleEntries] = useState<BalancerPlayerRoleEntry[]>(
+  const [editedEntries, setRoleEntries] = useState<BalancerPlayerRoleEntry[]>(
     normalizeRoleEntries(player.role_entries_json)
   );
   const [isFlex, setIsFlex] = useState(player.is_flex);
@@ -136,6 +164,39 @@ export function usePlayerEditForm({
   const [historyPreviewRequested, setHistoryPreviewRequested] = useState(false);
   const [historyLoadError, setHistoryLoadError] = useState<string | null>(null);
   const [pinToTournament, setPinToTournament] = useState(false);
+
+  // The roles the owner game offers a registrant, in declared order; "Add role" takes the first one this player lacks.
+  const selectableRoleCodes = useMemo(
+    () => registrationRoles(ontology).map((role) => role.code),
+    [ontology]
+  );
+  // A one-role game edits its sole role's rank alone, with no switch to turn it off: its entry is always declared on,
+  // keeping its stored rank and sub-role, and a registration without one gets a fresh one. It leads the list, so the
+  // write keeps it primary. Every other stored entry (a role the module retired, with its character preferences)
+  // follows in its stored order, otherwise unchanged: a save replaces the registration's roles.
+  const soleRole = showsRoles(ontology) ? null : (selectableRoleCodes[0] ?? null);
+  const roleEntries = useMemo<BalancerPlayerRoleEntry[]>(() => {
+    if (soleRole === null) return editedEntries;
+    const stored = editedEntries.find((entry) => entry.role === soleRole);
+    const sole: BalancerPlayerRoleEntry = {
+      ...(stored ?? {
+        role: soleRole,
+        subtype: null,
+        priority: 1,
+        division_number: null,
+        rank_value: null,
+        is_active: false,
+        ow_rank_value: null
+      }),
+      is_declared_active: true
+    };
+    return [sole, ...editedEntries.filter((entry) => entry !== stored)].map((entry, index) => ({
+      ...entry,
+      priority: index + 1
+    }));
+  }, [editedEntries, soleRole]);
+  const addableRole =
+    selectableRoleCodes.find((code) => !roleEntries.some((entry) => entry.role === code)) ?? null;
 
   const [historyWorkspaceValue, setHistoryWorkspaceValue] = useState<string>(() => {
     const saved = Cookies.get(MULTIPLE_WORKSPACES_COOKIE);
@@ -162,22 +223,26 @@ export function usePlayerEditForm({
   }, [player, registration]);
 
   const readHistory = async (workspaceValue: string) => {
+    // Without the game's rated dimension there is no role dictionary to read a history against.
+    const dimension = ontology ? (ratedDimension(ontology)?.code ?? null) : null;
+    if (discipline === undefined || dimension === null) return;
     setLoadingHistory(true);
     setHistoryLoadError(null);
     try {
       const preview = await fetchPlayerRankHistoryPreview(
-        player.battle_tag,
-        divisionGridVersion,
-        divisionGrid,
+        player.identity,
+        workspaceGridVersion,
+        workspaceGrid,
         getHistoryWorkspaceIdParam(workspaceValue),
-        workspaceId
+        workspaceId,
+        discipline,
+        selectableRoleCodes,
+        dimension
       );
       setHistoryPreview(preview);
     } catch (error) {
       setHistoryPreview(null);
-      setHistoryLoadError(
-        error instanceof Error ? error.message : "Failed to load player history."
-      );
+      setHistoryLoadError(error instanceof Error ? error.message : t("loadFailed"));
     } finally {
       setLoadingHistory(false);
     }
@@ -209,7 +274,11 @@ export function usePlayerEditForm({
     dismiss: dismissHistoryPreview,
     apply: () => {
       setRoleEntries(
-        applyHistoryPreviewToRoleEntries(roleEntries, historyPreview, resolveRankFromDivision)
+        applyHistoryPreviewToRoleEntries(
+          roleEntries,
+          historyPreview,
+          resolveWorkspaceRankFromDivision
+        ).map((entry) => ({ ...entry, division_number: resolveDivision(entry.rank_value) }))
       );
       dismissHistoryPreview();
     }
@@ -222,15 +291,12 @@ export function usePlayerEditForm({
   };
 
   const addRole = () => {
-    const availableRole = ROLE_OPTIONS.find(
-      (option) => !roleEntries.some((entry) => entry.role === option.value)
-    );
-    if (!availableRole) return;
+    if (addableRole === null) return;
 
     setRoleEntries([
       ...roleEntries,
       {
-        role: availableRole.value,
+        role: addableRole,
         subtype: null,
         priority: roleEntries.length + 1,
         division_number: null,
@@ -306,7 +372,11 @@ export function usePlayerEditForm({
   };
 
   return {
+    divisionGrid,
+    workspaceGrid,
     roleEntries,
+    /** A one-role game's only role: the one entry the sheet shows. `null` when the game names roles (or is loading). */
+    soleRole,
     isFlex,
     setIsFlex,
     notes,
@@ -324,6 +394,7 @@ export function usePlayerEditForm({
     getOriginalDivisionName,
     history,
     addRole,
+    addableRole,
     updateEntry,
     removeEntry,
     reorderRoles,

@@ -224,8 +224,8 @@ export const GUIDES: Record<GuideId, GuideGroup[]> = {
           slug: "first-tournament",
           title: { ru: "Первый турнир по шагам", en: "Your first tournament" },
           keywords: {
-            ru: "создать турнир мастер чек-лист настройки",
-            en: "create tournament wizard checklist settings",
+            ru: "создать турнир диалог чек-лист настройки",
+            en: "create tournament dialog checklist settings",
           },
         },
         {

@@ -6,12 +6,21 @@ log is never trusted for these modes: the score comes from the tournament's
 accepted result for that map, or -- when there is none -- by exclusion from the
 completed series score and the other maps' logged results. Anything that cannot
 be decided exactly stays 0:0; nothing is guessed.
+
+The tournament side speaks participations: a map's accepted numbers are
+``encounter.game_team.score`` per ``encounter_team_id``, and the series total is
+``encounter.team.score``. The log side uses observed native teams ordered by
+``source_position`` and their score facts. The answer retains that source
+orientation, mapped to tournament participations through their source ``team_id``.
+
+Exclusion is a two-sided argument ("the wins left over must land somewhere"),
+so an encounter that does not seat exactly two participations decides nothing.
 """
 
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 __all__ = (
@@ -30,16 +39,19 @@ UNKNOWN = (0, 0)
 
 @dataclass(frozen=True)
 class Series:
-    home_team_id: int | None
-    away_team_id: int | None
+    """One encounter, as its active participations."""
+
+    #: ``encounter_team_id -> source tournament team id``; NULL once the source
+    #: team is deleted, which simply means no log can be matched to that seat.
+    teams: Mapping[int, int | None]
     completed: bool
-    home_score: int
-    away_score: int
+    #: ``encounter.team.score`` per participation -- wins, under the ``wins`` preset.
+    scores: Mapping[int, float]
 
 
 @dataclass(frozen=True)
 class LoggedMap:
-    """One ``matches.match`` row; scores in the row's own (log) orientation."""
+    """One observed match; scores retain the log's own orientation."""
 
     match_id: int
     map_id: int
@@ -51,11 +63,12 @@ class LoggedMap:
 
 @dataclass(frozen=True)
 class AcceptedGame:
-    """A confirmed ``encounter_game``; scores in the encounter's orientation."""
+    """A confirmed ``encounter.game``, as its ``game_team`` rows."""
 
     map_id: int | None
-    home_score: int
-    away_score: int
+    #: ``encounter.game_team.score`` per participation. A seat with no number
+    #: entered leaves the game undecided.
+    scores: Mapping[int, int | None]
 
 
 def resolve_scores(
@@ -63,11 +76,18 @@ def resolve_scores(
 ) -> dict[int, tuple[int, int]]:
     """``match_id -> (home, away)`` in the match's orientation, for every
     objectiveless map; ``(0, 0)`` where the result cannot be decided."""
+    objectiveless = {m.match_id: UNKNOWN for m in maps if m.objectiveless}
+    if len(series.teams) != 2:
+        return objectiveless
+    first, second = sorted(series.teams)
+
+    # Which way round the log listed the two seats. A log naming neither seat's
+    # source team cannot be oriented at all.
     flipped: dict[int, bool] = {}
     for m in maps:
-        if series.home_team_id is not None and m.home_team_id == series.home_team_id:
+        if series.teams[first] is not None and m.home_team_id == series.teams[first]:
             flipped[m.match_id] = False
-        elif series.away_team_id is not None and m.home_team_id == series.away_team_id:
+        elif series.teams[second] is not None and m.home_team_id == series.teams[second]:
             flipped[m.match_id] = True
 
     def orient(m: LoggedMap, score: tuple[int, int]) -> tuple[int, int]:
@@ -76,7 +96,14 @@ def resolve_scores(
     # A map the series played twice lands on one match row: which play it is
     # cannot be told, so neither game decides it.
     plays = Counter(game.map_id for game in games)
-    accepted = {g.map_id: (g.home_score, g.away_score) for g in games if g.map_id is not None and plays[g.map_id] == 1}
+    accepted: dict[int, tuple[int, int]] = {}
+    for game in games:
+        if game.map_id is None or plays[game.map_id] != 1:
+            continue
+        ours, theirs = game.scores.get(first), game.scores.get(second)
+        if ours is None or theirs is None:
+            continue
+        accepted[game.map_id] = (ours, theirs)
 
     resolved: dict[int, tuple[int, int]] = {}
     unknown: list[LoggedMap] = []
@@ -97,16 +124,25 @@ def resolve_scores(
             for m in maps
             if m.match_id not in unknown_ids
         ]
-        winners = _by_exclusion(series, known, len(unknown), played=len(games) or None)
+        winners = _by_exclusion(
+            (series.scores.get(first, 0.0), series.scores.get(second, 0.0)),
+            known,
+            len(unknown),
+            played=len(games) or None,
+        )
         if winners is not None:
             for m in unknown:
                 resolved[m.match_id] = orient(m, winners)
 
-    return {m.match_id: resolved.get(m.match_id, UNKNOWN) for m in maps if m.objectiveless}
+    return {match_id: resolved.get(match_id, UNKNOWN) for match_id in objectiveless}
 
 
 def _by_exclusion(
-    series: Series, known: Sequence[tuple[int, int]], unknown: int, *, played: int | None
+    series_scores: tuple[float, float],
+    known: Sequence[tuple[int, int]],
+    unknown: int,
+    *,
+    played: int | None,
 ) -> tuple[int, int] | None:
     """The one score every unknown map must have, or ``None`` if it is not forced.
 
@@ -115,13 +151,13 @@ def _by_exclusion(
     """
     if played is not None and played != len(known) + unknown:
         return None
-    home_left = series.home_score - sum(1 for home, away in known if home > away)
-    away_left = series.away_score - sum(1 for home, away in known if away > home)
+    first_left = series_scores[0] - sum(1 for first, second in known if first > second)
+    second_left = series_scores[1] - sum(1 for first, second in known if second > first)
     # Wins left over must account for every unknown map exactly: fewer means a
     # draw somewhere (or a missing log), more means a log is missing.
-    if home_left < 0 or away_left < 0 or home_left + away_left != unknown:
+    if first_left < 0 or second_left < 0 or first_left + second_left != unknown:
         return None
     # Both sides still owed wins over several maps: which map is whose is open.
-    if home_left and away_left:
+    if first_left and second_left:
         return None
-    return (1, 0) if home_left else (0, 1)
+    return (1, 0) if first_left else (0, 1)

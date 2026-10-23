@@ -48,7 +48,7 @@ describe("ConnectionIndicator", () => {
   // initial "idle") shares the same warning color so a stalled connection
   // never looks indistinguishable from a healthy one.
   it("reserves the connected color for the connected state only", () => {
-    expect(render("connected")).toContain("aqt-support");
+    expect(render("connected")).toContain("aqt-positive");
     expect(render("idle")).toContain("aqt-warm");
     expect(render("connecting")).toContain("aqt-warm");
     expect(render("reconnecting")).toContain("aqt-warm");

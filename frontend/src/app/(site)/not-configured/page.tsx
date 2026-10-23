@@ -17,6 +17,7 @@ export default async function NotConfigured() {
     <div className="mx-auto max-w-md space-y-4 py-16">
       <PageStateCard
         state="not-found"
+        headingLevel={1}
         title={t("notConfigured.title")}
         description={t("notConfigured.description")}
       />

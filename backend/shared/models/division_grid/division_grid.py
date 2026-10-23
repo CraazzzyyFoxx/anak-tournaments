@@ -25,6 +25,7 @@ __all__ = (
     "DivisionGridMapping",
     "DivisionGridMappingRule",
     "DivisionGridImportJob",
+    "WorkspaceDivisionGridDefault",
 )
 
 
@@ -36,6 +37,13 @@ class DivisionGrid(db.TimeStampIntegerMixin):
         ForeignKey("workspace.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
+    )
+    discipline: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("catalog.discipline.code", name="fk_division_grid_discipline"),
+        nullable=False,
+        default="overwatch",
+        server_default="overwatch",
     )
     slug: Mapped[str] = mapped_column(String(), nullable=False)
     name: Mapped[str] = mapped_column(String(), nullable=False)
@@ -61,6 +69,20 @@ class DivisionGrid(db.TimeStampIntegerMixin):
         passive_deletes=True,
         order_by="DivisionGridVersion.version",
         lazy="selectin",
+    )
+
+
+class WorkspaceDivisionGridDefault(db.Base):
+    """One explicit active grid per workspace and discipline."""
+
+    __tablename__ = "workspace_division_grid_default"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("workspace.id", ondelete="CASCADE"), primary_key=True
+    )
+    discipline: Mapped[str] = mapped_column(String(32), ForeignKey("catalog.discipline.code"), primary_key=True)
+    version_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("division_grid_version.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
 
@@ -116,8 +138,11 @@ class DivisionGridTier(db.TimeStampIntegerMixin):
     rank_min: Mapped[int] = mapped_column(BigInteger(), nullable=False)
     rank_max: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     icon_url: Mapped[str] = mapped_column(String(), nullable=False)
-    ow_rank_min: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
-    ow_rank_max: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    native_rank_min: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    native_rank_max: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    # The tier's number on the game's native ladder (``shared.division_grid.stamp_canonical_numbers``); NULL for a
+    # game without one.
+    canonical_number: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
 
     version: Mapped[DivisionGridVersion] = relationship(back_populates="tiers")
 
@@ -188,7 +213,9 @@ class DivisionGridImportJob(db.TimeStampIntegerMixin):
         nullable=True,
         index=True,
     )
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending", server_default="pending")
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending", server_default="pending", index=True
+    )
     progress: Mapped[int] = mapped_column(Integer(), nullable=False, default=0, server_default="0")
     request_json: Mapped[dict] = mapped_column(JSON, nullable=False)
     result_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)

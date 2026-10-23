@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Star } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -10,22 +10,28 @@ import { getApiErrorMessage } from "@/lib/api/error";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NumberInput } from "@/components/ui/number-input";
 import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import captainService, { type CaptainReportSubmitResult } from "@/services/captain.service";
 import pickBanService from "@/services/pickBan.service";
 import { CaptainReportsView } from "@/components/tournaments/CaptainReportsView";
 import { refreshEncounterViews } from "@/components/tournaments/refreshEncounterViews";
 import { buildMapCodeSlots } from "@/components/tournaments/matchReportSlots";
+import { reportOf } from "@/lib/encounter/reports";
+import { seriesClaimErrors, seriesReportErrorCodes } from "@/lib/encounter/series-claim";
+import { isLobby, seatsBySlot } from "@/lib/encounter/seats";
+import { modeBeyondMap } from "@/lib/catalog/mode";
 import {
   DEFAULT_MATCH_REPORT_BUILT_INS,
-  type CaptainReport,
   type Encounter,
   type ReportCustomFieldDefinition
 } from "@/types/encounter.types";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
-import { useMapsCatalog } from "@/hooks/useMapsCatalog";
+import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 
 export interface MatchReportFormProps {
   encounter: Encounter;
@@ -52,6 +58,10 @@ const CUSTOM_TEXT_MAX_LENGTH = 500;
 // below don't re-run on every keystroke while the config query is in flight.
 const EMPTY_CUSTOM_FIELDS: ReportCustomFieldDefinition[] = [];
 
+/** One report field's tile. */
+const FIELD_BLOCK_CLASS =
+  "rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-4";
+
 function clampCloseness(value: number): MatchQuality {
   return Math.max(1, Math.min(10, Math.round(value))) as MatchQuality;
 }
@@ -62,53 +72,7 @@ function clampCloseness(value: number): MatchQuality {
  * re-derive rather than keep a draft built against the old ones.
  */
 export function matchReportDraftKey(encounter: Encounter): string {
-  return [
-    encounter.id,
-    encounter.score?.home ?? 0,
-    encounter.score?.away ?? 0,
-    encounter.closeness ?? "none"
-  ].join(":");
-}
-
-function findOwnReport(
-  reports: CaptainReport[],
-  side: "home" | "away" | null,
-  encounter: Encounter
-): CaptainReport | null {
-  if (side) {
-    const bySide = reports.find((report) => report.side === side);
-    if (bySide) return bySide;
-    const teamId = side === "home" ? encounter.home_team_id : encounter.away_team_id;
-    return reports.find((report) => report.team_id === teamId) ?? null;
-  }
-  return null;
-}
-
-/**
- * Arrow keys that move within a radiogroup, and the direction each one moves.
- * Mirrors `ui/toggle-group.tsx`: declaring `role="radiogroup"` promises the ARIA
- * APG contract — one tab stop, arrows moving *and* selecting — so the grid below
- * has to honour it rather than leave eleven tab stops behind the role.
- */
-const RADIO_ARROW_STEP: Record<string, number> = {
-  ArrowRight: 1,
-  ArrowDown: 1,
-  ArrowLeft: -1,
-  ArrowUp: -1
-};
-
-function moveWithinRadioGroup(event: KeyboardEvent<HTMLDivElement>) {
-  const step = RADIO_ARROW_STEP[event.key];
-  if (step === undefined) return;
-
-  const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]')];
-  const current = items.indexOf(document.activeElement as HTMLButtonElement);
-  if (current === -1) return;
-
-  event.preventDefault();
-  const next = items[(current + step + items.length) % items.length];
-  next.focus();
-  next.click();
+  return [encounter.id, encounter.result_version, encounter.closeness ?? "none"].join(":");
 }
 
 /**
@@ -131,27 +95,14 @@ function BlockHeading({
   hint?: string;
 }>) {
   const t = useTranslations();
-  const headingClass =
-    "text-label font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]";
 
   return (
     <div className="space-y-0.5">
       <div className="flex items-baseline justify-between gap-2">
-        {htmlFor ? (
-          <label id={labelId} htmlFor={htmlFor} className={headingClass}>
-            {label}
-          </label>
-        ) : (
-          <p id={labelId} className={headingClass}>
-            {label}
-          </p>
-        )}
-        <span
-          className={cn(
-            "shrink-0 text-label font-bold uppercase tracking-label",
-            required ? "text-[color:var(--aqt-gold)]" : "text-[color:var(--aqt-fg-faint)]"
-          )}
-        >
+        <Eyebrow as={htmlFor ? "label" : "p"} id={labelId} htmlFor={htmlFor} tone="dim">
+          {label}
+        </Eyebrow>
+        <span className={cn(eyebrowClass(), "shrink-0", required && "text-[color:var(--aqt-gold)]")}>
           {required ? t("common.required") : t("matchReport.optional")}
         </span>
       </div>
@@ -182,9 +133,11 @@ export function MatchReportForm({
 }: Readonly<MatchReportFormProps>) {
   const qc = useQueryClient();
   const t = useTranslations();
-  const homeTeamLabel = encounter.home_team?.name?.trim() || t("common.homeTeam");
-  const awayTeamLabel = encounter.away_team?.name?.trim() || t("common.awayTeam");
+  const seats = seatsBySlot(encounter.teams);
+  const duel = !isLobby(encounter);
+  const [first, second] = seats;
   const idPrefix = `match-report-${encounter.id}`;
+  const gamesPlayedId = `${idPrefix}-games-played`;
 
   // The form holds only what the captain has actually edited. Everything else is
   // DERIVED from the server data below, so there is nothing to copy in an effect
@@ -192,8 +145,9 @@ export function MatchReportForm({
   // `closeness` is `MatchQuality | null` *and* optional: `undefined` means
   // untouched, an explicit `null` means the captain chose not to rate.
   const [draft, setDraft] = useState<{
-    homeScore?: number;
-    awayScore?: number;
+    /** Per participation: its wins in a duel, its points in a lobby. */
+    scores?: Record<number, number>;
+    gamesPlayed?: number;
     closeness?: MatchQuality | null;
     codes?: Record<number, string>;
     comment?: string;
@@ -212,7 +166,7 @@ export function MatchReportForm({
     queryKey: encounterQueryKeys.mapPickBanState(encounter.id),
     queryFn: () => pickBanService.getPickBanState("map", encounter.id)
   });
-  const mapsQuery = useMapsCatalog();
+  const mapsQuery = useCatalogEntities(encounter.discipline, "map");
 
   // The per-tournament field config rides the reports envelope. While it is in
   // flight we render the documented defaults rather than an empty form, so the
@@ -237,9 +191,10 @@ export function MatchReportForm({
     return lookup;
   }, [mapsQuery.data]);
 
+  const ownTeamId = roleQuery.data?.encounter_team_id ?? null;
   const ownReport = useMemo(
-    () => findOwnReport(reportsQuery.data?.reports ?? [], roleQuery.data?.side ?? null, encounter),
-    [reportsQuery.data?.reports, roleQuery.data?.side, encounter]
+    () => reportOf(reportsQuery.data?.reports ?? [], ownTeamId),
+    [reportsQuery.data?.reports, ownTeamId]
   );
 
   // Effective form values: the captain's edit if there is one, else their own
@@ -250,8 +205,26 @@ export function MatchReportForm({
   // The encounter's score is what makes this form arrive prefilled at the end
   // of a pre-game loop: `map_report.submit_map_report` counts every reconciled
   // map into it, so the series score is already there to confirm.
-  const homeScore = draft.homeScore ?? ownReport?.home_score ?? encounter.score?.home ?? 0;
-  const awayScore = draft.awayScore ?? ownReport?.away_score ?? encounter.score?.away ?? 0;
+  const scores: Record<number, number> = Object.fromEntries(
+    seats.map((seat) => [
+      seat.id,
+      draft.scores?.[seat.id] ??
+        ownReport?.results.find((line) => line.encounter_team_id === seat.id)?.score ??
+        seat.score
+    ])
+  );
+  const confirmedGames = encounter.games.filter((game) => game.state === "confirmed").length;
+  // A duel's score is its wins, so the games it played are at least that many;
+  // a lobby's card plays to its end.
+  const gamesPlayed =
+    draft.gamesPlayed ??
+    ownReport?.games_played ??
+    (duel
+      ? Math.min(
+          encounter.best_of,
+          Math.max(confirmedGames, Object.values(scores).reduce((sum, value) => sum + value, 0))
+        )
+      : encounter.best_of);
   // `encounter.closeness` is a 0..1 float; a report's is 1..10 stars.
   const reportCloseness =
     ownReport?.closeness != null ? clampCloseness(ownReport.closeness) : null;
@@ -270,21 +243,35 @@ export function MatchReportForm({
       : (savedCloseness ?? (closenessConfig.required ? DEFAULT_CLOSENESS : null));
   const codes =
     draft.codes ??
-    Object.fromEntries((ownReport?.map_codes ?? []).map((code) => [code.map_index, code.code]));
+    Object.fromEntries(
+      encounter.games.flatMap((game) =>
+        game.teams
+          .filter((line) => line.encounter_team_id === ownTeamId && line.replay_code)
+          .map((line) => [game.position, line.replay_code as string])
+      )
+    );
   const comment = draft.comment ?? ownReport?.comment ?? "";
   const customValues = draft.customFields ?? ownReport?.custom_fields ?? {};
 
   // A 2-0 Bo3 played two maps, not three; a forfeit played none. Clamped to the
   // slots that exist so an impossible score cannot demand a code with no input.
   const playedSlots = useMemo(
-    () => slots.slice(0, Math.max(0, Math.min(homeScore + awayScore, slots.length))),
-    [slots, homeScore, awayScore]
+    () => slots.slice(0, Math.max(0, Math.min(gamesPlayed, slots.length))),
+    [slots, gamesPlayed]
   );
 
   // One pass yields both the per-field messages (for aria-describedby) and the
   // single reason the submit button is disabled, so the two can never disagree.
-  const validation = useMemo(() => {
-    const score = homeScore < 0 || awayScore < 0 ? t("matchEdit.negativeScoreError") : null;
+  const validation = (() => {
+    // The same checks, with the same codes, the server runs on a series claim.
+    const claimErrors = seriesClaimErrors({
+      preset: encounter.scoring_preset,
+      bestOf: encounter.best_of,
+      teamIds: seats.map((seat) => seat.id),
+      games: encounter.games,
+      claim: { gamesPlayed, totals: scores, wins: duel ? scores : null }
+    });
+    const score = claimErrors.length > 0 ? claimErrors.map((code) => t(`matchReport.errors.${code}`)).join(" ") : null;
 
     const closenessError =
       closenessConfig.enabled && closenessConfig.required && closeness == null
@@ -322,28 +309,21 @@ export function MatchReportForm({
       custom,
       firstError: score ?? closenessError ?? mapCodesError ?? commentError ?? firstCustom ?? null
     };
-  }, [
-    homeScore,
-    awayScore,
-    closeness,
-    closenessConfig,
-    mapCodesConfig,
-    commentConfig,
-    playedSlots,
-    codes,
-    comment,
-    customDefs,
-    customValues,
-    t
-  ]);
+  })();
 
   const validationError = validation.firstError;
 
   const submitMutation = useMutation({
     mutationFn: () =>
       captainService.submitReport(encounter.id, {
-        home_score: homeScore,
-        away_score: awayScore,
+        basis_version: encounter.result_version,
+        games_played: gamesPlayed,
+        results: seats.map((seat) => ({
+          encounter_team_id: seat.id,
+          score: scores[seat.id],
+          // A duel's rule counts wins, and its score IS its wins; a lobby's card has none.
+          wins: duel ? scores[seat.id] : null
+        })),
         closeness: closenessConfig.enabled ? closeness : null,
         map_codes: mapCodesConfig.enabled
           ? slots
@@ -374,9 +354,15 @@ export function MatchReportForm({
       onSubmitted();
     },
     onError: (error) => {
+      // A code the form knows is worded here, in the captain's language; anything
+      // else keeps the server's own message.
+      const known = seriesReportErrorCodes(error);
       notify.apiError(error, {
         title: t("matchReport.submitErrorMessage"),
-        description: getApiErrorMessage(error)
+        description:
+          known.length > 0
+            ? known.map((code) => t(`matchReport.errors.${code}`)).join("\n")
+            : getApiErrorMessage(error)
       });
     }
   });
@@ -397,25 +383,71 @@ export function MatchReportForm({
         </p>
       ) : null}
       <div className={cn("space-y-4", fieldsClassName)}>
-        <EncounterScoreControls
-          idPrefix={idPrefix}
-          homeScore={homeScore}
-          awayScore={awayScore}
-          homeLabel={homeTeamLabel}
-          awayLabel={awayTeamLabel}
-          presetLabel={t("matchReport.quickResult")}
-          bestOf={encounter.best_of}
-          onScoreChange={(score) =>
-            setDraft((prev) => ({
-              ...prev,
-              homeScore: score.homeScore,
-              awayScore: score.awayScore
-            }))
-          }
-        />
+        {duel ? (
+          first &&
+          second && (
+            <EncounterScoreControls
+              idPrefix={idPrefix}
+              one={scores[first.id]}
+              two={scores[second.id]}
+              firstLabel={first.name}
+              secondLabel={second.name}
+              presetLabel={t("matchReport.quickResult")}
+              bestOf={encounter.best_of}
+              onScoreChange={(score) =>
+                setDraft((prev) => ({
+                  ...prev,
+                  scores: { ...scores, [first.id]: score.one, [second.id]: score.two }
+                }))
+              }
+            />
+          )
+        ) : (
+          <div className={cn("space-y-3", FIELD_BLOCK_CLASS)}>
+            <BlockHeading label={t("matchReport.pointsLabel")} required />
+            {seats.map((seat) => (
+              <div key={seat.id} className="flex items-center gap-3">
+                <Label
+                  htmlFor={`${idPrefix}-points-${seat.id}`}
+                  className="w-28 shrink-0 truncate text-xs font-semibold text-[color:var(--aqt-fg-muted)]"
+                >
+                  {seat.name}
+                </Label>
+                <NumberInput
+                  id={`${idPrefix}-points-${seat.id}`}
+                  min={0}
+                  value={scores[seat.id]}
+                  onValueChange={(next) =>
+                    setDraft((prev) => ({ ...prev, scores: { ...scores, [seat.id]: next ?? 0 } }))
+                  }
+                  variant="surface"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className={cn("space-y-1.5", FIELD_BLOCK_CLASS)}>
+          <BlockHeading
+            htmlFor={gamesPlayedId}
+            label={t("matchReport.gamesPlayed")}
+            required
+            hint={t("matchReport.gamesPlayedHint")}
+          />
+          <NumberInput
+            id={gamesPlayedId}
+            integer
+            min={0}
+            max={encounter.best_of}
+            value={gamesPlayed}
+            onValueChange={(next) => setDraft((prev) => ({ ...prev, gamesPlayed: next ?? 0 }))}
+            aria-invalid={validation.score != null}
+            variant="surface"
+          />
+        </div>
 
         {closenessConfig.enabled && (
-          <div className="space-y-3 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-4">
+          <div className={cn("space-y-3", FIELD_BLOCK_CLASS)}>
             <div className="flex items-start justify-between gap-3">
               <BlockHeading
                 labelId={qualityLabelId}
@@ -430,76 +462,60 @@ export function MatchReportForm({
               </div>
             </div>
 
-            <div
-              role="radiogroup"
+            <ToggleGroup
+              type="single"
+              variant="card"
+              // A mandatory rating has no "not set" radio, so unset selects nothing.
+              value={closeness == null ? (closenessConfig.required ? "" : "none") : String(closeness)}
+              onValueChange={(value) =>
+                setDraft((prev) => ({
+                  ...prev,
+                  closeness: MATCH_QUALITY_OPTIONS.find((option) => String(option) === value) ?? null
+                }))
+              }
               aria-labelledby={qualityLabelId}
               aria-required={closenessConfig.required}
               aria-invalid={validation.closeness != null}
               aria-describedby={validation.closeness ? qualityErrorId : undefined}
-              onKeyDown={moveWithinRadioGroup}
-              className="grid grid-cols-5 gap-2"
+              className="grid-cols-5"
             >
-              {MATCH_QUALITY_OPTIONS.map((val, position) => {
-                const isSelected = val === closeness;
-                // APG: the group is one tab stop. With nothing chosen the first
-                // option holds it — a mandatory rating has no "not set" radio to hold it.
-                const isTabStop =
-                  isSelected || (closeness == null && closenessConfig.required && position === 0);
-
-                return (
-                  <button
-                    key={val}
-                    type="button"
-                    role="radio"
-                    tabIndex={isTabStop ? 0 : -1}
+              {MATCH_QUALITY_OPTIONS.map((val) => (
+                <ToggleGroupItem
+                  key={val}
+                  value={String(val)}
+                  accent="var(--aqt-gold)"
+                  aria-label={t("matchReport.qualityAria", {
+                    score: String(val),
+                    description: t(`matchReport.qualityDescriptions.${val}`)
+                  })}
+                  className="items-center justify-center text-center"
+                >
+                  <Star
+                    aria-hidden
                     className={cn(
-                      "flex min-h-12 flex-col items-center justify-center gap-1 rounded-lg border px-1.5 py-1.5 text-center transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                      isSelected
-                        ? "border-[color:color-mix(in_srgb,var(--aqt-gold)_50%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-gold)_12%,transparent)] text-[color:var(--aqt-gold)] hover:bg-[color:color-mix(in_srgb,var(--aqt-gold)_20%,transparent)]"
-                        : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+                      "h-4.5 w-4.5 transition-colors duration-150",
+                      val === closeness
+                        ? "fill-[color:var(--aqt-gold)] text-[color:var(--aqt-gold)]"
+                        : "text-[color:var(--aqt-fg-faint)]"
                     )}
-                    onClick={() => setDraft((prev) => ({ ...prev, closeness: val }))}
-                    aria-checked={isSelected}
-                    aria-label={t("matchReport.qualityAria", {
-                      score: String(val),
-                      description: t(`matchReport.qualityDescriptions.${val}`)
-                    })}
-                  >
-                    <Star
-                      aria-hidden
-                      className={cn(
-                        "h-4.5 w-4.5 transition-colors duration-150",
-                        isSelected
-                          ? "fill-[color:var(--aqt-gold)] text-[color:var(--aqt-gold)]"
-                          : "text-[color:var(--aqt-fg-faint)]"
-                      )}
-                    />
-                    <span className="text-label font-bold">{val}/10</span>
-                  </button>
-                );
-              })}
+                  />
+                  <span className="text-label font-bold">{val}/10</span>
+                </ToggleGroupItem>
+              ))}
 
               {/* Only an optional rating can be left unset; offering "not rated"
                   for a mandatory one would advertise an invalid answer. */}
               {!closenessConfig.required && (
-                <button
-                  type="button"
-                  role="radio"
-                  tabIndex={closeness == null ? 0 : -1}
-                  aria-checked={closeness == null}
+                <ToggleGroupItem
+                  value="none"
+                  accent="var(--aqt-fg-muted)"
                   aria-label={t("matchEdit.notSet")}
-                  onClick={() => setDraft((prev) => ({ ...prev, closeness: null }))}
-                  className={cn(
-                    "col-span-5 min-h-9 rounded-lg border px-2 py-1.5 text-label font-bold uppercase tracking-label transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                    closeness == null
-                      ? "border-[color:var(--aqt-border-1)] bg-[color:var(--aqt-overlay-3)] text-[color:var(--aqt-fg)]"
-                      : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-dim)] hover:text-[color:var(--aqt-fg)]"
-                  )}
+                  className="col-span-5 items-center"
                 >
                   {t("matchEdit.notSet")}
-                </button>
+                </ToggleGroupItem>
               )}
-            </div>
+            </ToggleGroup>
 
             {validation.closeness ? (
               <p id={qualityErrorId} className="text-xs font-semibold text-danger">
@@ -515,7 +531,7 @@ export function MatchReportForm({
         )}
 
         {mapCodesConfig.enabled && (
-          <div className="space-y-3 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-4">
+          <div className={cn("space-y-3", FIELD_BLOCK_CLASS)}>
             <BlockHeading
               labelId={mapCodesLabelId}
               label={t("matchReport.mapCodes")}
@@ -525,7 +541,14 @@ export function MatchReportForm({
             <div className="space-y-2">
               {slots.map((slot, position) => {
                 const name = slot.mapId != null ? mapNameById.get(slot.mapId) : undefined;
-                const label = name ?? t("matchReport.mapLabel", { index: String(position + 1) });
+                const game = encounter.games?.find((candidate) => candidate.position === slot.mapIndex);
+                const mode = modeBeyondMap(game?.map, game?.mode);
+                const label =
+                  name == null
+                    ? t("matchReport.mapLabel", { index: String(position + 1) })
+                    : mode == null
+                      ? name
+                      : `${name} · ${mode.name}`;
                 const value = codes[slot.mapIndex] ?? "";
                 // `playedSlots` is a prefix of `slots`, so position decides it.
                 const isPlayed = position < playedSlots.length;
@@ -554,7 +577,7 @@ export function MatchReportForm({
                           codes: { ...codes, [slot.mapIndex]: e.target.value }
                         }))
                       }
-                      className="h-9 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-sm text-[color:var(--aqt-fg)]"
+                      variant="surface"
                     />
                   </div>
                 );
@@ -569,7 +592,7 @@ export function MatchReportForm({
         )}
 
         {commentConfig.enabled && (
-          <div className="space-y-2 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-4">
+          <div className={cn("space-y-2", FIELD_BLOCK_CLASS)}>
             <BlockHeading
               htmlFor={commentId}
               label={t("matchReport.comment")}
@@ -586,7 +609,7 @@ export function MatchReportForm({
                 validation.comment ? `${commentCounterId} ${commentErrorId}` : commentCounterId
               }
               onChange={(e) => setDraft((prev) => ({ ...prev, comment: e.target.value }))}
-              className="min-h-20 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-sm text-[color:var(--aqt-fg)]"
+              variant="surface"
             />
             <p
               id={commentCounterId}
@@ -603,10 +626,10 @@ export function MatchReportForm({
         )}
 
         {customDefs.length > 0 && (
-          <div className="space-y-3 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-4">
-            <p className="text-label font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">
+          <div className={cn("space-y-3", FIELD_BLOCK_CLASS)}>
+            <Eyebrow as="p" tone="dim">
               {t("matchReport.customFields")}
-            </p>
+            </Eyebrow>
             {customDefs.map((definition) => {
               const inputId = `${idPrefix}-custom-${definition.key}`;
               const errorId = `${inputId}-error`;
@@ -633,7 +656,7 @@ export function MatchReportForm({
                         customFields: { ...customValues, [definition.key]: e.target.value }
                       }))
                     }
-                    className="h-9 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-sm text-[color:var(--aqt-fg)]"
+                    variant="surface"
                   />
                   {error ? (
                     <p id={errorId} className="text-xs font-semibold text-danger">
@@ -666,7 +689,7 @@ export function MatchReportForm({
         <Button
           onClick={() => submitMutation.mutate()}
           disabled={!!validationError || submitMutation.isPending}
-          className="h-10 px-5 font-bold"
+          size="lg"
         >
           {submitMutation.isPending ? t("matchReport.submitting") : t("matchReport.submit")}
         </Button>

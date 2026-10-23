@@ -15,22 +15,22 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
 from src.core.job_store import BalancerJobStore  # noqa: E402
 from src.domain.balancer.captain_assignment_service import assign_captains  # noqa: E402
+from src.domain.balancer.config.defaults import AlgorithmConfig, default_role_settings  # noqa: E402
 from src.domain.balancer.entities import Player  # noqa: E402
 from src.domain.balancer.moo_backend import _serialize_native_request, run_moo_optimizer  # noqa: E402
 from src.domain.balancer.player_loader import load_players_from_dict  # noqa: E402
 from src.domain.balancer.role_assignment_service import find_feasible_role_assignment  # noqa: E402
-from src.domain.balancer.runtime import balance_teams_tournament  # noqa: E402
-from src.services.balancer.config.defaults import AlgorithmConfig  # noqa: E402
+from src.domain.balancer.runtime import balance_teams  # noqa: E402
 from src.services.balancer.request_parser import BalancerRequestParser  # noqa: E402
 
 
 class MooBackendContractTests(TestCase):
     def test_serializes_current_rust_config_contract(self) -> None:
-        config = AlgorithmConfig()
+        config = AlgorithmConfig(role_settings=default_role_settings("overwatch"))
+        config.role_mask = {"tank": 1, "damage": 2, "support": 2}
         config.intra_team_std_weight = 1.25
         config.internal_role_spread_weight = 0.75
         config.role_settings = config.role_settings | {
@@ -542,9 +542,7 @@ class MooDeterminismTests(TestCase):
         native_module = SimpleNamespace(run_moo_optimizer=fake_run_moo_optimizer)
 
         with patch("src.domain.balancer.native.load_native_module", return_value=native_module):
-            runs = [
-                balance_teams_tournament(input_data, config_overrides, None, role_mask)[0]["teams"] for _ in range(3)
-            ]
+            runs = [balance_teams(input_data, config_overrides, None, role_mask)[0]["teams"] for _ in range(3)]
 
         self.assertEqual(runs[0], runs[1])
         self.assertEqual(runs[1], runs[2])
@@ -602,12 +600,8 @@ class MooDeterminismTests(TestCase):
         native_module = SimpleNamespace(run_moo_optimizer=fake_run_moo_optimizer)
 
         with patch("src.domain.balancer.native.load_native_module", return_value=native_module):
-            ordered_run = balance_teams_tournament(make_input([1, 2, 3, 4, 5, 6]), config_overrides, None, role_mask)[
-                0
-            ]["teams"]
-            reversed_run = balance_teams_tournament(make_input([6, 5, 4, 3, 2, 1]), config_overrides, None, role_mask)[
-                0
-            ]["teams"]
+            ordered_run = balance_teams(make_input([1, 2, 3, 4, 5, 6]), config_overrides, None, role_mask)[0]["teams"]
+            reversed_run = balance_teams(make_input([6, 5, 4, 3, 2, 1]), config_overrides, None, role_mask)[0]["teams"]
 
         self.assertEqual(ordered_run, reversed_run)
         self.assertEqual(observed_player_orders[0], observed_player_orders[1])
@@ -674,7 +668,7 @@ class MooDeterminismTests(TestCase):
         native_module = SimpleNamespace(run_moo_optimizer=fake_run_moo_optimizer)
 
         with patch("src.domain.balancer.native.load_native_module", return_value=native_module):
-            result = balance_teams_tournament(input_data, config_overrides, None, role_mask)[0]
+            result = balance_teams(input_data, config_overrides, None, role_mask)[0]
 
         self.assertEqual(len(result["teams"]), 2)
         self.assertEqual(sum(len(team["roster"].get("tank", [])) for team in result["teams"]), 4)

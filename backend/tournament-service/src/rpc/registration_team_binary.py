@@ -6,7 +6,7 @@ serves a different domain behind a different gate:
 
 * ``team_binary`` writes ``Team.image_url``, the *materialized* tournament team,
   and gates on ``team.update`` in the team's workspace (organizer staff).
-* this module writes ``BalancerRegistrationTeam.image_url``, the *pre-formation*
+* this module writes ``RegistrationTeam.image_url``, the *pre-formation*
   registered team, and gates on being that team's captain — a competitor who
   usually holds no workspace membership at all. The gate runs twice, exactly as
   ``team_binary``'s does: once here before any S3 call (``assert_may_edit_team``,

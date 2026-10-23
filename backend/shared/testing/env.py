@@ -1,9 +1,9 @@
 """Load test environment so every service's ``Settings`` can construct.
 
 Every service's ``Settings`` extends ``BaseServiceSettings``, which requires
-``POSTGRES_*`` / ``PROJECT_URL`` / ``REDIS_URL`` (plus whatever fields the service
-itself adds) just to *construct* — before a test ever imports ``src.core.db``
-or ``src.core.config``, those env vars must already exist.
+``POSTGRES_*`` / ``REDIS_URL`` (plus whatever fields the service itself adds)
+just to *construct* — before a test ever imports ``src.core.db`` or
+``src.core.config``, those env vars must already exist.
 
 Call :func:`apply_test_env_defaults` once from each service's ``tests/conftest.py``
 — conftest.py always imports before sibling test modules, so the environment is
@@ -17,11 +17,6 @@ Load order (later files only fill empty keys; already-exported variables win):
 
 ``backend/env/*.env`` is never loaded: those files are the docker-compose
 stack (``POSTGRES_HOST=postgres``) and may point at production.
-
-Deliberately excluded: ``DEBUG``. Different suites pin it to different values
-on purpose (some force ``"false"`` to avoid debug-only branches, others rely
-on the default ``"true"``); that is test-specific behavior, not connectivity
-plumbing, so each file keeps setting it explicitly.
 """
 
 from __future__ import annotations

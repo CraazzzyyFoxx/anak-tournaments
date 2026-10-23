@@ -1,4 +1,5 @@
 import type { ColumnDef, ColumnMeta } from "@tanstack/react-table";
+import type React from "react";
 
 import type { AdminColumnFilterSpec } from "@/components/data-table/filters";
 import type { KebabAction } from "@/components/data-table/kebab-column";
@@ -16,7 +17,7 @@ export function columnDefId<TData>(column: ColumnDef<TData>): string {
 }
 
 /** Breakpoint below which a column is hidden entirely. */
-export type AdminColumnResponsive = "always" | "sm" | "md" | "lg";
+type AdminColumnResponsive = "always" | "sm" | "md" | "lg";
 
 /** Column category, used to group the "Columns" picker. */
 export type AdminColumnCategory = "core" | "meta" | "admin";
@@ -33,15 +34,37 @@ export interface AdminColumnMeta<TData = unknown> {
   mandatory?: boolean;
   responsive?: AdminColumnResponsive;
   /**
-   * Pin this column to the left edge while the table scrolls sideways. Only a
-   * left-edge prefix of the visible columns can be pinned, and every pinned
-   * column but the first must declare `size` — the offsets are arithmetic, not
-   * measured.
+   * Pin this column while the table scrolls sideways: `true`/`"left"` join a
+   * left-edge prefix of the visible columns, `"right"` a right-edge suffix
+   * (the actions column then pins at the very edge). A flagged column outside
+   * its prefix/suffix is not pinned — it would park over the wrong neighbours.
+   * Pinned columns declare `size`: the offsets are summed, not measured.
    */
-  sticky?: boolean;
+  sticky?: boolean | "left" | "right";
   align?: "left" | "center" | "right";
   /** Extra classes for this column's `<th>` and `<td>`s (widths, min-widths). */
   className?: string;
+  /** Classes for the `<th>` only, when `className` would also restyle every body cell. */
+  headerClassName?: string;
+  /** Explains a terse header without widening it: an info icon beside the label, outside the sort button. */
+  headerTooltip?: React.ReactNode;
+  /**
+   * Left-aligned cells truncate by default so a long value cannot paint over
+   * its neighbour; `false` wraps instead, `true` also puts the value in a `title`.
+   */
+  ellipsis?: boolean;
+  /** Overrides the table's `cellAlign` for this column — one tall stacked cell in a middle-aligned table. */
+  valign?: "top" | "middle";
+  /** Keeps a short value (a date, a score) on one line when the column is squeezed. */
+  nowrap?: boolean;
+  /**
+   * Per-row props for this column's `<td>` (tint a status, explain a value).
+   * No `colSpan`/`rowSpan`: a spanning cell breaks row virtualisation and the
+   * sticky offset arithmetic.
+   */
+  onCell?: (row: TData) =>
+    | { className?: string; style?: React.CSSProperties; align?: "left" | "center" | "right"; title?: string }
+    | undefined;
   /**
    * Text this column contributes to the toolbar search in client mode. Absent
    * means the column is not searchable — a cell of badges has no useful text.

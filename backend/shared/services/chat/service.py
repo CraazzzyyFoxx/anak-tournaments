@@ -3,8 +3,6 @@
 Everything here is room-kind agnostic. The one thing that is not — who the
 caller is in this room — arrives as a ``ChatAccess`` resolver supplied by the
 service that owns the domain.
-
-Design: docs/plans/2026-09-21-shared-room-chat.md.
 """
 
 from __future__ import annotations
@@ -47,8 +45,8 @@ EVENT_DELETED = "chat.message_deleted"
 EVENT_MUTED = "chat.muted"
 EVENT_UNMUTED = "chat.unmuted"
 #: The gateway watches for THIS event type and re-authorizes everyone currently
-#: subscribed to the topic (gateway/internal/ws/revoke.go). Renaming it here
-#: without renaming it there turns the toggle back into an advisory one.
+#: subscribed to the topic (gateway/internal/ws/revoke.go). Rename both together,
+#: or the visibility toggle stops revoking anyone who is already subscribed.
 EVENT_VISIBILITY = "chat.visibility_changed"
 
 THROTTLE_WINDOW = timedelta(seconds=10)
@@ -152,8 +150,8 @@ class ChatService:
     ) -> None:
         """Non-durable, always.
 
-        The table is the history now. A durable row would store every message
-        twice and put the realtime replay cursor and the chat's own ``after_id``
+        The table is the history. A durable row would store every message twice
+        and put the realtime replay cursor and the chat's own ``after_id``
         pagination in charge of the same thing; a reconnecting client catches up
         with ``GET ?after_id=`` instead, which also repairs a gap left by a
         dropped publish that no reconnect would have revealed.
@@ -181,7 +179,16 @@ class ChatService:
         after_id: int | None = None,
         limit: int = HISTORY_DEFAULT,
     ) -> ChatEnvelope:
-        membership, visible = await self._reader(session, auth_user, room)
+        membership = await self.access.resolve(session, auth_user, room)
+        visible = await self.spectators_can_read(session, room)
+        if membership.is_spectator and not visible:
+            # Watching a closed room is a normal visit, not a failed read: the room answers that it is closed and
+            # shows nothing of what is said in it. Only the writes refuse a spectator (``_reader``).
+            return ChatEnvelope(
+                messages=[],
+                settings=ChatSettings(spectators_can_read=False),
+                viewer=ChatViewer(role=membership.role, can_write=False, can_moderate=False),
+            )
         rows = await self.messages.history(
             session,
             room_kind=room.kind,
@@ -369,6 +376,18 @@ class ChatService:
         )
         await session.commit()
         return ChatSettings(spectators_can_read=spectators_can_read)
+
+    async def access_changed(self, session: AsyncSession, room: ChatRoom, *, actor_user_id: int | None) -> None:
+        """Who takes part in the room changed while its setting did not (a draft's captain was replaced): the toggle's
+        event at the room's current value, so the gateway re-checks everyone subscribed and a former participant
+        loses a room closed to spectators. The caller commits."""
+        await self._emit(
+            session,
+            room,
+            EVENT_VISIBILITY,
+            {"spectators_can_read": await self.spectators_can_read(session, room)},
+            actor_user_id=actor_user_id,
+        )
 
     async def set_mute(
         self,

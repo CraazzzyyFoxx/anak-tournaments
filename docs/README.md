@@ -37,7 +37,7 @@ The system as it is. These are updated in the same commit as the change they des
 | Backend, all services | [`../backend/README.md`](../backend/README.md) |
 | Backend code layering (`rpc → services → domain → repository → models`) | [`../backend/ARCHITECTURE.md`](../backend/ARCHITECTURE.md) |
 | Repository-layer rules | [`../backend/docs/repository-boundaries.md`](../backend/docs/repository-boundaries.md) |
-| `app-service` sub-domain hierarchy (import-linter enforced) | [`../backend/docs/architecture/layering.md`](../backend/docs/architecture/layering.md) |
+| `app-service` and `stats-service` read-surface sub-domain hierarchies (import-linter enforced) | [`../backend/docs/architecture/layering.md`](../backend/docs/architecture/layering.md) |
 | Shared kernel — models, tenancy, RBAC, messaging, observability | [`../backend/shared/README.md`](../backend/shared/README.md) |
 | Gateway — routes, JWT, RPC dispatch, realtime hub, caching | [`../gateway/README.md`](../gateway/README.md) |
 | Frontend — conventions, scripts, structure | [`../frontend/README.md`](../frontend/README.md) |
@@ -50,7 +50,7 @@ Individual services document their own RPC surface and scheduled work:
 [`app-service`](../backend/app-service/README.md),
 [`identity-service`](../backend/identity-service/README.md),
 [`tournament-service`](../backend/tournament-service/README.md),
-[`parser-service`](../backend/parser-service/README.md),
+[`stats-service`](../backend/stats-service/README.md),
 [`balancer-service`](../backend/balancer-service/README.md)
 (and its native solvers, [`balancer_native`](../backend/balancer-service/README.md#native-solver)),
 [`analytics-service`](../backend/analytics-service/README.md),
@@ -69,6 +69,19 @@ Procedures for an operator. Commands are meant to be run verbatim.
 | [`dev-site.md`](./dev-site.md) | A second deployment of the stack (dev/staging): what differs from production, deploy, data refresh |
 | [`workspace-domains.md`](./workspace-domains.md) | Workspace subdomains and custom domains: DNS, certificates, verification |
 | [`../backend/analytics-service/docs/runbook-shift-recompute.md`](../backend/analytics-service/docs/runbook-shift-recompute.md) | Recomputing OpenSkill rating shifts |
+| [`encounter-layer-v1-release.md`](./encounter-layer-v1-release.md) | Shipping the encounter layer V1: breaking API changes, the preflight → upgrade → recompute → reconcile cutover, what is unmeasured |
+| [`multi-game-p1-catalog-release.md`](./multi-game-p1-catalog-release.md) | Shipping the multi-game P1 catalog: wire breaks, preflight/reconcile, cache and queue drain, hero-stats view population, dev/staging resets |
+| [`multi-game-p2-roles-release.md`](./multi-game-p2-roles-release.md) | Shipping the P2 role ontology and team formats: RoleRef wire breaks, preflight classes 2–8, reconciliation, dev/staging resets |
+| [`multi-game-p3-ranks-release.md`](./multi-game-p3-ranks-release.md) | Shipping P3 ranks and identity: native modules, role-ID storage, independent grid defaults, Riot/provider wire contracts, retained migration evidence and phase verification limits |
+| [`releases/2026-10-15-multi-game-p5-ingest.md`](./releases/2026-10-15-multi-game-p5-ingest.md) | Shipping P5 canonical ingest: the `owt.match/1` protocol and API keys, idempotency and status/error contracts, observed vs official results, `stats-svc`/`stats-worker` and `STATS_DISCIPLINES`, the cutover matrix, P9 queue drain and rollback, P4 data blockers, the local live-smoke recipe |
+| [`releases/2026-10-18-multi-game-p6-achievements-analytics.md`](./releases/2026-10-18-multi-game-p6-achievements-analytics.md) | Shipping P6: portable achievement format v2 (v1/`hero_id` rejected), `achievement06` forward-only, discipline on every achievement API, analytics scoping with no LoL ML fallback, the P9 artifact-conversion runbook (exact allowlist, two-image procedure, rollback), verification run and deferred items |
+| [`releases/2026-10-21-backend-cleanup.md`](./releases/2026-10-21-backend-cleanup.md) | Shipping the backend cleanup: the `balancer` → `registration` / `mix` / `draft` schema split (`schemasplit01`, one-SHA deploy), removed analytics/identity endpoints and queues (`quota0003`), settings no longer read, the gated legacy storage drop (`legacy01`) and its runbook |
+| [`releases/2026-10-21-riot-lol.md`](./releases/2026-10-21-riot-lol.md) | Shipping Riot Sign-On and LoL native ranks: the shared `rank` schema (`rank01`, import-job key rewrite), Riot env and the RSO client, the LoL collector (off by default; dev keys expire in 24 h, PUUIDs re-resolve per key), rank wire renames and the `/game-accounts` route, operator steps |
+| [`releases/2026-10-21-deadlock.md`](./releases/2026-10-21-deadlock.md) | Shipping Deadlock and Steam sign-in: the `deadlock` module (deadlock-api catalog, 66-tier ladder, batched rank collector, on by default), Steam OpenID login/link and handle formats, the Discord + Steam mix requirement, generic match import by external id (`stats.match_fetch`, `deadlock01`), a match's own game mode (`MatchDoc.mode`, `matchmode01`, a maintenance-window lock), operator steps and the live smoke |
+| [`releases/2026-10-23-valorant.md`](./releases/2026-10-23-valorant.md) | Shipping VALORANT as a base module: the `valorant` discipline (valorant-api.com catalog, 25-tier ladder, organizer-entered ranks, Riot ID, one role, 5v5, the VCT Bo1 map veto preset), `valorant01`, operator steps and what is deferred (native ranks, match import, Bo3 sides) |
+| [`releases/2026-10-21-rank-mapping-removal.md`](./releases/2026-10-21-rank-mapping-removal.md) | Removing the Overwatch rank mapping: `parser.rank_mapping` and the collector's Mapping tab gone, ranks always valued on the ladder, `owmapdrop01` recomputes overridden snapshots, collapses repeats and drops the setting |
+| [`releases/2026-10-21-division-grid-defaults.md`](./releases/2026-10-21-division-grid-defaults.md) | A default division grid per game in every workspace (`defgrid01` backfill, provisioning on create/enable, the activation rule), create-from-version and `tournament_count` on the grid API, and the divisions page: all-games summary, New grid, the grid menu with detach-and-delete, game-aware copy |
+| [`releases/2026-10-23-prod-cutover.md`](./releases/2026-10-23-prod-cutover.md) | Taking production from v1.48.1 through every cutover above in one maintenance window: the nginx maintenance page (`make maint-on/eta/off`, bypass cookie), pre-window checks and the step timings measured on dev, drain/backup/migrate/proof/start order, point of no return and restore |
 
 ## Designs, plans and reviews
 

@@ -1,6 +1,6 @@
 """Tests for canonical OW division normalization (cross-workspace single scale).
 
-See src/services/analytics/canonical_division.py: every analytics division is
+See shared/division_grid.py (``canonical_division_number``): every analytics division is
 mapped to the in-code standard grid (DEFAULT_GRID, 45-tier OW). Per source tier:
 OW-rank binding when present, else proportional rescale of the division number.
 """
@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -21,7 +22,10 @@ sys.path.insert(0, str(backend_root / "analytics-service"))
 
 
 division_grid = importlib.import_module("shared.division_grid")
-canonical = importlib.import_module("src.services.analytics.canonical_division")
+from tests.ow_analytics import module as ow_module  # noqa: E402
+
+canonical = ow_module("canonical")
+grid_loading = importlib.import_module("src.services.analytics.canonical_division")
 
 DEFAULT_GRID = division_grid.DEFAULT_GRID
 
@@ -35,8 +39,8 @@ def _tier(tier_id, number, rank_min, rank_max, ow_min=None, ow_max=None):
         rank_min=rank_min,
         rank_max=rank_max,
         icon_url="",
-        ow_rank_min=ow_min,
-        ow_rank_max=ow_max,
+        native_rank_min=ow_min,
+        native_rank_max=ow_max,
     )
 
 
@@ -62,25 +66,36 @@ def _grid_ow(version_id=300):
 class CanonicalDivisionNumberTests(TestCase):
     def test_ow_binding_routes_through_canonical_ow_rank(self) -> None:
         expected = DEFAULT_GRID.resolve_division((2000 + 2099) // 2).number
-        self.assertEqual(expected, canonical.canonical_division_number(_grid_ow(), 1500))
+        self.assertEqual(expected, division_grid.canonical_division_number(_grid_ow(), 1500, DEFAULT_GRID))
 
     def test_proportional_endpoints_span_full_canonical_range(self) -> None:
         grid = _grid20()
         # Top division (1) -> canonical top (1); bottom (20) -> canonical bottom (45).
-        self.assertEqual(DEFAULT_GRID.min_division, canonical.canonical_division_number(grid, 2000))
-        self.assertEqual(DEFAULT_GRID.max_division, canonical.canonical_division_number(grid, 150))
+        self.assertEqual(DEFAULT_GRID.min_division, division_grid.canonical_division_number(grid, 2000, DEFAULT_GRID))
+        self.assertEqual(DEFAULT_GRID.max_division, division_grid.canonical_division_number(grid, 150, DEFAULT_GRID))
 
     def test_proportional_midpoint(self) -> None:
         grid = _grid20()
         # division number 10 of 20 -> round(1 + 9/19 * 44) = 22
-        self.assertEqual(22, canonical.canonical_division_number(grid, 1150))
+        self.assertEqual(22, division_grid.canonical_division_number(grid, 1150, DEFAULT_GRID))
 
     def test_default_grid_is_identity(self) -> None:
         # A rank already on the OW SR scale resolves to its own OW division.
         for rank in (1000, 2500, 4900):
             self.assertEqual(
                 DEFAULT_GRID.resolve_division(rank).number,
-                canonical.canonical_division_number(DEFAULT_GRID, rank),
+                division_grid.canonical_division_number(DEFAULT_GRID, rank, DEFAULT_GRID),
+            )
+
+    def test_stamped_tiers_carry_the_number_analytics_resolves(self) -> None:
+        # The stored ``canonical_number`` and the analytics scale are one algorithm: every tier of a version is
+        # stamped with what its own band resolves to on the Overwatch ladder.
+        for grid in (_grid20(), _grid_ow()):
+            rows = [SimpleNamespace(**vars(tier)) for tier in grid.tiers]
+            division_grid.stamp_canonical_numbers(rows, "overwatch")
+            self.assertEqual(
+                [division_grid.canonical_division_number(grid, tier.rank_min, DEFAULT_GRID) for tier in grid.tiers],
+                [row.canonical_number for row in rows],
             )
 
 
@@ -93,7 +108,7 @@ class CanonicalDivForTests(TestCase):
     def test_uses_grid_for_known_version(self) -> None:
         grids = {200: _grid20()}
         self.assertEqual(
-            canonical.canonical_division_number(_grid20(), 1150),
+            division_grid.canonical_division_number(_grid20(), 1150, DEFAULT_GRID),
             canonical.canonical_div_for(grids, 200, 1150),
         )
 
@@ -109,6 +124,13 @@ class CanonicalDivForTests(TestCase):
             ],
             df["div"].tolist(),
         )
+
+    def test_unranked_rank_has_no_division(self) -> None:
+        self.assertIsNone(canonical.canonical_div_for({}, None, None))
+        df = pd.DataFrame({"rank": [2500, None], "version_id": [None, None]})
+        canonical.assign_canonical_division(df, {}, rank_col="rank")
+        self.assertEqual(DEFAULT_GRID.resolve_division(2500).number, df["div"].iloc[0])
+        self.assertTrue(pd.isna(df["div"].iloc[1]))
 
     def test_div_stays_within_canonical_range(self) -> None:
         grids = {200: _grid20(), 300: _grid_ow()}
@@ -131,25 +153,25 @@ class LoadSourceGridsTests(IsolatedAsyncioTestCase):
         session = object()
 
         with patch.object(
-            canonical,
+            grid_loading,
             "load_division_grid_snapshots",
             AsyncMock(return_value={200: snapshot_a, 300: snapshot_b}),
         ) as load_snapshots:
             # 200 repeated -- the dedup must not turn into two lookups for it.
-            grids = await canonical.load_source_grids(session=session, version_ids=[200, 200, 300])
+            grids = await grid_loading.load_source_grids(session=session, version_ids=[200, 200, 300])
 
         load_snapshots.assert_awaited_once_with(session, {200, 300})
         self.assertEqual({200: grid_a, 300: grid_b}, grids)
 
     async def test_missing_versions_are_omitted_not_defaulted(self) -> None:
         """Falling back to DEFAULT_GRID is ``canonical_div_for``'s job, not this one's."""
-        with patch.object(canonical, "load_division_grid_snapshots", AsyncMock(return_value={})):
-            grids = await canonical.load_source_grids(session=object(), version_ids=[404])
+        with patch.object(grid_loading, "load_division_grid_snapshots", AsyncMock(return_value={})):
+            grids = await grid_loading.load_source_grids(session=object(), version_ids=[404])
 
         self.assertEqual({}, grids)
 
     async def test_float_version_ids_from_a_dataframe_column_are_coerced(self) -> None:
-        with patch.object(canonical, "load_division_grid_snapshots", AsyncMock(return_value={})) as load_snapshots:
-            await canonical.load_source_grids(session=object(), version_ids=[200.0, 300.0])
+        with patch.object(grid_loading, "load_division_grid_snapshots", AsyncMock(return_value={})) as load_snapshots:
+            await grid_loading.load_source_grids(session=object(), version_ids=[200.0, 300.0])
 
         self.assertEqual({200, 300}, load_snapshots.await_args.args[1])

@@ -18,6 +18,8 @@ import type { RegistrationTeam } from "@/types/registration-team.types";
 
 import MyTeamPanel from "./MyTeamPanel";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
@@ -82,6 +84,7 @@ async function render(team: RegistrationTeam): Promise<HTMLElement> {
       <NextIntlClientProvider locale="en" messages={en}>
         <QueryClientProvider client={client}>
           <MyTeamPanel
+            discipline="overwatch"
             workspaceId={1}
             tournamentId={1}
             team={team}
@@ -93,6 +96,7 @@ async function render(team: RegistrationTeam): Promise<HTMLElement> {
       </NextIntlClientProvider>
     );
   });
+  await settle();
   return container;
 }
 
@@ -104,15 +108,20 @@ function findButton(text: string): HTMLButtonElement {
   return match as HTMLButtonElement;
 }
 
-async function click(element: HTMLElement): Promise<void> {
-  await act(async () => {
-    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
+/** Lets a settled read reach the view: react-query notifies its observers on a zero timeout, so wait one out in act. */
+async function settle(): Promise<void> {
   await act(async () => {
     const { promise, resolve } = Promise.withResolvers<void>();
     setTimeout(resolve, 0);
     await promise;
   });
+}
+
+async function click(element: HTMLElement): Promise<void> {
+  await act(async () => {
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle();
 }
 
 beforeEach(() => {
@@ -129,8 +138,12 @@ describe("bench invites on a full starting roster", () => {
     await render(FULL_TEAM);
     await click(findButton(en.registrationTeams.invite.action));
 
-    const slots = [...document.querySelectorAll<HTMLInputElement>('input[name="invite-slot"]')];
-    expect(slots.map((input) => input.value)).toEqual(["tank", "damage", "support"]);
+    // Radix radios are `<button role="radio" value>` inside the radiogroup the slot label names.
+    const group = [...document.querySelectorAll('[role="radiogroup"]')].find(
+      (el) => document.getElementById(el.getAttribute("aria-labelledby") ?? "")?.textContent === en.registrationTeams.invite.slotLabel
+    );
+    const slots = [...(group?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [])];
+    expect(slots.map((radio) => radio.value)).toEqual(["tank", "damage", "support"]);
 
     await click(findButton(en.registrationTeams.invite.submit));
 

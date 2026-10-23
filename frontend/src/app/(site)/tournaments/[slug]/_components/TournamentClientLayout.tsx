@@ -1,13 +1,13 @@
 "use client";
 
 import React from "react";
-import Image from "next/image";
+import Image from "@/components/ui/image";
+import { Button } from "@/components/ui/button";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { usePathname } from "next/navigation";
 import { ExternalLink } from "lucide-react";
 
-import TournamentBroadcastDock from "./TournamentBroadcastDock";
-import { TOURNAMENT_ACTION_CLASS } from "./tournamentActionClass";
+import { TournamentBroadcastDock } from "./TournamentBroadcastDock";
 import TournamentRegisterButton from "./TournamentRegisterButton";
 import { NextPhaseChip } from "./NextPhaseChip";
 import {
@@ -22,6 +22,7 @@ import { useInvalidation } from "@/hooks/useInvalidation";
 import { useTournamentQuery } from "@/hooks/useTournamentClientData";
 import { useEntityWorkspace } from "@/hooks/useEntityWorkspace";
 import { useTournamentStreamsQuery } from "../_hooks/useTournamentStreams";
+import { useTournamentHasMapPool } from "../_hooks/useTournamentMapPool";
 import type { Tournament } from "@/types/tournament.types";
 
 import { useTranslations } from "next-intl";
@@ -44,7 +45,7 @@ type TournamentClientLayoutProps = {
  * is only populated then) the rostered players are the tournament's players —
  * the header and the overview's numbers must not disagree by the withdrawn.
  */
-export function tournamentPlayersCount(
+function tournamentPlayersCount(
   tournament: Pick<Tournament, "participants_count" | "registrations_count" | "teams_count">
 ): number {
   const rostered = tournament.participants_count ?? 0;
@@ -116,7 +117,7 @@ export default function TournamentClientLayout({
   });
 
   // Object-local queries and actions must not change the saved viewing filter.
-  useEntityWorkspace(tournament?.workspace_id);
+  useEntityWorkspace(tournament?.workspace_id, tournament?.discipline);
 
   // The shell owns the tournament's streams, for two consumers that outlive any
   // one section: the persistent broadcast block below the hero, and the Stream
@@ -131,6 +132,8 @@ export default function TournamentClientLayout({
   const streamsTournamentId =
     tournament && areStreamsVisible(tournament.status) ? tournamentId : undefined;
   const streams = useTournamentStreamsQuery(streamsTournamentId).data;
+
+  const hasMapPool = useTournamentHasMapPool(tournamentId);
 
   const [heroRef, heroScrolledPast] = useScrolledPast<HTMLDivElement>();
 
@@ -156,7 +159,7 @@ export default function TournamentClientLayout({
   if (!tournament) {
     return (
       <div className="aqt-tn">
-        <PageStateCard state="not-found" title={t("common.tournamentNotFound")} />
+        <PageStateCard state="not-found" headingLevel={1} title={t("common.tournamentNotFound")} />
       </div>
     );
   }
@@ -184,10 +187,12 @@ export default function TournamentClientLayout({
   // trade is gone, and the formation itself reads in the Format card, beside the
   // roster shape a pill could not show.
   const draftButton = showDraftLink ? (
-    <HoverPrefetchLink href={`/draft/${tournament.slug}`} className={TOURNAMENT_ACTION_CLASS}>
-      {t("common.draft")}
-      <ExternalLink className="size-3.5 opacity-80" aria-hidden />
-    </HoverPrefetchLink>
+    <Button asChild variant="outline">
+      <HoverPrefetchLink href={`/draft/${tournament.slug}`}>
+        {t("common.draft")}
+        <ExternalLink className="opacity-80" aria-hidden />
+      </HoverPrefetchLink>
+    </Button>
   ) : null;
 
   const registerButton = !isEnded ? <TournamentRegisterButton tournament={tournament} /> : null;
@@ -342,6 +347,7 @@ export default function TournamentClientLayout({
         hasTeams={teamsCount > 0}
         hasStreams={(streams?.official?.length ?? 0) > 0 || (streams?.participants?.length ?? 0) > 0}
         hasRules={Boolean(tournament.rules?.trim())}
+        hasMapPool={hasMapPool}
         collapsed={heroScrolledPast}
         collapsedTitle={
           <span title={tournament.name}>{collapsedRailTitle(tournament.name)}</span>

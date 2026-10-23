@@ -56,7 +56,6 @@ export interface AssignRolePayload {
 
 export interface AssignLinkedPlayerPayload {
   player_id: number;
-  is_primary: boolean;
 }
 
 export interface UpsertRolePayload {
@@ -66,7 +65,7 @@ export interface UpsertRolePayload {
   workspace_id?: number | null;
 }
 
-export type OAuthProvider = "discord" | "twitch" | "battlenet" | "google" | "github";
+export type OAuthProvider = "discord" | "twitch" | "battlenet" | "riot" | "steam" | "google" | "github";
 
 export interface OAuthConnectionAdmin {
   id: number;

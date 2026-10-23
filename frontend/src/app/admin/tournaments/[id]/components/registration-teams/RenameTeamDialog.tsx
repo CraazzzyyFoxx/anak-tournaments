@@ -10,11 +10,7 @@ import type { RegistrationTeam } from "@/types/registration-team.types";
 
 import type { RegistrationTeamActions } from "./useRegistrationTeamActions";
 
-/**
- * Renaming a team from its row, prefilled with the name it has now — the
- * inspector's field is the other way in, and both write through the same
- * mutation so a rename from either place clears the other's draft.
- */
+/** Renaming a team from its row, prefilled with the name it has now. */
 export function RenameTeamDialog({
   team,
   onClose,

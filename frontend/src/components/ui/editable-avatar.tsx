@@ -5,6 +5,7 @@ import { Camera, Pencil, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { cn, initials } from "@/lib/utils";
+import Image from "@/components/ui/image";
 import { Spinner } from "@/components/ui/spinner";
 
 const DEFAULT_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
@@ -91,6 +92,9 @@ export function EditableAvatar({
   const t = useTranslations("kit.avatar");
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  // A stored avatar whose file no longer loads draws the initials, not an empty frame.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const imageSrc = src && src !== failedSrc ? src : null;
   const interactive = editable && !disabled && !busy;
   const radius = shape === "circle" ? "rounded-full" : "rounded-md";
 
@@ -154,9 +158,15 @@ export function EditableAvatar({
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
       >
-        {src ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={src} alt={name ?? "avatar"} className="h-full w-full select-none object-cover" />
+        {imageSrc ? (
+          <Image
+            src={imageSrc}
+            alt={name ?? "avatar"}
+            width={width ?? size}
+            height={size}
+            className="h-full w-full select-none object-cover"
+            onError={() => setFailedSrc(imageSrc)}
+          />
         ) : (
           <div
             className="flex h-full w-full items-center justify-center font-medium text-muted-foreground"
@@ -228,5 +238,3 @@ export function EditableAvatar({
     </div>
   );
 }
-
-export default EditableAvatar;

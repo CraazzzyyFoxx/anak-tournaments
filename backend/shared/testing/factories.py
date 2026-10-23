@@ -2,12 +2,10 @@
 
 ``shared.division_grid.DivisionGrid``/``DivisionTier`` is a cross-service
 domain type -- division-grid resolution runs in both app-service and
-tournament-service. Every suite that needed a grid for a test used to
-hand-roll its own tier/grid builder, all constructing the same dataclass
-fields (``id``, ``slug``, ``number``, ``name``, ``rank_min``, ``rank_max``,
-``icon_url``) with the same "derive slug/name from the division number,
-empty icon" defaults. Centralized here so the mapping onto the real
-dataclasses only needs to match once.
+tournament-service. These builders construct its dataclass fields (``id``,
+``slug``, ``number``, ``name``, ``rank_min``, ``rank_max``, ``icon_url``) with
+the "derive slug/name from the division number, empty icon" defaults, so the
+mapping onto the real dataclasses only needs to match once.
 """
 
 from __future__ import annotations

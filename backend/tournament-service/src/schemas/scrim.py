@@ -1,4 +1,4 @@
-"""Wire shapes for ad-hoc scrim rooms (``docs/plans/2026-08-12-scrim-rooms.md``).
+"""Wire shapes for ad-hoc scrim rooms.
 
 The custom-pool entry deliberately mirrors ``rpc/pick_ban_admin.PickBanConfigUpsert``
 field for field, minus the cascade coordinates (``stage_id``/``round``), which a
@@ -31,9 +31,10 @@ __all__ = (
 
 
 class ScrimTeamRead(BaseModel):
+    slot: int
     id: int
     name: str
-    #: Whether this side has a captain yet. The away side starts unclaimed —
+    #: Whether this slot has a captain yet. Slot 2 starts unclaimed —
     #: that is what the room's share link is for.
     captain_claimed: bool
 
@@ -43,6 +44,8 @@ class ScrimRoomRead(BaseModel):
     token: str
     label: str
     workspace_id: int
+    #: The room's encounter's discipline: owner context for scoped metadata reads.
+    discipline: str
     #: The hidden per-workspace container, not a real tournament. Exposed because
     #: the client needs it for nothing except debugging — the room is addressed by
     #: ``token`` and the pre-game UI by ``encounter_id``.
@@ -50,13 +53,13 @@ class ScrimRoomRead(BaseModel):
     stage_id: int
     encounter_id: int
     best_of: int
-    #: Never null: both sides are provisioned with the room, and the encounter's
-    #: team FKs cascade on delete, so neither can outlive the other.
-    home_team: ScrimTeamRead
-    away_team: ScrimTeamRead
-    #: The viewer's own side, or null for a spectator. Never inferred client-side:
+    #: Always two, in slot order; never null: both seats are provisioned with the
+    #: room, and the encounter's team FKs cascade on delete, so neither can
+    #: outlive the other.
+    teams: list[ScrimTeamRead]
+    #: The viewer's own slot, or null for a spectator. Never inferred client-side:
     #: authority lives in ``Team.captain_id``.
-    viewer_side: Literal["home", "away"] | None
+    viewer_slot: int | None
     can_claim: bool
     #: Whether the viewer may retire this room: its creator, a captain of either
     #: side, or workspace staff holding ``match.result``. False once closed, so the
@@ -85,8 +88,7 @@ class ScrimPoolConfigInput(BaseModel):
     mode: MapVetoMode = MapVetoMode.POOL
     first_pick_rule: FirstPickRule = FirstPickRule.HIGHER_SEED
     first_ban_rotation: FirstBanRotation = FirstBanRotation.FIXED
-    #: Ruleset v2 document (docs/plans/2026-09-28-pick-ban-constructor.md §1),
-    #: validated by the same engine call the organizer's upsert runs.
+    #: Ruleset v2 document, validated by the same engine call the organizer's upsert runs.
     ruleset: dict[str, Any]
     item_ids: list[int] = Field(default_factory=list)
     slots: list[ScrimPoolSlotInput] = Field(default_factory=list)
@@ -119,10 +121,13 @@ ScrimPoolInput = Annotated[ScrimPoolCopy | ScrimPoolCustom, Field(discriminator=
 
 class ScrimCreateRequest(BaseModel):
     workspace_id: int
+    #: The game the room is played in; it must be enabled for the workspace. Never defaulted:
+    #: a room's pool, maps and rosters are all read in this discipline.
+    discipline: str = Field(min_length=1)
     label: str = Field(min_length=1, max_length=255)
     #: Upper bound comes from ``Settings["tournament.scrim"].max_best_of``, not
     #: from here: it is an operational limit, raisable without a deploy.
     best_of: int = Field(ge=1)
-    home_team_name: str = Field(min_length=1, max_length=255)
-    away_team_name: str = Field(min_length=1, max_length=255)
+    #: Slot order: the first name is the creator's team, the second the opponent's.
+    team_names: list[Annotated[str, Field(min_length=1, max_length=255)]] = Field(min_length=2, max_length=2)
     pool: ScrimPoolInput

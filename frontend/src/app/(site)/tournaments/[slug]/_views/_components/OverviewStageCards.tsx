@@ -3,6 +3,8 @@
 import { useTranslations } from "next-intl";
 
 import TeamName from "@/components/TeamName";
+import { Badge } from "@/components/ui/badge";
+import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import type { BracketRoundShape } from "@/lib/bracket/round-name";
 import type { RoundGroup } from "@/lib/bracket/view";
@@ -52,9 +54,7 @@ export function OverviewMiniBracket({
       <div className="flex gap-2 overflow-x-auto pb-1">
         {pickRoundWindow(roundGroups, currentRoundOf(roundGroups)).map((group) => (
           <div className="min-w-[13rem] flex-1 space-y-1.5" key={group.round}>
-            <div className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-              {roundLabel(group.round, roundShape)}
-            </div>
+            <Eyebrow as="div">{roundLabel(group.round, roundShape)}</Eyebrow>
             {group.matches.map((match) => {
               const encounter = stageEncounters.find((item) => item.id === match.id);
               if (!encounter) return null;
@@ -115,7 +115,7 @@ export function OverviewGroupTable({
                 "text-left",
                 group.name === null
                   ? "sr-only"
-                  : "pb-1.5 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
+                  : cn(eyebrowClass(), "pb-1.5")
               )}
             >
               {group.name === null
@@ -123,7 +123,7 @@ export function OverviewGroupTable({
                 : groupDisplayName(group.name, t("common.group"))}
             </caption>
             <thead>
-              <tr className="border-b border-[color:var(--aqt-border)] text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+              <tr className={cn(eyebrowClass(), "border-b border-[color:var(--aqt-border)]")}>
                 <th scope="col" className="w-8 py-1.5 pr-2 text-left font-medium">
                   <span aria-hidden>{t("tournamentDetail.overview.groupTable.pos")}</span>
                   <span className="sr-only">
@@ -143,12 +143,30 @@ export function OverviewGroupTable({
             </thead>
             <tbody>
               {group.rows.map((row) => (
-                <tr key={row.id}>
+                // A team a Swiss threshold eliminated keeps its place, read as done.
+                <tr key={row.id} className={cn(row.swiss_status === "eliminated" && "opacity-60")}>
                   <td className="aqt-tnum py-1.5 pr-2 text-[color:var(--aqt-fg-muted)]">
                     {row.position}
                   </td>
                   <td className="py-1.5 pr-2">
-                    <TeamName team={row.team ?? { name: t("common.tbd") }} size="xs" />
+                    <span className="flex min-w-0 items-center gap-2">
+                      <TeamName team={row.team ?? { name: t("common.tbd") }} size="xs" />
+                      {row.swiss_status ? (
+                        <Badge
+                          palette="aqt"
+                          size="sm"
+                          voice="label"
+                          tone={row.swiss_status === "qualified" ? "accent" : "neutral"}
+                          className="shrink-0"
+                        >
+                          {t(
+                            row.swiss_status === "qualified"
+                              ? "standings.swissQualified"
+                              : "standings.swissEliminated"
+                          )}
+                        </Badge>
+                      ) : null}
+                    </span>
                   </td>
                   {/* W·D·L, not W–L: these stages draw, and a "3–0" printed
                       for a 3W-2D-0L run contradicts both the matches played
@@ -209,14 +227,14 @@ export function OverviewFfaTable({
               className={cn(
                 "text-left",
                 seated.length > 1
-                  ? "pb-1.5 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
+                  ? cn(eyebrowClass(), "pb-1.5")
                   : "sr-only"
               )}
             >
               {lobby.name}
             </caption>
             <thead>
-              <tr className="border-b border-[color:var(--aqt-border)] text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+              <tr className={cn(eyebrowClass(), "border-b border-[color:var(--aqt-border)]")}>
                 <th scope="col" className="w-8 py-1.5 pr-2 text-left font-medium">
                   <span aria-hidden>{t("tournamentDetail.overview.groupTable.pos")}</span>
                   <span className="sr-only">

@@ -27,6 +27,9 @@ var PublicWriteRoutes = []edge.RouteSpec{
 	// map twice and only the position tells the two plays apart.
 	{Method: "POST", Pattern: "/api/v1/encounters/{encounter_id}/games/{game_id}/report", Queue: "rpc.tournament.captain_report_game", IDParam: "encounter_id", Path: []string{"game_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/encounters/{encounter_id}/games/{game_id}/map", Queue: "rpc.tournament.captain_select_game_map", IDParam: "encounter_id", Path: []string{"game_id"}, Body: true, Auth: edge.AuthRequired},
+	// match_import.py — a captain imports the game's match by its external id; the stats service fetches it.
+	{Method: "POST", Pattern: "/api/v1/encounters/{encounter_id}/games/{game_id}/match-import", Queue: "rpc.tournament.captain_match_import", IDParam: "encounter_id", Path: []string{"game_id"}, Body: true, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/encounters/{encounter_id}/games/{game_id}/match-import", Queue: "rpc.tournament.captain_match_imports", IDParam: "encounter_id", Path: []string{"game_id"}, Auth: edge.AuthRequired},
 	// pick_ban_session.py — captain ready-up gate, shared by BOTH pick-ban kinds
 	// (one confirmation per side covers map veto and hero bans together).
 	{Method: "POST", Pattern: "/api/v1/encounters/{encounter_id}/ready", Queue: "rpc.tournament.captain_ready", IDParam: "encounter_id", Auth: edge.AuthRequired},
@@ -83,11 +86,13 @@ var PublicWriteRoutes = []edge.RouteSpec{
 	// the path id as `data["id"]` (see its module docstring). Declaring it as
 	// `Path` left `data["id"]` unset and 422'd every call.
 	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/pick-ban-configs", Queue: "rpc.tournament.get_pick_ban_configs", IDParam: "tournament_id", Auth: edge.AuthOptional},
-	// The ruleset constructor's catalog: the rules GRAMMAR plus the built-in
-	// presets, not any one tournament's config, so it carries no path param and
-	// no visibility gate. AuthOptional rather than public-only for consistency
-	// with the reads around it — the handler ignores the identity.
-	{Method: "GET", Pattern: "/api/v1/pick-ban-rules/catalog", Queue: "rpc.tournament.pick_ban_rules_catalog", Auth: edge.AuthOptional},
+	// The ruleset constructor's catalog: the rules GRAMMAR plus the presets and
+	// item groups of ONE discipline, not any one tournament's config, so it
+	// carries no path param and no visibility gate. `discipline` is required by
+	// the handler: there is no ambient game to fall back to. AuthOptional rather
+	// than public-only for consistency with the reads around it — the handler
+	// ignores the identity.
+	{Method: "GET", Pattern: "/api/v1/pick-ban-rules/catalog", Queue: "rpc.tournament.pick_ban_rules_catalog", Query: []string{"discipline"}, Auth: edge.AuthOptional},
 
 	// The public "Teams" roster. AuthOptional like the participants list: anyone
 	// may see the field. Invites are omitted server-side, so this cannot leak who

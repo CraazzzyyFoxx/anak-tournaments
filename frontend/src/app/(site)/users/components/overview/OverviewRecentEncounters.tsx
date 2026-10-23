@@ -1,21 +1,25 @@
 import { getTranslations } from "next-intl/server";
 import { ArrowRight } from "lucide-react";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface } from "@/components/profile/atoms";
+import { ScoreCell } from "@/components/match/cells";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
-import { HeroStrip } from "@/components/hero/HeroImage";
+import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import { EncounterWithUserStats, UserTournament } from "@/types/user.types";
-import { Hero } from "@/types/hero.types";
-import { cn } from "@/lib/utils";
 import { getPlayerSlug } from "@/lib/player";
+import {
+  encounterPerspective,
+  uniqueViewerCharacters
+} from "@/app/(site)/users/components/shared/encounter-perspective";
 
 interface Props {
   encounters: EncounterWithUserStats[];
+  userId: number;
   userName: string;
   tournaments: UserTournament[];
 }
 
-const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: Props) => {
+const OverviewRecentEncounters = async ({ encounters, userId, userName, tournaments }: Props) => {
   if (encounters.length === 0) return null;
   const t = await getTranslations();
   const userSlug = getPlayerSlug(userName);
@@ -34,14 +38,10 @@ const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: P
     >
       {encounters.map((enc) => {
         const userTeamId = enc.tournament ? teamIdByTournament.get(enc.tournament.id) : undefined;
-        const isUserHome = userTeamId != null && enc.home_team_id === userTeamId;
-        const opponent =
-          (isUserHome ? enc.away_team?.name : enc.home_team?.name) ??
-          (isUserHome ? t("common.awayTeam") : t("common.homeTeam"));
+        const perspective = encounterPerspective(enc, userId, userTeamId);
+        const opponent = perspective.opponent?.name ?? t("common.tbd");
         const stage = enc.stage_item?.name ?? enc.stage?.name ?? "";
-        const score = enc.score;
-        const scoreKind =
-          score.home === score.away ? "draw" : (isUserHome ? score.home > score.away : score.away > score.home) ? "win" : "loss";
+        const scoreKind = perspective.kind;
         const mapCount = enc.matches?.length ?? 0;
         // Stage is the honest label when the bracket recorded one; the series
         // length is the only thing left to say when it did not.
@@ -50,18 +50,9 @@ const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: P
           .filter(Boolean)
           .join(" · ");
 
-        // The viewer's unique heroes across this encounter's matches
-        // (match `heroes` are already the viewer's). Deduped by image/name;
-        // no popover — match-history heroes have no per-hero user stats
-        // (design-book §11).
-        const heroMap = new Map<string, Hero>();
-        for (const m of enc.matches ?? []) {
-          for (const h of m.heroes ?? []) {
-            const heroKey = h.image_path || h.name;
-            if (!heroMap.has(heroKey)) heroMap.set(heroKey, h);
-          }
-        }
-        const encHeroes = Array.from(heroMap.values());
+        // The viewer's unique heroes across this encounter's matches. No popover —
+        // match-history heroes have no per-hero user stats (design-book §11).
+        const encHeroes = uniqueViewerCharacters(enc);
 
         return (
           <HoverPrefetchLink
@@ -78,18 +69,13 @@ const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: P
               </div>
             </div>
             <span className="hidden items-center sm:inline-flex">
-              {encHeroes.length > 0 ? <HeroStrip heroes={encHeroes} size="sm" limit={4} /> : null}
+              {encHeroes.length > 0 ? <CatalogEntityStrip entities={encHeroes} size="sm" limit={4} /> : null}
             </span>
-            <span
-              className={cn(
-                "aqt-tnum min-w-[42px] text-right text-base font-bold",
-                scoreKind === "win" && "text-[color:var(--aqt-emerald)]",
-                scoreKind === "loss" && "text-[color:var(--aqt-rose)]",
-                scoreKind === "draw" && "text-[color:var(--aqt-amber)]"
-              )}
-            >
-              {score.home} - {score.away}
-            </span>
+            <ScoreCell
+              kind={scoreKind}
+              value={`${perspective.userScore} - ${perspective.oppScore}`}
+              className="min-w-[42px] text-right"
+            />
             <MatchLogIndicator hasLogs={enc.has_logs} size={13} className="h-6 w-6" />
           </HoverPrefetchLink>
         );

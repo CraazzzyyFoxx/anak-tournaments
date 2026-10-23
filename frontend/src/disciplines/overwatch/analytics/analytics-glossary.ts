@@ -1,0 +1,52 @@
+/**
+ * Glossary term registry for the analytics page.
+ *
+ * The user-facing label and one-sentence explanation for each term live in the
+ * i18n message files under the `analytics.glossary.<term>` namespace
+ * (en.json / ru.json), so this module only owns the term *identifiers*. Consumers
+ * render them via `InfoDot` (tooltip + glossary sheet) and `AnomalyFlag`.
+ */
+
+export type GlossaryTerm =
+  | "confidence"
+  | "shift"
+  | "impact"
+  | "vs_local"
+  | "points"
+  | "recent_moves"
+  | "forecast_place"
+  | "likely_range"
+  | "prob_top"
+  | "competitiveness"
+  | "predictability"
+  | "skill_balance"
+  | "match_quality"
+  | "forecast_miss"
+  | "evidence"
+  | "newcomer"
+  | "why_score"
+  | "smurf"
+  | "throw"
+  | "troll"
+  | "sandbag"
+  // Community layer — KPI rail + player detail explainers.
+  | "climbing"
+  | "dropping"
+  | "watch"
+  | "avg_confidence"
+  | "upsets"
+  | "new_faces"
+  | "predicted_move"
+  | "impact_percentile";
+
+/** Anomaly ``kind`` values that have a glossary entry. */
+const ANOMALY_GLOSSARY_TERMS: ReadonlySet<GlossaryTerm> = new Set([
+  "smurf",
+  "throw",
+  "troll",
+  "sandbag",
+]);
+
+export function isAnomalyGlossaryTerm(kind: string): kind is GlossaryTerm {
+  return ANOMALY_GLOSSARY_TERMS.has(kind as GlossaryTerm);
+}

@@ -2,16 +2,9 @@ A mix is a custom game run by somebody in your community: the host gathers a lob
 
 ## Where to find mixes
 
-The **Mixes** section in the site menu shows the selected community's mixes: "Open lineups and follow your community's results." You can watch without signing in.
+The **Mixes** section in the site menu shows the selected community's mixes, or every community's under **All communities**: "Lineups, results and the leaderboard of your communities." You can watch without signing in.
 
-The list is split into **Open** and **History**. Each row shows the name, who it is **Hosted by**, and the state of the mix:
-
-| Status | What it means |
-| --- | --- |
-| **Preparing** | The host is still gathering the lobby |
-| **Teams ready** | The split is done, the game can start |
-| **Completed** | The mix is closed, its results are in the history |
-| **Cancelled** | The mix never happened |
+At the top, **Now** lists the mixes still running: which game each lobby is on, how many players signed up, and whether **Signup open** or **Teams ready**. Below it, **History** lists every finished mix by month, newest first, with the maps played and the number of matches and players. Search it by mix or host name; **Show more** loads older mixes. A mix that never happened says **Cancelled** in its row.
 
 ## Getting into a mix
 
@@ -22,32 +15,71 @@ community and ask them to add you.
 
 **You sign yourself up.** When the host opens signup, a **Your seat** block appears on the mix page and a signup
 card appears in the community's Discord channel. The **Join** button is in both places and does the same thing.
-The card lists everyone signed up, one per line with their main role and rank, the bench under its own heading,
-and updates whenever the lineup changes — from Discord or from the site.
+The card lists everyone signed up, one per line with their main role and rank (in Deadlock, which has one role, just
+the rank) and an **away** mark for whoever stepped out, the bench under its own heading, and each lobby's stage, and
+updates whenever the mix changes — from Discord or from the site. Its **Away** and **Back** buttons are the same switch
+as **Step away** on the site.
 
-Signing yourself up needs **both Discord and Battle.net** linked to your account — you link them in account
-settings, on the **Profile** tab. Until then the button says which link is missing and takes you straight there.
+Signing yourself up needs **Discord** and the game's own account linked to yours — **Battle.net** for Overwatch,
+**Riot ID** for League of Legends, **Steam** for Deadlock; the card's footer names the one its game needs. You link
+them in account settings, on the **Profile** tab. Until then the button says which link is missing and takes you
+straight there.
 
 The host chooses where a signup lands: straight **into the pool** (in the next split) or **on the bench** (the
 host moves you into the pool themselves). You can leave at any time — even with a link since removed.
 
 Your roles and rank come from the community's own data, so there is no entry form to fill in.
 
-A big mix may run **two lobbies** — **Lobby A / Lobby B** tabs appear above the teams, and two matches are played at
-once. Where you are right now is shown on your lineup row: **A**, **B**, or **waiting** if there was no seat this
-round. A host can pin you to one lobby, and from the next balance on only that lobby will take you.
+Every lobby has its own room, a page of its own, even when the mix runs one lobby: it works on a phone and needs no
+sign-in to watch. A big mix may run up to six lobbies, **A** to **F**, playing at once. The mix page then shows one
+card per lobby with its stage — **Idle**, **Draft setup** and **Draft** (in a mix with a captain draft), **Ready**,
+**Pre-game** (in a mix with hero bans) or **Live** — and **Open room** takes you to that lobby's room. Where you are
+right now is shown on your lineup row: the lobby letter, or **waiting** if there was no seat this round. A host can pin
+you to one lobby, and from the next balance on only that lobby will take you.
 
 ### Your own roles
 
-If the host turned on **Players edit their own roles**, the **Your seat** block (and the **My roles** button in
-Discord) lets you drag your roles into the order you want and switch on **Full flex**. The order is the priority:
+If the host turned on **Players edit their own roles**, the **Your seat** block lets you drag your roles into the
+order you want and switch on **Full flex**. The order is the priority:
 the first role is the one the balancer tries to seat you in first, and flex means every role of yours is equally
 comfortable.
+
+In Discord, **My seat** → **Edit roles** asks for your top three roles in order and **Full flex** where the game has
+it. In League of Legends that is three of the five positions, as the form itself warns: set all five on the site —
+saving the Discord form keeps only the three it shows. Deadlock has no form.
 
 Ranks are shown here, never edited: they are the host's own book. You may pick a role you have no rank for — it
 comes with a "no rank" warning, and the host fills it in.
 
 A role change applies from the **next** balance: the split already on screen is a snapshot and is not recomputed.
+
+In Deadlock and VALORANT there is nothing to order and no **Full flex**: the game has one role, so **Your seat** shows only your rank.
+
+## Your lobby on a phone
+
+Once a lobby seats you, the **Your seat** block shows your lobby and team, your teammates with **You** highlighted, the team's captain (the crown), the next map and a link to your team's voice channel when the host picked one. The captain is the team's strongest player unless the host chose someone else; they also create the in-game lobby.
+
+In the lobby's room the teams stand on the sides and the centre holds whatever is on now: the player pool in a draft, the hero grid in Pre-game, the map and your team's voice button in a match. Your seat in your team's column is marked **You**, and the captain wears the crown. On a phone both teams sit side by side above the centre and fold into one line. While your lobby drafts, is in Pre-game or is live, the **Your seat** block has an **Open room** button. If you have the mix page open when your lobby starts its draft or its bans and picks, the page takes you to the room by itself, once per draft or match: come back to the mix page and you stay there.
+
+While no lobby seats you, the block says **Waiting for a seat**, your place in line — one line for every lobby — and each lobby's stage. Recording a result unlocks the lobby's lineup but keeps its players seated: you get a seat when the host balances again or otherwise changes the lineup.
+
+When the host presses **Start match**, the lineup and the map are fixed for that match; if the lobby has team voices, you are moved into yours if you are already in one of the mix's voice channels.
+
+If the mix plays with hero bans, Start first takes the lobby to **Pre-game**: the room's centre shows the hero grid, and anyone with the link can watch it. As your team's captain you ban on your team's turn: tap a hero and confirm in the bar at the bottom, and the ban lands under your team's name. While the page is open it beeps, vibrates and shows your turn in the tab title. If the clock runs out, the turn is filled at random. When the bans are done, the lobby goes **Live**, and its room keeps showing the bans and, in LoL, which team starts on which side until the match ends. As captain you also get one notification when the ban room opens, in the bell and as a Discord direct message, with a link to the lobby's room.
+
+Once a match has started, its room has a chat for the players of both teams and the hosts; nobody else sees it.
+
+## Hero picks
+
+In a mix with hero picks the room shows whose pick each step is. When it is your pick — or, as captain, a teammate's — the page beeps, vibrates and shows it in the tab title while it is open; pick from the room, signed in (a phone works): tap a hero in the grid and confirm in the bar at the bottom. Your captain or the host may pick for you too. As captain you may pick for any player of your team, and with **Draft: captains pick, then assign** you pick for the team and then give each player one of its heroes. A hero someone has taken is gone for everyone, on both teams. If your clock runs out you get a random hero you may play. With **Fearless** on, you cannot pick a hero you played in an earlier recorded match of this mix. Your hero shows beside you in the room while the match is live, and in the match history.
+
+## Captain draft
+
+In a mix with a captain draft your lobby's captains pick the teams live, in the lobby's room, and anyone with the link can watch, signed in or not. The captains are the lobby's two strongest players unless the host chose others. As a captain you pick on your turn from the room, signed in (a phone works): tap a player in the pool in the centre and confirm the pick in the bar at the bottom. The pool dims the players your team cannot seat and says why. While the page is open it beeps, vibrates and shows your turn in the tab title. Keep your own list of players in the room: if your clock runs out, the first available player of your list is picked for you, else the best fit for your team. Stepping away before you are picked takes you out of the draft until you are back; stepping away once picked pauses the draft until the host acts. When the draft ends, the lobby shows your team as usual, with your captain crowned. Each captain also gets one notification when the draft starts — or when the host hands them a started draft — in the bell and as a Discord direct message, never one per pick; the **Matches** switch of your notification settings turns the Discord copy off.
+
+## Stepping away
+
+Going for a break? Press **Step away** in the **Your seat** block or **Away** on the Discord signup card (it needs the same linked accounts as signing up, but not the host's **Players edit their own roles** switch). Until you press **I'm back** (**Back** in Discord), no balance seats you, and the matches played meanwhile count for you as neither played nor sat out, unless you played in them — the rotation neither rewards nor punishes the break. If you are already in a lineup on screen, you stay in it with an **Away** badge, and a match the host starts with you in it counts as played. The host can mark you away and back too.
 
 ## The three participation statuses
 
@@ -79,9 +111,9 @@ If the community has a Discord channel configured, the host can post the finishe
 
 ## Results
 
-After each game the host marks the winner (or a draw) — the game goes straight into the mix's history and you play on. A mistaken entry can be undone.
+Each match has a start and a result: the host presses **Start match** when the lobby is in the game — the teams are frozen from then on — and marks the winner (or a draw) when it ends. The game goes straight into the mix's history and you play on. A match that did not happen is cancelled instead, and a mistaken entry can be undone.
 
-The mixes page also has a **Leaders by wins** table. It covers all time, the last 30 days or the last 7 days, requires a minimum number of matches in that period, and is "ranked by wins, then win rate, then matches played."
+Next to the list is the **Leaderboard**: the top ten for all time, the last 30 days or the last 7 days, with your own row pinned underneath when you are further down. **Full leaderboard** (or the **Leaderboard** tab) opens the whole board with each player's form, streak and last match, and a search by name. A player needs at least 3 matches in the period to be ranked, and the board is "ranked by wins, then win rate, then matches played." Under **All communities** one player's results from every community are added up.
 
 <Callout>
 If the host turned on points per win, a mix result nudges your rank in that host's own private rank book. That book is used only in their mixes — it does not change your rank in the community or in tournaments.
@@ -89,7 +121,7 @@ If the host turned on points per win, a mix result nudges your rank in that host
 
 ## If you host mixes yourself
 
-Host settings live in your account, not in the game: the **Mixes** tab in account settings — "How your pickup mixes are set up and balanced. Every mix you host uses these, so they are set once here instead of on every game." That is where rank balance versus role comfort, line importance, the number of balance options per run and points per win are configured.
+Host settings live in your account, not in the game: the **Mixes** tab in account settings — "How your pickup mixes are set up and balanced. Every mix you host uses these, so they are set once here instead of on every game." That is where rank balance versus role comfort, line importance, the number of balance options per run, points per win, and the hero bans and team formation a new mix of each game starts with are configured.
 
 For the full picture, see [Mixes for hosts](/docs/organizers/mixes).
 
@@ -99,10 +131,12 @@ For the full picture, see [Mixes for hosts](/docs/organizers/mixes).
 | --- | --- |
 | "No mixes yet" | Nobody in this community has created one |
 | You are not in the lineup | If signup is open, press **Join** — otherwise ask the host to add you |
-| Join does nothing | Check that both Discord and Battle.net are linked (account settings → Profile) |
+| Join does nothing | Check that Discord and your game's account (Battle.net, Riot ID or Steam) are linked (account settings → Profile) |
 | You cannot change your roles | The host has not turned on "Players edit their own roles" — they edit them |
-| You are in the lineup but not in a team | With two lobbies there are not always seats for everyone: your row says **waiting**, and the next balance seats you first |
+| You are in the lineup but not in a team | With several lobbies there are not always seats for everyone: your row says **waiting**, and the next balance seats you first |
 | You were benched | That is the rotation, not a verdict on you: you get priority next game |
+| You need a short break | Press **Step away** in **Your seat**, and **I'm back** when you return |
+| The teams cannot change any more | The lobby's match has started: the lineup is frozen until the result |
 | Your role in the lineup is not the one you wanted | Tell the host — roles and ranks are edited on your player card |
 
 ## See also

@@ -28,15 +28,13 @@ class DivisionRankDomainTests(TestCase):
         self.assertEqual(2, division_rank.resolve_division_for_rank(grid, 250))
         self.assertEqual(2, division_rank.resolve_division_for_rank(grid, 50))
 
-    def test_resolves_rank_from_division_and_clamps_to_grid_bounds(self) -> None:
+    def test_resolves_rank_from_division(self) -> None:
         grid = make_grid()
 
         self.assertEqual(500, division_rank.resolve_rank_for_division(grid, 1))
         # Tier floor, not the band midpoint: a division->rank round trip has to land on
         # the same rank_value every other grid path uses (the 4449-for-Grandmaster-1 bug).
         self.assertEqual(100, division_rank.resolve_rank_for_division(grid, 2))
-        self.assertEqual(1, division_rank.clamp_division_to_grid(grid, -4))
-        self.assertEqual(2, division_rank.clamp_division_to_grid(grid, 99))
 
 
 class DivisionGridCachedAccessTests(IsolatedAsyncioTestCase):
@@ -119,7 +117,14 @@ class GetEffectiveDivisionGridVersionIdsBatchTests(IsolatedAsyncioTestCase):
         # workspace 6's default, not the first workspace's.
         session = Mock(
             execute=AsyncMock(
-                return_value=_execute_result([(2, 20, 5), (3, None, 5), (4, None, 5), (8, None, 6)]),
+                return_value=_execute_result(
+                    [
+                        (2, 20, 5, "overwatch", "overwatch", 5),
+                        (3, None, 5, "overwatch", None, None),
+                        (4, None, 5, "overwatch", None, None),
+                        (8, None, 6, "overwatch", None, None),
+                    ]
+                ),
             )
         )
         set_calls: list[dict[int, int | None]] = []
@@ -138,7 +143,7 @@ class GetEffectiveDivisionGridVersionIdsBatchTests(IsolatedAsyncioTestCase):
             patch.object(
                 division_grid_access,
                 "get_workspace_division_grid_version_id",
-                AsyncMock(side_effect=lambda _session, workspace_id: 99 if workspace_id == 5 else 77),
+                AsyncMock(side_effect=lambda _session, workspace_id, *, discipline: 99 if workspace_id == 5 else 77),
             ) as get_default,
         ):
             result = await division_grid_access.get_effective_division_grid_version_ids(
@@ -149,7 +154,8 @@ class GetEffectiveDivisionGridVersionIdsBatchTests(IsolatedAsyncioTestCase):
         session.execute.assert_awaited_once()
         # One default lookup per distinct owning workspace, not per tournament.
         self.assertEqual(
-            [((session, 5), {}), ((session, 6), {})], [tuple(call) for call in get_default.await_args_list]
+            [((session, 5), {"discipline": "overwatch"}), ((session, 6), {"discipline": "overwatch"})],
+            [tuple(call) for call in get_default.await_args_list],
         )
         self.assertEqual([{2: 20, 3: 99, 4: 99, 8: 77}], set_calls)
 

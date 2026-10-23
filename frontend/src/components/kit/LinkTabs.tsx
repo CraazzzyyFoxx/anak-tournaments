@@ -3,8 +3,9 @@
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 
-import type { Tone } from "@/components/kit/tone";
+import type { Tone } from "@/components/ui/tone";
 import { TabBadge, TabDot, revealTab, tabsListVariants, tabsTriggerVariants } from "@/components/ui/tabs";
+import { toggleVariants } from "@/components/ui/toggle";
 import { cn } from "@/lib/utils";
 
 export interface LinkTabItem {
@@ -21,10 +22,12 @@ export interface LinkTabItem {
    */
   dot?: { tone: Tone; label: string };
   hidden?: boolean;
+  /** Nothing to navigate to: drawn dimmed and inert instead of as a link. */
+  disabled?: boolean;
 }
 
 export interface LinkTabsProps {
-  items: LinkTabItem[];
+  items: readonly LinkTabItem[];
   activeKey: string;
   /**
    * `1` is a screen's own tab row; `2` is a sub-tab row nested under it. Same
@@ -32,6 +35,13 @@ export interface LinkTabsProps {
    * hairline under the first row, not by shrinking the second.
    */
   level?: 1 | 2;
+  /**
+   * `underline` is the tab row. `pill` is the site's segmented drawing (the
+   * `ToggleGroup variant="pill"` frame and items) for a short set of sibling
+   * addresses that sits in a header beside other controls — the bracket's
+   * stage switch. `level` applies to `underline` only.
+   */
+  variant?: "underline" | "pill";
   ariaLabel: string;
 }
 
@@ -50,10 +60,18 @@ export interface LinkTabsProps {
  * and the active tab is scrolled into view so a deep link does not land on an
  * off-screen tab.
  */
-export function LinkTabs({ items, activeKey, level = 1, ariaLabel }: Readonly<LinkTabsProps>) {
+export function LinkTabs({
+  items,
+  activeKey,
+  level = 1,
+  variant = "underline",
+  ariaLabel
+}: Readonly<LinkTabsProps>) {
   const listRef = useRef<HTMLUListElement>(null);
   const activeRef = useRef<HTMLAnchorElement | null>(null);
   const visible = items.filter((item) => !item.hidden);
+  // One tab is not a choice: the screen is the only view there is.
+  const single = visible.length < 2;
 
   useEffect(() => {
     if (listRef.current && activeRef.current) revealTab(listRef.current, activeRef.current);
@@ -71,28 +89,51 @@ export function LinkTabs({ items, activeKey, level = 1, ariaLabel }: Readonly<Li
     links[(index + delta + links.length) % links.length]?.focus();
   };
 
+  if (single) return null;
+
+  const pill = variant === "pill";
+  const itemClass = pill
+    ? cn(toggleVariants({ variant: "pill", size: "default" }), "no-underline")
+    : tabsTriggerVariants({ variant: "underline" });
+
   return (
     <nav aria-label={ariaLabel}>
       <ul
         ref={listRef}
         onKeyDown={handleKeyDown}
-        className={cn(tabsListVariants({ variant: "underline" }), level === 2 && "shadow-none")}
+        className={
+          pill
+            ? tabsListVariants({ variant: "pill" })
+            : cn(tabsListVariants({ variant: "underline" }), level === 2 && "shadow-none")
+        }
       >
         {visible.map((item) => {
           const isActive = item.key === activeKey;
+          const content = (
+            <>
+              {item.dot ? <TabDot {...item.dot} /> : null}
+              {item.label}
+              {item.badge ? <TabBadge>{item.badge}</TabBadge> : null}
+            </>
+          );
           return (
             <li key={item.key} className="shrink-0">
-              <HoverPrefetchLink
-                href={item.href}
-                data-link-tab={item.key}
-                ref={isActive ? activeRef : undefined}
-                aria-current={isActive ? "page" : undefined}
-                className={tabsTriggerVariants({ variant: "underline" })}
-              >
-                {item.dot ? <TabDot {...item.dot} /> : null}
-                {item.label}
-                {item.badge ? <TabBadge>{item.badge}</TabBadge> : null}
-              </HoverPrefetchLink>
+              {item.disabled ? (
+                <span aria-disabled data-state="off" className={cn(itemClass, "cursor-not-allowed opacity-40")}>
+                  {content}
+                </span>
+              ) : (
+                <HoverPrefetchLink
+                  href={item.href}
+                  data-link-tab={item.key}
+                  data-state={pill ? (isActive ? "on" : "off") : undefined}
+                  ref={isActive ? activeRef : undefined}
+                  aria-current={isActive ? "page" : undefined}
+                  className={itemClass}
+                >
+                  {content}
+                </HoverPrefetchLink>
+              )}
             </li>
           );
         })}

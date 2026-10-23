@@ -1,8 +1,8 @@
 """Roster, admission, lock, check-in and team-subscription writes.
 
-Installed onto :class:`RegistrationTeamService` at import time so the original
-module stays the occupancy/invite core and these flows can share its lock
-helpers without a circular import at definition time.
+Installed onto :class:`RegistrationTeamService` at import time so ``teams`` stays
+the occupancy/invite core and these flows can share its lock helpers without a
+circular import at definition time.
 """
 
 from __future__ import annotations
@@ -16,15 +16,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared import models
-from shared.core.social import GAME_PROVIDERS, display_social_handle, normalize_social_handle
-from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
+from shared.core.social import display_social_handle, normalize_social_handle
+from shared.disciplines import DISCIPLINES, identity_provider
 from shared.domain.team_roster import RosterMember
 from shared.domain.team_subscription import SUBSCRIPTION_SCOPE_TEAM, team_subscription_is_current
-from shared.services.discord_client import DiscordClient
+from shared.repository import CatalogRoleRepository
 from shared.services.notifications import notify
 from shared.services.realtime import Resource, Scope, emit
-from src.core.broker import optional_broker
-from src.core.config import settings
+from src.core.clients import discord_client
 from src.services.registration._common import replace_registration_roles
 from src.services.registration.subscription_codes import redeem_challenge_code
 from src.services.registration.team_eligibility import team_eligibility
@@ -51,7 +50,7 @@ def install_team_actions(cls: type) -> None:
 
     TEAM_ADMISSIONS = frozenset({"pending", "accepted", "waitlisted"})
 
-    def _apply_occupancy_status(team: models.BalancerRegistrationTeam, occupancy: Any) -> None:
+    def _apply_occupancy_status(team: models.RegistrationTeam, occupancy: Any) -> None:
         from src.services.registration.teams import _MUTABLE_TEAM_STATUSES
 
         if team.status in _MUTABLE_TEAM_STATUSES:
@@ -65,15 +64,13 @@ def install_team_actions(cls: type) -> None:
             raise _fail(400, "team_name_invalid", 'A team name cannot contain "#"')
         return cleaned
 
-    def _assert_unlocked(team: models.BalancerRegistrationTeam) -> None:
+    def _assert_unlocked(team: models.RegistrationTeam) -> None:
         if team.roster_locked_at is not None:
             raise _fail(409, "roster_locked", "This team's roster is locked")
 
-    async def _form(self, session: AsyncSession, tournament_id: int) -> models.BalancerRegistrationForm | None:
+    async def _form(self, session: AsyncSession, tournament_id: int) -> models.RegistrationForm | None:
         return await session.scalar(
-            sa.select(models.BalancerRegistrationForm).where(
-                models.BalancerRegistrationForm.tournament_id == tournament_id
-            )
+            sa.select(models.RegistrationForm).where(models.RegistrationForm.tournament_id == tournament_id)
         )
 
     async def _workspace(self, session: AsyncSession, workspace_id: int) -> models.Workspace | None:
@@ -84,21 +81,21 @@ def install_team_actions(cls: type) -> None:
             sa.select(models.User.auth_user_id)
             .join(models.WorkspaceMember, models.WorkspaceMember.player_id == models.User.id)
             .join(
-                models.BalancerRegistration,
-                models.BalancerRegistration.workspace_member_id == models.WorkspaceMember.id,
+                models.Registration,
+                models.Registration.workspace_member_id == models.WorkspaceMember.id,
             )
-            .where(models.BalancerRegistration.id == registration_id)
+            .where(models.Registration.id == registration_id)
         )
 
     async def _notify_roster(
         self,
         session: AsyncSession,
-        team: models.BalancerRegistrationTeam,
+        team: models.RegistrationTeam,
         *,
         kind: str,
         payload: dict[str, Any],
         skip_registration_id: int | None = None,
-        members: list[models.BalancerRegistration] | None = None,
+        members: list[models.Registration] | None = None,
     ) -> None:
         # Callers that have already withdrawn or unlinked the roster must pass
         # the members they loaded *before* that write: `_roster_members`
@@ -121,8 +118,8 @@ def install_team_actions(cls: type) -> None:
     async def _raise_if_ineligible(
         self,
         session: AsyncSession,
-        team: models.BalancerRegistrationTeam,
-        members: list[models.BalancerRegistration],
+        team: models.RegistrationTeam,
+        members: list[models.Registration],
         shape: Any,
     ) -> None:
         form = await _form(self, session, team.tournament_id)
@@ -134,7 +131,7 @@ def install_team_actions(cls: type) -> None:
             form=form,
             shape=shape,
             workspace=workspace,
-            discord=DiscordClient(broker=optional_broker(), bot_token=settings.discord_token, proxy=settings.proxy_url),
+            discord=discord_client(),
         )
         blocking = [issue for issue in issues if issue.blocking]
         if not blocking:
@@ -145,17 +142,17 @@ def install_team_actions(cls: type) -> None:
     async def is_team_staff(
         self,
         session: AsyncSession,
-        team: models.BalancerRegistrationTeam,
+        team: models.RegistrationTeam,
         auth_user_id: int,
     ) -> bool:
         if await self.is_team_captain(session, team, auth_user_id):
             return True
         found = await session.scalar(
-            sa.select(models.BalancerRegistration.id).where(
-                models.BalancerRegistration.registration_team_id == team.id,
-                models.BalancerRegistration.is_team_manager.is_(True),
-                models.BalancerRegistration.deleted_at.is_(None),
-                models.BalancerRegistration.status.notin_(("withdrawn", "rejected")),
+            sa.select(models.Registration.id).where(
+                models.Registration.registration_team_id == team.id,
+                models.Registration.is_team_manager.is_(True),
+                models.Registration.deleted_at.is_(None),
+                models.Registration.status.notin_(("withdrawn", "rejected")),
                 _owned_by(auth_user_id),
             )
         )
@@ -164,7 +161,7 @@ def install_team_actions(cls: type) -> None:
     async def _assert_staff(
         self,
         session: AsyncSession,
-        team: models.BalancerRegistrationTeam,
+        team: models.RegistrationTeam,
         auth_user: models.AuthUser,
     ) -> None:
         if team.captain_registration_id is None:
@@ -175,7 +172,7 @@ def install_team_actions(cls: type) -> None:
     async def _assert_staff_editable(
         self,
         session: AsyncSession,
-        team: models.BalancerRegistrationTeam,
+        team: models.RegistrationTeam,
         auth_user: models.AuthUser,
     ) -> None:
         await _assert_staff(self, session, team, auth_user)
@@ -188,17 +185,15 @@ def install_team_actions(cls: type) -> None:
         *,
         team_id: int,
         auth_user: models.AuthUser,
-    ) -> models.BalancerRegistrationTeam:
+    ) -> models.RegistrationTeam:
         team = await self.team_repo.get_by(session, id=team_id, deleted_at=None)
         if team is None:
             raise _fail(404, "team_not_found", "Team not found")
         await _assert_staff(self, session, team, auth_user)
         return team
 
-    async def _lock_teams(
-        self, session: AsyncSession, team_ids: list[int]
-    ) -> dict[int, models.BalancerRegistrationTeam]:
-        locked: dict[int, models.BalancerRegistrationTeam] = {}
+    async def _lock_teams(self, session: AsyncSession, team_ids: list[int]) -> dict[int, models.RegistrationTeam]:
+        locked: dict[int, models.RegistrationTeam] = {}
         for team_id in sorted(set(team_ids)):
             locked[team_id] = await self._lock_team(session, team_id)
         return locked
@@ -212,7 +207,7 @@ def install_team_actions(cls: type) -> None:
         name: str,
         as_organizer: bool = False,
         tournament_id: int | None = None,
-    ) -> models.BalancerRegistrationTeam:
+    ) -> models.RegistrationTeam:
         team = await self._lock_team(session, team_id)
         if as_organizer:
             # The organizer's permission was checked against ``tournament_id``;
@@ -245,7 +240,7 @@ def install_team_actions(cls: type) -> None:
         slot_code: str,
         is_substitute: bool = False,
         swap_with_registration_id: int | None = None,
-    ) -> models.BalancerRegistrationTeam:
+    ) -> models.RegistrationTeam:
         team = await self._lock_team(session, team_id)
         await _assert_staff_editable(self, session, team, auth_user)
         tournament = await self.tournament_repo.get(session, team.tournament_id)
@@ -320,7 +315,7 @@ def install_team_actions(cls: type) -> None:
         registration_id: int,
         auth_user: models.AuthUser,
         is_manager: bool,
-    ) -> models.BalancerRegistrationTeam:
+    ) -> models.RegistrationTeam:
         team = await self._lock_team(session, team_id)
         await self._assert_captain(session, team, auth_user)
         _assert_mutable(team)
@@ -343,7 +338,7 @@ def install_team_actions(cls: type) -> None:
         auth_user: models.AuthUser,
         ttl: timedelta | None = None,
         rotate_token: bool = False,
-    ) -> tuple[models.BalancerRegistrationTeamInvite, str | None]:
+    ) -> tuple[models.RegistrationTeamInvite, str | None]:
         team = await self._lock_team(session, team_id)
         await _assert_staff_editable(self, session, team, auth_user)
         invite = await self.invite_repo.get(session, invite_id)
@@ -371,7 +366,7 @@ def install_team_actions(cls: type) -> None:
         *,
         team_id: int,
         auth_user: models.AuthUser,
-    ) -> models.BalancerRegistrationTeam:
+    ) -> models.RegistrationTeam:
         team = await self._lock_team(session, team_id)
         await self._assert_captain(session, team, auth_user)
         _assert_mutable(team)
@@ -394,7 +389,7 @@ def install_team_actions(cls: type) -> None:
         tournament_id: int,
         team_id: int,
         auth_user: models.AuthUser,
-    ) -> models.BalancerRegistrationTeam:
+    ) -> models.RegistrationTeam:
         team = await self._lock_team(session, team_id)
         if team.tournament_id != tournament_id:
             raise _fail(404, "team_not_found", "Team not found")
@@ -416,8 +411,8 @@ def install_team_actions(cls: type) -> None:
         team_id: int,
         auth_user: models.AuthUser,
         exclude_registration_ids: list[int] | None = None,
-    ) -> models.BalancerRegistrationTeam:
-        from shared.services.admission import AdmissionStage
+    ) -> models.RegistrationTeam:
+        from src.services.admission import AdmissionStage
         from src.services.registration.admission import assert_admitted_at
 
         team = await self._lock_team(session, team_id)
@@ -465,7 +460,7 @@ def install_team_actions(cls: type) -> None:
         auth_user: models.AuthUser,
         code: str | None = None,
         provider: str = "boosty",
-    ) -> models.BalancerRegistrationTeam:
+    ) -> models.RegistrationTeam:
         team = await self._lock_team(session, team_id)
         await _assert_staff(self, session, team, auth_user)
         form = await _form(self, session, team.tournament_id)
@@ -510,7 +505,7 @@ def install_team_actions(cls: type) -> None:
         team_id: int,
         admission: str,
         auth_user: models.AuthUser,
-    ) -> models.BalancerRegistrationTeam:
+    ) -> models.RegistrationTeam:
         if admission not in TEAM_ADMISSIONS:
             raise _fail(400, "admission_invalid", "Admission must be pending, accepted or waitlisted")
         team = await self._lock_team(session, team_id)
@@ -534,7 +529,7 @@ def install_team_actions(cls: type) -> None:
         tournament_id: int,
         team_id: int,
         notes: str | None,
-    ) -> models.BalancerRegistrationTeam:
+    ) -> models.RegistrationTeam:
         team = await self._lock_team(session, team_id)
         if team.tournament_id != tournament_id:
             raise _fail(404, "team_not_found", "Team not found")
@@ -548,10 +543,10 @@ def install_team_actions(cls: type) -> None:
         *,
         tournament_id: int,
         team_id: int,
-        registration: models.BalancerRegistration,
+        registration: models.Registration,
         slot_code: str,
         is_substitute: bool = False,
-    ) -> models.BalancerRegistrationTeam:
+    ) -> models.RegistrationTeam:
         if registration.tournament_id != tournament_id:
             raise _fail(404, "registration_not_found", "That registration is not in this tournament")
         if registration.status in ("withdrawn", "rejected"):
@@ -602,7 +597,7 @@ def install_team_actions(cls: type) -> None:
         registration_id: int,
         slot_code: str,
         is_substitute: bool = False,
-    ) -> models.BalancerRegistrationTeam:
+    ) -> models.RegistrationTeam:
         dest_probe = await self.team_repo.get_by(session, id=team_id, deleted_at=None)
         if dest_probe is None or dest_probe.tournament_id != tournament_id:
             raise _fail(404, "team_not_found", "Team not found")
@@ -639,55 +634,59 @@ def install_team_actions(cls: type) -> None:
         handle: str,
         slot_code: str,
         is_substitute: bool = False,
-    ) -> models.BalancerRegistrationTeam:
+    ) -> models.RegistrationTeam:
         """Place by game handle, creating a shadow registration when none exists.
 
         Organizer override: eligibility is shown on the team card and still
         blocks export, but it must not refuse the write — a player with no
         Discord/account is exactly who this path exists to add.
         """
-        # ponytail: one game provider (battlenet). A shadow registration is created
-        # under it; widen when a second game provider lands and the organizer has
-        # to say which game the handle belongs to.
-        provider = GAME_PROVIDERS[0]
-        tag = display_social_handle(provider, handle)
-        if not tag:
-            raise _fail(400, "handle_required", "A game handle is required")
         dest_probe = await self.team_repo.get_by(session, id=team_id, deleted_at=None)
         if dest_probe is None or dest_probe.tournament_id != tournament_id:
             raise _fail(404, "team_not_found", "Team not found")
+        tournament = await self.tournament_repo.get(session, tournament_id)
+        if tournament is None:
+            raise _fail(404, "tournament_not_found", "Tournament not found")
+        provider = identity_provider(tournament.discipline)
+        tag = display_social_handle(provider, handle)
+        if not tag:
+            raise _fail(400, "handle_required", "A game handle is required")
         key = normalize_social_handle(provider, tag)
         registration = await session.scalar(
             self.registration_repo.select()
             .where(
-                models.BalancerRegistration.tournament_id == tournament_id,
-                models.BalancerRegistration.deleted_at.is_(None),
-                models.BalancerRegistration.identities.any(
+                models.Registration.tournament_id == tournament_id,
+                models.Registration.deleted_at.is_(None),
+                models.Registration.identities.any(
                     sa.and_(
-                        models.BalancerRegistrationIdentity.provider.in_(GAME_PROVIDERS),
-                        models.BalancerRegistrationIdentity.position == 0,
-                        models.BalancerRegistrationIdentity.handle_normalized == key,
+                        models.RegistrationIdentity.provider == provider,
+                        models.RegistrationIdentity.position == 0,
+                        models.RegistrationIdentity.handle_normalized == key,
                     )
                 ),
             )
-            .options(selectinload(models.BalancerRegistration.identities))
+            .options(selectinload(models.Registration.identities))
         )
         if registration is None:
-            role = slot_code if slot_code in REGISTRATION_ROLE_CODES else REGISTRATION_ROLE_CODES[0]
-            registration = models.BalancerRegistration(
+            catalog_roles = await CatalogRoleRepository().rated_rows(
+                session, discipline=tournament.discipline, workspace_id=tournament.workspace_id
+            )
+            role_codes = tuple(role.code for role in DISCIPLINES[tournament.discipline].rated_dimension.roles)
+            role = slot_code if slot_code in role_codes else role_codes[0]
+            registration = models.Registration(
                 tournament_id=tournament_id,
                 display_name=tag,
                 status="approved",
                 balancer_status="not_in_balancer",
             )
             registration.identities.append(
-                models.BalancerRegistrationIdentity(provider=provider, position=0, handle=tag, handle_normalized=key)
+                models.RegistrationIdentity(provider=provider, position=0, handle=tag, handle_normalized=key)
             )
-            replace_registration_roles(registration, [{"role": role, "is_primary": True}])
+            replace_registration_roles(registration, [{"role": role, "is_primary": True}], catalog_roles=catalog_roles)
             await self.registration_repo.create(session, registration)
             await session.flush()
             await self.registrations.ensure_player_identity(
-                session, registration, auth_user_id=None, workspace_id=dest_probe.workspace_id
+                session, registration, provider=provider, auth_user_id=None, workspace_id=dest_probe.workspace_id
             )
         dest = await _place_onto(
             self,
@@ -712,7 +711,7 @@ def install_team_actions(cls: type) -> None:
     async def _maybe_cover_from_personal(
         self,
         session: AsyncSession,
-        team: models.BalancerRegistrationTeam,
+        team: models.RegistrationTeam,
         auth_user: models.AuthUser,
     ) -> None:
         """Stamp team coverage from the founding captain's personal entitlement.

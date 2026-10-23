@@ -75,9 +75,8 @@ class UserRepository(BaseRepository[models.User]):
             sa.update(models.User).where(models.User.auth_user_id == auth_user_id).values(avatar_url=avatar_url)
         )
 
-    # Legacy entity tokens are still accepted for caller/API compatibility; all
-    # four select the same unified `user.social_accounts` relationship.
-    IDENTITY_ENTITY_TOKENS: ClassVar[tuple[str, ...]] = ("social_accounts", "battle_tag", "discord", "twitch")
+    # The one entity token that selects the unified `user.social_accounts` relationship.
+    IDENTITY_ENTITY_TOKENS: ClassVar[tuple[str, ...]] = ("social_accounts",)
 
     @staticmethod
     def identity_options(in_entities: Sequence[str], child: _AbstractLoad | None = None) -> list[_AbstractLoad]:
@@ -85,17 +84,6 @@ class UserRepository(BaseRepository[models.User]):
         if any(name in in_entities for name in UserRepository.IDENTITY_ENTITY_TOKENS):
             return [join_entity(child, models.User.social_accounts)]
         return []
-
-    @staticmethod
-    def visible_social_accounts(user: models.User, in_entities: Sequence[str]) -> list[models.SocialAccount]:
-        """Social accounts to expose for the requested entity tokens, sorted
-        (primary account per provider first, then insertion order) — the
-        shared filter+sort core every service's ``UserRead`` wire-mapping
-        builds on; only the final pydantic shape stays per-service.
-        """
-        if not any(name in in_entities for name in UserRepository.IDENTITY_ENTITY_TOKENS):
-            return []
-        return sorted(user.social_accounts, key=lambda a: (a.provider, not a.is_primary, a.id))
 
 
 class SocialAccountRepository(BaseRepository[models.SocialAccount]):
@@ -120,6 +108,20 @@ class SocialAccountRepository(BaseRepository[models.SocialAccount]):
             models.SocialAccount.id,
         )
         result = await session.execute(query)
+        return result.unique().scalars().all()
+
+    async def list_by_provider(
+        self,
+        session: AsyncSession,
+        provider: str,
+        *,
+        ids: Collection[int] | None = None,
+    ) -> Sequence[models.SocialAccount]:
+        """Every account of one provider, or only the given ones of it."""
+        query = self.select().where(models.SocialAccount.provider == provider)
+        if ids is not None:
+            query = query.where(models.SocialAccount.id.in_(list(ids)))
+        result = await session.execute(query.order_by(models.SocialAccount.id))
         return result.unique().scalars().all()
 
     async def get_by_provider_subject(
@@ -333,20 +335,6 @@ class SocialAccountVisibilityRepository(BaseRepository[models.SocialAccountVisib
     def __init__(self) -> None:
         super().__init__(models.SocialAccountVisibility)
 
-    async def list_for_accounts(
-        self,
-        session: AsyncSession,
-        account_ids: Sequence[int],
-    ) -> Sequence[models.SocialAccountVisibility]:
-        if not account_ids:
-            return []
-        result = await session.execute(
-            sa.select(models.SocialAccountVisibility).where(
-                models.SocialAccountVisibility.account_id.in_(list(account_ids))
-            )
-        )
-        return result.scalars().all()
-
     async def get_for_scope(
         self,
         session: AsyncSession,
@@ -417,14 +405,8 @@ class AuthUserRepository(BaseRepository[models.AuthUser]):
     ) -> models.AuthUser | None:
         return await self.get(session, user_id, options=self.identity_options(include_player=include_player))
 
-    async def get_by_email(self, session: AsyncSession, email: str) -> models.AuthUser | None:
-        return await self.get_by(session, email=email)
-
     async def get_by_email_with_rbac(self, session: AsyncSession, email: str) -> models.AuthUser | None:
         return await self.get_by(session, options=self.rbac_options(), email=email)
-
-    async def get_by_username(self, session: AsyncSession, username: str) -> models.AuthUser | None:
-        return await self.get_by(session, username=username)
 
     async def get_with_roles(self, session: AsyncSession, user_id: int) -> models.AuthUser | None:
         return await self.get(session, user_id, options=[selectinload(models.AuthUser.roles)])
@@ -1045,6 +1027,8 @@ class UserRoleRepository:
             JOIN players."user" pu ON pu.id = wm.player_id AND pu.auth_user_id IS NOT NULL
             JOIN auth.roles r ON r.workspace_id = wm.workspace_id AND r.name = 'player'
             WHERE wm.workspace_id = :workspace_id
+              AND wm.removed_at IS NULL
+              AND wm.observed_only IS FALSE
               AND NOT EXISTS (
                 SELECT 1 FROM auth.user_roles ur
                 JOIN auth.roles r2 ON r2.id = ur.role_id

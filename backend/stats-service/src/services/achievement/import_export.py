@@ -1,0 +1,583 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import PurePosixPath
+from typing import Any
+from urllib.parse import urlparse
+
+import sqlalchemy as sa
+
+from shared import models
+from shared.clients import S3Client
+from shared.clients.s3.upload import upload_asset
+from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import DISCIPLINES
+from shared.domain.achievements.validation import derive_depends_on, validate_rule_definition
+from shared.models.achievements.achievement import AchievementRule
+from shared.repository import AchievementRuleRepository, WorkspaceRepository
+from src import schemas
+from src.services.achievement.admin_reads import (
+    get_source_workspace_or_404,
+    get_workspace_for_discipline,
+    get_workspace_or_404,
+    validation_failure,
+    visible_workspace_ids,
+)
+
+#: Portable format v2: ``discipline`` + ``entity_id`` per rule. v1 (``hero_id``) is refused, never converted.
+EXPORT_SCHEMA_VERSION = 2
+
+_rule_repo = AchievementRuleRepository()
+_workspace_repo = WorkspaceRepository()
+
+
+@dataclass(slots=True)
+class PortableAchievementRule:
+    slug: str
+    name: str
+    description_ru: str
+    description_en: str
+    image_url: str | None
+    discipline: str
+    entity_id: int | None
+    category: str
+    scope: str
+    grain: str
+    condition_tree: dict[str, Any]
+    depends_on: list[str]
+    enabled: bool
+    rule_version: int
+    min_tournament_id: int | None
+
+    @classmethod
+    def from_model(cls, rule: AchievementRule) -> PortableAchievementRule:
+        return cls(
+            slug=rule.slug,
+            name=rule.name,
+            description_ru=rule.description_ru,
+            description_en=rule.description_en,
+            image_url=rule.image_url,
+            discipline=rule.discipline,
+            entity_id=rule.entity_id,
+            category=str(rule.category),
+            scope=str(rule.scope),
+            grain=str(rule.grain),
+            condition_tree=rule.condition_tree or {},
+            depends_on=list(rule.depends_on or []),
+            enabled=bool(rule.enabled),
+            rule_version=int(rule.rule_version),
+            min_tournament_id=rule.min_tournament_id,
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "slug": self.slug,
+            "name": self.name,
+            "description_ru": self.description_ru,
+            "description_en": self.description_en,
+            "image_url": self.image_url,
+            "discipline": self.discipline,
+            "entity_id": self.entity_id,
+            "category": self.category,
+            "scope": self.scope,
+            "grain": self.grain,
+            "condition_tree": self.condition_tree,
+            "depends_on": self.depends_on,
+            "enabled": self.enabled,
+            "rule_version": self.rule_version,
+            "min_tournament_id": self.min_tournament_id,
+        }
+
+
+def build_export_payload(
+    workspace: models.Workspace,
+    rules: list[AchievementRule],
+) -> dict[str, Any]:
+    return {
+        "schema_version": EXPORT_SCHEMA_VERSION,
+        "exported_at": datetime.now(UTC).isoformat(),
+        "source_workspace": {
+            "id": workspace.id,
+            "slug": workspace.slug,
+            "name": workspace.name,
+        },
+        "rules": [PortableAchievementRule.from_model(rule).as_dict() for rule in rules],
+    }
+
+
+async def load_rules_for_workspace(
+    session,
+    workspace_id: int,
+    *,
+    discipline: str | None,
+    slugs: list[str] | None = None,
+) -> list[AchievementRule]:
+    """A workspace's rules of ``discipline``; ``None`` is only for ownership checks that span every discipline."""
+    query = sa.select(AchievementRule).where(AchievementRule.workspace_id == workspace_id)
+    if discipline is not None:
+        query = query.where(AchievementRule.discipline == discipline)
+    if slugs is not None:
+        if not slugs:
+            return []
+        query = query.where(AchievementRule.slug.in_(slugs))
+    query = query.order_by(AchievementRule.category, AchievementRule.slug)
+    result = await session.execute(query)
+    return list(result.scalars())
+
+
+def extract_s3_key_from_public_url(public_url: str | None, image_url: str | None) -> str | None:
+    if not public_url or not image_url:
+        return None
+    normalized_public = public_url.rstrip("/")
+    if image_url.startswith(f"{normalized_public}/"):
+        return image_url.removeprefix(f"{normalized_public}/")
+
+    public_parts = urlparse(normalized_public)
+    image_parts = urlparse(image_url)
+    if (
+        public_parts.scheme,
+        public_parts.netloc,
+    ) == (
+        image_parts.scheme,
+        image_parts.netloc,
+    ):
+        prefix_path = public_parts.path.rstrip("/")
+        if image_parts.path.startswith(f"{prefix_path}/"):
+            return image_parts.path.removeprefix(f"{prefix_path}/")
+    return None
+
+
+def guess_content_type_from_key(key: str) -> str:
+    suffix = PurePosixPath(key).suffix.lower()
+    return {
+        ".webp": "image/webp",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+    }.get(suffix, "application/octet-stream")
+
+
+def workspace_achievement_asset_prefix(source_workspace_slug: str) -> str:
+    """The only S3 prefix a source workspace's achievement assets may live under."""
+    return f"assets/achievements/{source_workspace_slug}/"
+
+
+def _asset_key_is_within_workspace(key: str | None, workspace_prefix: str) -> bool:
+    """Reject anything that is not a safe object key strictly under the source
+    workspace's achievement-asset prefix.
+
+    This is the guard for review finding C3 (S3-IDOR): the client-supplied
+    ``image_url`` is turned into an S3 key and copied into the target workspace,
+    so an unvalidated key would let an importer read *any* object in the shared
+    bucket (match logs, avatars, other tenants' assets). The trailing slash on
+    ``workspace_prefix`` prevents sibling-prefix confusion (``source`` vs
+    ``source-evil``), and rejecting ``.``/``..``/empty path segments blocks
+    traversal-style keys.
+    """
+    if not key:
+        return False
+    if any(segment in ("", ".", "..") for segment in key.split("/")):
+        return False
+    return key.startswith(workspace_prefix)
+
+
+async def find_workspace_achievement_asset_key(
+    s3: S3Client,
+    *,
+    source_workspace_slug: str,
+    slug: str,
+    image_url: str | None,
+) -> str | None:
+    """Resolve the S3 key of a source-workspace achievement asset.
+
+    The returned key is ALWAYS constrained to the source workspace's own
+    achievement-asset prefix and must be a real object owned by that workspace:
+    the authoritative allow-list is ``s3.list_objects(prefix)``. A client-supplied
+    ``image_url`` may only *select* among those existing keys — it can never
+    introduce an arbitrary key (see review finding C3).
+    """
+    workspace_prefix = workspace_achievement_asset_prefix(source_workspace_slug)
+    available_keys = set(await s3.list_objects(workspace_prefix))
+    if not available_keys:
+        return None
+
+    key_from_url = extract_s3_key_from_public_url(getattr(s3, "_public_url", None), image_url)
+    if (
+        key_from_url
+        and _asset_key_is_within_workspace(key_from_url, workspace_prefix)
+        and key_from_url in available_keys
+    ):
+        return key_from_url
+
+    slug_prefix = f"{workspace_prefix}{slug}."
+    matching = sorted(key for key in available_keys if key.startswith(slug_prefix))
+    return matching[0] if matching else None
+
+
+async def copy_workspace_achievement_image(
+    s3: S3Client,
+    *,
+    source_workspace: models.Workspace,
+    target_workspace: models.Workspace,
+    slug: str,
+    image_url: str | None,
+) -> tuple[str | None, str | None]:
+    if not image_url:
+        return None, None
+
+    source_key = await find_workspace_achievement_asset_key(
+        s3,
+        source_workspace_slug=source_workspace.slug,
+        slug=slug,
+        image_url=image_url,
+    )
+    if not source_key:
+        return None, f"Image asset for '{slug}' was not found in workspace '{source_workspace.slug}'"
+
+    content = await s3.get_object(source_key)
+    if content is None:
+        return None, f"Image asset for '{slug}' could not be read from storage"
+
+    head = await s3.head_object(source_key)
+    content_type = (head or {}).get("ContentType") or guess_content_type_from_key(source_key)
+    upload_result = await upload_asset(
+        s3,
+        asset_type="achievements",
+        slug=slug,
+        file_data=content,
+        content_type=content_type,
+        workspace_slug=target_workspace.slug,
+    )
+    if not upload_result.success:
+        return None, f"Image asset for '{slug}' could not be copied: {upload_result.error}"
+
+    return upload_result.public_url, None
+
+
+def _rule_data(
+    payload: PortableAchievementRule,
+    *,
+    image_url: str | None,
+    drop_cutoff: bool,
+) -> dict[str, Any]:
+    data = {
+        "slug": payload.slug,
+        "name": payload.name,
+        "description_ru": payload.description_ru,
+        "description_en": payload.description_en,
+        "image_url": image_url,
+        "entity_id": payload.entity_id,
+        "category": payload.category,
+        "scope": payload.scope,
+        "grain": payload.grain,
+        "condition_tree": payload.condition_tree,
+        # Imported declarations are not trusted; derive from the actual tree.
+        "depends_on": derive_depends_on(payload.condition_tree, discipline=payload.discipline),
+        "enabled": payload.enabled,
+        "rule_version": payload.rule_version,
+    }
+    if not drop_cutoff:  # a dropped cutoff is left out, so an existing rule keeps its own and a new one has none
+        data["min_tournament_id"] = payload.min_tournament_id
+    return data
+
+
+async def _prevalidate(
+    session,
+    *,
+    target_workspace: models.Workspace,
+    rules: list[PortableAchievementRule],
+    drop_cutoff: bool,
+) -> dict[str, AchievementRule]:
+    """Everything that can reject the batch, before the first rule or image write.
+
+    Raises ``ValueError([{"slug", "errors"}, ...])`` (a 400, errors named by field) for an invalid definition, a
+    discipline the workspace has not enabled, a repeated slug or a character that is not the rule's own game's, and a
+    409 ``HTTPException`` when a payload slug already belongs to a rule of another discipline in the target. Returns the
+    target's existing rules by slug.
+    """
+    errors_by_slug: dict[str, list[str]] = {}
+
+    def reject(slug: str, message: str) -> None:
+        errors_by_slug.setdefault(slug, []).append(message)
+
+    seen: set[str] = set()
+    for payload in rules:
+        if payload.slug in seen:
+            reject(payload.slug, "slug: appears more than once in the payload")
+        seen.add(payload.slug)
+        if payload.discipline not in DISCIPLINES or payload.discipline not in target_workspace.disciplines_enabled:
+            reject(payload.slug, f"discipline: {payload.discipline!r} is not enabled for the target workspace")
+            continue
+        errors, _inferred_grain = validate_rule_definition(
+            payload.condition_tree, payload.grain, discipline=payload.discipline
+        )
+        for error in errors:
+            reject(payload.slug, error)
+
+    entity_ids = {payload.entity_id for payload in rules if payload.entity_id is not None}
+    owners = (
+        dict(
+            (
+                await session.execute(
+                    sa.select(models.CatalogEntity.id, models.CatalogEntity.discipline).where(
+                        models.CatalogEntity.id.in_(entity_ids), models.CatalogEntity.kind == "character"
+                    )
+                )
+            ).all()
+        )
+        if entity_ids
+        else {}
+    )
+    for payload in rules:
+        if payload.entity_id is not None and owners.get(payload.entity_id) != payload.discipline:
+            reject(
+                payload.slug,
+                f"entity_id: character #{payload.entity_id} does not exist in discipline {payload.discipline!r}",
+            )
+
+    # The cutoff is a tournament of the *target* workspace and of the rule's own game: a foreign or invented id would
+    # silently empty earlier tournaments' results on the next recompute.
+    cutoff_rules = [] if drop_cutoff else rules
+    tournament_ids = {payload.min_tournament_id for payload in cutoff_rules if payload.min_tournament_id is not None}
+    tournament_owners = (
+        {
+            row.id: (row.workspace_id, row.discipline)
+            for row in await session.execute(
+                sa.select(models.Tournament.id, models.Tournament.workspace_id, models.Tournament.discipline).where(
+                    models.Tournament.id.in_(tournament_ids)
+                )
+            )
+        }
+        if tournament_ids
+        else {}
+    )
+    for payload in cutoff_rules:
+        if payload.min_tournament_id is not None and tournament_owners.get(payload.min_tournament_id) != (
+            target_workspace.id,
+            payload.discipline,
+        ):
+            reject(
+                payload.slug,
+                f"min_tournament_id: tournament #{payload.min_tournament_id} does not exist in the target workspace "
+                f"for discipline {payload.discipline!r}",
+            )
+
+    if errors_by_slug:
+        raise ValueError([{"slug": slug, "errors": errors} for slug, errors in errors_by_slug.items()])
+
+    existing_rules = {
+        rule.slug: rule
+        for rule in await load_rules_for_workspace(
+            session, target_workspace.id, discipline=None, slugs=[payload.slug for payload in rules]
+        )
+    }
+    if conflicts := sorted(
+        payload.slug
+        for payload in rules
+        if payload.slug in existing_rules and existing_rules[payload.slug].discipline != payload.discipline
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Slugs already used by rules of another discipline in this workspace: {', '.join(conflicts)}",
+        )
+    return existing_rules
+
+
+async def import_portable_rules(
+    session,
+    s3: S3Client | None,
+    *,
+    target_workspace: models.Workspace,
+    rules: list[PortableAchievementRule],
+    source_workspace: models.Workspace | None = None,
+) -> dict[str, Any]:
+    # A cutoff names a tournament of the source workspace; it cannot be translated, and rejecting it would make a
+    # library import of any rule that has one impossible. The organizer sets a new cutoff in the target.
+    drop_cutoff = source_workspace is not None and source_workspace.id != target_workspace.id
+    existing_rules = await _prevalidate(
+        session, target_workspace=target_workspace, rules=rules, drop_cutoff=drop_cutoff
+    )
+
+    warnings: list[dict[str, str]] = [
+        {
+            "slug": payload.slug,
+            "message": f"min_tournament_id #{payload.min_tournament_id} belongs to another workspace "
+            "and was not imported; set a cutoff in this workspace",
+        }
+        for payload in rules
+        if drop_cutoff and payload.min_tournament_id is not None
+    ]
+    created = 0
+    updated = 0
+
+    for payload in rules:
+        next_image_url: str | None = None
+        if payload.image_url:
+            if source_workspace is None or s3 is None:
+                warnings.append(
+                    {
+                        "slug": payload.slug,
+                        "message": "Image source workspace is unavailable; image was not imported",
+                    }
+                )
+            else:
+                next_image_url, image_warning = await copy_workspace_achievement_image(
+                    s3,
+                    source_workspace=source_workspace,
+                    target_workspace=target_workspace,
+                    slug=payload.slug,
+                    image_url=payload.image_url,
+                )
+                if image_warning:
+                    warnings.append({"slug": payload.slug, "message": image_warning})
+
+        existing = existing_rules.get(payload.slug)
+        data = _rule_data(payload, image_url=next_image_url, drop_cutoff=drop_cutoff)
+        if existing is None:
+            rule = AchievementRule(workspace_id=target_workspace.id, discipline=payload.discipline, **data)
+            await _rule_repo.create(session, rule)
+            existing_rules[payload.slug] = rule
+            created += 1
+            continue
+
+        await _rule_repo.update_fields(session, existing, data)
+        updated += 1
+
+    return {
+        "created": created,
+        "updated": updated,
+        "warnings": warnings,
+    }
+
+
+async def _import_or_400(
+    session,
+    s3: S3Client | None,
+    *,
+    target_workspace: models.Workspace,
+    rules: list[Any],
+    source_workspace: models.Workspace | None,
+) -> dict[str, Any]:
+    try:
+        return await import_portable_rules(
+            session, s3, target_workspace=target_workspace, rules=rules, source_workspace=source_workspace
+        )
+    except ValueError as exc:
+        raise validation_failure(exc.args[0]) from exc
+
+
+async def export_rules(session, *, workspace_id: int, discipline: str) -> dict[str, Any]:
+    workspace = await get_workspace_or_404(session, workspace_id)
+    return build_export_payload(workspace, await load_rules_for_workspace(session, workspace_id, discipline=discipline))
+
+
+async def import_envelope(
+    session,
+    s3: S3Client | None,
+    *,
+    user: models.AuthUser,
+    workspace_id: int,
+    body: schemas.AchievementRuleExportEnvelope,
+) -> dict[str, Any]:
+    """Import an exported batch; its source workspace (by id, then slug) supplies images only if the user can see it."""
+    target_workspace = await get_workspace_or_404(session, workspace_id)
+    source_workspace = None
+    if body.source_workspace is not None:
+        source_workspace = await _workspace_repo.get(session, body.source_workspace.id)
+        if source_workspace is None and body.source_workspace.slug:
+            source_workspace = await _workspace_repo.get_by(session, slug=body.source_workspace.slug)
+        if (
+            source_workspace is not None
+            and not user.is_superuser
+            and source_workspace.id not in user.get_workspace_ids()
+        ):
+            raise HTTPException(status_code=403, detail="Source workspace is not accessible")
+    result = await _import_or_400(
+        session, s3, target_workspace=target_workspace, rules=body.rules, source_workspace=source_workspace
+    )
+    await session.commit()
+    return result
+
+
+async def library_workspaces(
+    session, *, user: models.AuthUser, workspace_id: int, discipline: str
+) -> list[schemas.AchievementLibraryWorkspaceRead]:
+    """The other workspaces the user can see that have rules of ``discipline``, with their rule counts."""
+    visible = visible_workspace_ids(user, workspace_id)
+    if visible is not None and not visible:
+        return []
+    query = (
+        sa.select(
+            models.Workspace.id,
+            models.Workspace.slug,
+            models.Workspace.name,
+            sa.func.count(AchievementRule.id).label("rules_count"),
+        )
+        .join(
+            AchievementRule,
+            sa.and_(AchievementRule.workspace_id == models.Workspace.id, AchievementRule.discipline == discipline),
+        )
+        .where(models.Workspace.id != workspace_id)
+        .group_by(models.Workspace.id, models.Workspace.slug, models.Workspace.name)
+        .having(sa.func.count(AchievementRule.id) > 0)
+        .order_by(models.Workspace.name.asc())
+    )
+    if visible is not None:
+        query = query.where(models.Workspace.id.in_(visible))
+    result = await session.execute(query)
+    return [
+        schemas.AchievementLibraryWorkspaceRead(id=row.id, slug=row.slug, name=row.name, rules_count=row.rules_count)
+        for row in result
+    ]
+
+
+async def library_rules(
+    session, *, user: models.AuthUser, workspace_id: int, source_workspace_id: int, discipline: str
+) -> list[schemas.AchievementLibraryRuleRead]:
+    source_workspace = await get_source_workspace_or_404(
+        session, target_workspace_id=workspace_id, source_workspace_id=source_workspace_id, user=user
+    )
+    rules = await load_rules_for_workspace(session, source_workspace.id, discipline=discipline)
+    return [
+        schemas.AchievementLibraryRuleRead(
+            slug=rule.slug,
+            name=rule.name,
+            category=str(rule.category),
+            enabled=bool(rule.enabled),
+            image_url=rule.image_url,
+        )
+        for rule in rules
+    ]
+
+
+async def import_from_library(
+    session,
+    s3: S3Client | None,
+    *,
+    user: models.AuthUser,
+    workspace_id: int,
+    body: schemas.AchievementLibraryImportRequest,
+) -> dict[str, Any]:
+    """Copy the named rules of another workspace's library; a slug it does not have is a warning, not an error."""
+    target_workspace = await get_workspace_for_discipline(session, workspace_id, body.discipline)
+    source_workspace = await get_source_workspace_or_404(
+        session, target_workspace_id=workspace_id, source_workspace_id=body.source_workspace_id, user=user
+    )
+    source_rules = await load_rules_for_workspace(
+        session, source_workspace.id, discipline=body.discipline, slugs=body.slugs
+    )
+    missing_slugs = sorted(set(body.slugs) - {rule.slug for rule in source_rules})
+    portable_rules = [
+        schemas.AchievementRulePortable.model_validate(rule, from_attributes=True) for rule in source_rules
+    ]
+    result = await _import_or_400(
+        session, s3, target_workspace=target_workspace, rules=portable_rules, source_workspace=source_workspace
+    )
+    result["warnings"].extend(
+        {"slug": slug, "message": f"Rule '{slug}' was not found in workspace '{source_workspace.slug}'"}
+        for slug in missing_slugs
+    )
+    await session.commit()
+    return result

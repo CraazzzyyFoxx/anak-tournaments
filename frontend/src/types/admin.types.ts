@@ -1,5 +1,10 @@
 // Admin CRUD Types
 
+import type { CaptainReport, MatchParticipant, RawSourceStatus, ReplayCode } from "@/types/encounter.types";
+import type { RoleRef } from "@/lib/roster/role-ref";
+import type { Schema } from "@/types/api";
+import type { CatalogEntityRead, CatalogKind } from "@/types/catalog.types";
+
 // ─── Global Settings (parser.*) ───────────────────────────────────────────────
 
 export interface SettingRead {
@@ -34,22 +39,11 @@ export interface RankCollectionConfig {
   max_per_tick: number | null;
 }
 
-export interface RankMappingEntry {
-  division: string;
-  tier: number;
-  rank_value: number;
-}
-
-export interface RankMappingConfig {
-  version: string;
-  entries: RankMappingEntry[];
-}
-
 // ─── Rank collection status / manual trigger (parser admin) ────────────────────
 
 export interface RankCollectionStatusRow {
   social_account_id: number;
-  battle_tag: string;
+  handle: string;
   status: string | null;
   last_checked_at: string | null;
   last_success_at: string | null;
@@ -73,7 +67,7 @@ export interface RankFetchLogRow {
   social_account_id: number | null;
   /** Owning player id, resolved via the social account; null when deleted. */
   user_id: number | null;
-  battle_tag: string;
+  handle: string;
   status: string;
   source: string;
   error: string | null;
@@ -117,12 +111,12 @@ export interface RankCollectionStats {
   scope: string;
   interval_seconds: number;
   rate_limit_per_minute: number;
-  /** OverFast instance the worker fetches from. */
-  overfast_base_url: string;
-  /** `closed` | `half_open` | `open` — open means no battle tag is being fetched at all. */
-  overfast_circuit_state: string;
-  /** Fetches rejected in 24h because the stored handle is not a battletag. */
-  invalid_battle_tags_24h: number;
+  /** Upstream the worker fetches from (OverFast for Overwatch, the Riot API for League). */
+  upstream_base_url: string;
+  /** `closed` | `half_open` | `open` — open means no account is being fetched at all. */
+  upstream_circuit_state: string;
+  /** Fetches rejected in 24h because the stored handle is not valid for the game. */
+  invalid_handles_24h: number;
 }
 
 // ─── Subscription collection (parser admin) ────────────────────────────────────
@@ -278,7 +272,6 @@ export interface StreamPollTick {
 
 // ─── Tournament ──────────────────────────────────────────────────────────────
 
-import type { RosterSlotMap } from "@/lib/roster/shape";
 import type { DraftFormatSettings } from "@/types/draft.types";
 import type {
   StageItemType,
@@ -290,13 +283,16 @@ import type {
 
 export interface TournamentCreateInput {
   workspace_id: number;
+  /** The game the tournament is played in: always the creator's explicit choice. */
+  discipline: string;
   name: string;
   description?: string;
   is_league: boolean;
   /** Public-URL slug; left blank, one is generated from `name`. */
   slug?: string;
-  /** Lazy wizard drafts (D4) are created Unpublished and published later. */
+  /** "Create tournament" creates it Unpublished; it is published from the hub. */
   is_hidden?: boolean;
+  team_formation?: string;
   status?: TournamentStatus;
   start_date: string;
   end_date: string;
@@ -325,12 +321,11 @@ export interface TournamentUpdateInput {
   allow_late_registration?: boolean;
   discord_broadcasts_enabled?: boolean;
   discord_dms_enabled?: boolean;
+  logs_official?: boolean;
   win_points?: number;
   draw_points?: number;
   loss_points?: number;
   division_grid_version_id?: number | null;
-  /** Roster shape override; `null` clears it back to the workspace default. */
-  roster_slots_json?: RosterSlotMap | null;
   /** Draft format rule; `null` clears it back to snake. */
   draft_format_json?: DraftFormatSettings | null;
 }
@@ -362,11 +357,12 @@ export interface TournamentStatusTransitionInput {
 
 /**
  * Readiness aggregate for the hub living checklist (D13, §7.1).
- * Mirrors backend/app-service/src/services/dashboard/readiness.py. Field
+ * Mirrors backend/tournament-service/src/services/dashboard/readiness.py. Field
  * groups are masked by the caller's permissions: `tournament.read` gates the
- * setup/bracket/logs group, `team.read` gates the registration/pool/balance/
- * draft group — a masked group arrives as `null` and the checklist renders
- * "no-access" instead of zeros (D16).
+ * setup/bracket/logs/standings group, `team.read` the registration/pool/
+ * balance/draft group, `match.read` the result counts, `achievement.read` the
+ * evaluation status — a masked group arrives as `null` and the checklist
+ * renders "no-access" instead of zeros (D16).
  */
 export interface TournamentReadiness {
   tournament_id: number;
@@ -378,12 +374,13 @@ export interface TournamentReadiness {
   stages_total: number | null;
   stage_slots_filled: boolean | null;
   bracket_generated: boolean | null;
-  encounters_total: number | null;
-  encounters_with_logs: number | null;
+  /** Duels only (`slot_count == 2`): a lobby never produces a match log. */
+  duel_encounters_total: number | null;
+  duel_encounters_with_logs: number | null;
   logs_used: boolean | null;
+  standings_recalc_pending: boolean | null;
   // visible with team.read:
   registration_form_configured: boolean | null;
-  registration_open: boolean | null;
   registrations_pending: number | null;
   registrations_approved: number | null;
   registrations_checked_in: number | null;
@@ -393,6 +390,12 @@ export interface TournamentReadiness {
   balance_saved: boolean | null;
   balance_exported_at: string | null;
   draft_session_status: string | null;
+  // visible with match.read:
+  results_overdue: number | null;
+  results_pending_confirmation: number | null;
+  results_disputed: number | null;
+  // visible with achievement.read: "not_configured" | "none" | the latest evaluation run's status
+  achievements_status: string | null;
 }
 
 // ─── Stage Admin ────────────────────────────────────────────────────────────
@@ -445,17 +448,24 @@ export interface StageItemInputUpdateInput {
   slot?: number;
 }
 
-/** `POST /admin/encounters/{id}/swap-slot`: exchange the teams in two bracket slots. */
+/** `POST /admin/encounters/{id}/swap-slot`: exchange the teams in two bracket seats. */
 export interface EncounterSwapSlotInput {
-  slot: "home" | "away";
+  slot: number;
   target_encounter_id: number;
-  target_slot: "home" | "away";
+  target_slot: number;
 }
 
-export interface EncounterSlotState {
+/** One live seat as the bracket re-renders it after a swap. */
+interface EncounterSeatState {
   id: number;
-  home_team_id: number | null;
-  away_team_id: number | null;
+  slot: number;
+  team_id: number | null;
+  name: string;
+}
+
+interface EncounterSlotState {
+  id: number;
+  teams: EncounterSeatState[];
   name: string;
 }
 
@@ -483,34 +493,40 @@ export interface StageBracketPreviewMatch {
   /** "A vs. B", with the wired teams' names when they are known. */
   name: string;
   best_of: number;
-  home_team_id: number | null;
-  away_team_id: number | null;
+  slot_count: number;
+  /** The wired team of each seat in slot order, `null` while TBD. */
+  team_ids: (number | null)[];
   sources: {
     local_id: number;
-    role: "winner" | "loser";
-    slot: "home" | "away";
+    /** Place in the source match's standing; 1 is first. */
+    source_position: number;
+    /** Seat of this match the edge fills, `1..slot_count`. */
+    slot: number;
   }[];
 }
 
 /**
- * Where one slot of a template match gets its team: exactly one field is set.
+ * Where one slot of a template match gets its team: exactly one of `seed` or
+ * `source_match` is set.
  *
  * `seed` is a placeholder label — `"U3"` is the third upper-bracket seed, `"L1"`
- * the first lower one — and `winner_of`/`loser_of` name another
- * `TemplateMatch.id` in the same template.
+ * the first lower one — and `source_match` names another `TemplateMatch.id` in
+ * the same template whose place `source_position` (1 = first) this slot takes.
  */
 export type TemplateSlot =
-  | { seed: string; winner_of?: null; loser_of?: null }
-  | { winner_of: number; seed?: null; loser_of?: null }
-  | { loser_of: number; seed?: null; winner_of?: null };
+  | { seed: string; source_match?: null; source_position?: null }
+  | { source_match: number; source_position: number; seed?: null };
 
-export interface TemplateMatch {
+/** One seat of a template match: `slot` is numbered `1..n` the way the encounter seats it. */
+type TemplateMatchSlot = TemplateSlot & { slot: number };
+
+interface TemplateMatch {
   /** Template-local and stable across edits; not an encounter id. */
   id: number;
   /** Positive upstairs and in the finals, negative downstairs; never 0. */
   round: number;
-  home: TemplateSlot;
-  away: TemplateSlot;
+  /** The whole card, numbered `1..n` with no gap. */
+  slots: TemplateMatchSlot[];
 }
 
 /**
@@ -527,7 +543,7 @@ export interface BracketTemplate {
 /** One reason a template was refused, from the PUT's 422 `problems` array. */
 export interface TemplateProblem {
   match_id: number | null;
-  slot: "home" | "away" | null;
+  slot: number | null;
   code: string;
   message: string;
 }
@@ -609,9 +625,9 @@ export interface PlayerCreateInput {
   user_id: number;
   team_id: number;
   tournament_id: number;
-  role: string;
-  rank?: number;
-  sub_role?: string | null;
+  role: RoleRef | null;
+  /** Omit or `null` for no rank; otherwise >= 1. */
+  rank?: number | null;
   is_newcomer?: boolean;
   is_newcomer_role?: boolean;
   is_substitution?: boolean;
@@ -620,9 +636,9 @@ export interface PlayerCreateInput {
 
 export interface PlayerUpdateInput {
   name?: string;
-  role?: string;
-  rank?: number;
-  sub_role?: string | null;
+  role?: RoleRef | null;
+  /** Omitted = unchanged; `null` clears the rank. */
+  rank?: number | null;
   is_newcomer?: boolean;
   is_newcomer_role?: boolean;
   is_substitution?: boolean;
@@ -632,6 +648,9 @@ export interface PlayerUpdateInput {
 export interface PlayerSubRole {
   id: number;
   workspace_id: number;
+  discipline: string;
+  dimension: string;
+  attrs: Record<string, unknown>;
   role: string;
   slug: string;
   label: string;
@@ -642,12 +661,15 @@ export interface PlayerSubRole {
 
 export interface PlayerSubRoleCreateInput {
   workspace_id: number;
+  discipline: string;
   role: string;
   label: string;
   slug?: string | null;
   description?: string | null;
   sort_order?: number;
   is_active?: boolean;
+  icon?: string | null;
+  color?: string | null;
 }
 
 export interface PlayerSubRoleUpdateInput {
@@ -657,6 +679,8 @@ export interface PlayerSubRoleUpdateInput {
   description?: string | null;
   sort_order?: number;
   is_active?: boolean;
+  icon?: string | null;
+  color?: string | null;
 }
 
 // ─── Encounter ───────────────────────────────────────────────────────────────
@@ -667,21 +691,40 @@ export interface PlayerSubRoleUpdateInput {
  */
 export type EncounterEditableStatus = "OPEN" | "PENDING";
 
+/** One participation's line of an admin result. */
+interface EncounterResultLineInput {
+  encounter_team_id: number;
+  score: number;
+  placement?: number | null;
+}
+
+/** `POST /admin/encounters/{id}/result`: a reason is mandatory — an admin result overrides what the participants said. */
 export interface EncounterSetResultInput {
-  home_score?: number;
-  away_score?: number;
-  /** 1..10; defaults to the mean of the captain reports when omitted. */
+  reason: string;
+  /** One line per live participation; may be empty only with `adopt_report_team_id`. */
+  results: EncounterResultLineInput[];
+  /** 1..10; defaults to the mean of the participation reports when omitted. */
   closeness?: number;
-  /** Resolve a dispute by taking this team's report as the truth. */
+  /** Resolve a dispute by taking this participation's report as the truth. */
   adopt_report_team_id?: number;
+}
+
+/** One participation's numbers inside a result snapshot. */
+interface EncounterResultSnapshotLine {
+  encounter_team_id: number;
+  score: number;
+  placement: number | null;
 }
 
 export interface EncounterResultRead {
   id: number;
   status: string;
   result_status: string;
-  home_score: number;
-  away_score: number;
+  /** Which writer decided it; null while no official result exists. */
+  result_source: string | null;
+  result_version: number;
+  /** The standing, one line per live participation, in slot order. */
+  teams: EncounterResultSnapshotLine[];
   closeness: number | null;
   confirmed_at: string | null;
 }
@@ -691,23 +734,32 @@ type EncounterResultAuditAction =
   | "reopen"
   | "auto_confirm"
   | "auto_dispute"
+  | "auto_pending"
   | "import"
-  | "cascade_reset";
+  | "cascade_reset"
+  | "game_confirm"
+  | "game_correct"
+  | "game_cancel";
 
 export interface EncounterResultAuditRead {
   id: number;
   encounter_id: number;
+  /** The `encounter.result_version` this operation left behind. */
+  result_version: number;
   /** null = a machine actor (Challonge import, bracket cascade). */
   actor_user_id: number | null;
   actor_name: string | null;
   action: EncounterResultAuditAction;
   from_result_status: string | null;
   to_result_status: string;
-  home_score_before: number | null;
-  away_score_before: number | null;
-  home_score_after: number;
-  away_score_after: number;
+  /** `encounter` for the standing, `game` for one position's numbers. */
+  snapshot_scope: "encounter" | "game";
+  game_id: number | null;
+  /** null when nothing preceded this row. */
+  before: EncounterResultSnapshotLine[] | null;
+  after: EncounterResultSnapshotLine[];
   adopted_team_id: number | null;
+  reason: string | null;
   source: string;
   created_at: string;
 }
@@ -725,8 +777,8 @@ export interface PregameRoomHistoryEntry {
   action: string;
   kind: "map" | "hero" | null;
   source: "captain" | "admin" | "system";
-  /** The side acted BY or FOR; null for room-level events. */
-  side: "home" | "away" | null;
+  /** The participation acted BY or FOR; null for room-level events. */
+  encounter_team_id: number | null;
   actor_auth_user_id: number | null;
   /** null = the clock or a machine actor, rendered as "System". */
   actor_name: string | null;
@@ -740,28 +792,17 @@ export interface PregameRoomHistoryRead {
 }
 
 /**
- * One captain's report inside an admin reports row. Mirrors the backend
- * `CaptainReportRead` — the same shape the public encounter read returns, plus
- * `reporter_name`.
+ * One participation's report inside an admin reports row. Mirrors the backend
+ * `TeamReportRead` — the same shape the public encounter read returns.
  */
-export interface AdminCaptainReport {
-  id: number;
-  encounter_id: number;
-  team_id: number;
-  side: "home" | "away" | null;
-  reporter_user_id: number | null;
-  reporter_name: string | null;
-  home_score: number;
-  away_score: number;
-  /** `null` when the tournament disables or does not require match quality. */
-  closeness: number | null;
-  map_codes: Array<{ id: number; map_index: number; map_id: number | null; code: string }>;
-  /** Free-form note from the captain; never part of dispute derivation. */
-  comment: string | null;
-  /** Organizer-defined text answers, keyed by the report form's field keys. */
-  custom_fields: Record<string, string>;
-  created_at: string | null;
-  updated_at: string | null;
+export type AdminCaptainReport = CaptainReport & { reporter_name: string | null };
+
+/** One live seat of an encounter, as an admin list row names it. */
+export interface EncounterParticipationRef {
+  encounter_team_id: number;
+  slot: number;
+  team_id: number | null;
+  name: string;
 }
 
 export interface EncounterReportsRow {
@@ -772,23 +813,26 @@ export interface EncounterReportsRow {
   stage_name: string | null;
   /** Lets the resolve dialog refuse a draw the finalizer would reject with a 400. */
   stage_type: string | null;
-  round: number;
+  /** The bracket round, or null for an encounter with no bracket position. */
+  round: number | null;
   best_of: number;
   status: string;
   result_status: string;
   scheduled_at: string | null;
-  home_team: { id: number; name: string | null } | null;
-  away_team: { id: number; name: string | null } | null;
-  home_report: AdminCaptainReport | null;
-  away_report: AdminCaptainReport | null;
+  /** The live seats, in slot order. */
+  participations: EncounterParticipationRef[];
+  /** Every report filed against it, one per reporting participation. */
+  reports: AdminCaptainReport[];
+  /** Every participation's replay codes, in play order — what the reports are compared against. */
+  replay_codes: ReplayCode[];
   reported_count: number;
   /**
-   * Three-valued on purpose: `null` until both sides have reported. "They
-   * disagree" and "only one answered" call for different actions, so the UI
-   * must not collapse them into a boolean.
+   * Three-valued on purpose: `null` until every participation has reported.
+   * "They disagree" and "only some answered" call for different actions, so
+   * the UI must not collapse them into a boolean.
    */
-  scores_match: boolean | null;
-  /** Advisory — reports predate per-round best-of, so a mismatch is a hint. */
+  standings_match: boolean | null;
+  /** False when the reported standing is impossible for this encounter's rule. */
   series_score_valid: boolean;
   last_resolution: {
     action: EncounterResultAuditAction;
@@ -860,13 +904,24 @@ export interface PregameKindSummary {
   step_count: number;
   step_action: string | null;
   step_blind: boolean;
-  acting_sides: ("home" | "away")[];
+  /** Participations (`EncounterTeam.id`) that still owe the open step an answer. */
+  acting_team_ids: number[];
   step_started_at: string | null;
   /** `step_started_at` + the open step's timer, when that step has one. */
   deadline_at: string | null;
   awaiting_choice: boolean;
   /** Set while an organizer holds the session: no deadline, nobody may act. */
   paused_at: string | null;
+}
+
+/** One seat of the room (`encounter.team`), in slot order. */
+interface PregameRoomTeam {
+  encounter_team_id: number;
+  slot: number;
+  /** The source tournament team; null for a seat with none behind it. */
+  team_id: number | null;
+  name: string;
+  score: number;
 }
 
 export interface PregameRoomRow {
@@ -879,11 +934,10 @@ export interface PregameRoomRow {
   scheduled_at: string | null;
   status: string;
   result_status: string | null;
-  home_team: { id: number; name: string } | null;
-  away_team: { id: number; name: string } | null;
-  home_score: number;
-  away_score: number;
-  readiness: { home: boolean; away: boolean };
+  /** The encounter's live seats, in slot order. */
+  teams: PregameRoomTeam[];
+  /** `EncounterTeam.id` (as a string) -> whether that captain confirmed readiness. */
+  readiness: Record<string, boolean>;
   phase: PregameRoomPhase;
   /** `null` = the kind is not configured here and has no session either. */
   map: PregameKindSummary | null;
@@ -906,7 +960,7 @@ export interface PregameRoomsRead {
  */
 export interface LogRecordRef {
   id: number;
-  filename: string;
+  filename: string | null;
   status: LogProcessingStatus;
   source: string | null;
   uploader_id: number | null;
@@ -917,29 +971,16 @@ export interface LogRecordRef {
   finished_at: string | null;
 }
 
-/** One parsed match — a single played map, as the log parser produced it. */
-export interface AdminMatchRow {
-  id: number;
-  encounter_id: number;
-  encounter_name: string;
-  tournament_id: number;
-  tournament_name: string;
-  map_id: number;
-  map_name: string;
-  home_team: { id: number; name: string | null };
-  away_team: { id: number; name: string | null };
-  home_score: number;
-  away_score: number;
-  /** Map duration in seconds. */
-  time: number;
-  log_name: string;
-  code: string | null;
-  created_at: string;
-  /**
-   * `null` means provenance is unresolved. That is the normal state for the
-   * bulk of the history — the ingestion table postdates most parsed matches —
-   * so the UI must present it as unknown, never as a failure.
-   */
+/**
+ * One parsed match — a single played map, as the log parser produced it. `participants` carries every seat with
+ * its official result and observed team facts (`team_facts.score`); a deleted source team is `tournament_team_id: null`.
+ */
+export interface AdminMatchRow
+  extends Omit<Schema<"tournament.AdminMatchRow">, "map" | "raw_status" | "log_record" | "participants"> {
+  map: CatalogEntityRead;
+  participants: MatchParticipant[];
+  raw_status: RawSourceStatus | null;
+  /** Null when no raw-log ingestion job is linked; not a processing failure. */
   log_record: LogRecordRef | null;
 }
 
@@ -960,30 +1001,38 @@ export interface AdminMatchesQuery {
   map_id?: number | null;
   log_status?: LogProcessingStatus[];
   unlinked_only?: boolean;
+  /** One installed game's maps; `null`/absent is every game of the workspace. */
+  discipline?: string | null;
+}
+
+/** One seat of a new encounter: which slot, and the team that takes it (`null` leaves it empty). */
+interface EncounterSeatInput {
+  slot: number;
+  team_id: number | null;
 }
 
 export interface EncounterCreateInput {
   tournament_id: number;
   stage_id: number | null;
   stage_item_id: number | null;
-  home_team_id: number | null;
-  away_team_id: number | null;
+  /** How many seats the card has; a duel is 2 (the default). */
+  slot_count?: number;
+  /** The seats to fill right away. */
+  teams?: EncounterSeatInput[];
   round: number;
-  home_score?: number;
-  away_score?: number;
   /** COMPLETED is rejected: completion goes through setEncounterResult. */
   status?: EncounterEditableStatus;
   best_of?: number;
   name?: string;
 }
 
+/**
+ * A field edit. Seats are not edited here: a seat changes hands through the
+ * slot swap, and a standing is written only by the result writer.
+ */
 export interface EncounterUpdateInput {
   stage_id?: number | null;
   stage_item_id?: number | null;
-  home_team_id?: number | null;
-  away_team_id?: number | null;
-  home_score?: number;
-  away_score?: number;
   /** COMPLETED is rejected: completion goes through setEncounterResult. */
   status?: EncounterEditableStatus;
   round?: number;
@@ -994,15 +1043,12 @@ export interface EncounterUpdateInput {
   scheduled_at?: string | null;
 }
 
+/** The observed score is the only editable team fact; participants are addressed by `encounter_team_id`. */
 export interface MatchUpdateInput {
-  home_team_id?: number;
-  away_team_id?: number;
-  home_score?: number;
-  away_score?: number;
   map_id?: number;
-  code?: string | null;
-  time?: number;
-  log_name?: string;
+  /** Seconds. */
+  duration_s?: number | null;
+  team_facts?: { encounter_team_id: number; stat_code: "score"; value: number }[];
 }
 
 // ─── Standing ────────────────────────────────────────────────────────────────
@@ -1029,12 +1075,12 @@ export interface UserUpdateInput {
 
 export type UserMergeFieldChoice = "source" | "target";
 
-export interface AuthMergeOAuthDestination {
+interface AuthMergeOAuthDestination {
   connection_id: number;
   auth_user_id: number;
 }
 
-export interface AuthMergeMembershipAction {
+interface AuthMergeMembershipAction {
   workspace_id: number;
   action: "transfer" | "merge";
 }
@@ -1047,20 +1093,20 @@ export interface AuthMergePolicy {
   membership_actions?: AuthMergeMembershipAction[];
 }
 
-export interface AuthMergeMembership {
+interface AuthMergeMembership {
   workspace_id: number;
   auth_user_id: number;
   role_names: string[];
   can_merge: boolean;
 }
 
-export interface AuthMergeRole {
+interface AuthMergeRole {
   id: number;
   name: string;
   workspace_id: number | null;
 }
 
-export interface AuthMergeDeny {
+interface AuthMergeDeny {
   permission_id: number;
   workspace_id: number | null;
   resource: string;
@@ -1068,7 +1114,7 @@ export interface AuthMergeDeny {
   reason: string | null;
 }
 
-export interface AuthMergeAccount {
+interface AuthMergeAccount {
   id: number;
   username: string;
   email: string;
@@ -1079,7 +1125,7 @@ export interface AuthMergeAccount {
   denies: AuthMergeDeny[];
 }
 
-export interface AuthMergeOAuthConnection {
+interface AuthMergeOAuthConnection {
   id: number;
   provider: string;
   provider_user_id: string;
@@ -1087,7 +1133,7 @@ export interface AuthMergeOAuthConnection {
   auth_user_id: number;
 }
 
-export interface AuthMergeDataConflict {
+interface AuthMergeDataConflict {
   key: string;
   resource: string;
   label: string;
@@ -1107,7 +1153,7 @@ export interface AuthMergePreview {
   state_fingerprint: string;
 }
 
-export interface AuthMergeResult {
+interface AuthMergeResult {
   surviving_auth_user_id: number;
   deleted_auth_user_id: number | null;
   moved_oauth_connection_ids: number[];
@@ -1206,78 +1252,25 @@ export interface SocialVisibilityInput {
   visible: boolean;
 }
 
-// ─── Hero ────────────────────────────────────────────────────────────────────
-
-export interface HeroCreateInput {
-  name: string;
-  role: string;
-  color?: string;
-  image_path?: string;
-  aliases?: string[];
-}
-
-export interface HeroUpdateInput {
-  name?: string;
-  role?: string;
-  color?: string;
-  image_path?: string;
-  aliases?: string[];
-}
-
-// ─── Gamemode ────────────────────────────────────────────────────────────────
-
-export interface Gamemode {
-  id: number;
-  created_at: Date;
-  updated_at?: Date | null;
-  name: string;
-  aliases: string[];
-}
-
-export interface GamemodeCreateInput {
-  name: string;
-  aliases?: string[];
-}
-
-export interface GamemodeUpdateInput {
-  name?: string;
-  aliases?: string[];
-}
-
-// ─── Map ─────────────────────────────────────────────────────────────────────
-
-export interface MapCreateInput {
-  name: string;
-  gamemode_id: number;
-  in_competitive?: boolean;
-  aliases?: string[];
-}
-
-export interface MapUpdateInput {
-  name?: string;
-  gamemode_id?: number;
-  in_competitive?: boolean;
-  aliases?: string[];
-}
-
 // ─── Catalog aliases ─────────────────────────────────────────────────────────
 
-/** Catalog entity an alias (or an unresolved log name) belongs to. */
-export type CatalogEntityType = "hero" | "map" | "gamemode";
+/** `character|map|mode` are catalog entities an alias can name; `stat|event|role` are undeclared module codes. */
+export type CatalogAliasMissKind = CatalogKind | "stat" | "event" | "role";
 
 /**
- * A name the log parser could not resolve. Upserted per `(entity_type,
- * raw_name)`, so `occurrences` counts how often the gap actually bites.
+ * One unresolved name as the API sends it. Upserted per `(discipline, kind, raw_name)`, so `occurrences` counts how
+ * often the gap actually bites. A `role` miss carries `dimension:role` as its `raw_name`.
  */
 export interface CatalogAliasMissRead {
   id: number;
-  entity_type: CatalogEntityType;
+  discipline: string;
+  kind: CatalogAliasMissKind;
   raw_name: string;
   occurrences: number;
   first_seen_at: string;
   last_seen_at: string;
-  last_log_record_id: number | null;
-  /** Owning tournament of `last_log_record_id`; null once the record is gone. */
+  last_ingest_job_id: number | null;
+  /** Hinted tournament of `last_ingest_job_id`; null when the job carried no hint or is gone. */
   last_log_tournament_id: number | null;
   resolved_at: string | null;
 }
@@ -1285,40 +1278,14 @@ export interface CatalogAliasMissRead {
 export interface CatalogAliasMissQuery {
   page?: number;
   per_page?: number;
-  entity_type?: CatalogEntityType;
+  discipline?: string;
+  kind?: CatalogAliasMissKind;
   include_resolved?: boolean;
 }
 
 export interface CatalogAliasAttachInput {
-  entity_type: CatalogEntityType;
   entity_id: number;
   alias: string;
-}
-
-// ─── Achievement ─────────────────────────────────────────────────────────────
-
-export interface AchievementCreateInput {
-  name: string;
-  slug: string;
-  description_ru: string;
-  description_en: string;
-  image_url?: string | null;
-  hero_id?: number | null;
-}
-
-export interface AchievementUpdateInput {
-  name?: string;
-  slug?: string;
-  description_ru?: string;
-  description_en?: string;
-  image_url?: string | null;
-  hero_id?: number | null;
-}
-
-export interface AchievementRegistryEntry {
-  slug: string;
-  category: string;
-  tournament_required: boolean;
 }
 
 // ─── Achievement Rule Engine ──────────────────────────────────────────────────
@@ -1335,7 +1302,8 @@ export interface AchievementRule {
   description_ru: string;
   description_en: string;
   image_url: string | null;
-  hero_id: number | null;
+  discipline: string;
+  entity_id: number | null;
   category: AchievementCategory;
   scope: AchievementScope;
   grain: AchievementGrain;
@@ -1354,7 +1322,8 @@ export interface AchievementRuleCreateInput {
   description_ru: string;
   description_en: string;
   image_url?: string | null;
-  hero_id?: number | null;
+  discipline: string;
+  entity_id?: number | null;
   category: AchievementCategory;
   scope: AchievementScope;
   grain: AchievementGrain;
@@ -1364,13 +1333,14 @@ export interface AchievementRuleCreateInput {
   min_tournament_id?: number | null;
 }
 
+/** An edit never carries `discipline` (immutable) and never `hero_id` (retired); the server rejects both. */
 export interface AchievementRuleUpdateInput {
   slug?: string;
   name?: string;
   description_ru?: string;
   description_en?: string;
   image_url?: string | null;
-  hero_id?: number | null;
+  entity_id?: number | null;
   category?: AchievementCategory;
   scope?: AchievementScope;
   grain?: AchievementGrain;
@@ -1393,7 +1363,8 @@ interface AchievementRuleExportWorkspace {
 }
 
 export interface AchievementRuleExportEnvelope {
-  schema_version: number;
+  /** Portable format v2 (`discipline` + `entity_id`); v1 and `hero_id` files are refused by the server. */
+  schema_version: 2;
   exported_at: string;
   source_workspace: AchievementRuleExportWorkspace | null;
   rules: AchievementRulePortable[];
@@ -1534,25 +1505,103 @@ export interface DiscordChannelInput {
 
 // ─── Log Processing ───────────────────────────────────────────────────────────
 
-export type LogProcessingStatus = "pending" | "processing" | "done" | "failed";
-type LogProcessingSource = "upload" | "discord" | "manual";
+export type LogProcessingStatus = "pending" | "processing" | "awaiting_link" | "done" | "failed";
 
 export interface LogProcessingRecord {
   id: number;
-  tournament_id: number;
+  tournament_id: number | null;
   tournament_name: string | null;
   attached_encounter_id: number | null;
+  attached_encounter_game_id: number | null;
   attached_encounter_name: string | null;
   filename: string;
   status: LogProcessingStatus;
-  source: LogProcessingSource;
+  source: string;
+  raw_status: RawSourceStatus;
+  raw_available: boolean;
   uploader_name: string | null;
+  /** The human message of `error` (or the historical text itself). */
   error_message: string | null;
+  /** Structured failure/awaiting explanation; historical text reads as code `historical`. */
+  error: LogIngestError | null;
   /** Times the record entered processing; >1 means the stall reaper requeued it. */
   attempts: number;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  /** Revision of the observation this job is the evidence for; null while it is not. Reparse sends it back. */
+  observation_revision: number | null;
+  /** True while this job is the current provenance of its game's observation. */
+  is_current_provenance: boolean;
+  /** Document teams in canonical order, awaiting_link only: the bind team map is keyed by `key`. */
+  teams: LogDocumentTeam[];
+}
+
+interface LogIngestIssue {
+  path: (string | number)[];
+  code: string;
+  message: string;
+  kind?: string | null;
+  raw_name?: string | null;
+}
+
+interface LogIngestError {
+  code: string;
+  message: string;
+  issues: LogIngestIssue[];
+}
+
+interface LogDocumentTeam {
+  key: string;
+  source_position: number;
+  participants: string[];
+}
+
+export interface LogRetryRequest {
+  encounter_id?: number | null;
+  encounter_game_id?: number | null;
+  /** Explicit reparse of a done job; requires `expected_revision` and never re-attaches. */
+  reparse?: boolean;
+  expected_revision?: number;
+}
+
+/** Maps every document team key to the `encounter.team` id seated in the game. */
+export interface LogBindRequest {
+  encounter_game_id: number;
+  teams: Record<string, number>;
+  /** 0 = the game has no observation, n = replace exactly revision n; required when it is occupied. */
+  expected_revision?: number;
+}
+
+/** Machine codes of a refused bind/reparse/retry (`ApiError.details[].code`). */
+export type LogOperationErrorCode =
+  | "expected_revision_required"
+  | "stale_revision"
+  | "stale_binding"
+  | "binding_mismatch"
+  | "identity_conflict"
+  | "invalid_team_map"
+  | "binding_target_not_found"
+  | "ingest_busy"
+  | "ingest_pending"
+  | "reparse_required"
+  | "job_not_done";
+
+/** Unoccupied: `match_id`/`ingest_job_id` null and `revision` 0. Historical observations are never replaceable. */
+export interface GameObservationRead {
+  encounter_game_id: number;
+  match_id: number | null;
+  revision: number;
+  ingest_job_id: number | null;
+  is_historical: boolean;
+}
+
+/** `IngestJobRead` as the bind endpoint commits it. */
+export interface LogBindResponse {
+  id: number;
+  status: LogProcessingStatus;
+  error: LogIngestError | null;
+  binding: { encounter_game_id: number; match_id: number; revision: number } | null;
 }
 
 export interface LogHistoryResponse {
@@ -1565,6 +1614,7 @@ export interface LogProcessingStats {
   total: number;
   pending: number;
   processing: number;
+  awaiting_link: number;
   done: number;
   failed: number;
   avg_duration_seconds: number | null;
@@ -1673,6 +1723,12 @@ export interface AuditLogQuery {
   sort?: AuditSortField | null;
   order?: "asc" | "desc";
   search?: string | null;
+  /** ISO timestamp: only rows created at or after it. */
+  since?: string | null;
+  /** Drops one actor's rows; machine rows (no actor) stay. */
+  exclude_actor_user_id?: number | null;
+  /** Comma-separated `AuditSource` values; an unknown one is a 422. */
+  source?: string | null;
   /**
    * Client-side only (hence camelCase, unlike the wire params above): drops the
    * ambient `workspace_id` injection. The only way to reach platform rows

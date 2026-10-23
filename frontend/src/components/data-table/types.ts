@@ -144,6 +144,15 @@ export interface DataTableProps<TData> {
    * "current item in a set" primitive and is valid on any element.
    */
   inspectorId?: string | null;
+  /**
+   * Server mode: the rows of the page on screen, whenever they change —
+   * including a page served from the query cache, where `queryFn` never runs.
+   * This is how a screen keeps an inspector in step with the table: reading
+   * the rows inside `queryFn` instead goes stale the moment a cached page is
+   * shown again, and the open row is then "not on this page". The whole
+   * response comes along too, for `total` and any extras the screen reads.
+   */
+  onPageRowsChange?: (rows: TData[], page: PaginatedResponse<TData>) => void;
 
   /**
    * Below `md` the table becomes a list of cards. Without this, a card shows

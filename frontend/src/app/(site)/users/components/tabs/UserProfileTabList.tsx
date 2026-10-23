@@ -23,7 +23,7 @@ const UserProfileTabList = ({ badges }: { badges?: TabBadges }) => {
         {t("common.matches")}
       </TabsTrigger>
       <TabsTrigger value="heroes" badge={badges?.heroes}>
-        {t("common.heroes")}
+        {t("common.characters")}
       </TabsTrigger>
       <TabsTrigger value="maps" badge={badges?.maps}>
         {t("users.profile.tabs.maps")}

@@ -6,12 +6,12 @@ import sqlalchemy as sa
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src import models
+from shared import models
+from shared.services.workspace_scope import get_tournament_workspace_id
+from src.core.analytics_exports import analytics_exports, supports_analytics, tournament_discipline
 from src.core.config import settings
-from src.core.workspace import get_tournament_workspace_id
 from src.domain.ratings import (
     LINEAR,
-    OPEN_SKILL,
     OPENSKILL_LOOKBACK,
     POINTS,
     compute_linear_metrics,
@@ -21,7 +21,7 @@ from src.domain.ratings import (
     prepare_openskill_data,
 )
 
-from .canonical_division import canonical_div_for, load_source_grids
+from .canonical_division import load_source_grids
 from .service import analytics_service
 
 
@@ -31,16 +31,20 @@ class AnalyticsFlowsService:
         session: AsyncSession,
         workspace_id: int | None = None,
         workspace_ids: typing.Sequence[int] | None = None,
+        *,
+        discipline: str,
     ) -> pd.DataFrame:
         data = await analytics_service.get_analytics(
             session,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
+            discipline=discipline,
         )
         tournament_version_ids = await analytics_service.get_tournament_version_ids(
             session,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
+            discipline=discipline,
         )
 
         rows: list[dict[str, typing.Any]] = []
@@ -68,8 +72,6 @@ class AnalyticsFlowsService:
                     "log_residual": 0.0,
                     "map_diff": 0.0,
                     "placement_score": 0.0,
-                    "previous_cost": row["previous_cost"],
-                    "pre_previous_cost": row["pre_previous_cost"],
                     "is_newcomer": bool(row["is_newcomer"]),
                     "is_newcomer_role": bool(row["is_newcomer_role"]),
                     "is_changed": False,
@@ -92,13 +94,20 @@ class AnalyticsFlowsService:
         # Normalize every division to the canonical OW grid so current/previous div
         # are comparable across workspaces and grid versions.
         grids = await load_source_grids(session, df["version_id"].dropna().unique())
+        canonical_div_for = analytics_exports(discipline).canonical_div_for
 
         df["div"] = [
             canonical_div_for(grids, version_id, cost)
             for version_id, cost in zip(df["version_id"], df["cost"], strict=False)
         ]
         df = df.sort_values(["id_role", "tournament_id"]).reset_index(drop=True)
-        df["prev_version_id"] = df.groupby("id_role")["version_id"].shift(1)
+        # The rank chronology runs over ranked rows only: an unranked tournament has no division and does not break
+        # the previous-division link of the next ranked one.
+        ranked = df["cost"].notna()
+        by_role = df[ranked].groupby("id_role")
+        df["previous_cost"] = by_role["cost"].shift(1)
+        df["pre_previous_cost"] = by_role["cost"].shift(2)
+        df["prev_version_id"] = by_role["version_id"].shift(1)
 
         def resolve_previous_div(row) -> int | None:
             prev_cost = row["previous_cost"]
@@ -107,12 +116,12 @@ class AnalyticsFlowsService:
             return canonical_div_for(grids, row["prev_version_id"], int(prev_cost))
 
         df["previous_div"] = df.apply(resolve_previous_div, axis=1)
-        df["is_changed"] = df["previous_div"] != df["div"]
+        df["is_changed"] = ranked & (df["previous_div"] != df["div"])
         df["normalized_shift_one"] = df.apply(
             lambda row: division_delta_points(row["previous_div"], row["div"]),
             axis=1,
         )
-        df["normalized_shift_two"] = df.groupby("id_role")["normalized_shift_one"].shift(1)
+        df["normalized_shift_two"] = df[ranked].groupby("id_role")["normalized_shift_one"].shift(1)
         df["map_diff"] = df.apply(
             lambda row: (row["wins"] - row["losses"]) / max(row["wins"] + row["losses"], 1),
             axis=1,
@@ -126,19 +135,18 @@ class AnalyticsFlowsService:
 
         # The shift signal is team-result only (map_diff + placement_score, computed
         # above). Individual performance is intentionally NOT folded into the Linear
-        # signal — prod analysis showed it adds ~0 over team W/L.
+        # signal: it adds ~0 over team W/L.
         return df
 
     async def create_players_shifts_is_not_exists(
         self,
         session: AsyncSession,
         tournament_id: int,
-        df: pd.DataFrame | None = None,
+        df: pd.DataFrame,
     ) -> None:
-        source_df = df if df is not None else await self.get_data_frame(session)
         players = await analytics_service.get_players_by_tournament_id(session, tournament_id)
         players_by_id = {player.player_id: player for player in players}
-        final_df = source_df[source_df["tournament_id"] == tournament_id]
+        final_df = df[df["tournament_id"] == tournament_id]
         final_df = final_df.replace({np.nan: None})
 
         for _, row in final_df.iterrows():
@@ -175,6 +183,8 @@ class AnalyticsFlowsService:
         df: pd.DataFrame,
         workspace_id: int | None = None,
         workspace_ids: typing.Sequence[int] | None = None,
+        *,
+        discipline: str,
     ) -> tuple[dict[int, float], bool]:
         start_tid = await analytics_service.lookback_start_tournament_id(
             session,
@@ -182,6 +192,7 @@ class AnalyticsFlowsService:
             OPENSKILL_LOOKBACK,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
+            discipline=discipline,
         )
         matches = await analytics_service.get_matches(
             session,
@@ -189,17 +200,21 @@ class AnalyticsFlowsService:
             tournament_id,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
+            discipline=discipline,
         )
         teams = await analytics_service.get_teams_with_players(session, tournament_id)
         grids = await load_source_grids(session, df["version_id"].dropna().unique())
+        canonical_div_for = analytics_exports(discipline).canonical_div_for
         pl = get_plackett_luce()
-        _, players_rating, _ = prepare_openskill_data(df, pl, teams, matches)
+        rosters = await analytics_service.get_rosters(session, matches)
+        _, players_rating, _ = prepare_openskill_data(df, pl, teams, matches, rosters)
 
         final_df = df[df["tournament_id"] == tournament_id].replace({np.nan: None})
         shift_map: dict[int, float] = {}
         for _, row in final_df.iterrows():
             rating = players_rating.get(row["id_role"])
-            if rating is None:
+            # An unranked row has no division to shift from.
+            if rating is None or row["div"] is None:
                 continue
             predicted_div = canonical_div_for(grids, row["version_id"], int(round(rating.mu)))
             shift_map[int(row["player_id"])] = round(float(row["div"] - predicted_div), 2)
@@ -251,12 +266,17 @@ class AnalyticsFlowsService:
         algorithm_names: typing.Iterable[str] | None = None,
         workspace_id: int | None = None,
     ) -> list[str]:
+        discipline = await tournament_discipline(session, tournament_id)
+        if discipline is None or not supports_analytics(discipline):
+            # No analytics module owns this tournament's scale: compute nothing and clear nothing already stored.
+            logger.info("Tournament {} has no analytics module ({}); nothing to recalculate", tournament_id, discipline)
+            return []
         # Scope to the tournament's own workspace when not given one, so the
         # Points/Linear recalc uses the same cohort the RPC job (workspace-scoped)
         # would — see get_tournament_workspace_id.
         if workspace_id is None:
             workspace_id = await get_tournament_workspace_id(session, tournament_id)
-        df = await self.get_data_frame(session, workspace_id=workspace_id)
+        df = await self.get_data_frame(session, workspace_id=workspace_id, discipline=discipline)
         if df.empty:
             logger.warning("No analytics data found for tournament {}", tournament_id)
             return []
@@ -294,32 +314,6 @@ class AnalyticsFlowsService:
             )
 
         return selected_algorithms
-
-    async def get_analytics(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-        workspace_id: int | None = None,
-    ):
-        await self.recalculate_analytics(
-            session,
-            tournament_id,
-            [POINTS],
-            workspace_id=workspace_id,
-        )
-
-    async def get_analytics_openskill(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-        workspace_id: int | None = None,
-    ) -> None:
-        await self.recalculate_analytics(
-            session,
-            tournament_id,
-            [OPEN_SKILL],
-            workspace_id=workspace_id,
-        )
 
 
 flows_service = AnalyticsFlowsService()

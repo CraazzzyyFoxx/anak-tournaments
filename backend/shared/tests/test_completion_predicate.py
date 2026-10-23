@@ -15,16 +15,19 @@ from types import SimpleNamespace
 import pytest
 
 from shared.core import enums
-from shared.domain.tournament_utils import completed_encounters, is_completed_encounter
+from shared.domain.tournament_utils import (
+    completed_encounters,
+    completed_encounters_in_finished_rounds,
+    has_incomplete_playable_rounds,
+    is_completed_encounter,
+)
 
 
-def _encounter(*, status, result_status, home_team_id=1, away_team_id=2) -> SimpleNamespace:
+def _encounter(*, status, result_status, encounter_id: int = 1) -> SimpleNamespace:
     return SimpleNamespace(
-        id=1,
+        id=encounter_id,
         status=status,
         result_status=result_status,
-        home_team_id=home_team_id,
-        away_team_id=away_team_id,
     )
 
 
@@ -57,16 +60,14 @@ class TestIsCompletedEncounter:
         encounter = _encounter(status=enums.EncounterStatus.OPEN, result_status=result_status)
         assert not is_completed_encounter(encounter)
 
-    def test_an_encounter_missing_a_team_never_counts(self):
-        """An unfilled bracket slot cannot have been played, whatever its
-        columns say."""
-        for missing in ("home_team_id", "away_team_id"):
-            encounter = _encounter(
-                status=enums.EncounterStatus.COMPLETED,
-                result_status=enums.EncounterResultStatus.CONFIRMED,
-                **{missing: None},
-            )
-            assert not is_completed_encounter(encounter)
+    def test_an_encounter_with_no_result_never_counts(self):
+        """An unfilled bracket slot has no participation at all, so it cannot
+        have been played -- and the CHECK behind ``status`` is what says so."""
+        encounter = _encounter(
+            status=enums.EncounterStatus.OPEN,
+            result_status=enums.EncounterResultStatus.NONE,
+        )
+        assert not is_completed_encounter(encounter)
 
 
 class TestCompletedEncounters:
@@ -80,3 +81,35 @@ class TestCompletedEncounters:
             result_status=enums.EncounterResultStatus.NONE,
         )
         assert completed_encounters([played, unplayed]) == [played]
+
+
+class TestPlayableRounds:
+    """The round lives on ``tournament.bracket_encounter`` now, so the caller
+    hands it in -- and the mapping IS the playable set: an encounter it leaves
+    out (no bracket position, or a seat still waiting upstream) is ignored,
+    exactly as a missing team used to be."""
+
+    def _round(self, encounter_id: int, *, played: bool):
+        return _encounter(
+            encounter_id=encounter_id,
+            status=enums.EncounterStatus.COMPLETED if played else enums.EncounterStatus.OPEN,
+            result_status=(enums.EncounterResultStatus.CONFIRMED if played else enums.EncounterResultStatus.NONE),
+        )
+
+    def test_only_a_round_with_nothing_left_counts(self):
+        closed_a = self._round(1, played=True)
+        closed_b = self._round(2, played=True)
+        open_one = self._round(3, played=False)
+        encounters = [closed_a, closed_b, open_one]
+        rounds = {1: 1, 2: 1, 3: 2}
+
+        assert completed_encounters_in_finished_rounds(encounters, rounds) == [closed_a, closed_b]
+        assert has_incomplete_playable_rounds(encounters, rounds)
+
+    def test_an_encounter_outside_the_mapping_holds_nothing_up(self):
+        played = self._round(1, played=True)
+        not_playable = self._round(2, played=False)
+        rounds = {1: 1}
+
+        assert completed_encounters_in_finished_rounds([played, not_playable], rounds) == [played]
+        assert not has_incomplete_playable_rounds([played, not_playable], rounds)

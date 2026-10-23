@@ -8,6 +8,7 @@ import achievementsService from "@/services/achievements.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { cn } from "@/lib/utils";
 import { useQueryParams } from "@/hooks/useQueryParams";
+import { Card } from "@/components/ui/card";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { SearchField } from "@/components/ui/search-field";
@@ -23,7 +24,11 @@ import { RarityStrip } from "@/components/achievements/RarityStrip";
 import type { Achievement, AchievementCategory } from "@/types/achievement.types";
 import { classifyRarity, rarityVarClass, RARITY_ORDER, type Rarity } from "@/lib/achievements/rarity";
 import { achievementQueryKeys } from "@/lib/achievements/query-keys";
-import type { StatsScope } from "@/lib/site/stats-scope";
+import { ALL_DISCIPLINES, showsGameMarks, type GameScopeInit } from "@/lib/site/discipline-scope";
+import { useGameScope } from "@/hooks/useGameScope";
+import { useGameDescriptors } from "@/hooks/useGameDescriptors";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 
 import AchievementsHero from "./AchievementsHero";
 import AchievementTile from "./AchievementTile";
@@ -52,12 +57,14 @@ const TileSection = ({
   title,
   count,
   rarity,
-  items
+  items,
+  games
 }: {
   title: string;
   count: ReactNode;
   rarity?: Rarity;
   items: Achievement[];
+  games?: Map<string, DisciplineDescriptor>;
 }) => (
   <section className={cn("space-y-3", rarity && rarityVarClass(rarity))}>
     <div className="flex items-baseline gap-3">
@@ -73,24 +80,25 @@ const TileSection = ({
     </div>
     <div className="aqt-ach-tiles">
       {items.map((ach) => (
-        <AchievementTile key={ach.id} achievement={ach} />
+        <AchievementTile key={ach.id} achievement={ach} games={games} />
       ))}
     </div>
   </section>
 );
 
-const AchievementsCatalog = ({ scope }: Readonly<{ scope: StatsScope }>) => {
+const AchievementsCatalog = ({ initial }: Readonly<{ initial?: GameScopeInit }>) => {
   const t = useTranslations();
   const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
-
-  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
+  const gameScope = useGameScope({ initial });
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   // One value carries the workspace dimension of the read and its cache key.
-  const scopeId = scope === "all" ? "all" : workspaceId;
-  const workspaceName =
-    scope === "all"
-      ? t("common.scope.all")
-      : workspaces.find((w) => w.id === workspaceId)?.name;
+  const { axis, resolution } = gameScope;
+  const workspaceName = axis === "all" ? t("common.scope.all") : workspaces.find((w) => w.id === axis)?.name;
+  // A multi page (spec §5): every game's rules under "all games", one game's under a game.
+  const discipline = gameScope.game;
+  const ready = resolution?.game.kind === "all" || resolution?.game.kind === "game";
+  const descriptors = useGameDescriptors();
+  const games = resolution !== null && showsGameMarks(resolution, gameScope.games ?? []) ? descriptors : undefined;
 
   const rarityParam = searchParams.get("rarity");
   const rarityFilter: Rarity | null = isRarity(rarityParam) ? rarityParam : null;
@@ -100,8 +108,10 @@ const AchievementsCatalog = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   const sort: SortBy = sortParam && SORT_VALUES.includes(sortParam) ? sortParam : "rarity";
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: achievementQueryKeys.all(scopeId),
-    queryFn: () => achievementsService.getAll(1, -1, scopeId)
+    // One game, or every game, per read: the reader pools and divides per game server-side, so the key carries it.
+    queryKey: achievementQueryKeys.all(axis, discipline ?? ALL_DISCIPLINES),
+    queryFn: ({ signal }) => achievementsService.getAll(1, -1, axis, discipline, { signal }),
+    enabled: ready
   });
 
   const results = useMemo(() => data?.results ?? [], [data?.results]);
@@ -186,6 +196,22 @@ const AchievementsCatalog = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   const filtersActive = rarityFilter !== null || categoryFilter !== null || search.trim() !== "";
 
   const clearFilters = () => setParams({ rarity: null, category: null, q: null });
+  if (resolution === null) {
+    return gameScope.isError ? (
+      <div className="aqt-player">
+        <PageStateCard state="error" headingLevel={1} description={t("common.loadError")} onAction={gameScope.refetch} />
+      </div>
+    ) : (
+      <PageSkeleton />
+    );
+  }
+  if (resolution.game.kind === "invalid" || resolution.game.kind === "empty") {
+    return (
+      <div className="aqt-player">
+        <GameScopeControl scope={gameScope} variant="multi" headingLevel={1} />
+      </div>
+    );
+  }
 
   if (isLoading) return <PageSkeleton />;
 
@@ -194,6 +220,7 @@ const AchievementsCatalog = ({ scope }: Readonly<{ scope: StatsScope }>) => {
       <div className="aqt-player">
         <PageStateCard
           state="error"
+          headingLevel={1}
           description={t("common.loadError")}
           onAction={() => void refetch()}
         />
@@ -217,7 +244,7 @@ const AchievementsCatalog = ({ scope }: Readonly<{ scope: StatsScope }>) => {
       />
 
       {/* Same toolbar shape as /tournaments: chips scroll on phones, one row from md. */}
-      <div className="flex flex-col gap-2.5 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-2.5 md:flex-row md:flex-wrap md:items-center md:gap-2">
+      <Card variant="flat" className="flex flex-col gap-2.5 p-2.5 md:flex-row md:flex-wrap md:items-center md:gap-2">
         {categories.length > 0 ? (
           <div
             role="group"
@@ -257,7 +284,9 @@ const AchievementsCatalog = ({ scope }: Readonly<{ scope: StatsScope }>) => {
           <Select value={sort} onValueChange={(v) => setParams({ sort: v === "rarity" ? null : v })}>
             <SelectTrigger
               aria-label={t("common.sortBy")}
-              className="h-8 w-auto min-w-[170px] gap-2 border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] text-caption text-[color:var(--aqt-fg-muted)] shadow-none hover:border-[color:var(--aqt-border-2)] focus:ring-0 focus:ring-offset-0 max-md:h-10 max-md:flex-1"
+              size="sm"
+              variant="surface"
+              className="w-auto min-w-[170px] gap-2 max-md:h-10 max-md:flex-1"
             >
               <SelectValue />
             </SelectTrigger>
@@ -271,7 +300,7 @@ const AchievementsCatalog = ({ scope }: Readonly<{ scope: StatsScope }>) => {
             {t("achievements.results", { count: visibleCount })}
           </span>
         </div>
-      </div>
+      </Card>
 
       {visibleCount === 0 ? (
         <PageStateCard
@@ -290,6 +319,7 @@ const AchievementsCatalog = ({ scope }: Readonly<{ scope: StatsScope }>) => {
                 title={t(`achievements.rarityName.${r}`)}
                 count={t("achievements.sectionCount", { count: visibleGrouped[r].length })}
                 items={visibleGrouped[r]}
+                games={games}
               />
             ) : null
           )}
@@ -298,6 +328,7 @@ const AchievementsCatalog = ({ scope }: Readonly<{ scope: StatsScope }>) => {
               title={t("achievements.notEarned.title")}
               count={t("achievements.sectionCount", { count: visibleNotEarned.length })}
               items={visibleNotEarned}
+              games={games}
             />
           ) : null}
         </>
@@ -306,9 +337,9 @@ const AchievementsCatalog = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   );
 };
 
-const AchievementsCatalogPage = ({ scope }: Readonly<{ scope: StatsScope }>) => (
+const AchievementsCatalogPage = ({ initial }: Readonly<{ initial?: GameScopeInit }>) => (
   <Suspense fallback={<PageSkeleton />}>
-    <AchievementsCatalog scope={scope} />
+    <AchievementsCatalog initial={initial} />
   </Suspense>
 );
 

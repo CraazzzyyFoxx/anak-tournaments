@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 
 import { SocialIcon } from "@/components/social/SocialIcon";
+import Image from "@/components/ui/image";
+import { RowButton } from "@/components/ui/row-button";
 import { TwitchEmbed } from "@/components/stream/TwitchEmbed";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
 import { getSocialProviderConfig } from "@/lib/social/providers";
@@ -83,24 +85,25 @@ export function StreamTheater({ entry, isPlaying, onPlay, now }: Readonly<Stream
         ) : (
           <>
             {entry.thumbnail_url ? (
-              // Plain <img>, not next/image: `next.config.mjs` sets
-              // `images.unoptimized`, so the optimizer never runs and a
-              // `remotePatterns` entry for static-cdn.jtvnw.net would buy
-              // nothing but a config diff. Decorative — the heading below and
-              // the button label are the accessible names.
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              // The poster comes from the streaming host (static-cdn.jtvnw.net,
+              // …), which `ui/image` serves as is when it is not a configured
+              // remote. Eager, as before: it is the frame's first paint.
+              // Decorative — the heading below and the button label are the
+              // accessible names.
+              <Image
                 src={entry.thumbnail_url}
                 alt=""
                 aria-hidden
-                className="absolute inset-0 size-full object-cover"
+                fill
+                sizes="100vw"
+                loading="eager"
+                className="object-cover"
               />
             ) : null}
             {channel ? (
-              <button
-                type="button"
+              <RowButton
                 onClick={onPlay}
-                className="group absolute inset-0 flex items-center justify-center bg-[hsl(220_22%_4%/0.45)] outline-none transition-colors hover:bg-[hsl(220_22%_4%/0.25)] focus-visible:bg-[hsl(220_22%_4%/0.25)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
+                className="group absolute inset-0 flex items-center justify-center bg-[hsl(220_22%_4%/0.45)] hover:bg-[hsl(220_22%_4%/0.25)] focus-visible:bg-[hsl(220_22%_4%/0.25)]"
               >
                 <span className="sr-only">{t("stream.page.play", { name })}</span>
                 {meta.labelKey && meta.pillStatus ? (
@@ -121,7 +124,7 @@ export function StreamTheater({ entry, isPlaying, onPlay, now }: Readonly<Stream
                 >
                   <Play className="size-7 translate-x-0.5 fill-current" />
                 </span>
-              </button>
+              </RowButton>
             ) : meta.labelKey && meta.pillStatus ? (
               <TournamentStatusPill status={meta.pillStatus} className="absolute left-3 top-3">
                 {t(meta.labelKey)}
@@ -170,8 +173,7 @@ export function StreamTheater({ entry, isPlaying, onPlay, now }: Readonly<Stream
               className="inline-flex min-w-0 items-center gap-2 text-inherit no-underline outline-none transition-colors hover:text-[color:var(--aqt-teal)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
             >
               {entry.player.avatar_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
+                <Image
                   src={entry.player.avatar_url}
                   alt=""
                   aria-hidden
@@ -222,5 +224,3 @@ export function StreamTheater({ entry, isPlaying, onPlay, now }: Readonly<Stream
     </div>
   );
 }
-
-export default StreamTheater;

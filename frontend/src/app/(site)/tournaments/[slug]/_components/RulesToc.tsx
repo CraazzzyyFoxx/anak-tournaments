@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import type { TocEntry } from "@/lib/markdown-toc";
 import { cn } from "@/lib/utils";
 
@@ -111,7 +112,12 @@ export function useActiveSection(entries: TocEntry[]): readonly [string | null, 
  * those into an animation the reader did not ask for. Scoped here, the
  * animation only happens when someone clicks a section.
  */
-function jumpToSection(event: MouseEvent<HTMLAnchorElement>, id: string, onJump?: (id: string) => void) {
+function jumpToSection(
+  event: MouseEvent<HTMLAnchorElement>,
+  id: string,
+  reduced: boolean,
+  onJump?: (id: string) => void
+) {
   const target = document.getElementById(id);
   // No such heading (a stale anchor): let the browser handle the href.
   if (target === null) return;
@@ -127,7 +133,6 @@ function jumpToSection(event: MouseEvent<HTMLAnchorElement>, id: string, onJump?
   // place.
   window.history.pushState(null, "", `#${id}`);
 
-  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   target.scrollIntoView?.({ behavior: reduced ? "auto" : "smooth", block: "start" });
 
   // A jump that moves the viewport but not the keyboard leaves a keyboard or
@@ -156,6 +161,7 @@ export function RulesToc({
   className?: string;
 }>) {
   const t = useTranslations();
+  const reduced = usePrefersReducedMotion();
 
   return (
     <nav aria-label={t("tournamentDetail.rules.toc")} className={cn("text-body", className)}>
@@ -170,7 +176,7 @@ export function RulesToc({
             <li key={`${entry.id}-${index}`}>
               <a
                 href={`#${entry.id}`}
-                onClick={(event) => jumpToSection(event, entry.id, onJump)}
+                onClick={(event) => jumpToSection(event, entry.id, reduced, onJump)}
                 aria-current={isActive ? "true" : undefined}
                 className={cn(
                   "block border-l-2 py-1 pr-2 transition-colors",

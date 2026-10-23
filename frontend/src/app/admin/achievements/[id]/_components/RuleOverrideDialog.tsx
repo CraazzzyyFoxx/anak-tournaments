@@ -1,26 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { TournamentCombobox } from "@/components/admin/TournamentCombobox";
-import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
+
+import { UserSearchCombobox } from "@/components/kit/ServerSearchCombobox";
+import { TournamentCombobox } from "@/components/tournaments/TournamentCombobox";
+import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import type { AchievementOverrideCreateInput } from "@/types/admin.types";
 import type { Tournament } from "@/types/tournament.types";
 
 /** The draft an admin is filling in, before it becomes an override on this rule. */
@@ -32,96 +21,121 @@ export interface RuleOverrideDraft {
   tournamentId?: number;
 }
 
+/**
+ * Grants or revokes one rule for one player by hand. Overrides are made from
+ * the rule's own page, so the rule is fixed; the tournaments offered are that
+ * rule's game's. Missing fields are named on submit rather than by disabling
+ * the button, so the reader sees what is missing instead of guessing.
+ */
 export function RuleOverrideDialog({
   open,
   onOpenChange,
+  ruleId,
   ruleName,
   tournaments,
   draft,
   onDraftChange,
   onSubmit,
   isSaving,
-  saveError
+  saveError,
 }: Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  ruleId: number;
   ruleName: string;
   tournaments: Tournament[];
   draft: RuleOverrideDraft;
   onDraftChange: (next: RuleOverrideDraft) => void;
-  onSubmit: () => void;
+  onSubmit: (input: AchievementOverrideCreateInput) => void;
   isSaving: boolean;
   saveError?: string;
 }>) {
   const t = useTranslations("adminAchievements");
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const submit = () => {
+    const missing = [
+      draft.userId ? null : t("overrideDialog.missingUser"),
+      draft.reason.trim() ? null : t("overrideDialog.missingReason"),
+    ].filter((label): label is string => label !== null);
+    if (missing.length > 0) {
+      setFormError(t("overrideDialog.pickFirst", { items: missing.join(", ") }));
+      return;
+    }
+    setFormError(null);
+    onSubmit({
+      achievement_rule_id: ruleId,
+      user_id: draft.userId!,
+      tournament_id: draft.tournamentId ?? null,
+      action: draft.action,
+      reason: draft.reason,
+    });
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{t("detail.ruleOverrideTitle", { name: ruleName })}</DialogTitle>
-          <DialogDescription>{t("detail.ruleOverrideDescription")}</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>{t("common.user")}</Label>
-            <UserSearchCombobox
-              value={draft.userId}
-              selectedName={draft.userName}
-              onSelect={(user) =>
-                onDraftChange({ ...draft, userId: user?.id, userName: user?.name ?? "" })
-              }
-              allowClear
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>{t("common.action")}</Label>
-              <Select
-                value={draft.action}
-                onValueChange={(v) => onDraftChange({ ...draft, action: v as "grant" | "revoke" })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="grant">{t("common.grant")}</SelectItem>
-                  <SelectItem value="revoke">{t("common.revoke")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>{t("common.tournament")} ({t("common.optional")})</Label>
-              <TournamentCombobox
-                tournaments={tournaments}
-                value={draft.tournamentId}
-                onSelect={(t) => onDraftChange({ ...draft, tournamentId: t?.id })}
-                placeholder={t("condition.none")}
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>{t("common.reason")}</Label>
-            <Textarea
-              value={draft.reason}
-              onChange={(e) => onDraftChange({ ...draft, reason: e.target.value })}
-              placeholder={t("detail.whyOverride")}
-              required
-            />
-          </div>
-          {saveError && <p className="text-sm text-destructive">{saveError}</p>}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {t("common.cancel")}
-          </Button>
-          <Button
-            onClick={onSubmit}
-            disabled={!draft.userId || !draft.reason || isSaving}
-          >
-            {isSaving ? t("common.saving") : draft.action === "grant" ? t("common.grant") : t("common.revoke")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <EntityFormDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) setFormError(null);
+        onOpenChange(next);
+      }}
+      title={t("overrideDialog.title", { name: ruleName })}
+      description={t("overrideDialog.description")}
+      onSubmit={submit}
+      isSubmitting={isSaving}
+      submitLabel={
+        draft.action === "grant" ? t("overrideDialog.grantAchievement") : t("overrideDialog.revokeAchievement")
+      }
+      errorMessage={
+        formError ?? (saveError ? t("overrideDialog.saveError", { error: saveError }) : undefined)
+      }
+      contentClassName="max-w-lg"
+    >
+      <div className="space-y-2">
+        <Label htmlFor="override-user">{t("overrideDialog.user")}</Label>
+        <UserSearchCombobox
+          id="override-user"
+          value={draft.userId}
+          selectedLabel={draft.userName}
+          onSelect={(user) => onDraftChange({ ...draft, userId: user?.id, userName: user?.name ?? "" })}
+        />
+      </div>
+      <div className="space-y-2">
+        <span id="override-action" className="block text-sm font-medium leading-none">
+          {t("overrideDialog.action")}
+        </span>
+        <ToggleGroup
+          type="single"
+          variant="pill"
+          size="sm"
+          aria-labelledby="override-action"
+          value={draft.action}
+          onValueChange={(action) => onDraftChange({ ...draft, action: action as RuleOverrideDraft["action"] })}
+        >
+          <ToggleGroupItem value="grant">{t("overrideDialog.grant")}</ToggleGroupItem>
+          <ToggleGroupItem value="revoke">{t("overrideDialog.revoke")}</ToggleGroupItem>
+        </ToggleGroup>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="override-tournament">{t("overrideDialog.tournamentOptional")}</Label>
+        <TournamentCombobox
+          id="override-tournament"
+          tournaments={tournaments}
+          value={draft.tournamentId}
+          onValueChange={(tournamentId) => onDraftChange({ ...draft, tournamentId })}
+          placeholder={t("overrideDialog.none")}
+          variant="default"
+          size="default"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="override-reason">{t("overrideDialog.reason")}</Label>
+        <Textarea
+          id="override-reason"
+          value={draft.reason}
+          onChange={(e) => onDraftChange({ ...draft, reason: e.target.value })}
+        />
+      </div>
+    </EntityFormDialog>
   );
 }

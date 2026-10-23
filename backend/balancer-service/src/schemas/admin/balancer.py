@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
-from src.schemas.base import BaseRead
+from shared.schemas.base import BaseRead
 
 __all__ = (
     "BalanceExportResponse",
@@ -40,9 +40,8 @@ class BalancerTournamentConfigRead(BaseRead):
 
 
 def _snowflake_or_none(value: str | None, field: str) -> str | None:
-    """Digits or ``None``: a snowflake outgrows a JavaScript safe integer, so it
-    travels as a string -- same contract as the per-mix
-    ``CustomGameDiscordChannelPatch.channel_id``. Empty means "none".
+    """Digits or ``None`` (empty means none): a snowflake outgrows a JavaScript
+    safe integer, so it travels as a string.
     """
     if value is None:
         return None
@@ -65,12 +64,13 @@ class WorkspaceBalancerConfigUpsert(BaseModel):
     mix_discord_channel_id: str | None = Field(
         default=None,
         description=(
-            "Workspace-wide Discord channel every mix posts its matchup to. "
-            "A mix may name its own channel instead, but only a workspace admin can."
+            "Workspace-wide Discord channel every mix posts its matchup to; "
+            "must be a text channel of the workspace's guild."
         ),
     )
     mix_voice_category_id: str | None = Field(
-        default=None, description="Discord category whose voice channels mixes move players between."
+        default=None,
+        description="Discord category of the workspace's guild whose voice channels mixes move players between.",
     )
     mix_general_voice_channel_ids: list[str] = Field(
         default_factory=list,
@@ -182,6 +182,7 @@ class BalanceExportResponse(BaseModel):
     removed_teams: int
     imported_teams: int
     balance_id: int
+    advisories: list[str] = Field(default_factory=list)
 
 
 class RanksExportResponse(BaseModel):

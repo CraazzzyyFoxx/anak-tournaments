@@ -65,26 +65,31 @@ vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() }
 }));
 
-// The section under test is chosen by `?section=`, so the query string is a
-// per-test input rather than a constant.
-let currentSearch = "stage=10&section=ffa-scoring";
-
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
   usePathname: () => "/admin/tournaments/84/bracket",
   useParams: () => ({ id: "84" }),
-  useSearchParams: () => new URLSearchParams(currentSearch)
+  useSearchParams: () => new URLSearchParams("stage=10")
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ href, children, ...rest }: { href: string; children: unknown }) => (
+  default: ({
+    href,
+    children,
+    prefetch: _prefetch,
+    ...rest
+  }: {
+    href: string;
+    children: unknown;
+    prefetch?: boolean | null;
+  }) => (
     <a href={href} {...rest}>
       {children as never}
     </a>
   )
 }));
 
-// Partial: the General section's bracket preview observes
+// Partial: the Settings page's bracket preview and round schedule observe
 // `useHubEncountersQuery`, which reads the real key factory from this module.
 vi.mock("@/lib/tournament/workspace-query-keys", async (importOriginal) => ({
   ...((await importOriginal()) as object),
@@ -130,16 +135,21 @@ function stage(stageType: StageType, regulation: Partial<StageRegulation> = {}):
     is_completed: false,
     ranking_preset: null,
     tiebreak_order: null,
-    scoring: { win: null, draw: null, loss: null },
-    swiss_bye_points: null,
-    de_grand_final_type: "no_reset",
-    seed_ranking: "slot",
-    best_of: { default: 3, by_round: {}, final: null },
-    ffa_scoring: {
+    scoring: {
+      win: null,
+      draw: null,
+      loss: null,
+      preset: "points",
       columns: [{ key: "score", label: "Score", public: true, better: "higher" }],
       placement_points: [],
       formula: "score"
     },
+    swiss_bye_points: null,
+    swiss_qualify_wins: null,
+    swiss_eliminate_losses: null,
+    de_grand_final_type: "no_reset",
+    seed_ranking: "slot",
+    best_of: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
     ...regulation,
     challonge_id: null,
     challonge_slug: null,
@@ -147,8 +157,21 @@ function stage(stageType: StageType, regulation: Partial<StageRegulation> = {}):
   };
 }
 
+/** `StageScoring` with no rule of its own: every field the preset defaults. */
+const NO_RULE = {
+  win: null,
+  draw: null,
+  loss: null,
+  preset: null,
+  columns: null,
+  placement_points: null,
+  formula: null
+};
+
 /** A rule left behind by a stage that used to be an FFA league. */
 const SAVED_SCORING = {
+  ...NO_RULE,
+  preset: "points" as const,
   columns: [{ key: "kills", label: "Kills", public: true, better: "higher" as const }],
   placement_points: [10, 6],
   formula: "place_pts + kills"
@@ -160,13 +183,13 @@ const SAVED_SCORING = {
 function unknownNameRejection(): ApiError {
   return new ApiError(
     422,
-    [{ msg: "Unknown name `kils`", code: "ffa_formula_unknown_name", field: "ffa_scoring.formula" }],
+    [{ msg: "Unknown name `kils`", code: "ffa_formula_unknown_name", field: "scoring.formula" }],
     {
-      detail: "ffa_scoring.formula: Unknown name `kils`",
+      detail: "scoring.formula: Unknown name `kils`",
       code: "unprocessable_entity",
       fields: [
         {
-          field: "ffa_scoring.formula",
+          field: "scoring.formula",
           msg: "Unknown name `kils`",
           code: "ffa_formula_unknown_name",
           offset: 12,
@@ -190,8 +213,7 @@ async function settle(times = 12) {
   }
 }
 
-async function mount(current: Stage, section = "ffa-scoring") {
-  currentSearch = `stage=10&section=${section}`;
+async function mount(current: Stage) {
   getStages.mockResolvedValue([current]);
   getTournament.mockResolvedValue({ id: 84, name: "Cup" });
   getStagesProgress.mockResolvedValue([]);
@@ -258,7 +280,7 @@ function box(label: string): HTMLElement {
   return found;
 }
 
-/** Every `<label>` the open section renders, in order. */
+/** Every `<label>` the Settings page renders, in order. */
 function labels(): string[] {
   return [...container.querySelectorAll("label")].map((element) =>
     (element.textContent ?? "").trim()
@@ -360,7 +382,9 @@ describe("Stage editor, FFA league scoring", () => {
     await save();
 
     expect(updateStage).toHaveBeenCalledTimes(1);
-    expect(payload().ffa_scoring).toEqual({
+    expect(payload().scoring).toEqual({
+      ...NO_RULE,
+      preset: "points",
       columns: [
         { key: "kills", label: "Kills", public: true, better: "higher" },
         { key: "deaths", label: "Deaths", public: false, better: "lower" }
@@ -384,7 +408,9 @@ describe("Stage editor, FFA league scoring", () => {
     await type(area("Points formula"), "place_pts");
     await save();
 
-    expect(payload().ffa_scoring).toEqual({
+    expect(payload().scoring).toEqual({
+      ...NO_RULE,
+      preset: "points",
       columns: [],
       placement_points: [3],
       formula: "place_pts"
@@ -394,7 +420,9 @@ describe("Stage editor, FFA league scoring", () => {
   it("stops at ten columns", async () => {
     await mount(
       stage("ffa_league", {
-        ffa_scoring: {
+        scoring: {
+          ...NO_RULE,
+          preset: "points",
           columns: Array.from({ length: 10 }, (_, index) => ({
             key: `c${index}`,
             label: `C${index}`,
@@ -431,16 +459,18 @@ describe("Stage editor, FFA league scoring", () => {
   it("keeps the block out of a stage that is not an FFA league", async () => {
     // A round robin that used to be an FFA league still stores its table; the
     // save of a round robin sends no FFA rule for a format that cannot use it.
-    await mount(stage("round_robin", { ffa_scoring: SAVED_SCORING }), "general");
+    await mount(stage("round_robin", { scoring: SAVED_SCORING }));
 
     await type(field("Name"), "Groups");
     await save();
 
-    expect(payload()).not.toHaveProperty("ffa_scoring");
+    // `scoring` goes back whole, so the stored rule is sent as it was — not
+    // rebuilt from the FFA editor, which this format never shows.
+    expect(payload().scoring).toEqual(SAVED_SCORING);
   });
 
   it("drops the FFA tiebreak order when the format stops being FFA", async () => {
-    await mount(stage("ffa_league", { ffa_scoring: SAVED_SCORING }), "general");
+    await mount(stage("ffa_league", { scoring: SAVED_SCORING }));
 
     await click(select("Format"));
     await choose("Round Robin");
@@ -448,7 +478,9 @@ describe("Stage editor, FFA league scoring", () => {
 
     const sent = payload();
     expect(sent.stage_type).toBe("round_robin");
-    expect(sent).not.toHaveProperty("ffa_scoring");
+    // The format changed, so every rule field goes out null: the server reads
+    // that as "the new type's own rule" (`wins`) and resets the FFA one.
+    expect(sent.scoring).toEqual(NO_RULE);
     // A lobby metric on a duel stage is silently dropped by the engine, so the
     // order the editor saves has to be one the new format can actually run.
     expect(sent.tiebreak_order?.filter((id) => id.startsWith("ffa_"))).toEqual([]);
@@ -457,7 +489,9 @@ describe("Stage editor, FFA league scoring", () => {
   it("offers a sum per column, and no metric a lobby cannot compute", async () => {
     await mount(
       stage("ffa_league", {
-        ffa_scoring: {
+        scoring: {
+          ...NO_RULE,
+          preset: "points",
           columns: [
             { key: "kills", label: "Kills", public: true, better: "higher" as const },
             { key: "deaths", label: "Deaths", public: false, better: "lower" as const }
@@ -482,13 +516,13 @@ describe("Stage editor, FFA league scoring", () => {
 
     await click(select("Standings preset"));
     expect(options()).toEqual([
-      "System default (based on type)",
+      "System default",
       "FFA default (game wins, then score)"
     ]);
   });
 
   it("hides the duel-only points fields on an FFA stage", async () => {
-    await mount(stage("ffa_league"), "tiebreakers");
+    await mount(stage("ffa_league"));
 
     // Win/draw/loss points come from beating an opponent, and a Swiss bye is a
     // missing opponent — neither exists in a lobby.
@@ -499,7 +533,7 @@ describe("Stage editor, FFA league scoring", () => {
   });
 
   it("calls the best-of knob what it sets for a lobby", async () => {
-    await mount(stage("ffa_league"), "best-of");
+    await mount(stage("ffa_league"));
 
     expect(labels()).toContain("Games per lobby");
     // `final` resolves to the last round of a bracket; a lobby has one round.
@@ -510,7 +544,7 @@ describe("Stage editor, FFA league scoring", () => {
     await choose("5 games");
     await save();
 
-    expect(payload().best_of).toEqual({ default: 5, by_round: {}, final: null });
+    expect(payload().best_of).toEqual({ default: 5, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null });
   });
 
   it("drops a per-round override the lobby would silently obey", async () => {
@@ -518,15 +552,12 @@ describe("Stage editor, FFA league scoring", () => {
     // games count as round 1 — which outranks the default. Left in the payload,
     // a leftover "5" from the generic grid decides the lobby instead of the
     // knob above, and no FFA control can reach it to clear it.
-    await mount(
-      stage("ffa_league", { best_of: { default: 3, by_round: { "1": 5 }, final: 7 } }),
-      "best-of"
-    );
+    await mount(stage("ffa_league", { best_of: { default: 3, by_round: { "1": 5 }, final: 7, swiss_qualify: null, swiss_eliminate: null } }));
 
     await click(select("Games per lobby"));
     await choose("7 games");
     await save();
 
-    expect(payload().best_of).toEqual({ default: 7, by_round: {}, final: null });
+    expect(payload().best_of).toEqual({ default: 7, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null });
   });
 });

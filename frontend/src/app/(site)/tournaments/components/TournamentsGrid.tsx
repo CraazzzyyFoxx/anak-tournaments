@@ -1,6 +1,7 @@
 "use client";
 
 import type { Tournament } from "@/types/tournament.types";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 import { cn } from "@/lib/utils";
 
 import TournamentCard from "./TournamentCard";
@@ -17,9 +18,11 @@ import TournamentCard from "./TournamentCard";
  */
 const TournamentsGrid = ({
   tournaments,
+  games,
   className
 }: {
   tournaments: Tournament[];
+  games?: Map<string, DisciplineDescriptor>;
   className?: string;
 }) => (
   <ul
@@ -31,7 +34,7 @@ const TournamentsGrid = ({
   >
     {tournaments.map((tournament) => (
       <li key={tournament.id} className="flex">
-        <TournamentCard tournament={tournament} />
+        <TournamentCard tournament={tournament} games={games} />
       </li>
     ))}
   </ul>

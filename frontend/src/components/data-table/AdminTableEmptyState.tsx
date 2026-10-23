@@ -1,11 +1,10 @@
-import { CircleMinus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 
 /**
- * No rows. When a search or a filter is what emptied the table, the state also
- * offers the way back out of it.
+ * No rows. When a search or a filter is what emptied the table, the state says
+ * so instead of the generic message and offers the way back out of it.
  */
 export function AdminTableEmptyState({
   message,
@@ -18,20 +17,23 @@ export function AdminTableEmptyState({
   hasFilters: boolean;
   onClear: () => void;
 }>) {
-  const t = useTranslations("kitTable.table");
-  const dataT = useTranslations("kitTable.dataTableExtra");
-  const narrowed = hasSearch && hasFilters ? "search and filters" : hasSearch ? "search" : "filters";
+  const t = useTranslations("kitTable.dataTableExtra");
+  const narrowed = hasSearch || hasFilters;
   return (
     <div className="flex flex-col items-center justify-center gap-2">
-      <CircleMinus aria-hidden className="size-5 text-muted-foreground/40" />
-      <p className="text-sm text-muted-foreground">{message}</p>
-      {hasSearch || hasFilters ? (
-        <>
-          <p className="text-xs text-muted-foreground">{t("nothingMatches", { noun: narrowed })}.</p>
-          <Button type="button" variant="outline" size="sm" onClick={onClear}>
-            {hasSearch && hasFilters ? dataT("clearSearchAndFilters") : hasSearch ? dataT("clearSearch") : dataT("clearFilters")}
-          </Button>
-        </>
+      <p className="text-sm text-muted-foreground">
+        {!narrowed
+          ? message
+          : hasSearch && hasFilters
+            ? t("noMatchBoth")
+            : hasSearch
+              ? t("noMatchSearch")
+              : t("noMatchFilters")}
+      </p>
+      {narrowed ? (
+        <Button type="button" variant="outline" size="sm" onClick={onClear}>
+          {hasSearch && hasFilters ? t("clearSearchAndFilters") : hasSearch ? t("clearSearch") : t("clearFilters")}
+        </Button>
       ) : null}
     </div>
   );

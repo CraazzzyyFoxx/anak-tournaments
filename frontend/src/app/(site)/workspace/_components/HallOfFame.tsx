@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { LeadersContent, LeadersSkeleton, type KpiKey } from "@/components/site/leaders";
 import { Section, SectionHead } from "@/components/site/open-layout";
 import statisticsService from "@/services/statistics.service";
+import type { PageGame } from "@/lib/site/discipline-scope";
 import type { Workspace } from "@/types/workspace.types";
 
 const TITLE_ID = "hof-title";
@@ -34,15 +35,20 @@ export function HallOfFameSkeleton() {
   );
 }
 
-/** Community-scoped totals and leaders, using the landing page's presentation. */
-export async function HallOfFame({ workspace }: Readonly<{ workspace: Workspace }>) {
+/**
+ * Community-scoped totals and leaders, in the landing page's presentation: one cross-game top under "all games", the
+ * game's own under one (spec §6.5); no leaders while the page's game is invalid, empty or unread.
+ */
+export async function HallOfFame({ workspace, game }: Readonly<{ workspace: Workspace; game: PageGame | null }>) {
   const t = await getTranslations("workspace");
   const workspaceId = workspace.id;
+  const boards = game?.kind === "all" || game?.kind === "game";
+  const discipline = game?.kind === "game" ? game.code : null;
 
   const [totals, champions, winrate] = await Promise.all([
     statisticsService.getOverallStatistics({ workspaceId }).catch(() => null),
-    statisticsService.getChampions({ workspaceId }).catch(() => null),
-    statisticsService.getTopWinratePlayers({ workspaceId }).catch(() => null)
+    boards ? statisticsService.getChampions(discipline, { workspaceId }).catch(() => null) : null,
+    boards ? statisticsService.getTopWinratePlayers(discipline, { workspaceId }).catch(() => null) : null
   ]);
 
   return (
@@ -51,22 +57,24 @@ export async function HallOfFame({ workspace }: Readonly<{ workspace: Workspace 
         totals,
         primaryKeys: PRIMARY_KEYS,
         secondaryKeys: SECONDARY_KEYS,
-        boards: [
-          {
-            title: t("hof.mostWins"),
-            sub: t("hof.mostWinsSub"),
-            rows: champions === null ? null : champions.results.slice(0, TOP),
-            value: "wins"
-          },
-          {
-            title: t("hof.bestWinrate"),
-            sub: t("hof.winrateSub"),
-            hint: t("hof.winrateHint"),
-            rows: winrate === null ? null : winrate.results.slice(0, TOP),
-            value: "winrate",
-            empty: t("hof.winrateEmpty")
-          }
-        ]
+        boards: boards
+          ? [
+              {
+                title: t("hof.mostWins"),
+                sub: t("hof.mostWinsSub"),
+                rows: champions === null ? null : champions.results.slice(0, TOP),
+                value: "wins"
+              },
+              {
+                title: t("hof.bestWinrate"),
+                sub: t("hof.winrateSub"),
+                hint: t("hof.winrateHint"),
+                rows: winrate === null ? null : winrate.results.slice(0, TOP),
+                value: "winrate",
+                empty: t("hof.winrateEmpty")
+              }
+            ]
+          : []
       })}
     </Shell>
   );

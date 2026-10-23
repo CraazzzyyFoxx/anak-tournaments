@@ -77,9 +77,8 @@ export function NotificationActions({ item, done, onResolved, className }: Notif
       <div className="flex flex-wrap items-center gap-2">
         {isCheckIn ? (
           <Button
-            static={false}
             size="sm"
-            className="h-8 px-3 text-caption"
+            className="px-3"
             aria-busy={pending}
             disabled={pending}
             onClick={() => checkIn.mutate()}
@@ -89,9 +88,8 @@ export function NotificationActions({ item, done, onResolved, className }: Notif
         ) : (
           <>
             <Button
-              static={false}
               size="sm"
-              className="h-8 px-3 text-caption"
+              className="px-3"
               aria-busy={answerInvite.isPending && answerInvite.variables === "accepted"}
               disabled={pending}
               onClick={() => answerInvite.mutate("accepted")}
@@ -99,10 +97,9 @@ export function NotificationActions({ item, done, onResolved, className }: Notif
               {t("accept")}
             </Button>
             <Button
-              static={false}
               variant="outline"
               size="sm"
-              className="h-8 border-[color:var(--aqt-border-2)] px-3 text-caption"
+              className="border-[color:var(--aqt-border-2)] px-3"
               aria-busy={answerInvite.isPending && answerInvite.variables === "declined"}
               disabled={pending}
               onClick={() => answerInvite.mutate("declined")}

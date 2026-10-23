@@ -16,11 +16,12 @@ type GetStandingsOptions = {
   includeTeamGroup?: boolean;
 };
 
-/** The three filter dimensions the list and its facet counts share. */
+/** The filter dimensions the list and its facet counts share. `discipline` null/absent is every game. */
 type TournamentFilterParams = {
   status?: TournamentStatus | null;
   isLeague?: boolean | null;
   query?: string;
+  discipline?: string | null;
 };
 
 /**
@@ -32,31 +33,38 @@ function tournamentFilterQuery(params: TournamentFilterParams): Record<string, u
   return {
     status: params.status ?? undefined,
     is_league: params.isLeague ?? undefined,
-    query: params.query?.trim() ? params.query.trim() : undefined
+    query: params.query?.trim() ? params.query.trim() : undefined,
+    discipline: params.discipline ?? undefined
   };
 }
 
 export default class tournamentService {
+  /** Picker id/name list; `discipline` narrows it to one installed game, absent lists every game's. */
   static async lookup(
     workspaceId?: number | "all" | null,
-    isLeague?: boolean | null
+    discipline?: string | null,
+    opts: { signal?: AbortSignal } = {}
   ): Promise<LookupItem[]> {
     return apiFetch("/api/v1/tournaments/lookup", {
+      signal: opts.signal,
       query: {
         workspace_id: workspaceId,
-        is_league: isLeague
+        discipline
       }
     }).then((res) => res.json());
   }
 
+  /** Every row at `per_page: -1`; `discipline` narrows to one installed game, absent lists every game's. */
   static async getAll(
     isLeague: boolean | null = null,
-    workspaceId?: number | "all" | null
+    workspaceId?: number | "all" | null,
+    discipline?: string | null
   ): Promise<PaginatedResponse<Tournament>> {
     return apiFetch(`/api/v1/tournaments`, {
       query: {
         is_league: isLeague,
         workspace_id: workspaceId,
+        discipline,
         page: 1,
         per_page: -1,
         sort: "id",
@@ -77,17 +85,18 @@ export default class tournamentService {
    * sent as `null`: the backend treats a present-but-null `status` as a real
    * value and would match nothing.
    */
-  static async listTournaments(params: {
-    workspaceId?: number | "all" | null;
-    status?: TournamentStatus | null;
-    isLeague?: boolean | null;
-    query?: string;
-    sort?: "start_date" | "participants_count";
-    order?: "asc" | "desc";
-    page?: number;
-    perPage?: number;
-  }): Promise<PaginatedResponse<Tournament>> {
+  static async listTournaments(
+    params: TournamentFilterParams & {
+      workspaceId?: number | "all" | null;
+      sort?: "start_date" | "participants_count";
+      order?: "asc" | "desc";
+      page?: number;
+      perPage?: number;
+    },
+    opts: { signal?: AbortSignal } = {}
+  ): Promise<PaginatedResponse<Tournament>> {
     return apiFetch(`/api/v1/tournaments`, {
+      signal: opts.signal,
       query: {
         page: params.page ?? 1,
         per_page: params.perPage ?? 24,
@@ -103,13 +112,12 @@ export default class tournamentService {
   }
 
   /** Counts for the filter chips of the list above, under the same filters. */
-  static async getFacets(params: {
-    workspaceId?: number | "all" | null;
-    status?: TournamentStatus | null;
-    isLeague?: boolean | null;
-    query?: string;
-  }): Promise<TournamentFacets> {
+  static async getFacets(
+    params: TournamentFilterParams & { workspaceId?: number | "all" | null },
+    opts: { signal?: AbortSignal } = {}
+  ): Promise<TournamentFacets> {
     return apiFetch(`/api/v1/tournaments/facets`, {
+      signal: opts.signal,
       query: {
         workspace_id: params.workspaceId,
         ...tournamentFilterQuery(params)
@@ -160,7 +168,7 @@ export default class tournamentService {
           "links",
           // The tournament's OWN division grid. Without this entity the read
           // returns `division_grid_version: null` and every consumer silently
-          // falls back to the global OW ladder (`getDefaultDivisionGrid`), so
+          // falls back to the global OW ladder (`OW_REFERENCE_GRID`), so
           // the draft room rendered ladder divisions instead of the grid the
           // tournament is actually seeded and balanced on.
           "division_grid_version",

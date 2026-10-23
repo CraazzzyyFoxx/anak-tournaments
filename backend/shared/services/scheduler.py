@@ -1,16 +1,16 @@
 """Shared ``AsyncIOScheduler`` lifecycle for periodic worker ticks.
 
-Every worker running one leader-locked periodic tick (OverFast rank
-collection, subscription collection, match-log stall recovery, Twitch poll)
-reimplemented the same module-level singleton by hand: guard against a
-double start, build an ``AsyncIOScheduler`` with a single non-overlapping
-interval job, and tear it down on shutdown. This wraps that shape once so
-each service keeps only its tick logic.
+Each worker running one leader-locked periodic tick (OverFast rank collection,
+subscription collection, match-log stall recovery, Twitch poll) keeps only its
+tick logic; this owns the module-level singleton: guard against a double start,
+build an ``AsyncIOScheduler`` with a single non-overlapping interval job, and
+tear it down on shutdown.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from datetime import UTC, datetime
 from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -37,8 +37,12 @@ class IntervalScheduler:
         seconds: int,
         args: Sequence[Any] = (),
         kwargs: dict[str, Any] | None = None,
+        run_now: bool = False,
     ) -> None:
-        """Start the interval job unless already running. No-op otherwise."""
+        """Start the interval job unless already running. No-op otherwise.
+
+        ``run_now`` fires the first run at start instead of one interval later.
+        """
         if self._scheduler is not None:
             return
         self._scheduler = AsyncIOScheduler(timezone="UTC")
@@ -51,6 +55,7 @@ class IntervalScheduler:
             coalesce=True,
             args=list(args),
             kwargs=kwargs or {},
+            **({"next_run_time": datetime.now(UTC)} if run_now else {}),
         )
         self._scheduler.start()
         self._logger.info("{} scheduler started (tick={}s)", self._label, seconds)

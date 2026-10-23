@@ -10,27 +10,15 @@ unplayable.
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest import IsolatedAsyncioTestCase, mock
 
-
-def _ensure_test_env() -> None:
-    for key, value in {
-        "DEBUG": "true",
-    }.items():
-        os.environ.setdefault(key, value)
-
-
-_ensure_test_env()
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from shared.core.enums import HeroClass  # noqa: E402
 from shared.core.social import SocialProvider  # noqa: E402
 from shared.division_grid import load_runtime_grid  # noqa: E402
 from shared.domain.forms import FormField, FormSchema, FormSection  # noqa: E402
@@ -110,6 +98,7 @@ def _registration(
         stream_pov=False,
         identities=[identity],
         handles=lambda provider: [identity.handle] if provider == SocialProvider.BATTLENET else [],
+        primary_game_identity=lambda *, provider: identity if provider == SocialProvider.BATTLENET else None,
         roles=[
             SimpleNamespace(
                 id=index,
@@ -140,6 +129,8 @@ async def _resolve(
         tournament_id=registration.tournament_id,
         form=form,
         grid=_GRID,
+        role_codes=("tank", "damage", "support"),
+        discipline="overwatch",
     )
     return rosters[registration.id]
 
@@ -151,7 +142,7 @@ class TestResolveRegistrationRanks(IsolatedAsyncioTestCase):
         with mock.patch.object(roster_engine.ranks, "resolve", resolve):
             roster = await _resolve(_Session([(9, 77)]), registration, workspace_id=1)
         self.assertEqual(roster.rank_on("tank"), 2500)
-        self.assertEqual(roster.source_on("tank"), "registration")
+        self.assertEqual(roster.role_sources["tank"], "registration")
         # The registration's own number is handed to the resolver as its layer
         # rather than compared against the others here.
         self.assertEqual(resolve.await_args.kwargs["registration_ranks"], {(9, "tank"): 2500})
@@ -165,7 +156,7 @@ class TestResolveRegistrationRanks(IsolatedAsyncioTestCase):
         with mock.patch.object(roster_engine.ranks, "resolve", resolve):
             roster = await _resolve(_Session([(9, 77)]), registration, workspace_id=1)
         self.assertEqual(roster.rank_on("tank"), 3200)
-        self.assertEqual(roster.source_on("tank"), "workspace")
+        self.assertEqual(roster.role_sources["tank"], "workspace")
         # A blank role contributes no registration layer, so it cannot pin itself.
         self.assertEqual(resolve.await_args.kwargs["registration_ranks"], {})
 
@@ -232,8 +223,8 @@ class TestResolveRegistrationRanks(IsolatedAsyncioTestCase):
         resolve = mock.AsyncMock(return_value={(9, "tank"): ResolvedRank(2500, "registration")})
         with mock.patch.object(roster_engine.ranks, "resolve", resolve):
             roster = await _resolve(_Session([(9, 77)]), registration, workspace_id=1)
-        self.assertEqual([entry.role.slot_code for entry in roster.roles], ["tank"])
-        self.assertEqual(roster.playable_roles, frozenset({HeroClass.tank}))
+        self.assertEqual([entry.role for entry in roster.roles], ["tank"])
+        self.assertEqual(roster.playable_roles, frozenset({"tank"}))
         self.assertEqual(roster.role_ranks, {"tank": 2500})
         self.assertIsNone(roster.rank_on("damage"))
         # Judged over the declared roles only -- the undeclared one cannot make
@@ -270,7 +261,7 @@ class TestFlexModesAtTheEngineLevel(IsolatedAsyncioTestCase):
                 # is synthesized: all three come out playable.
                 self.assertEqual(
                     roster.playable_roles,
-                    frozenset({HeroClass.tank, HeroClass.damage, HeroClass.support}),
+                    frozenset({"tank", "damage", "support"}),
                 )
                 self.assertTrue(roster.is_ranked_complete)
                 self.assertEqual(roster.role_ranks, {"tank": 2500, "damage": 2500, "support": 2500})
@@ -302,5 +293,5 @@ class TestFlexModesAtTheEngineLevel(IsolatedAsyncioTestCase):
                 workspace_id=1,
                 form=_flex_form("forced", enabled=False),
             )
-        self.assertEqual([entry.role.slot_code for entry in roster.roles], ["tank"])
+        self.assertEqual([entry.role for entry in roster.roles], ["tank"])
         self.assertEqual(roster.role_ranks, {"tank": 2500})

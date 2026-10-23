@@ -2,8 +2,8 @@
 
 Each service is its own uv-workspace member with its own ``tests/`` directory
 and its own ``Settings`` (pydantic-settings, extending
-``shared.core.config.BaseServiceSettings``). Before this module existed, every
-service re-derived the same three things by hand, in nearly every test file:
+``shared.core.config.BaseServiceSettings``). Every suite needs the same three
+things:
 
 1. **env** (:mod:`shared.testing.env`) -- load a local ``.env`` if present,
    then the committed ``testing/test.env`` dummy so ``Settings()`` can
@@ -31,12 +31,13 @@ from shared.testing.db import (
 )
 from shared.testing.env import apply_test_env_defaults
 from shared.testing.factories import division_grid, division_tier
-from shared.testing.sqlite_dialect import install_postgres_type_shims
+from shared.testing.sqlite_dialect import create_sqlite_tables, install_postgres_type_shims
 
 __all__ = (
     "PROTECTED_DB_NAMES",
     "apply_test_env_defaults",
     "configure_test_cache",
+    "create_sqlite_tables",
     "create_test_async_engine",
     "db_session",
     "division_grid",

@@ -254,7 +254,7 @@ export function sanitizeSchema(schema: FormSchema): FormSchema {
 // Refusing to send one
 // ---------------------------------------------------------------------------
 
-export type FieldIssueCode =
+type FieldIssueCode =
   | "labelRequired"
   | "keyReserved"
   | "optionsRequired"

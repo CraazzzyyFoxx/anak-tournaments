@@ -1,6 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { UserProfile, UserTournament } from "@/types/user.types";
-import { CardSurface, ProfileStat } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface, ProfileStat } from "@/components/profile/atoms";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { tournamentTag } from "@/app/(site)/users/components/shared/list-utils";
 
 interface Props {
@@ -172,9 +173,7 @@ const OverviewCareerList = async ({ profile, tournaments = [] }: Props) => {
         {totalPlaced > 0 ? (
           <div className="flex flex-col gap-2.5">
             <div className="flex items-baseline justify-between gap-2">
-              <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-                {t("users.overview.career.finishes")}
-              </span>
+              <Eyebrow className="aqt-tnum">{t("users.overview.career.finishes")}</Eyebrow>
               <span className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">
                 {t("users.overview.career.placements", { count: totalPlaced })}
               </span>
@@ -208,12 +207,9 @@ const OverviewCareerList = async ({ profile, tournaments = [] }: Props) => {
         {points.length > 0 ? (
           <div className="flex flex-col gap-2.5">
             <div className="flex items-baseline justify-between gap-2">
-              <span
-                className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
-                title={t("users.overview.placement.hint")}
-              >
+              <Eyebrow className="aqt-tnum" title={t("users.overview.placement.hint")}>
                 {t("users.overview.placement.title")}
-              </span>
+              </Eyebrow>
               <span className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">
                 {t("users.overview.placement.subtitle", { count: n })}
               </span>

@@ -27,24 +27,28 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import sqlalchemy as sa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from shared import models  # noqa: E402
 from shared.core import enums  # noqa: E402
 from shared.domain.forms import FormField, FormSchema, FormSection  # noqa: E402
+from shared.domain.team_format import TeamFormat  # noqa: E402
 from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.platform.outbox import EventOutbox  # noqa: E402
 from shared.models.registration.registration import (  # noqa: E402
-    BalancerRegistrationForm,
-    BalancerRegistrationFormVersion,
+    RegistrationForm,
+    RegistrationFormVersion,
 )
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament, TournamentPhaseSchedule  # noqa: E402
-from src import models  # noqa: E402
+from shared.services.team_format import save_tournament_format  # noqa: E402
 from src.schemas.registration import RegistrationSubmit  # noqa: E402
+from src.services.registration import teams as teams_module  # noqa: E402
 from src.services.registration.teams import TEAM_COMPLETE, TEAM_FORMING, teams_service  # noqa: E402
 
 #: Three places, none of them a role: the squad shape this file exists for.
@@ -68,10 +72,19 @@ async def _seed(session: Any) -> SimpleNamespace:
         slug=f"flexros-{suffix}",
         status=enums.TournamentStatus.REGISTRATION,
         team_formation="registration",
-        roster_slots_json=dict(ALL_FLEX),
     )
     session.add(tournament)
     await session.flush()
+    await save_tournament_format(
+        session,
+        tournament,
+        TeamFormat(
+            discipline="overwatch",
+            name="Open three",
+            starter_min=sum(ALL_FLEX.values()),
+            starter_max=sum(ALL_FLEX.values()),
+        ),
+    )
     now = datetime.now(UTC)
     session.add(
         TournamentPhaseSchedule(
@@ -82,10 +95,10 @@ async def _seed(session: Any) -> SimpleNamespace:
         )
     )
 
-    form = BalancerRegistrationForm(tournament_id=tournament.id, workspace_id=workspace.id)
+    form = RegistrationForm(tournament_id=tournament.id, workspace_id=workspace.id)
     session.add(form)
     await session.flush()
-    version = BalancerRegistrationFormVersion(form_id=form.id, number=1, schema_json=SCHEMA.model_dump(mode="json"))
+    version = RegistrationFormVersion(form_id=form.id, number=1, schema_json=SCHEMA.model_dump(mode="json"))
     form.current_version = version
     await session.flush()
 
@@ -133,12 +146,12 @@ def _submit(seeded: SimpleNamespace, battle_tag: str) -> RegistrationSubmit:
 
 async def _slots_held(session: Any, team_id: int) -> list[str]:
     result = await session.scalars(
-        sa.select(models.BalancerRegistration.team_slot_code)
+        sa.select(models.Registration.team_slot_code)
         .where(
-            models.BalancerRegistration.registration_team_id == team_id,
-            models.BalancerRegistration.deleted_at.is_(None),
+            models.Registration.registration_team_id == team_id,
+            models.Registration.deleted_at.is_(None),
         )
-        .order_by(models.BalancerRegistration.id)
+        .order_by(models.Registration.id)
     )
     return list(result)
 
@@ -180,7 +193,12 @@ def test_a_three_flex_roster_is_founded_and_filled_by_two_invites(db_session) ->
         finally:
             await _drop(db_session, seeded)
 
-    create_status, create_slots, final_status, final_slots = asyncio.run(_run())
+    # This is a roster/DB check; Redis limiter behavior has its own fail-closed tests.
+    with (
+        patch.object(teams_module, "assert_invite_attempt_allowed", AsyncMock()),
+        patch.object(teams_module, "assert_accept_attempt_allowed", AsyncMock()),
+    ):
+        create_status, create_slots, final_status, final_slots = asyncio.run(_run())
 
     # One of three places taken: the shape is not satisfied yet.
     assert (create_status, create_slots) == (TEAM_FORMING, ["flex"])

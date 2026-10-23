@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
-import { Lock, Wrench } from "lucide-react";
+import { Lock } from "lucide-react";
 
+import { Card } from "@/components/ui/card";
+import { RowButton } from "@/components/ui/row-button";
 import { SearchField } from "@/components/ui/search-field";
-import { cn } from "@/lib/utils";
 import type { RbacRole } from "@/types/rbac.types";
 
 /**
@@ -19,11 +20,14 @@ import type { RbacRole } from "@/types/rbac.types";
 export function RoleList({
   roles,
   selectedRoleId,
-  onSelect
+  onSelect,
+  actions
 }: Readonly<{
   roles: RbacRole[];
   selectedRoleId: number | null;
   onSelect: (roleId: number) => void;
+  /** The scope switch and Create role, above the narrowing box. */
+  actions?: ReactNode;
 }>) {
   const t = useTranslations("adminAccess.common");
   const [query, setQuery] = useState("");
@@ -33,11 +37,9 @@ export function RoleList({
     : roles;
 
   return (
-    <div className="rounded-xl border border-border bg-card">
-      <div className="space-y-2 border-b border-border px-3 py-3">
-        <p className="text-xs tabular-nums text-muted-foreground">
-          {t("roleCountInScope", { count: roles.length })}
-        </p>
+    <Card variant="flat">
+      <div className="space-y-2 border-b border-border p-3">
+        {actions}
         <SearchField
           label={t("filterRoles")}
           placeholder={t("searchRoles")}
@@ -58,43 +60,36 @@ export function RoleList({
             const selected = role.id === selectedRoleId;
             return (
               <li key={role.id}>
-                <button
-                  type="button"
+                <RowButton
                   aria-current={selected ? "true" : undefined}
                   onClick={() => onSelect(role.id)}
-                  className={cn(
-                    "flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-left transition-colors",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    selected
-                      ? "border-primary bg-primary/10"
-                      : "border-transparent hover:bg-accent/40"
-                  )}
+                  className="flex items-center justify-between gap-2 rounded-md px-2.5 py-2"
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium text-foreground">
                       {role.name}
                     </span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {role.description || t("noDescription")}
-                    </span>
+                    {role.description ? (
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {role.description}
+                      </span>
+                    ) : null}
                   </span>
                   {role.is_system ? (
-                    <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-                      <Lock aria-hidden className="size-3.5" />
-                      {t("system")}
-                    </span>
-                  ) : (
-                    <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-                      <Wrench aria-hidden className="size-3.5" />
-                      {t("custom")}
-                    </span>
-                  )}
-                </button>
+                    <Lock
+                      role="img"
+                      aria-label={t("system")}
+                      className="size-3.5 shrink-0 text-muted-foreground"
+                    >
+                      <title>{t("system")}</title>
+                    </Lock>
+                  ) : null}
+                </RowButton>
               </li>
             );
           })}
         </ul>
       )}
-    </div>
+    </Card>
   );
 }

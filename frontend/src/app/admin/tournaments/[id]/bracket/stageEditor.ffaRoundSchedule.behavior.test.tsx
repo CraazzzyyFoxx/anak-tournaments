@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// The Round schedule section on an FFA stage.
+// The Round schedule block of the Settings page on an FFA stage.
 //
 // The section read `encounterService.getAll`, which answers DUELS — an FFA
 // stage's lobbies are never in that list. So a stage with two generated lobbies
@@ -10,7 +10,7 @@
 //
 // What is pinned here:
 //  1. an FFA stage offers exactly ONE row, covering every lobby of the stage;
-//  2. Apply writes `scheduled_at` to every lobby — one PATCH each, and nothing
+//  2. Save writes `scheduled_at` to every lobby — one PATCH each, and nothing
 //     but that field, which is all `_FFA_EDITABLE_FIELDS` accepts;
 //  3. the lobby reads are refreshed afterwards, or the panel and the lobby page
 //     keep printing the old kickoff.
@@ -79,18 +79,27 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
   usePathname: () => "/admin/tournaments/84/bracket",
   useParams: () => ({ id: "84" }),
-  useSearchParams: () => new URLSearchParams("stage=10&section=schedule")
+  useSearchParams: () => new URLSearchParams("stage=10")
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ href, children, ...rest }: { href: string; children: unknown }) => (
+  default: ({
+    href,
+    children,
+    prefetch: _prefetch,
+    ...rest
+  }: {
+    href: string;
+    children: unknown;
+    prefetch?: boolean | null;
+  }) => (
     <a href={href} {...rest}>
       {children as never}
     </a>
   )
 }));
 
-// Partial: the section's query reads the real key factory from this module.
+// Partial: the schedule's query reads the real key factory from this module.
 vi.mock("@/lib/tournament/workspace-query-keys", async (importOriginal) => ({
   ...((await importOriginal()) as object),
   invalidateTournamentWorkspace: (...args: unknown[]) => invalidateWorkspace(...args)
@@ -113,16 +122,21 @@ function ffaStage(): Stage {
     is_completed: false,
     ranking_preset: null,
     tiebreak_order: null,
-    scoring: { win: null, draw: null, loss: null },
-    swiss_bye_points: null,
-    de_grand_final_type: "no_reset",
-    seed_ranking: "slot",
-    best_of: { default: 3, by_round: {}, final: null },
-    ffa_scoring: {
+    scoring: {
+      win: null,
+      draw: null,
+      loss: null,
+      preset: "points",
       columns: [{ key: "score", label: "Счёт", public: true, better: "higher" }],
       placement_points: [],
       formula: "score"
     },
+    swiss_bye_points: null,
+    swiss_qualify_wins: null,
+    swiss_eliminate_losses: null,
+    de_grand_final_type: "no_reset",
+    seed_ranking: "slot",
+    best_of: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
     challonge_id: null,
     challonge_slug: null,
     items: [
@@ -265,10 +279,12 @@ describe("Stage editor round schedule on an FFA stage", () => {
 
     const input = scheduleRow("Lobbies").querySelector("input");
     await type(input as HTMLInputElement, "19:30");
-    const apply = [...scheduleRow("Lobbies").querySelectorAll("button")].find(
-      (element) => (element.textContent ?? "").trim() === "Apply"
-    );
-    await click(apply);
+    const save = [
+      ...(container
+        .querySelector('[role="region"][aria-label="Unsaved changes"]')
+        ?.querySelectorAll("button") ?? [])
+    ].find((element) => (element.textContent ?? "").trim() === "Save changes");
+    await click(save);
 
     const expected = zonedInputToUtc(todayAt("19:30"), VIEWER_ZONE);
     const calls = updateEncounter.mock.calls as [number, EncounterUpdateInput][];

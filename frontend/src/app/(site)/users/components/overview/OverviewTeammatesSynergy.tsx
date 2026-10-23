@@ -1,16 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { HandleLabel } from "@/components/HandleLabel";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
+import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { useTranslations } from "next-intl";
 import { ArrowRight } from "lucide-react";
 import { UserBestTeammate } from "@/types/user.types";
-import { LogStatsName } from "@/types/stats.types";
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface } from "@/components/profile/atoms";
 import { winrateColor } from "@/lib/colors";
-import { heroInitials } from "@/components/hero/heroRole";
+import { cn } from "@/lib/utils";
 import { getPlayerSlug } from "@/lib/player";
+import { Button } from "@/components/ui/button";
 import { DataPagination } from "@/components/ui/data-pagination";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { SearchField } from "@/components/ui/search-field";
 import {
   Dialog,
@@ -44,10 +47,10 @@ const OverviewTeammatesSynergy = ({ teammates, totalCount, totalMaps }: Props) =
       action={
         <Dialog>
           <DialogTrigger asChild>
-            <button type="button" className="aqt-pf-link">
+            <Button variant="link" size="inline" className="[&_svg]:size-3">
               {t("common.all")}
-              <ArrowRight aria-hidden className="size-3" />
-            </button>
+              <ArrowRight aria-hidden />
+            </Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)] p-0">
             <div className="aqt-player flex max-h-[80vh] flex-col">
@@ -86,7 +89,6 @@ const TeammateRows = ({
   return (
     <div data-players>
       {top.map((tm) => {
-        const [nm, tag] = tm.user.name.split("#");
         const wrPct = Math.max(0, Math.min(100, tm.winrate * 100));
         const color = winrateColor(wrPct);
         return (
@@ -95,19 +97,13 @@ const TeammateRows = ({
             href={`/users/${getPlayerSlug(tm.user.name)}`}
             className="group grid grid-cols-[26px_minmax(0,1fr)_auto] items-center gap-2.5 border-b border-[color:var(--aqt-border)] px-[18px] py-2.5 transition-colors last:border-b-0 hover:bg-[hsl(0_0%_100%/0.02)]"
           >
-            <span
-              className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-[color:var(--aqt-card-2)] font-onest text-label font-bold text-[color:var(--aqt-fg-muted)]"
-              aria-hidden
-            >
-              {heroInitials(nm)}
-            </span>
+            <PlayerAvatar user={tm.user} size={26} />
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="truncate text-caption font-semibold text-[color:var(--aqt-fg)] group-hover:text-[color:var(--aqt-teal)]">
-                  {nm}
-                </span>
-                {tag ? <span className="aqt-tnum text-label text-[color:var(--aqt-fg-faint)]">#{tag}</span> : null}
-              </div>
+              <HandleLabel
+                handle={tm.user.name}
+                className="block text-caption font-semibold text-[color:var(--aqt-fg)] group-hover:text-[color:var(--aqt-teal)]"
+                tagClassName="aqt-tnum text-label"
+              />
               <div className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">
                 {t("users.overview.teammates.playedMaps", { count: tm.tournaments, maps: tm.maps })}
               </div>
@@ -145,6 +141,10 @@ const AllTeammatesTable = ({
   onSearchChange: (value: string) => void;
 }) => {
   const t = useTranslations();
+  // The teammate read's per-match averages (`kda`, MVP `performance`) exist only for games that record them: a
+  // column shows when some teammate has a value, never as a column of dashes for a game without that vocabulary.
+  const hasKda = teammates.some((tm) => tm.stats?.kda != null);
+  const hasMvp = teammates.some((tm) => tm.stats?.performance != null);
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const rows = [...teammates].sort((a, b) => b.tournaments - a.tournaments);
@@ -183,24 +183,32 @@ const AllTeammatesTable = ({
                 { id: "played", label: t("users.overview.teammates.col.played"), left: false },
                 { id: "maps", label: t("users.overview.teammates.col.maps"), left: false },
                 { id: "wr", label: t("users.overview.teammates.col.wr"), left: false },
-                { id: "kda", label: t("users.overview.teammates.col.kda"), left: false },
-                { id: "mvp", label: t("users.overview.teammates.col.mvp"), left: false }
+                ...(hasKda ? [{ id: "kda", label: t("users.overview.teammates.col.kda"), left: false }] : []),
+                ...(hasMvp ? [{ id: "mvp", label: t("users.overview.teammates.col.mvp"), left: false }] : [])
               ].map((h) => (
-                <th key={h.id} className={cnHeader(h.left)}>
+                <th
+                  key={h.id}
+                  className={cn(
+                    eyebrowClass(),
+                    "aqt-tnum border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)] px-3 py-2.5",
+                    h.left ? "text-left" : "text-right"
+                  )}
+                >
                   {h.label}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {paged.map((tm) => {
-              const [tmName, tmTag] = tm.user.name.split("#");
-              return (
+            {paged.map((tm) => (
                 <tr key={tm.user.id} className="border-b border-[color:var(--aqt-border)] last:border-b-0 hover:bg-[hsl(0_0%_100%/0.02)]">
                   <td className="px-3 py-2">
-                    <HoverPrefetchLink href={`/users/${getPlayerSlug(tm.user.name)}`} className="inline-flex items-center gap-1.5 hover:text-[color:var(--aqt-teal)]">
-                      <span className="font-semibold text-[color:var(--aqt-fg)]">{tmName}</span>
-                      {tmTag ? <span className="aqt-tnum text-label text-[color:var(--aqt-fg-faint)]">#{tmTag}</span> : null}
+                    <HoverPrefetchLink href={`/users/${getPlayerSlug(tm.user.name)}`} className="hover:text-[color:var(--aqt-teal)]">
+                      <HandleLabel
+                        handle={tm.user.name}
+                        className="font-semibold text-[color:var(--aqt-fg)]"
+                        tagClassName="aqt-tnum text-label"
+                      />
                     </HoverPrefetchLink>
                   </td>
                   <td className="aqt-tnum px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">{tm.tournaments}</td>
@@ -211,18 +219,21 @@ const AllTeammatesTable = ({
                   >
                     {(tm.winrate * 100).toFixed(0)}%
                   </td>
-                  <td className="aqt-tnum px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">
-                    {formatStat(tm.stats?.[LogStatsName.KDA], 2)}
-                  </td>
-                  <td className="aqt-tnum px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">
-                    {formatStat(tm.stats?.[LogStatsName.Performance], 1)}
-                  </td>
+                  {hasKda ? (
+                    <td className="aqt-tnum px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">
+                      {formatStat(tm.stats?.kda, 2)}
+                    </td>
+                  ) : null}
+                  {hasMvp ? (
+                    <td className="aqt-tnum px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">
+                      {formatStat(tm.stats?.performance, 1)}
+                    </td>
+                  ) : null}
                 </tr>
-              );
-            })}
+            ))}
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-caption text-[color:var(--aqt-fg-dim)]">
+                <td colSpan={4 + Number(hasKda) + Number(hasMvp)} className="px-3 py-6 text-center text-caption text-[color:var(--aqt-fg-dim)]">
                   {t("users.overview.teammates.noMatch")}
                 </td>
               </tr>
@@ -236,7 +247,7 @@ const AllTeammatesTable = ({
           totalPages={pages}
           onPageChange={setPage}
           className="border-t border-[color:var(--aqt-border)] px-5 py-2.5"
-          summary={
+          leading={
             <span className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">
               {t("users.overview.teammates.pageRange", {
                 start: String((safePage - 1) * perPage + 1),
@@ -250,10 +261,5 @@ const AllTeammatesTable = ({
     </div>
   );
 };
-
-const cnHeader = (left: boolean) =>
-  `aqt-tnum border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)] px-3 py-2.5 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)] ${
-    left ? "text-left" : "text-right"
-  }`;
 
 export default OverviewTeammatesSynergy;

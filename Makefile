@@ -1,15 +1,23 @@
 .PHONY: help dev-build dev-up dev-up-full dev-down dev-restart dev-logs dev-ps dev-health dev-rebuild \
 	prod-build prod-pull prod-migrate prod-discord-emoji prod-up prod-down prod-logs prod-scale prod-small prod-medium prod-large migrate discord-emoji test clean \
+	maint-on maint-eta maint-off \
 	build up down restart logs ps health build-prod up-prod down-prod logs-prod \
-	app-logs identity-logs parser-logs frontend-logs discord-logs balancer-logs stream-logs \
-	app-restart identity-restart parser-restart frontend-restart \
+	app-logs identity-logs stats-logs frontend-logs discord-logs balancer-logs stream-logs \
+	app-restart identity-restart stats-restart frontend-restart \
 	monitoring-up monitoring-down monitoring-logs monitoring-ps \
 	backup-up backup-down backup-logs backup-run backup-ls cleanup-run \
-	app-rebuild identity-rebuild parser-rebuild frontend-rebuild \
-	loadtest loadtest-ui
+	app-rebuild identity-rebuild stats-rebuild frontend-rebuild \
+	loadtest loadtest-ui e2e-up e2e-down e2e
 
 COMPOSE = docker compose
 PROD_COMPOSE = docker compose -f docker-compose.production.yml
+# Isolated stack for the Playwright suite (docker-compose.e2e.yml): own project,
+# tmpfs database, nginx on :8090 only. The stack bind-mounts the source of
+# E2E_TREE; point it at a snapshot so work in progress can't break a run:
+#   git worktree add --detach ../owt-e2e-tree HEAD   (plus backend/env/*.env, .env, proxy/xray.json)
+#   make e2e-up E2E_TREE=../owt-e2e-tree
+E2E_TREE ?= .
+E2E_COMPOSE = cd $(E2E_TREE) && docker compose -p owt-e2e -f docker-compose.yml -f docker-compose.e2e.yml
 # nginx.conf is bind-mounted as a single file, so a new checkout swaps the inode
 # under the running container and nothing restarts it: the old config keeps
 # serving. Its hash is stamped on the nginx service as a label
@@ -36,8 +44,10 @@ BACKUP_COMPOSE = docker compose -f docker-compose.backup.yml --env-file $(BACKUP
 #
 # Sizes, calibrated by measured CPU per request (one faststream process = one
 # event loop = 1 core ceiling, ~0.85 usable): tournament ~46 ms/req on its
-# hottest uncacheable route (registration/form) = ~18 rps per replica, app-svc
-# ~20 ms on live routes plus ~107 ms per response-cache miss on user profiles,
+# hottest uncacheable route (registration/form) = ~18 rps per replica, the user
+# profile reads ~20 ms on live routes plus ~107 ms per response-cache miss
+# (measured on app-svc before the /users/* and statistics reads moved to
+# stats-svc, which now gets the replica counts app-svc had),
 # identity ~6-12 ms and bounded by SESSIONS, not rps (the gateway caches each
 # validate_token verdict for 30s). small = a 4 CPU / 8G box, large needs 8.
 # `make prod-up` / `make prod-scale` / GitHub release all honour PROD_SIZE so a
@@ -45,9 +55,9 @@ BACKUP_COMPOSE = docker compose -f docker-compose.backup.yml --env-file $(BACKUP
 # Override a size on the CLI, e.g. make prod-up PROD_SIZE=medium
 # or poke one service: make prod-up PROD_SCALE='app-svc=2 balancer-svc=2'
 PROD_SIZE ?= small
-PROD_SCALE_small  := app-svc=1 identity-svc=1 tournament-svc=2 frontend=2
-PROD_SCALE_medium := app-svc=2 identity-svc=1 tournament-svc=2 frontend=2
-PROD_SCALE_large  := app-svc=2 identity-svc=2 tournament-svc=4 frontend=3
+PROD_SCALE_small  := app-svc=1 stats-svc=1 identity-svc=1 tournament-svc=2 frontend=2
+PROD_SCALE_medium := app-svc=2 stats-svc=2 identity-svc=1 tournament-svc=2 frontend=2
+PROD_SCALE_large  := app-svc=2 stats-svc=2 identity-svc=2 tournament-svc=4 frontend=3
 PROD_SCALE ?= $(PROD_SCALE_$(PROD_SIZE))
 
 help:
@@ -72,6 +82,9 @@ help:
 	@echo "  make prod-small     - Scale production to small (1 tournament/app/identity/frontend)"
 	@echo "  make prod-medium    - Scale production to medium (2 of each)"
 	@echo "  make prod-large     - Scale production to large (4 tournament, 3 frontend)"
+	@echo "  make maint-on       - Show the maintenance page, ETA in MIN minutes (default 180)"
+	@echo "  make maint-eta      - Move the maintenance ETA to MIN minutes from now"
+	@echo "  make maint-off      - Hide the maintenance page"
 	@echo ""
 	@echo "  make monitoring-up  - Start the monitoring stack (on home, see monitoring/README.md)"
 	@echo "  make monitoring-down- Stop monitoring stack"
@@ -86,6 +99,9 @@ help:
 	@echo ""
 	@echo "  make migrate        - Run backend migrations"
 	@echo "  make test           - Run backend tests"
+	@echo "  make e2e-up         - Start the isolated e2e stack and migrate its empty DB"
+	@echo "  make e2e            - Run the Playwright suite against it (E2E_ARGS='--project=api')"
+	@echo "  make e2e-down       - Stop it (the DB is tmpfs: gone)"
 	@echo "  make clean          - Remove compose resources"
 
 dev-build:
@@ -111,6 +127,17 @@ dev-ps:
 
 dev-health:
 	$(COMPOSE) ps --format "table {{.Service}}\t{{.State}}\t{{.Health}}"
+
+e2e-up:
+	$(E2E_COMPOSE) up -d --wait postgres
+	$(E2E_COMPOSE) run --rm --no-deps -v "$$(pwd)/backend/migrations:/app/migrations" app-svc alembic upgrade head
+	$(E2E_COMPOSE) up -d --build --wait
+
+e2e-down:
+	$(E2E_COMPOSE) down --remove-orphans
+
+e2e:
+	cd frontend && bunx playwright test $(E2E_ARGS)
 
 dev-rebuild:
 	$(COMPOSE) up -d --build --wait
@@ -153,6 +180,32 @@ prod-medium:
 
 prod-large:
 	$(MAKE) prod-scale PROD_SIZE=large
+
+# Maintenance page (nginx.conf, "Maintenance mode"; runbook
+# docs/releases/2026-10-23-prod-cutover.md). maint-on writes the ETA and the
+# flag, creates the bypass secret on first use and recreates nginx only when the
+# running one predates the mechanism (or the secret is new), so it is safe to
+# repeat. MIN = minutes from now to the expected end. GNU date: host only.
+MAINT_DIR = nginx/maintenance
+MIN ?= 180
+
+maint-on: maint-eta
+	@touch $(MAINT_DIR)/on
+	@if [ -f $(MAINT_DIR)/bypass.conf ]; then \
+		$(PROD_COMPOSE) up -d --no-deps nginx; \
+	else \
+		printf '"%s" 1;\n' "$$(openssl rand -hex 16)" > $(MAINT_DIR)/bypass.conf; \
+		$(PROD_COMPOSE) up -d --no-deps --force-recreate nginx; \
+	fi
+	@echo "Bypass, in the browser console on the site:"
+	@echo "  document.cookie = \"owt_maint=$$(cut -d'"' -f2 $(MAINT_DIR)/bypass.conf); path=/; max-age=43200; secure\""
+
+maint-eta:
+	@printf '{"until":"%s"}\n' "$$(date -u -d '+$(MIN) min' +%Y-%m-%dT%H:%M:%SZ)" > $(MAINT_DIR)/maintenance.json
+	@cat $(MAINT_DIR)/maintenance.json
+
+maint-off:
+	rm -f $(MAINT_DIR)/on $(MAINT_DIR)/maintenance.json
 
 # Dev stack. The production one is `prod-migrate`: it runs alembic in a one-off
 # container off the NEW image, which is what makes the schema land before the
@@ -211,8 +264,8 @@ app-logs:
 identity-logs:
 	$(COMPOSE) logs -f identity-svc
 
-parser-logs:
-	$(COMPOSE) logs -f parser-svc
+stats-logs:
+	$(COMPOSE) logs -f stats-svc stats-worker
 
 frontend-logs:
 	$(COMPOSE) logs -f frontend
@@ -232,8 +285,8 @@ app-restart:
 identity-restart:
 	$(COMPOSE) restart identity-svc
 
-parser-restart:
-	$(COMPOSE) restart parser-svc
+stats-restart:
+	$(COMPOSE) restart stats-svc stats-worker
 
 frontend-restart:
 	$(COMPOSE) restart frontend
@@ -244,8 +297,8 @@ app-rebuild:
 identity-rebuild:
 	$(COMPOSE) up -d --build --wait identity-svc
 
-parser-rebuild:
-	$(COMPOSE) up -d --build --wait parser-svc
+stats-rebuild:
+	$(COMPOSE) up -d --build --wait stats-svc stats-worker
 
 frontend-rebuild:
 	$(COMPOSE) stop frontend && $(COMPOSE) rm -f frontend

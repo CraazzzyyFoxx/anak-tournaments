@@ -1,18 +1,16 @@
 """Job-control RPC subscribers (``rpc.analytics.*``).
 
 Creates ``AnalyticsJob`` rows and enqueues to the heavy worker's job queues.
-This svc only writes the row + publishes the request event — the actual compute
+This svc only writes the row + its request event, through the outbox in one transaction -- the actual compute
 runs in ``analytics-worker`` (``serve.py``). recalculate/points are thin 202
-wrappers over a scoped ``kind=compute`` job (the legacy synchronous 200
-behaviour is intentionally replaced by the unified async job; recalculate's
-old ratings-only scope is preserved via ``algorithms``, but the compute job also
-runs ML inference like every other compute job). Wired from ``serve_rpc.py``.
+wrappers over a scoped ``kind=compute`` job (recalculate narrows it to the
+ratings via ``algorithms``, but the compute job also runs ML inference like
+every other compute job). Wired from ``serve_rpc.py``.
 
-Auth mirrors the routes: create_job / recalculate / points gate per
+Auth: create_job / recalculate / points gate per
 ``_require_actor`` (compute → workspace-scoped ``analytics.update``; train_ml →
-superuser); the deprecated train/infer use a global ``analytics.update``.
-On top of the permission gate, every workspace-scoped GPU job (``kind=compute``
-and the deprecated train/infer) also requires the workspace to be verified or
+superuser). On top of the permission gate, every workspace-scoped GPU job
+(``kind=compute``) also requires the workspace to be verified or
 trusted — see ``shared.domain.workspace_tier``: self-service workspaces start
 ``unverified`` and must not burn GPU time (403 ``workspace_not_verified``).
 """
@@ -25,29 +23,16 @@ from faststream.rabbit.annotations import RabbitMessage
 
 from shared import quota
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.domain.workspace_tier import is_verified_or_trusted
 from shared.jobs import JobConflict
-from shared.messaging.config import (
-    ANALYTICS_INFER_QUEUE,
-    ANALYTICS_JOB_QUEUE,
-    ANALYTICS_TRAIN_QUEUE,
+from src.core import db
+from src.core.jobs import (
+    JOB_KIND_COMPUTE,
+    JOB_KIND_TRAIN_ML,
+    create_analytics_job,
+    require_analytics_owner,
+    require_verified_workspace,
 )
-from shared.observability import publish_message
-from shared.repository import WorkspaceRepository
-from shared.schemas.events import (
-    AnalyticsInferRequest,
-    AnalyticsJobRequested,
-    AnalyticsTrainRequest,
-)
-from src.core import config, db
-from src.core.jobs import JOB_KIND_COMPUTE, JOB_KIND_TRAIN_ML, create_analytics_job, job_runtime
-from src.schemas.ml import (
-    AnalyticsJobCreate,
-    AnalyticsJobRow,
-    InferRequestBody,
-    JobAcceptedResponse,
-    TrainRequestBody,
-)
+from src.schemas.ml import AnalyticsJobCreate, AnalyticsJobRow
 from src.services.analytics.service import analytics_service
 
 from . import _common as c
@@ -56,31 +41,17 @@ from . import _common as c
 # (it pulls pandas/numpy/openskill into the lightweight svc).
 _POINTS = "Points"
 
-_workspaces = WorkspaceRepository()
-
-
-async def _require_verified_workspace(session: Any, workspace_id: int | None) -> None:
-    """GPU gate: a workspace-scoped compute/train/infer job only runs for a
-    verified or trusted workspace. Global (``workspace_id is None``) jobs are
-    superuser/global-permission territory and stay ungated."""
-    if workspace_id is None:
-        return
-    workspace = await _workspaces.get(session, workspace_id)
-    if workspace is None or not is_verified_or_trusted(workspace):
-        raise HTTPException(status_code=403, detail="workspace_not_verified")
-
 
 async def _require_actor(
     body: AnalyticsJobCreate,
     workspace_id: int | None,
     user: Any,
 ) -> None:
-    """Permission gate per ``kind`` (extracted from the decommissioned
-    ``src/routes/v2.py``):
+    """Permission gate per ``kind``:
 
     - ``compute``  → ``analytics.update`` in the workspace; the global grant
       when the job carries no ``workspace_id`` (never left ungated -- see
-      ``_require_verified_workspace``, which treats the unscoped case as
+      ``require_verified_workspace``, which treats the unscoped case as
       global-permission territory too)
     - ``train_ml`` → superuser
     """
@@ -107,15 +78,6 @@ async def _require_actor(
 def register(broker: Any, logger: Any) -> None:
     sf = db.async_session_maker
 
-    async def _publish_event(payload: dict[str, Any], queue: str, *, unavailable: str, failed: str) -> None:
-        if not config.settings.rabbitmq_url:
-            raise HTTPException(status_code=503, detail=unavailable)
-        try:
-            await publish_message(broker, payload, queue)
-        except Exception:
-            logger.exception("Failed to publish analytics job to RabbitMQ")
-            raise HTTPException(status_code=502, detail=failed)
-
     async def _dispatch(
         session: Any,
         body: AnalyticsJobCreate,
@@ -124,10 +86,21 @@ def register(broker: Any, logger: Any) -> None:
         *,
         operation: str | None = None,
     ) -> Any:
-        """Create + enqueue a job, mirroring routes.v2.create_analytics_job."""
+        """Create a job; its dispatch event commits with the row (``create_analytics_job``)."""
         await _require_actor(body, workspace_id, user)
         if body.kind == JOB_KIND_COMPUTE:
-            await _require_verified_workspace(session, workspace_id)
+            await require_verified_workspace(session, workspace_id)
+        # Every admission names a tournament that must lie in the requested workspace; a named model or a training
+        # also needs a discipline with analytics models. Without ``algorithms`` a compute job is automatic
+        # enrichment, which the worker turns into an empty summary for a discipline with no analytics module.
+        await require_analytics_owner(
+            session,
+            body.tournament_id,
+            scope=body.training_workspace_ids
+            if body.kind == JOB_KIND_TRAIN_ML
+            else ([workspace_id] if workspace_id is not None else None),
+            models_required=body.kind == JOB_KIND_TRAIN_ML or bool(body.algorithms),
+        )
         # Metered only for the callers that have their own quota operation slug;
         # create_job/points enqueue the same compute work but are not metered
         # subjects, so charging here unconditionally would bill a slug they do not
@@ -136,7 +109,7 @@ def register(broker: Any, logger: Any) -> None:
         if operation is not None:
             await quota.charge(user, operation, workspace_id=workspace_id)
         try:
-            job = await create_analytics_job(
+            return await create_analytics_job(
                 session,
                 workspace_id=workspace_id,
                 tournament_id=body.tournament_id,
@@ -147,33 +120,6 @@ def register(broker: Any, logger: Any) -> None:
             )
         except JobConflict as exc:
             raise HTTPException(status_code=409, detail=str(exc))
-
-        if not config.settings.rabbitmq_url:
-            await job_runtime.mark_failed(
-                session,
-                int(job.id),
-                error="RabbitMQ is not configured; worker dispatch was not possible.",
-            )
-            await session.commit()
-            raise HTTPException(
-                status_code=503,
-                detail="RabbitMQ is not configured; analytics job was marked failed.",
-            )
-
-        event = AnalyticsJobRequested(job_id=int(job.id), source_service="analytics-svc")
-        try:
-            await publish_message(broker, event.model_dump(), ANALYTICS_JOB_QUEUE)
-        except Exception as exc:
-            logger.exception("Failed to publish analytics_job request")
-            await session.rollback()
-            await job_runtime.mark_failed(
-                session,
-                int(job.id),
-                error=f"Failed to dispatch analytics job to queue: {exc}",
-            )
-            await session.commit()
-            raise HTTPException(status_code=502, detail="Failed to dispatch job to queue")
-        return job
 
     @broker.subscriber("rpc.analytics.create_job")
     async def _create_job(data: dict, msg: RabbitMessage) -> dict:
@@ -233,58 +179,3 @@ def register(broker: Any, logger: Any) -> None:
             return AnalyticsJobRow.model_validate(job, from_attributes=True)
 
         return await c.envelope(logger, "points", op, session_factory=sf)
-
-    @broker.subscriber("rpc.analytics.train")
-    async def _train(data: dict, msg: RabbitMessage) -> dict:
-        async def op(session: Any) -> Any:
-            user = c.actor(data)
-            c.require_permission(user, "analytics", "update")
-            body = TrainRequestBody.model_validate(c.payload(data))
-            await _require_verified_workspace(session, body.workspace_id)
-            # The costliest operation on the platform: a full model retrain over
-            # every workspace in scope. Charged rather than leased because this
-            # handler only publishes to ANALYTICS_TRAIN_QUEUE and returns -- the
-            # compute lives in another process (``serve.py``), which is where a
-            # lease would have to be released, so a lease taken here would cover
-            # the publish and nothing else.
-            await quota.charge(user, "analytics.train", workspace_id=body.workspace_id)
-            event = AnalyticsTrainRequest(
-                cutoff_tournament_id=body.cutoff_tournament_id,
-                model_kinds=body.model_kinds,
-                workspace_id=body.workspace_id,
-                workspace_ids=body.workspace_ids,
-                source_service="analytics-svc",
-            )
-            await _publish_event(
-                event.model_dump(),
-                ANALYTICS_TRAIN_QUEUE,
-                unavailable="RabbitMQ is not configured; cannot dispatch training jobs.",
-                failed="Failed to dispatch training job to queue",
-            )
-            return JobAcceptedResponse(message="Training job dispatched.", job="train", correlation_id=event.event_id)
-
-        return await c.envelope(logger, "train", op, session_factory=sf)
-
-    @broker.subscriber("rpc.analytics.infer")
-    async def _infer(data: dict, msg: RabbitMessage) -> dict:
-        async def op(session: Any) -> Any:
-            user = c.actor(data)
-            c.require_permission(user, "analytics", "update")
-            body = InferRequestBody.model_validate(c.payload(data))
-            await _require_verified_workspace(session, body.workspace_id)
-            await quota.charge(user, "analytics.infer", workspace_id=body.workspace_id)
-            event = AnalyticsInferRequest(
-                tournament_id=body.tournament_id,
-                model_kinds=body.model_kinds,
-                workspace_id=body.workspace_id,
-                source_service="analytics-svc",
-            )
-            await _publish_event(
-                event.model_dump(),
-                ANALYTICS_INFER_QUEUE,
-                unavailable="RabbitMQ is not configured; cannot dispatch inference jobs.",
-                failed="Failed to dispatch inference job to queue",
-            )
-            return JobAcceptedResponse(message="Inference job dispatched.", job="infer", correlation_id=event.event_id)
-
-        return await c.envelope(logger, "infer", op, session_factory=sf)

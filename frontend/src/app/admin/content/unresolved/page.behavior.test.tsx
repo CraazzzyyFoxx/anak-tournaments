@@ -26,9 +26,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const getCatalogAliasMisses = vi.fn();
 const attachCatalogAlias = vi.fn();
 const dismissCatalogAliasMiss = vi.fn();
-const getHeroes = vi.fn();
-const getMaps = vi.fn();
-const getGamemodes = vi.fn();
+const listCatalogEntities = vi.fn();
 
 let superuser = true;
 
@@ -36,15 +34,19 @@ vi.mock("next-intl", async () => {
   const importedMessages = await import("@/i18n/messages/en.json");
   const messages = importedMessages.default ?? importedMessages;
   return {
-    useTranslations: (namespace: string) => (key: string, values?: Record<string, unknown>) => {
-      let value: unknown = messages;
-      for (const part of `${namespace}.${key}`.split(".")) {
-        if (value == null) return key;
-        value = (value as Record<string, unknown>)[part];
-      }
-      return typeof value === "string"
-        ? value.replace(/\{(\w+)\}/g, (_, name) => String(values?.[name] ?? `{${name}}`))
-        : key;
+    useTranslations: (namespace: string) => {
+      const lookup = (key: string) => {
+        let value: unknown = messages;
+        for (const part of `${namespace}.${key}`.split(".")) {
+          if (value == null) return undefined;
+          value = (value as Record<string, unknown>)[part];
+        }
+        return typeof value === "string" ? value : undefined;
+      };
+      const t = (key: string, values?: Record<string, unknown>) =>
+        lookup(key)?.replace(/\{(\w+)\}/g, (_, name) => String(values?.[name] ?? `{${name}}`)) ?? key;
+      t.has = (key: string) => lookup(key) !== undefined;
+      return t;
     }
   };
 });
@@ -59,9 +61,15 @@ vi.mock("@/services/admin.service", () => ({
     getCatalogAliasMisses: (...args: unknown[]) => getCatalogAliasMisses(...args),
     attachCatalogAlias: (...args: unknown[]) => attachCatalogAlias(...args),
     dismissCatalogAliasMiss: (...args: unknown[]) => dismissCatalogAliasMiss(...args),
-    getHeroes: (...args: unknown[]) => getHeroes(...args),
-    getMaps: (...args: unknown[]) => getMaps(...args),
-    getGamemodes: (...args: unknown[]) => getGamemodes(...args)
+    listCatalogEntities: (...args: unknown[]) => listCatalogEntities(...args)
+  }
+}));
+vi.mock("@/services/discipline.service", () => ({
+  default: {
+    list: async () => [
+      { code: "overwatch", name: "Overwatch", enabled: true, kinds: { character: "Hero", map: "Map", mode: "Mode" } },
+      { code: "lol", name: "League of Legends", enabled: true, kinds: { character: "Champion", map: "Map" } }
+    ]
   }
 }));
 vi.mock("@/lib/notify", () => ({
@@ -83,17 +91,25 @@ vi.mock("next/navigation", () => ({
 
 const MISS: CatalogAliasMissRead = {
   id: 3,
-  entity_type: "map",
+  discipline: "overwatch",
+  kind: "map",
   raw_name: "Ilios2",
   occurrences: 47,
   first_seen_at: "2026-08-01T10:00:00Z",
   last_seen_at: "2026-08-30T18:20:00Z",
-  last_log_record_id: 991,
+  last_ingest_job_id: 991,
   last_log_tournament_id: 7,
   resolved_at: null
 };
 
+const NONENTITY: CatalogAliasMissRead[] = [
+  { ...MISS, id: 4, kind: "stat", raw_name: "no_such_stat" },
+  { ...MISS, id: 5, kind: "event", raw_name: "no_such_event" },
+  { ...MISS, id: 6, kind: "role", raw_name: "player_role:ghost", last_ingest_job_id: null }
+];
+
 const mounted: { root: Root; container: HTMLElement }[] = [];
+let client: QueryClient;
 
 async function settle(turns = 8, delayMs = 0) {
   for (let turn = 0; turn < turns; turn += 1) {
@@ -134,7 +150,7 @@ async function mount(search = "") {
   window.history.replaceState(null, "", `/admin/content/unresolved${search}`);
   const container = document.createElement("div");
   document.body.appendChild(container);
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   const root = createRoot(container);
   mounted.push({ root, container });
   await act(async () => {
@@ -169,10 +185,14 @@ function button(label: string) {
   );
 }
 
-/** `entity_type` of the most recent queue request. */
-function lastEntityType(): unknown {
-  return (getCatalogAliasMisses.mock.calls.at(-1)?.[0] as { entity_type?: unknown } | undefined)
-    ?.entity_type;
+/** Dismiss is icon-only: found by its accessible name. */
+function dismissButtons() {
+  return Array.from(document.querySelectorAll('button[aria-label="Dismiss"]'));
+}
+
+/** `kind` of the most recent queue request. */
+function lastKind(): unknown {
+  return (getCatalogAliasMisses.mock.calls.at(-1)?.[0] as { kind?: unknown } | undefined)?.kind;
 }
 
 beforeEach(() => {
@@ -184,13 +204,18 @@ beforeEach(() => {
     .mockResolvedValue({ results: [MISS], total: 1, page: 1, per_page: 25 });
   attachCatalogAlias.mockReset().mockResolvedValue(undefined);
   dismissCatalogAliasMiss.mockReset().mockResolvedValue(undefined);
-  getHeroes.mockReset().mockResolvedValue({ results: [], total: 0, page: 1, per_page: 200 });
-  getGamemodes.mockReset().mockResolvedValue({ results: [], total: 0, page: 1, per_page: 200 });
-  getMaps.mockReset().mockResolvedValue({
-    results: [{ id: 12, name: "Ilios", gamemode: null }],
-    total: 1,
-    page: 1,
-    per_page: 200
+  // Targets are read per (discipline, kind) of the miss itself.
+  listCatalogEntities.mockReset().mockImplementation(async (discipline: string, kind: string) => {
+    const results =
+      discipline === "overwatch" && kind === "map"
+        ? [{ id: 12, name: "Ilios", parent: { id: 3, name: "Control" } }]
+        : discipline === "lol" && kind === "character"
+          ? [
+              { id: 501, name: "Ahri", parent: null },
+              { id: 502, name: "Zed", parent: null }
+            ]
+          : [];
+    return { results, total: results.length, page: 1, per_page: -1 };
   });
 });
 
@@ -214,46 +239,119 @@ describe("admin Game content › Unresolved names", () => {
     expect(button("Attach")).toBeUndefined();
   });
 
-  it("gives a superuser the target picker and the inline actions", async () => {
+  it("gives a superuser the target picker and the inline dismiss", async () => {
     const container = await mount();
 
     expect(container.querySelector('[aria-label="Pick a map…"]')).not.toBeNull();
-    expect(button("Attach")).toBeDefined();
+    expect(dismissButtons()).toHaveLength(1);
   });
 
   it("reads ?type= on mount", async () => {
-    await mount("?type=hero");
+    await mount("?type=character");
 
-    expect(lastEntityType()).toBe("hero");
+    expect(lastKind()).toBe("character");
   });
 
   it("writes ?type= when the chip is picked, and refetches", async () => {
     const container = await mount();
-    expect(lastEntityType()).toBeUndefined();
+    expect(lastKind()).toBeUndefined();
 
     await click(container.querySelector('[aria-label="Add filter"]'));
     await click(commandItem("Type"));
-    await click(commandItem("Map"));
+    await click(commandItem("Stat"));
 
-    expect(window.location.search).toContain("type=map");
-    expect(lastEntityType()).toBe("map");
+    expect(window.location.search).toContain("type=stat");
+    expect(lastKind()).toBe("stat");
   });
 
   it("attaches the raw name to the entity picked in the row", async () => {
     const container = await mount();
 
-    // Nothing picked yet, so the action is inert rather than silently failing.
-    expect(button("Attach")).toHaveProperty("disabled", true);
+    // Nothing picked yet: Attach is there but disabled, saying what to pick.
+    const blocked = button("Attach");
+    expect(blocked?.disabled).toBe(true);
+    const reason = document.getElementById(blocked?.getAttribute("aria-describedby") ?? "");
+    expect(reason?.textContent).toBe("Pick the map this name means first");
 
     await click(container.querySelector('[aria-label="Pick a map…"]'));
     await click(commandItem("Ilios"));
     await click(button("Attach"));
 
-    expect(attachCatalogAlias).toHaveBeenCalledWith({
-      entity_type: "map",
-      entity_id: 12,
-      alias: "Ilios2"
+    expect(attachCatalogAlias).toHaveBeenCalledWith({ entity_id: 12, alias: "Ilios2" });
+  });
+
+  it("does not pin the queue to a discipline", async () => {
+    await mount();
+
+    expect(getCatalogAliasMisses.mock.calls.at(-1)?.[0]).not.toHaveProperty("discipline");
+  });
+
+  it("shows stat, event and role misses by domain and code with dismiss as the only action", async () => {
+    getCatalogAliasMisses.mockResolvedValue({ results: NONENTITY, total: 3, page: 1, per_page: 25 });
+    const container = await mount();
+
+    for (const text of ["no_such_stat", "no_such_event", "player_role:ghost", "overwatch", "Stat", "Event", "Role"]) {
+      expect(container.textContent).toContain(text);
+    }
+    expect(container.querySelector('[aria-label^="Pick a"]')).toBeNull();
+    expect(button("Attach")).toBeUndefined();
+    expect(dismissButtons()).toHaveLength(3);
+    expect(container.textContent).toContain("Dismiss only");
+    expect(listCatalogEntities).not.toHaveBeenCalled();
+  });
+
+  it("dismisses a nonentity miss without creating an alias", async () => {
+    getCatalogAliasMisses.mockResolvedValue({ results: [NONENTITY[2]], total: 1, page: 1, per_page: 25 });
+    await mount();
+
+    await click(dismissButtons()[0]);
+
+    expect(dismissCatalogAliasMiss).toHaveBeenCalledWith(6);
+    expect(attachCatalogAlias).not.toHaveBeenCalled();
+  });
+
+  it("loads attach targets by the miss's own discipline and kind, never another game's", async () => {
+    getCatalogAliasMisses.mockResolvedValue({
+      results: [{ ...MISS, id: 9, discipline: "lol", kind: "character", raw_name: "Ahri2" }],
+      total: 1,
+      page: 1,
+      per_page: 25
     });
+    const container = await mount();
+
+    expect(container.textContent).toContain("lol");
+    expect(listCatalogEntities.mock.calls.map((call) => call.slice(0, 2))).toEqual([["lol", "character"]]);
+    // The game's own word for the kind: a League miss asks for a champion.
+    expect(container.querySelector('[aria-label="Pick a champion…"]')).not.toBeNull();
+  });
+
+  it("attaches a League of Legends alias to the champion picked, and refreshes only that game's characters", async () => {
+    getCatalogAliasMisses.mockResolvedValue({
+      results: [{ ...MISS, id: 9, discipline: "lol", kind: "character", raw_name: "Ahri2" }],
+      total: 1,
+      page: 1,
+      per_page: 25
+    });
+    const container = await mount();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+
+    await click(container.querySelector('[aria-label="Pick a champion…"]'));
+    await click(commandItem("Ahri"));
+    await click(button("Attach"));
+
+    expect(attachCatalogAlias).toHaveBeenCalledWith({ entity_id: 501, alias: "Ahri2" });
+    // The miss's own game and kind — not the page's view, and not another game's characters.
+    const keys = invalidate.mock.calls.map(([filters]) => JSON.stringify(filters?.queryKey));
+    expect(keys).toContain(JSON.stringify(["catalog", "lol", "character"]));
+    expect(keys.some((key) => key.includes("overwatch"))).toBe(false);
+    expect(keys).not.toContain(JSON.stringify(["catalog", "lol", "map"]));
+  });
+
+  it("links the last ingest job to its hinted tournament", async () => {
+    const container = await mount();
+
+    const link = container.querySelector('a[href="/admin/tournaments/7/matches/logs"]');
+    expect(link?.textContent).toBe("#991");
   });
 
   it("renders rows as cards below md, keeping the target picker", async () => {
@@ -264,5 +362,17 @@ describe("admin Game content › Unresolved names", () => {
     expect(cards).toHaveLength(1);
     expect(cards[0].textContent).toContain("Ilios2");
     expect(cards[0].querySelector('[aria-label="Pick a map…"]')).not.toBeNull();
+  });
+
+  it("renders nonentity rows as dismiss-only cards below md", async () => {
+    setViewportWidth(375);
+    getCatalogAliasMisses.mockResolvedValue({ results: [NONENTITY[0]], total: 1, page: 1, per_page: 25 });
+    const container = await mount();
+
+    const cards = container.querySelectorAll("ul[aria-label='Rows'] > li");
+    expect(cards).toHaveLength(1);
+    expect(cards[0].textContent).toContain("no_such_stat");
+    expect(cards[0].textContent).toContain("overwatch · Stat");
+    expect(cards[0].querySelector('[aria-label^="Pick a"]')).toBeNull();
   });
 });

@@ -1,9 +1,11 @@
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
 
 from shared.services.subscriptions import SubscriptionVerdict
 from shared.services.subscriptions.requirement import (
+    OUTAGE_REASONS,
     Outcome,
     ProviderRequirement,
     SubscriptionRequirement,
@@ -25,7 +27,14 @@ def _v(state: str, tier: int | None = None) -> SubscriptionVerdict:
 
 T = _v("active", 3)  # satisfies min_tier_rank <= 3
 F = _v("inactive")  # confirmed refusal
-U = _v("unknown")  # undetermined
+U = _v("unknown")  # undetermined: a misconfiguration, no outage reason
+
+
+def _unknown(reason: str) -> SubscriptionVerdict:
+    return replace(U, evidence={"reason": reason})
+
+
+OUT = _unknown("provider_unavailable")  # the checker did not answer
 
 
 def _req(mode: str, *providers: str, min_tier: int = 1) -> SubscriptionRequirement:
@@ -122,6 +131,47 @@ class TestThresholds:
         assert (
             evaluate_requirement(_req("all", "boosty", min_tier=1), {"boosty": _v("active", None)}) is Outcome.SATISFIED
         )
+
+
+class TestOutage:
+    """An ``unknown`` because nobody could ask is not the organizer's mistake:
+    a paid tier nothing confirmed is refused. Misconfiguration still fails open."""
+
+    @pytest.mark.parametrize("mode", ["any", "all"])
+    @pytest.mark.parametrize("reason", ["provider_unavailable", "bot_not_configured"])
+    def test_an_outage_refuses(self, mode, reason):
+        assert reason in OUTAGE_REASONS
+        assert evaluate_requirement(_req(mode, "boosty"), {"boosty": _unknown(reason)}) is Outcome.REFUSED
+
+    def test_a_deferred_outage_is_undetermined(self):
+        """A code pasted at check-in proves the tier without the provider."""
+        assert (
+            evaluate_requirement(_req("all", "boosty"), {"boosty": OUT}, deferred_providers={"boosty"})
+            is Outcome.UNDETERMINED
+        )
+
+    @pytest.mark.parametrize(
+        "reason", ["guild_not_configured", "role_mapping_drift", "no_linked_discord_account", "strategy_error"]
+    )
+    def test_misconfiguration_still_fails_open(self, reason):
+        assert evaluate_requirement(_req("all", "boosty"), {"boosty": _unknown(reason)}) is Outcome.UNDETERMINED
+
+    def test_a_missing_verdict_is_not_an_outage(self):
+        assert evaluate_requirement(_req("all", "boosty"), {}) is Outcome.UNDETERMINED
+
+    def test_any_mode_satisfied_beats_an_outage(self):
+        assert evaluate_requirement(_req("any", "boosty", "twitch"), {"boosty": OUT, "twitch": T}) is Outcome.SATISFIED
+
+    def test_any_mode_outage_and_refusal_refuses(self):
+        assert evaluate_requirement(_req("any", "boosty", "twitch"), {"boosty": OUT, "twitch": F}) is Outcome.REFUSED
+
+    def test_any_mode_outage_and_misconfiguration_is_undetermined(self):
+        assert (
+            evaluate_requirement(_req("any", "boosty", "twitch"), {"boosty": OUT, "twitch": U}) is Outcome.UNDETERMINED
+        )
+
+    def test_all_mode_outage_blocks_a_satisfied_sibling(self):
+        assert evaluate_requirement(_req("all", "boosty", "twitch"), {"boosty": T, "twitch": OUT}) is Outcome.REFUSED
 
 
 class TestMissingVerdicts:

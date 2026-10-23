@@ -1,17 +1,16 @@
+import type { RoleRef } from "@/lib/roster/role-ref";
 import { User } from "@/types/user.types";
 import { Tournament, TeamGroup } from "@/types/tournament.types";
-import { LogStatsName } from "@/types/stats.types";
-import { Hero } from "@/types/hero.types";
 
 export interface Player {
   id: number;
   created_at: Date;
   updated_at: Date | null;
   name: string;
-  sub_role: string | null;
-  rank: number;
-  division: number;
-  role: string;
+  /** `null` when the tournament recorded no rank for this player. */
+  rank: number | null;
+  division: number | null;
+  role: RoleRef | null;
   tournament_id: number;
   user_id: number;
   team_id: number;
@@ -40,13 +39,4 @@ export interface Team {
   tournament: Tournament | null;
   placement: number | null;
   group: TeamGroup | null;
-}
-
-export interface PlayerWithStats extends Player {
-  stats: Record<number, Record<LogStatsName, number>>;
-  heroes: Record<number, Hero[]>;
-}
-
-export interface TeamWithStats extends Team {
-  players: PlayerWithStats[];
 }

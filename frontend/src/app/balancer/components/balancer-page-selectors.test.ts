@@ -6,7 +6,7 @@ import {
   upsertSavedVariant,
 } from "./balancer-page-selectors";
 import type { BalanceVariant } from "@/components/balancer/workspace-helpers";
-import { DEFAULT_DIVISION_GRID } from "@/lib/divisions/grid";
+import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
 import type { AdminRegistration, InternalBalancePayload } from "@/types/balancer-admin.types";
 
 function createPayload(teamName: string): InternalBalancePayload {
@@ -16,7 +16,7 @@ function createPayload(teamName: string): InternalBalancePayload {
         id: 1,
         name: teamName,
         average_mmr: 2500,
-        roster: { Tank: [], Damage: [], Support: [] },
+        roster: { tank: [], damage: [], support: [] },
       },
     ],
   };
@@ -82,8 +82,7 @@ describe("buildBalancerPageCollections", () => {
       id,
       tournament_id: 60,
       user_id: id,
-      battle_tag: `Player${id}#1000`,
-      battle_tag_normalized: `player${id}#1000`,
+      primary_handle: `Player${id}#1000`,
       display_name: null,
       answers: {},
       roles: [],
@@ -106,7 +105,9 @@ describe("buildBalancerPageCollections", () => {
         registration(3, "rejected"),
         registration(4, "pending"),
       ],
-      DEFAULT_DIVISION_GRID,
+      OW_REFERENCE_GRID,
+      (code) => code,
+      "battlenet",
     );
 
     expect(collections.allPlayerValidationStates.map((state) => state.player.id)).toEqual([1]);

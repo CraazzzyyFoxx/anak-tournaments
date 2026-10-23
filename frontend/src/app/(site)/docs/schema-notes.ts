@@ -47,8 +47,8 @@ export const PACKAGE_NOTES: Record<string, Note> = {
   ranks: {
     title: { ru: "Телеметрия рангов", en: "Rank telemetry" },
     description: {
-      ru: "Ранги Overwatch, собираемые по привязанным BattleTag: ряд снимков, состояние опроса по каждому BattleTag и журнал запросов.",
-      en: "Overwatch ranks polled for linked BattleTags: the snapshot series, the per-BattleTag fetch state and the fetch log.",
+      ru: "Ранги Overwatch, собираемые по привязанным аккаунтам Battle.net: ряд снимков, состояние опроса по каждому аккаунту и журнал запросов.",
+      en: "Overwatch ranks polled for linked Battle.net accounts: the snapshot series, the per-account fetch state and the fetch log.",
     },
   },
   tournament: {
@@ -66,13 +66,20 @@ export const PACKAGE_NOTES: Record<string, Note> = {
     },
   },
   balancer: {
-    title: { ru: "Балансировщик и драфт", en: "Balancer and draft" },
+    title: { ru: "Балансировщик", en: "Balancer" },
     description: {
-      ru: "Запуски балансировщика и получившиеся команды, а также живой драфт: сессии, капитаны, пул игроков, последовательность пиков и журнал.",
-      en: "Balancing runs and their resulting teams, and the live draft: sessions, captains, the player pool, the pick sequence and its audit trail.",
+      ru: "Запуски балансировщика и получившиеся команды, а также настройки балансировщика воркспейса, турнира и аккаунта.",
+      en: "Balancing runs and their resulting teams, plus the balancer settings of a workspace, a tournament and an account.",
     },
   },
-  custom_game: {
+  draft: {
+    title: { ru: "Драфт", en: "Draft" },
+    description: {
+      ru: "Живой драфт: сессии, капитаны, пул игроков, последовательность пиков и журнал.",
+      en: "The live draft: sessions, captains, the player pool, the pick sequence and its audit trail.",
+    },
+  },
+  mix: {
     title: { ru: "Миксы", en: "Mixes" },
     description: {
       ru: "Кастомные игры воркспейса: игра, хост и соведущие, состав, ограничения по ролям и «обязательно играет», слоты ролей команды.",

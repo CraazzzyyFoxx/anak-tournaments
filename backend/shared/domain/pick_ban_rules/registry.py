@@ -1,12 +1,10 @@
 """Condition leaves, constraint specs and the tree evaluator.
 
 Same shape as the achievements condition registry
-(``parser-service/.../engine/conditions``): a decorator registers an evaluator
+(``shared.domain.achievements.registry``): a decorator registers an evaluator
 together with its contract, and the contract is what the constructor UI renders
 forms from. Unlike achievements the params are TYPED (:class:`ParamSpec`), so
 the frontend generates the right widget without a hardcoded table.
-
-Design: ``docs/plans/2026-09-28-pick-ban-constructor.md`` §2, §10.
 """
 
 from __future__ import annotations
@@ -18,10 +16,9 @@ from typing import Any, Literal
 ConditionContext = Literal["round", "item", "pool"]
 ParamKind = Literal["enum", "int", "bool", "item_list", "group_list", "group"]
 
-#: Groups of the hero catalog: a hero's class, lowercased. Compared
-#: case-insensitively everywhere, so ``Hero.type`` ("Tank") and the roster role
-#: spelling ("tank") both answer to the same group.
-HERO_GROUPS: tuple[str, ...] = ("tank", "damage", "support")
+#: Item groups are compared case-insensitively everywhere (see :func:`normalize_group`), so a catalog character's
+#: ``attrs.class`` ("Tank") and a ruleset's spelling ("tank") answer to the same group. The vocabulary itself is the
+#: discipline's: its module's ``character_classes`` for characters, its mode slugs for maps.
 
 MAX_TREE_DEPTH = 20
 MAX_TREE_NODES = 200
@@ -128,10 +125,6 @@ def leaf(
     return decorator
 
 
-def get_leaf(type: str) -> LeafSpec | None:
-    return LEAVES.get(type)
-
-
 # ── evaluation contexts ─────────────────────────────────────────────────────
 
 
@@ -141,17 +134,19 @@ class AppliedItem:
 
     step_index: int
     round: int | None
-    #: ``home``/``away``/``system``.
-    side: str
+    #: The participation that applied it; ``None`` when the engine did.
+    actor: int | None
     action: str
     item_id: int
+    #: Whose hero a pick or an assignment names (``encounter.team_member``); ``None`` for everything else.
+    member: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class History:
     """Applied items the relative leaves read. ``current_step_index`` is
     excluded from every answer: a step never sees its own submissions, so a
-    blind step's two sides cannot leak into each other's eligibility."""
+    blind step's actors cannot leak into each other's eligibility."""
 
     items: tuple[AppliedItem, ...] = ()
     current_step_index: int | None = None
@@ -162,7 +157,7 @@ class History:
         item_id: int,
         actions: tuple[str, ...],
         by: str,
-        side: str | None,
+        actor: int | None,
         scope: str,
         round: int | None,
     ) -> bool:
@@ -171,9 +166,9 @@ class History:
                 continue
             if self.current_step_index is not None and applied.step_index == self.current_step_index:
                 continue
-            if by == "self" and applied.side != side:
+            if by == "self" and applied.actor != actor:
                 continue
-            if by == "opponent" and (applied.side == "system" or applied.side == side or side is None):
+            if by == "opponent" and (applied.actor is None or applied.actor == actor or actor is None):
                 continue
             if scope == "round" and applied.round != round:
                 continue
@@ -196,15 +191,16 @@ class RoundCtx:
 class ItemCtx:
     """Context of a step's ``eligible`` / a phase's ``pool_filter``.
 
-    ``side`` is the acting side (``None`` in a pool filter, where relative
-    leaves are rejected by validation); ``target_role`` is the role of the
-    opponent player the item would be named for, or ``None``.
+    ``actor`` is the acting participation (``None`` in a pool filter and for an
+    engine-resolved step, where relative leaves are rejected by validation);
+    ``target_role`` is the role of the opponent player the item would be named
+    for, or ``None``.
     """
 
     item_id: int
     group: str | None
     kind: str
-    side: str | None = None
+    actor: int | None = None
     target_role: str | None = None
     round: int | None = None
     history: History = History()
@@ -277,7 +273,7 @@ def _banned_by(params: Mapping[str, Any], ctx: ItemCtx) -> bool:
         item_id=ctx.item_id,
         actions=("ban",),
         by=str(params["by"]),
-        side=ctx.side,
+        actor=ctx.actor,
         scope=str(params["scope"]),
         round=ctx.round,
     )
@@ -289,7 +285,7 @@ def _picked_by(params: Mapping[str, Any], ctx: ItemCtx) -> bool:
         item_id=ctx.item_id,
         actions=("pick", "decider"),
         by=str(params["by"]),
-        side=ctx.side,
+        actor=ctx.actor,
         scope=str(params["scope"]),
         round=ctx.round,
     )
@@ -337,18 +333,23 @@ def evaluate(tree: Mapping[str, Any] | None, ctx: RoundCtx | ItemCtx) -> bool:
     return spec.evaluator(tree.get("params") or {}, ctx)
 
 
-def catalog(groups: Mapping[str, Sequence[str]] | None = None) -> dict[str, Any]:
-    """The constructor's catalog payload (§10): every leaf and constraint
-    contract, the selectable groups per kind, and the built-in presets."""
-    from .presets import PRESETS
+def catalog(*, discipline: str, groups: Mapping[str, Sequence[str]] | None = None) -> dict[str, Any]:
+    """The constructor's catalog payload: every leaf and constraint
+    contract, the selectable groups per kind, and the presets of ``discipline``
+    (its module's own plus the generic ones).
+
+    ``groups`` is the discipline's vocabulary per kind. Raises
+    :class:`~shared.domain.pick_ban_rules.presets.UnknownDiscipline` for a code
+    no installed module declares."""
+    from .presets import presets_for
 
     resolved = dict(groups or {})
     return {
         "leaves": [LEAVES[name].to_json() for name in sorted(LEAVES)],
         "constraints": [CONSTRAINTS[name].to_json() for name in sorted(CONSTRAINTS)],
         "groups": {
-            "hero": list(resolved.get("hero") or HERO_GROUPS),
+            "hero": list(resolved.get("hero") or ()),
             "map": list(resolved.get("map") or ()),
         },
-        "presets": [preset.to_json() for preset in PRESETS],
+        "presets": [preset.to_json() for preset in presets_for(discipline)],
     }

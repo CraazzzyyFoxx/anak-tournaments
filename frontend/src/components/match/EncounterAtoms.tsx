@@ -25,33 +25,3 @@ export function Fact({
     </div>
   );
 }
-
-export type PillTone = "neutral" | "accent" | "good" | "warn" | "danger";
-
-const PILL_TONE: Record<PillTone, string | undefined> = {
-  neutral: undefined,
-  accent: styles.pillAccent,
-  good: styles.pillGood,
-  warn: styles.pillWarn,
-  danger: styles.pillDanger
-};
-
-export function Pill({
-  tone = "neutral",
-  live,
-  className,
-  children
-}: Readonly<{
-  tone?: PillTone;
-  /** Prefix the pill with the pulsing live dot. */
-  live?: boolean;
-  className?: string;
-  children: React.ReactNode;
-}>) {
-  return (
-    <span className={cn(styles.pill, PILL_TONE[tone], className)}>
-      {live ? <span aria-hidden className={styles.livePulse} /> : null}
-      {children}
-    </span>
-  );
-}

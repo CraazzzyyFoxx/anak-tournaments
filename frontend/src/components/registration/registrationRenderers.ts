@@ -5,7 +5,6 @@ import IdentityField from "./fields/IdentityField";
 import NotesField from "./fields/NotesField";
 import RoleRanksField from "./fields/RoleRanksField";
 import RolesField from "./fields/RolesField";
-import SwitchField from "./fields/SwitchField";
 
 /**
  * Which component answers which builtin key.
@@ -14,12 +13,12 @@ import SwitchField from "./fields/SwitchField";
  * accounts, the handle grammars, the role composition — so the registry is a
  * fixed table, not something a form can extend. A key with no entry falls
  * through to `GenericField`, which is the right answer for every custom
- * question and a survivable one for a builtin a newer server has added.
+ * question, for the boolean builtins (`stream_pov`, `reserve` — its checkbox
+ * case carries their fallback copy) and a survivable one for a builtin a newer
+ * server has added.
  */
 export const registrationRenderers: RendererRegistry = {
   roles: RolesField,
-  stream_pov: SwitchField,
-  reserve: SwitchField,
   public_notes: NotesField,
   organizer_notes: NotesField,
   // Keyed by KIND, not by a builtin key: `role_ranks` is a custom question an

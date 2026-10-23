@@ -1,16 +1,9 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Search, EyeOff, LayoutGrid, Table2 } from "lucide-react";
+import { EyeOff, LayoutGrid, Table2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import {
@@ -24,7 +17,11 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { FilterChip } from "@/components/ui/filter-chip";
+import { SearchField } from "@/components/ui/search-field";
 import {
   Select,
   SelectContent,
@@ -33,10 +30,12 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { getApiErrorMessage } from "@/lib/api/error";
+import { formatAdmissionRefusal } from "@/lib/registration/admission";
 import { isPhaseWindowActive } from "@/lib/tournament/status";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { usePermissions } from "@/hooks/usePermissions";
 import registrationService from "@/services/registration.service";
 import CheckInSubscriptionProof from "@/components/registration/CheckInSubscriptionProof";
@@ -171,7 +170,12 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
   // the summary card replaces them.
   const registrations = registrationList?.registrations ?? [];
   const listHidden = registrationList?.hidden === true;
-  const myRegistration = myRegQuery.data;
+  // Only for a viewer this render knows is signed in. The shell fetches the
+  // same entry as soon as the profile resolves — often before this tab
+  // hydrates — but hydration still sees the server's "idle" profile, and the
+  // server never has the entry: reading it from the cache regardless rendered
+  // a card the server HTML lacks, and the hydration mismatch threw the tab away.
+  const myRegistration = isAuthenticated ? myRegQuery.data : undefined;
   const form = formQuery.data ?? null;
   const canCheckIn =
     Boolean(myRegistration) &&
@@ -188,9 +192,14 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
     setIsCheckInDialogOpen(true);
   }, [canCheckIn, tournament.id]);
 
-  const divisionGrid = useDivisionGrid();
+  const divisionGrid = useDivisionGrid(tournament.discipline);
+  // The owner game's metadata: its identity provider names the roster's identity columns, its
+  // ontology names and draws every role.
+  const ownerMetadata = useDisciplineMetadata(tournament.workspace_id, tournament.discipline);
+  const ontology = ownerMetadata.data ?? null;
+  const identityProvider = ownerMetadata.data?.discipline.identity_provider ?? null;
   const [needsHeroes, setNeedsHeroes] = useState(false);
-  const heroesMap = useHeroesMap({ enabled: needsHeroes });
+  const heroesMap = useHeroesMap(tournament.discipline, { enabled: needsHeroes });
 
   // A team column is blank on every row of a solo tournament, so the roster data
   // is what decides whether it belongs in the default set — `RegistrationForm`
@@ -205,8 +214,16 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
   const { canAccessPermission } = usePermissions();
   const canReadOrganizerColumns = canAccessPermission("registration.read", tournament.workspace_id);
   const builtColumns = useMemo(
-    () => buildParticipantColumns(form, t, divisionGrid, heroesMap, hasTeams),
-    [form, t, divisionGrid, heroesMap, hasTeams]
+    () =>
+      buildParticipantColumns(
+        form,
+        t,
+        { discipline: tournament.discipline, identityProvider, ontology },
+        divisionGrid,
+        heroesMap,
+        hasTeams
+      ),
+    [form, t, tournament.discipline, identityProvider, ontology, divisionGrid, heroesMap, hasTeams]
   );
   const allColumns = useMemo(
     () =>
@@ -580,7 +597,8 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
           />
           {checkInMutation.isError && (
             <p role="alert" className="text-sm text-[color:var(--aqt-rose)]">
-              {getApiErrorMessage(checkInMutation.error, t("common.checkInFailed"))}
+              {formatAdmissionRefusal(t, checkInMutation.error) ??
+                getApiErrorMessage(checkInMutation.error, t("common.checkInFailed"))}
             </p>
           )}
           <AlertDialogFooter>
@@ -625,10 +643,14 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
       {/* One toolbar for both views, two clusters: what you are looking at on
           the left (view switch, status chips), how you are narrowing it on the
           right (search, division, columns). The switch stays put when the view
-          changes — `.filter-search` owns the single `auto` margin between the
-          clusters, and a second one would scatter the controls across the bar. */}
+          changes — the search owns the single `auto` margin between the
+          clusters, and a second one would scatter the controls across the bar.
+          Below `sm` the chips take their own line and scroll sideways instead
+          of wrapping into a third and fourth row; from `sm` up their wrapper is
+          `display: contents`, so the desktop bar stays one flex row. */}
       {!listHidden && !trueEmpty && (
-        <div
+        <Card
+          variant="flat"
           className="filters"
           role="group"
           aria-label={t("common.filters")}
@@ -654,9 +676,13 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
             />
           )}
           {view === "table" && (
-            <>
+            // The negative margins give the chips' 4px focus ring room inside
+            // the scroll clip and run the row to the card's right edge; the
+            // basis adds them back so the row still owns the whole line.
+            <div className="-my-1 -ml-1 -mr-2.5 flex min-w-0 shrink-0 basis-[calc(100%+0.875rem)] gap-2 overflow-x-auto py-1 pl-1 pr-2.5 [scrollbar-width:none] sm:contents [&::-webkit-scrollbar]:hidden">
               <FilterChip
                 active={statusFilter === "all"}
+                className="shrink-0"
                 count={registrations.length}
                 onClick={() => navigateParticipantUrl({ type: "status", value: "all" })}
               >
@@ -668,6 +694,7 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
                   <FilterChip
                     key={status}
                     active={statusFilter === status}
+                    className="shrink-0"
                     count={statusCounts[status] ?? 0}
                     dotColor={meta?.dot ?? "var(--aqt-fg-dim)"}
                     onClick={() =>
@@ -681,27 +708,25 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
                   </FilterChip>
                 );
               })}
-            </>
+            </div>
           )}
-          <div className="filter-search">
-            <Search size={13} aria-hidden />
-            <input
-              aria-label={
-                view === "pool"
-                  ? t("tournamentDetail.participantsPool.searchLabel")
-                  : t("common.searchParticipants")
-              }
-              defaultValue={searchQuery}
-              maxLength={PARTICIPANT_SEARCH_MAX_LENGTH}
-              onChange={handleParticipantSearchChange}
-              placeholder={
-                view === "pool"
-                  ? t("tournamentDetail.participantsPool.searchLabel")
-                  : t("common.searchParticipants")
-              }
-              ref={participantSearchInputRef}
-            />
-          </div>
+          <SearchField
+            label={
+              view === "pool"
+                ? t("tournamentDetail.participantsPool.searchLabel")
+                : t("common.searchParticipants")
+            }
+            defaultValue={searchQuery}
+            maxLength={PARTICIPANT_SEARCH_MAX_LENGTH}
+            onChange={handleParticipantSearchChange}
+            placeholder={
+              view === "pool"
+                ? t("tournamentDetail.participantsPool.searchLabel")
+                : t("common.searchParticipants")
+            }
+            ref={participantSearchInputRef}
+            containerClassName="min-w-0 flex-1 sm:ml-auto sm:min-w-[200px] sm:max-w-[300px]"
+          />
           {view === "pool" && divisionOptions.length > 0 && (
             <Select
               value={divisionFilter === null ? "all" : String(divisionFilter)}
@@ -714,7 +739,8 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
             >
               <SelectTrigger
                 aria-label={t("tournamentDetail.participantsPool.divisionFilterLabel")}
-                className="filter-sort h-8 w-[10.5rem] shadow-none focus:ring-0 focus:ring-offset-0"
+                size="sm"
+                className="filter-sort w-[10.5rem] shadow-none focus:ring-0 focus:ring-offset-0"
               >
                 <SelectValue />
               </SelectTrigger>
@@ -738,7 +764,7 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
               onReset={resetToDefaults}
             />
           )}
-        </div>
+        </Card>
       )}
 
       {/* Participants list — or, when the organizer hid it, the only thing the
@@ -748,11 +774,13 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
           aria-label={t("tournamentDetail.participants.hidden.title")}
           className="relative overflow-hidden rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-4 shadow-md backdrop-blur-md sm:p-5"
         >
-          <div className="mb-3 flex items-center gap-1.5 text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+          <Eyebrow as="div" tone="dim" className="mb-3 flex items-center gap-1.5">
             <EyeOff aria-hidden className="size-3.5" />
             {t("tournamentDetail.participants.hidden.title")}
-          </div>
+          </Eyebrow>
           <RegistrationSummary
+            workspaceId={tournament.workspace_id}
+            discipline={tournament.discipline}
             total={registrationList?.total ?? 0}
             roleCounts={registrationList?.role_counts ?? {}}
             maxParticipants={registrationList?.max_participants}
@@ -767,12 +795,14 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
           rosterShape={tournament.roster_shape}
           divisionGrid={divisionGrid}
           heroesMap={heroesMap}
+          ontology={ontology}
           search={searchQuery}
           division={divisionFilter}
           onResetFilters={() => navigateParticipantUrl({ type: "reset" })}
         />
       ) : filtered.length > 0 ? (
         <VirtualParticipantsList
+          discipline={tournament.discipline}
           allColumns={allColumns}
           expandedIds={expandedIds}
           onToggleExpanded={toggleExpanded}
@@ -802,13 +832,9 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
             {" — "}
             {t("tournamentDetail.pageState.refreshError.description")}
           </span>
-          <button
-            className={styles.stateAction}
-            onClick={() => void listQuery.refetch()}
-            type="button"
-          >
+          <Button type="button" variant="outline" size="sm" onClick={() => void listQuery.refetch()}>
             {t("tournamentDetail.pageState.retry")}
-          </button>
+          </Button>
         </div>
       ) : null}
     </div>

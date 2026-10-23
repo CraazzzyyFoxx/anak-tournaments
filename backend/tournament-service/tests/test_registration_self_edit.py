@@ -25,12 +25,13 @@ from unittest import IsolatedAsyncioTestCase, TestCase, mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from shared import models  # noqa: E402
 from shared.core.enums import TournamentStatus  # noqa: E402
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.core.social import normalize_social_handle  # noqa: E402
 from shared.domain.forms import FormField, FormSchema, FormSection  # noqa: E402
 from shared.services.roster import roster_engine  # noqa: E402
-from src import models  # noqa: E402
+from shared.testing.roles import rated_catalog, registration_role  # noqa: E402
 from src.services.registration import service as reg_service  # noqa: E402
 from src.services.registration.answers import answer_service  # noqa: E402
 from src.services.registration.rank_autofill import _rank_autofill_balancer_addition  # noqa: E402
@@ -69,7 +70,9 @@ def _tournament(*, ends_in: timedelta | None = timedelta(days=1)) -> models.Tour
     A negative delta with ``allow_late_registration`` is the late case: open, and
     every sign-up in it is a reserve.
     """
-    tournament = models.Tournament(id=7, status=TournamentStatus.REGISTRATION, allow_late_registration=True)
+    tournament = models.Tournament(
+        id=7, workspace_id=1, discipline="overwatch", status=TournamentStatus.REGISTRATION, allow_late_registration=True
+    )
     tournament.phase_schedule = [
         models.TournamentPhaseSchedule(
             tournament_id=7,
@@ -81,8 +84,8 @@ def _tournament(*, ends_in: timedelta | None = timedelta(days=1)) -> models.Tour
     return tournament
 
 
-def _identity(handle: str, *, provider: str = "battlenet", position: int = 0) -> models.BalancerRegistrationIdentity:
-    return models.BalancerRegistrationIdentity(
+def _identity(handle: str, *, provider: str = "battlenet", position: int = 0) -> models.RegistrationIdentity:
+    return models.RegistrationIdentity(
         provider=provider,
         position=position,
         handle=handle,
@@ -90,7 +93,7 @@ def _identity(handle: str, *, provider: str = "battlenet", position: int = 0) ->
     )
 
 
-def _registration(**kwargs: Any) -> models.BalancerRegistration:
+def _registration(**kwargs: Any) -> models.Registration:
     defaults: dict[str, Any] = {
         "id": 1,
         "tournament_id": 7,
@@ -100,7 +103,7 @@ def _registration(**kwargs: Any) -> models.BalancerRegistration:
         "identities": [_identity("Player#1234")],
         "public_notes": "hi",
     }
-    return models.BalancerRegistration(**{**defaults, **kwargs})
+    return models.Registration(**{**defaults, **kwargs})
 
 
 class PolicyTests(TestCase):
@@ -121,7 +124,7 @@ class PolicyTests(TestCase):
 
     def test_a_form_with_nothing_open_cannot_be_edited_at_all(self) -> None:
         answered = _registration(custom_fields_json={"vk": "x"}, is_reserve=False)
-        answered.roles = [models.BalancerRegistrationRole(role="tank", is_primary=True, priority=0)]
+        answered.roles = [registration_role(role="tank", is_primary=True, priority=0)]
         # Every schema key now has a stored answer, so the "never answered"
         # exception cannot open anything: this is the whole-form kill switch.
         policy = self_edit_policy(answered, _tournament(), _schema())
@@ -215,6 +218,16 @@ class _RecordingSession:
     async def scalar(self, *_args: Any, **_kwargs: Any) -> Any:
         return 42
 
+    async def scalars(self, *_args: Any, **_kwargs: Any) -> Any:
+        result = mock.Mock()
+        result.all.return_value = list(rated_catalog().values())
+        return result
+
+    async def execute(self, *_args: Any, **_kwargs: Any) -> Any:
+        result = mock.Mock()
+        result.unique.return_value.scalars.return_value.first.return_value = _tournament()
+        return result
+
     def begin_nested(self) -> Any:
         return _Savepoint()
 
@@ -236,7 +249,7 @@ async def _no_rosters(*_args: Any, **_kwargs: Any) -> dict:
 
 
 class WritePathTests(IsolatedAsyncioTestCase):
-    async def _update(self, registration: models.BalancerRegistration, values: dict[str, Any], schema: FormSchema):
+    async def _update(self, registration: models.Registration, values: dict[str, Any], schema: FormSchema):
         return await reg_service.registration_service.update_registration(
             _RecordingSession(),
             registration,
@@ -311,6 +324,63 @@ class WritePathTests(IsolatedAsyncioTestCase):
 
         assert registration.is_reserve is True
         assert answer_service.answers_of(registration)["reserve"] is True
+
+
+class RoundTripTests(IsolatedAsyncioTestCase):
+    """GET ``/registration/me`` -> change one answer -> PATCH the whole document back.
+
+    The read reports every answer the row holds: the NOT NULL ``reserve`` and
+    ``stream_pov`` columns whether or not the form asks them, and answers the
+    organizer has since frozen. Echoing those back unchanged is no edit.
+    """
+
+    async def _validate(self, registration: models.Registration, answers: dict[str, Any]) -> dict[str, Any]:
+        only_vk = FormSchema(sections=[FormSection(key="all", fields=[FormField(key="vk", kind="text", label="VK")])])
+        return await answer_service.validate(
+            None,  # type: ignore[arg-type] -- no roles, no OAuth gate: nothing here reads the database
+            schema=only_vk,
+            answers=answers,
+            partial=True,
+            enforce_required=False,
+            player_id=None,
+            workspace_id=1,
+            discipline="overwatch",
+            hero_catalog=None,
+            registration=registration,
+        )
+
+    async def test_keys_the_form_never_asked_read_back_unchanged_are_ignored(self) -> None:
+        registration = _registration(is_reserve=False, stream_pov=False)
+        read = answer_service.answers_of(registration)
+        assert {"reserve", "stream_pov"} <= set(read)
+
+        values = await self._validate(registration, {**read, "vk": "new"})
+
+        assert values == {"vk": "new"}
+
+    async def test_a_changed_key_the_form_never_asked_is_still_refused(self) -> None:
+        with self.assertRaises(HTTPException) as caught:
+            await self._validate(_registration(is_reserve=False, stream_pov=False), {"reserve": True})
+
+        assert [(item["field"], item["code"]) for item in caught.exception.detail] == [("reserve", "unknown_field")]
+
+    async def test_a_frozen_answer_sent_back_unchanged_is_no_edit(self) -> None:
+        registration = _registration()
+        with (
+            mock.patch.object(reg_service.registration_service, "ensure_player_identity", _noop),
+            mock.patch.object(reg_service.registration_service, "ensure_unique_primary_game_handles", _noop),
+        ):
+            await reg_service.registration_service.update_registration(
+                _RecordingSession(),
+                registration,
+                tournament=_tournament(),
+                values={"identity_battlenet": ["Player#1234"], "public_notes": "new"},
+                schema=_schema(editable_keys=frozenset({"public_notes"})),
+                form_version_id=5,
+            )
+
+        assert registration.public_notes == "new"
+        assert [identity.handle for identity in registration.identities] == ["Player#1234"]
 
 
 class PoolSweepTests(TestCase):

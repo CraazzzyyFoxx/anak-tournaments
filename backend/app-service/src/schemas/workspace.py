@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from shared.schemas.quota import QuotaLimitsPayload, QuotaScope
-from shared.schemas.roster_slots import RosterSlotsField
+from shared.services.ontology import normalize_disciplines_enabled
 from shared.tenancy.hostnames import validate_subdomain_label
 from src.schemas.base import BaseRead
 from src.schemas.division_grid import DivisionGridVersionRead
@@ -15,13 +15,11 @@ from src.schemas.division_grid import DivisionGridVersionRead
 # the branding derive util consumes.
 _HEX_COLOR = r"^#[0-9a-fA-F]{6}$"
 
-# A Discord snowflake: 17-19 digits. 19 already reaches ~2084, and the column this
-# used to live in was BigInteger, which tops out at 19 digits -- so 20 was never
-# storable, and permitting it would let through a value the migration's downgrade
-# cannot cast back. Kept as a string end to end because it exceeds 2**53 and a float
-# round-trip would corrupt it. No `max_length` accompanies this pattern: it caps the
-# value at 19 characters already, so the `String(32)` column width could never bind,
-# and shipping both into the public schema would advertise contradictory bounds.
+# A Discord snowflake: 17-19 digits (19 already reaches ~2084). 20 digits would
+# not fit the BigInteger the migration's downgrade casts back to. Kept as a string
+# end to end because it exceeds 2**53 and a float round-trip would corrupt it. No
+# `max_length`: the pattern already caps the value at 19 characters, and both in
+# the public schema would advertise contradictory bounds.
 _DISCORD_SNOWFLAKE = r"^\d{17,19}$"
 
 # Which hosts each community link may point at (``www.`` stripped before the
@@ -34,6 +32,7 @@ _LINK_HOSTS: dict[str, tuple[str, ...]] = {
 }
 
 __all__ = (
+    "WorkspaceListItem",
     "WorkspaceRead",
     "WorkspaceCreate",
     "WorkspaceUpdate",
@@ -55,7 +54,9 @@ __all__ = (
 )
 
 
-class WorkspaceRead(BaseRead):
+class WorkspaceListItem(BaseRead):
+    """One row of ``workspaces.list``: everything but the grids, which a list of every workspace cannot afford."""
+
     slug: str
     name: str
     description: str | None
@@ -86,7 +87,7 @@ class WorkspaceRead(BaseRead):
     subdomain: str | None = None
     seo_title: str | None = None
     seo_description: str | None = None
-    # White-label custom domains (Phase 2). ``custom_domain_verification_token``
+    # Custom domains. ``custom_domain_verification_token``
     # is exposed so the admin UI can render the required DNS TXT record without
     # a second round-trip; it is not a secret (the TXT record IS public DNS).
     custom_domain: str | None = None
@@ -98,35 +99,43 @@ class WorkspaceRead(BaseRead):
     # A genuinely secret integration value must NOT follow this path; it needs an
     # authenticated admin read model.
     discord_guild_id: str | None = None
-    # Who proved ownership and when (self-service design §4.1) -- same
-    # public-exposure precedent as custom_domain_verified_at just above.
-    # discord_guild_verified_by_auth_user_id stays off this model: unlike a
-    # guild id or a DNS token, an arbitrary internal auth_user_id is not
-    # something this design chooses to publish.
+    # Who proved ownership and when -- same public-exposure precedent as
+    # custom_domain_verified_at just above. discord_guild_verified_by_auth_user_id
+    # stays off this model: unlike a guild id or a DNS token, an internal
+    # auth_user_id is not published.
     discord_guild_verified_at: datetime | None = None
-    # Self-service trust tier (design §4.2). Public because the frontend renders
+    # Self-service trust tier. Public because the frontend renders
     # it as a badge and derives the "not listed on the home page yet" notice
     # from it; ``trusted`` is also exactly what the public directory filters on,
     # so it is already observable from the outside.
     verification_status: str = "unverified"
-    default_division_grid_version_id: int | None
-    default_division_grid_version: DivisionGridVersionRead | None = None
-    default_roster_slots_json: dict[str, int] | None = None
+    default_division_grid_versions: dict[str, int] = Field(default_factory=dict)
+    #: The workspace's enabled games as stored; a read never invents one.
+    disciplines_enabled: list[str]
     # See ``shared.models.tenancy.workspace.Workspace.newcomer_scope``.
     newcomer_scope: Literal["global", "workspace"] = "global"
 
 
+class WorkspaceRead(WorkspaceListItem):
+    """One workspace, with the effective division grid of each of its games."""
+
+    effective_division_grid_versions: dict[str, DivisionGridVersionRead] = Field(default_factory=dict)
+
+
 class WorkspaceCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     slug: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-z0-9_-]+$")
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
     icon_url: str | None = None
-    default_division_grid_version_id: int | None = None
-    default_roster_slots_json: RosterSlotsField = None
 
 
 class WorkspaceUpdate(BaseModel):
-    name: str | None = None
+    model_config = ConfigDict(extra="forbid")
+
+    # Same bounds as ``WorkspaceCreate``; stripped first, so a name of spaces is no name.
+    name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None
     icon_url: str | None = None
     # Public community profile. Blank input clears the field (``_blank_to_none``);
@@ -153,11 +162,15 @@ class WorkspaceUpdate(BaseModel):
     subdomain: str | None = None
     seo_title: str | None = None
     seo_description: str | None = None
-    default_division_grid_version_id: int | None = None
-    # Edited in place, unlike `default_division_grid_version_id` above: a roster
-    # shape has no activation semantics, so it needs no dedicated endpoint.
-    default_roster_slots_json: RosterSlotsField = None
+    disciplines_enabled: list[str] | None = None
     newcomer_scope: Literal["global", "workspace"] | None = None
+
+    @field_validator("disciplines_enabled")
+    @classmethod
+    def _disciplines_enabled(cls, value: list[str] | None) -> list[str]:
+        if value is None:
+            raise ValueError("disciplines_enabled must be a list")
+        return normalize_disciplines_enabled(value)
 
     @field_validator(
         "brand_primary",
@@ -200,6 +213,11 @@ class WorkspaceUpdate(BaseModel):
             raise ValueError(f"Unknown IANA timezone: {value!r}") from exc
         return value
 
+    @field_validator("name", mode="before")
+    @classmethod
+    def _strip_name(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
     @field_validator("tagline", "about", mode="before")
     @classmethod
     def _blank_text_to_none(cls, value: object) -> object:
@@ -228,10 +246,9 @@ class WorkspaceUpdate(BaseModel):
 
 
 class WorkspaceCustomDomainSet(BaseModel):
-    """Body for ``set_custom_domain``. Normalization/validation of the domain
-    itself (FQDN shape, platform-zone rejection) happens in the service layer
-    via ``normalize_custom_domain`` so both this RPC and any future caller share
-    one source of truth for what counts as a valid custom domain."""
+    """Body for ``set_custom_domain``. The domain itself (FQDN shape,
+    platform-zone rejection) is validated in the service layer by
+    ``normalize_custom_domain``."""
 
     custom_domain: str = Field(..., min_length=1, max_length=255)
 
@@ -248,8 +265,7 @@ class WorkspaceDiscordGuildVerify(BaseModel):
 class WorkspaceDiscordGuildOption(BaseModel):
     """One guild the caller administers, as reported by
     ``rpc.identity.oauth_discord_guilds``. Feeds the settings guild picker, so
-    ``discord_guild_verify`` can be handed a snowflake the caller can actually
-    prove — instead of a free-text field that only fails after the fact."""
+    ``discord_guild_verify`` is handed a snowflake the caller can actually prove."""
 
     guild_id: str
     name: str
@@ -260,6 +276,9 @@ class WorkspaceDiscordGuildOption(BaseModel):
 
 class WorkspaceDiscordGuildsRead(BaseModel):
     guilds: list[WorkspaceDiscordGuildOption] = Field(default_factory=list)
+    #: The caller's Discord connection has no usable OAuth token: the empty
+    #: list means "re-link Discord", not "you administer nothing".
+    relink_required: bool = False
 
 
 class WorkspaceVerificationSet(BaseModel):
@@ -357,14 +376,19 @@ class WorkspaceMemberRead(BaseRead):
     rbac_roles: list[WorkspaceMemberRoleRead] = Field(default_factory=list)
 
 
+# The workspace system roles (``shared.rbac.catalog.WORKSPACE_SYSTEM_ROLE_NAMES``);
+# a name outside them has no role to resolve to.
+_SYSTEM_ROLE = r"^(owner|admin|referee|host|player)$"
+
+
 class WorkspaceMemberCreate(BaseModel):
     auth_user_id: int
-    role: str | None = Field(default=None, pattern=r"^(owner|admin|member)$")
+    role: str | None = Field(default=None, pattern=_SYSTEM_ROLE)
     role_ids: list[int] | None = None
 
 
 class WorkspaceMemberUpdate(BaseModel):
-    role: str | None = Field(default=None, pattern=r"^(owner|admin|member)$")
+    role: str | None = Field(default=None, pattern=_SYSTEM_ROLE)
     role_ids: list[int] | None = None
 
 

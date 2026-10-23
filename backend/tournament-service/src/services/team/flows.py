@@ -1,11 +1,14 @@
-from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
+from shared.core import enums, errors, pagination, utils
 from shared.division_grid import DivisionGrid
+from shared.services.cache_generations import versioned
 from shared.services.division_grid.resolution import resolve_tournament_division
-from src import models, schemas
-from src.core import config, enums, errors, pagination, utils
+from src import schemas
+from src.core import config
 from src.core.workspace import get_division_grid
+from src.services.tournament.cache_resources import TEAMS, tournament_generations
 from src.services.tournament.flows import flows_service as tournament_flows_service
 from src.services.user.flows import flows_service as user_flows_service
 from src.services.user.flows import user_to_read
@@ -35,17 +38,7 @@ class TeamFlowsService:
         *,
         grid: DivisionGrid | None = None,
     ) -> schemas.TeamRead:
-        """
-        Converts a Team model instance to a Pydantic schema (TeamRead), including related entities.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            team (models.Team): The Team model instance to convert.
-            entities (list[str]): A list of related entities to include (e.g., ["tournament", "players", "captain"]).
-
-        Returns:
-            schemas.TeamRead: The Pydantic schema representing the team.
-        """
+        """Convert a team to ``TeamRead`` with the requested ``entities`` (e.g. tournament, players, captain)."""
         tournament: schemas.TournamentRead | None = None
         players_read: list[schemas.PlayerRead] = []
         captain: schemas.UserRead | None = None
@@ -65,13 +58,8 @@ class TeamFlowsService:
                 ]
             else:
                 players_read = [self.player_to_read(player, players_entities, grid=grid) for player in team.players]
-        # ``Team.captain_id`` is nullable, and NOT only in theory: it is ``SET NULL``
-        # on the captain's player row, and a scrim room's away side has no captain at
-        # all until someone claims it (docs/plans/2026-08-12-scrim-rooms.md §4.2). The
-        # encounter flow one level up already guards its own nullable sides the same
-        # way; without this, requesting the ``captain`` entity for such a team raised
-        # ``AttributeError: 'NoneType' object has no attribute 'id'`` inside
-        # ``user_flows_service.to_pydantic``. ``TeamRead.captain`` was already ``| None``.
+        # ``Team.captain_id`` is nullable in practice: ``SET NULL`` on the captain's player
+        # row, and a scrim room's away side has no captain until someone claims it.
         if "captain" in entities and team.captain is not None:
             captain = await user_flows_service.to_pydantic(
                 session, team.captain, utils.prepare_entities(entities, "captain")
@@ -111,18 +99,14 @@ class TeamFlowsService:
     ) -> schemas.PlayerRead:
         user: schemas.UserRead | None = None
         if "user" in entities:
-            # workspace_member_id is NOT NULL (contract step, iwrefac07) and is always
-            # eager-loaded regardless of the "user" entity flag (see workspace_member_id
-            # dereference below), so the old "workspace_member is not None" guard here
-            # was dead — dropped to match app-service's _mappers.py.
             user_entities = [e.replace("user.", "") for e in entities if e.startswith("user.")]
             user = user_to_read(player.workspace_member.player, user_entities)
 
         player_dict = player.to_dict()
-        # Player.user_id was dropped in the contract step (iwrefac07); PlayerRead.user_id
-        # is resolved from workspace_member.player_id instead (workspace_member is always
-        # loaded by team_entities/player_entities regardless of the "user" entity flag).
+        # PlayerRead.user_id comes from workspace_member.player_id: workspace_member_id is
+        # NOT NULL and team_entities/player_entities always load it, whatever the entities.
         player_dict["user_id"] = player.workspace_member.player_id
+        player_dict["role"] = player.role_ref
 
         return schemas.PlayerRead(
             **player_dict,
@@ -148,20 +132,7 @@ class TeamFlowsService:
         return self.player_to_read(player, entities, grid=grid, tournament=tournament, team=team)
 
     async def get(self, session: AsyncSession, id: int, entities: list[str]) -> models.Team:
-        """
-        Retrieves a team by its ID.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            id (int): The ID of the team to retrieve.
-            entities (list[str]): A list of related entities to load (e.g., ["tournament", "players"]).
-
-        Returns:
-            models.Team: The Team object if found.
-
-        Raises:
-            errors.ApiHTTPException: If the team is not found.
-        """
+        """Return the team by id with ``entities`` loaded; 404 when missing."""
         team = await self.teams.get(session, id, entities)
         if not team:
             raise errors.ApiHTTPException(
@@ -171,60 +142,14 @@ class TeamFlowsService:
         return team
 
     async def get_read(self, session: AsyncSession, id: int, entities: list[str]) -> schemas.TeamRead:
-        """
-        Retrieves a team by its ID and converts it to a Pydantic schema.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            id (int): The ID of the team to retrieve.
-            entities (list[str]): A list of related entities to include (e.g., ["tournament", "players"]).
-
-        Returns:
-            schemas.TeamRead: The Pydantic schema representing the team.
-        """
+        """Return the team by id as ``TeamRead``; 404 when missing."""
         team = await self.get(session, id, entities)
         return await self.to_pydantic(session, team, entities)
-
-    @cache(ttl=config.settings.teams_cache_ttl, key="teams_by_tournament:{tournament_id}:{entities}", prefix="fastapi:")
-    async def get_by_tournament_read(
-        self, session: AsyncSession, tournament_id: int, entities: list[str]
-    ) -> list[schemas.TeamRead]:
-        """
-        Retrieves all teams for a specific tournament and converts them to Pydantic schemas.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            tournament_id (int): The ID of the tournament.
-            entities (list[str]): A list of related entities to include (e.g., ["tournament", "players"]).
-
-        Returns:
-            list[schemas.TeamRead]: A list of Pydantic schemas representing the teams.
-        """
-        tournament = await tournament_flows_service.get(session, tournament_id, [])
-        teams = await self.teams.get_by_tournament(session, tournament=tournament, entities=entities)
-        grid = None
-        if "players" in entities:
-            grid = await get_division_grid(session, None, tournament_id=tournament_id)
-        return [await self.to_pydantic(session, team, entities=entities, grid=grid) for team in teams]
 
     async def get_by_name_and_tournament(
         self, session: AsyncSession, tournament_id: int, name: str, entities: list[str]
     ) -> models.Team:
-        """
-        Retrieves a team by its name and associated tournament.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            tournament_id (int): The ID of the tournament.
-            name (str): The name of the team to retrieve.
-            entities (list[str]): A list of related entities to load (e.g., ["tournament", "players"]).
-
-        Returns:
-            models.Team: The Team object if found.
-
-        Raises:
-            errors.ApiHTTPException: If the team is not found.
-        """
+        """Return the team by name within the tournament; 404 when missing."""
         team = await self.teams.get_by_name_and_tournament(session, tournament_id, name, entities)
         if not team:
             raise errors.ApiHTTPException(
@@ -241,21 +166,7 @@ class TeamFlowsService:
     async def get_by_tournament_challonge_id(
         self, session: AsyncSession, tournament_id: int, challonge_id: int, entities: list[str]
     ) -> models.Team:
-        """
-        Retrieves a team by its Challonge ID and associated tournament.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            tournament_id (int): The ID of the tournament.
-            challonge_id (int): The Challonge ID of the team to retrieve.
-            entities (list[str]): A list of related entities to load (e.g., ["tournament", "players"]).
-
-        Returns:
-            models.Team: The Team object if found.
-
-        Raises:
-            errors.ApiHTTPException: If the team is not found.
-        """
+        """Return the team by Challonge id within the tournament; 404 when missing."""
         team = await self.teams.get_by_tournament_challonge_id(session, tournament_id, challonge_id, entities)
         if not team:
             raise errors.ApiHTTPException(
@@ -272,21 +183,7 @@ class TeamFlowsService:
     async def get_player_by_user_and_tournament(
         self, session: AsyncSession, user_id: int, tournament_id: int, entities: list[str]
     ) -> models.Player:
-        """
-        Retrieves a player by their user ID and associated tournament.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            user_id (int): The ID of the user.
-            tournament_id (int): The ID of the tournament.
-            entities (list[str]): A list of related entities to load (e.g., ["user", "team"]).
-
-        Returns:
-            models.Player: The Player object if found.
-
-        Raises:
-            errors.ApiHTTPException: If the player is not found.
-        """
+        """Return the user's player in the tournament; 404 when missing."""
         player = await self.teams.get_player_by_user_and_tournament(session, user_id, tournament_id, entities)
         if not player:
             raise errors.ApiHTTPException(
@@ -302,22 +199,15 @@ class TeamFlowsService:
         return player
 
     async def get_player(self, session: AsyncSession, player_id: int, entities: list[str]) -> models.Player | None:
-        """
-        Retrieves a player by their ID.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            player_id (int): The ID of the player to retrieve.
-            entities (list[str]): A list of related entities to load (e.g., ["user", "team"]).
-
-        Returns:
-            models.Player: The Player object if found.
-        """
+        """Return the player by id, or None."""
         return await self.teams.get_player(session, player_id, entities)
 
-    @cache(
+    # `v2` key version: Redis keeps values across a deploy and cashews returns them unvalidated, so a
+    # `TeamRead` shape change must bump it.
+    @versioned(
+        generations=tournament_generations("{params.tournament_id}", TEAMS),
         ttl=config.settings.teams_cache_ttl,
-        key="teams:{workspace_id}:{params.tournament_id}:{params.page}:{params.per_page}:{params.sort}:{params.order}:{params.entities}:{params.search}",
+        key="teams:v2:{workspace_id}:{params.tournament_id}:{params.page}:{params.per_page}:{params.sort}:{params.order}:{params.entities}:{params.search}:{params.discipline}",
         prefix="fastapi:",
     )
     async def get_all(
@@ -326,17 +216,7 @@ class TeamFlowsService:
         params: schemas.TeamFilterParams,
         workspace_id: int | None = None,
     ) -> pagination.Paginated[schemas.TeamRead]:
-        """
-        Retrieves a paginated list of teams based on filter parameters.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            params (schemas.TeamFilterParams): Filter, pagination, and sorting parameters.
-            workspace_id (int | None): Optional workspace ID to filter teams by.
-
-        Returns:
-            pagination.Paginated[schemas.TeamRead]: A paginated list of Pydantic schemas representing the teams.
-        """
+        """Return a page of teams as ``TeamRead``, optionally scoped to one workspace."""
         if params.tournament_id:
             await tournament_flows_service.get(session, params.tournament_id, [])
 

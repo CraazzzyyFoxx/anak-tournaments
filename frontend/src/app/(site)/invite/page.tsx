@@ -9,9 +9,11 @@ import { useSyncExternalStore } from "react";
 import InviteAcceptWizard from "@/components/registration/InviteAcceptWizard";
 import { Button } from "@/components/ui/button";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { readInviteTokenFromHash } from "@/lib/registration/invite-link";
 import { translateRegistrationTeamError } from "@/lib/registration/team-errors";
-import { isRosterSlotCode } from "@/lib/roster/shape";
+import { showsRoles } from "@/lib/roster/ontology";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { useAuthModalStore } from "@/stores/auth-modal.store";
 import registrationService from "@/services/registration.service";
@@ -34,7 +36,6 @@ import { Spinner } from "@/components/ui/spinner";
 export default function InviteLandingPage() {
   const t = useTranslations("registrationTeams");
   const tErrors = useTranslations("registrationTeams.errors");
-  const tSlot = useTranslations("rosterShape.slotCodes");
   const tCommon = useTranslations("common");
   const router = useRouter();
   const { status: authStatus, user } = useAuthProfile();
@@ -60,6 +61,9 @@ export default function InviteLandingPage() {
   });
 
   const preview = previewQuery.data;
+  // The offered slot is named in the tournament's own game: public metadata of the invite's workspace.
+  const metadata = useDisciplineMetadata(preview?.workspace_id ?? "all", preview?.discipline ?? null);
+  const slotLabelOf = useSlotLabel(metadata.data ?? null);
 
   // The wizard needs the tournament's registration form, and the invite is what
   // tells us which tournament that is — so this cannot be fetched any earlier.
@@ -100,20 +104,20 @@ export default function InviteLandingPage() {
     );
   }
 
-  // An unknown code from a newer server renders as itself rather than as a
-  // missing-key error: the label is decoration, the slot is the offer.
-  const slotLabel = isRosterSlotCode(preview.slot_code) ? tSlot(preview.slot_code) : preview.slot_code;
+  // A role this game's metadata does not name renders as its code rather than as a
+  // missing-key error: the label is decoration, the slot is the offer. A one-role
+  // game's every slot is that role, so its offer is a seat on the roster or the bench.
+  const slotLabel = slotLabelOf(preview.slot_code);
+  const seatLine = showsRoles(metadata.data)
+    ? t(preview.is_substitute ? "landing.slotSubstitute" : "landing.slot", { slot: slotLabel })
+    : t(preview.is_substitute ? "landing.seatSubstitute" : "landing.seat");
 
   const offer = (
     <div className="flex flex-col gap-1">
       <p className="text-base text-[color:var(--aqt-fg)]">
         {t("landing.invitedTo", { team: preview.team_name, tournament: preview.tournament_name })}
       </p>
-      <p className="text-sm text-[color:var(--aqt-fg-muted)]">
-        {preview.is_substitute
-          ? t("landing.slotSubstitute", { slot: slotLabel })
-          : t("landing.slot", { slot: slotLabel })}
-      </p>
+      <p className="text-sm text-[color:var(--aqt-fg-muted)]">{seatLine}</p>
     </div>
   );
 

@@ -7,6 +7,14 @@ openapi_schemas.py. The gateway appends the RPC subject footer itself.
 from __future__ import annotations
 
 DOCS: dict[str, dict] = {
+    "rpc.tournament.team_format.get": {
+        "summary": "Get a tournament's team format",
+        "description": "Permission: workspace `tournament.read`. The tournament's own team format with its slot projection.",
+    },
+    "rpc.tournament.team_format.put": {
+        "summary": "Replace a tournament's team format",
+        "description": "Permission: workspace `tournament.update`. Replaces the tournament's team format; 409 while a draft is unfinished or teams hold slots; 422 with the `team_format_*` code when the format cannot be stored.",
+    },
     # ── public reads (single object) ───────────────────────────────────────
     "rpc.tournament.get_tournament": {
         "summary": "Get tournament",
@@ -22,15 +30,19 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.get_match": {
         "summary": "Get match with stats",
-        "description": "Permission: public; no authentication required — a hidden tournament is visible only to its workspace's admins and users on its preview allowlist. Returns one match by id with player statistics and optionally hydrated related entities, scoped to the given workspace.",
+        "description": "Permission: public; no authentication required — a hidden tournament is visible only to its workspace's admins and users on its preview allowlist. Returns one match by id: its participants (official result lines and observed team facts), every member, segment and fact at every grain, and optionally hydrated related entities, scoped to the given workspace.",
     },
     "rpc.tournament.get_match_kill_feed": {
         "summary": "Get match kill feed",
-        "description": "Permission: public; no authentication required — a hidden tournament is visible only to its workspace's admins and users on its preview allowlist. Returns one match's chronological kill feed and timeline events, scoped to the given workspace; 404s when the match is outside that scope.",
+        "description": "Permission: public; no authentication required — a hidden tournament is visible only to its workspace's admins and users on its preview allowlist. Returns one match's whole event timeline in chronological order with the characters its events name, scoped to the given workspace; 404s when the match is outside that scope.",
     },
     "rpc.tournament.encounters_overview": {
         "summary": "Get encounters overview",
-        "description": "Permission: public; no authentication required. Returns an aggregated encounters overview for the search filters, with viewer-scoped fields resolved from the optional identity.",
+        "description": "Permission: public; no authentication required — an explicit tournament_id is visibility-gated against the caller, and an unfiltered overview counts publicly visible tournaments only. Takes the encounter list's filters and returns the browse's counts: the status segments (`all`, `live`, `upcoming`, `completed`; the status filter ignored, the toggles applied) and the toggles (`finals`, `upsets`, `with_logs`, `my_team`; every other filter applied, that toggle forced on — `my_team` is 0 without an identity), plus `completed_with_logs`, `recent_completed` (played in the last 7 days) and up to 4 encounters in play.",
+    },
+    "rpc.tournament.encounters_insights": {
+        "summary": "Get encounters insights",
+        "description": "Permission: public; no authentication required — an explicit tournament_id is visibility-gated against the caller, and an unfiltered read covers publicly visible tournaments only. Takes the encounter list's filters with the status forced to `completed` and returns their analytics: the count, average closeness (0..1) and its histogram in tenths, final score lines, the split by stage kind, the 6 most played maps, the 4 closest encounters, average series length, and — over the duels of more than one map (`multi_map`) — sweeps and series that went the distance.",
     },
     "rpc.tournament.statistics_overall": {
         "summary": "Get overall statistics",
@@ -39,7 +51,7 @@ DOCS: dict[str, dict] = {
     # ── public reads (arrays) ──────────────────────────────────────────────
     "rpc.tournament.lookup_tournaments": {
         "summary": "Lookup tournaments",
-        "description": "Permission: public; no authentication required — hidden tournaments are never listed here, for any caller. Returns a lightweight id/name list of up to 500 most-recent tournaments, optionally filtered by workspace and league flag, for pickers.",
+        "description": "Permission: public; no authentication required — hidden tournaments are never listed here, for any caller. Returns a lightweight id/name list of up to 500 most-recent tournaments, optionally filtered by workspace, league flag and installed discipline (an uninstalled code is 422), for pickers.",
     },
     "rpc.tournament.get_stages": {
         "summary": "List tournament stages",
@@ -49,7 +61,7 @@ DOCS: dict[str, dict] = {
         "summary": "Get tournament standings",
         "description": "Permission: public; no authentication required — a hidden tournament is visible only to its workspace's admins and users on its preview allowlist. Returns the standings for a tournament with optionally hydrated related entities selected via the entities query param.",
     },
-    # ── ffa lobbies (docs/plans/2026-09-24-ffa-encounters.md) ─────────────
+    # ── ffa lobbies ────────────────────────────────────────────────────────
     "rpc.tournament.ffa_stage": {
         "summary": "Get FFA stage lobbies",
         "description": (
@@ -76,7 +88,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.statistics_division": {
         "summary": "Get division statistics",
-        "description": "Permission: public; no authentication required. Returns average-division statistics per tournament, normalized against the workspace division grid with fallback to the global grid.",
+        "description": "Permission: public; no authentication required. Returns, for the tournaments of the game named by the required `discipline` query param (422 when absent, 404 `discipline_not_installed` for an unknown code), the average division per tournament keyed by the top-level role codes of that game's rated dimension (`role_avg_divs`; a role nobody played is absent), normalized against the workspace's division grid for that game with fallback to its global grid.",
     },
     "rpc.tournament.saved_views": {
         "summary": "List saved encounter views",
@@ -101,7 +113,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.list_teams": {
         "summary": "List teams",
-        "description": "Permission: public; no authentication required — an explicit tournament_id filter is visibility-gated against the caller, and an unfiltered page is restricted to publicly visible tournaments. Returns a paginated list of teams for the filter params within the given workspace.",
+        "description": "Permission: public; no authentication required — an explicit tournament_id filter is visibility-gated against the caller, and an unfiltered page is restricted to publicly visible tournaments. Returns a paginated list of teams for the filter params within the given workspace: every game's, or only the optional `discipline`'s (by the team's tournament; 422 for an unknown code).",
     },
     # ── computation job reads ──────────────────────────────────────────────
     "rpc.tournament.job_get": {
@@ -242,9 +254,10 @@ DOCS: dict[str, dict] = {
     "rpc.tournament.admin.update#encounter": {
         "summary": "Update encounter",
         "description": (
-            "Permission: workspace `match.result` for the score fields (home_score, away_score, status, "
-            "closeness, started_at, ended_at, current_map_index), `match.update` for every other field; a "
-            "payload mixing both needs both. Updates an encounter by id."
+            "Permission: workspace `match.result` for the result fields (status, closeness, started_at, "
+            "ended_at, current_map_index), `match.update` for every other field; a payload mixing both "
+            "needs both. Updates an encounter by id. The scoreline is not here: it lives on the "
+            "participations and only `encounter_set_result` writes it."
         ),
     },
     "rpc.tournament.admin.delete#encounter": {
@@ -256,31 +269,42 @@ DOCS: dict[str, dict] = {
         "summary": "Set encounter result",
         "description": (
             "Permission: workspace `match.result` on the encounter's workspace. "
-            "Confirms an encounter result in one transaction: score, status, result_status and the audit row "
-            "move together. The score is taken from the first available source — an explicit home_score/away_score, "
-            "the report of adopt_report_team_id, both reports when they agree, or the encounter's own non-zero "
-            "score — and 422 when none applies. 409 when the result is already confirmed (reopen it first)."
+            "Confirms an encounter result in one transaction: the participations' scores, status, "
+            "result_status, result_version and the audit row move together. `reason` is mandatory. Each "
+            "`results` line names an `encounter_team_id` — never a side — with its score and optional "
+            "placement; leave `results` empty and name `adopt_report_team_id` to take that participation's "
+            "own report as truth instead, which resolves a dispute in one call. 422 when neither applies. "
+            "409 when the result is already confirmed (reopen it first)."
         ),
     },
     "rpc.tournament.encounter_reopen_result": {
         "summary": "Reopen encounter result",
         "description": (
             "Permission: workspace `match.result` on the encounter's workspace. "
-            "Un-confirms an encounter so it can be replayed or re-reported, clearing its score, closeness and "
-            "confirmation, and cascading through anything the old result advanced. Captain reports are kept. "
+            "Un-confirms an encounter so it can be replayed or re-reported, clearing the participations' "
+            "scores, closeness and confirmation, and cascading through anything the old result advanced. "
+            "Team reports are kept. `reason` is mandatory — it is what the journal row carries. "
             "409 when there is no recorded result."
         ),
     },
     # ── per-map match edit (admin) ─────────────────────────────────────────
     "rpc.tournament.encounter_update_match": {
         "summary": "Update match",
-        "description": "Permission: workspace `match.result` on the workspace resolved from the match. Edits one played map of an encounter (teams, score, map, lobby code, time, log name) and answers the match's own columns.",
+        "description": (
+            "Permission: workspace `match.result` on the workspace resolved from the match. "
+            "Edits the observed score of any participant, addressed by encounter_team_id (422 for a seat the "
+            "match does not have), and the nullable duration in seconds. "
+            "The map must equal the bound game's existing map (409 otherwise). "
+            "Team IDs, source, code, log_name and other unsupported fields are rejected with 422. "
+            "Official game scores remain unchanged; score and duration changes carry separate native "
+            "evidence records in the same transaction as the existing recalculation outbox."
+        ),
     },
     "rpc.tournament.encounter_swap_slot": {
         "description": (
             "Permission: workspace `match.update` on the encounter's workspace. "
-            "Swaps one of an encounter's team slots with another slot and answers with both sides' "
-            "resulting team/score state, so the bracket re-renders the pair without a refetch."
+            "Swaps one of an encounter's team slots with another slot and answers with both encounters' "
+            "resulting seats, so the bracket re-renders the pair without a refetch."
         ),
     },
     # ── match report form (per-tournament captain-report config) ───────────
@@ -308,12 +332,13 @@ DOCS: dict[str, dict] = {
         "summary": "List parsed matches",
         "description": (
             "Permission: workspace `match.read` on the workspace named by `workspace_id`. "
-            "Every played map the log parser produced, across the workspace. One row is one map, "
-            "not one encounter. `log_record` is the ingestion record the map was parsed from and is "
-            "null when provenance is unresolved \u2014 the normal state for matches that predate the "
-            "ingestion table, not an error. Filter with `tournament_id`, `encounter_id`, `map_id`, "
-            "`log_status`, `unlinked_only` and a free-text `query` over log name, match code and team "
-            "names. An empty `log_status` filters nothing, so unlinked matches stay visible."
+            "Every observed duel map across the workspace, not one encounter: every game's, or only the "
+            "optional `discipline`'s (422 for an unknown code); each row names its own `discipline`. "
+            "Scores follow the bound game's historical slots; official game results are unchanged. "
+            "`log_record` is its native ingest job and is null for observations with no raw provenance. "
+            "Filter with `tournament_id`, `encounter_id`, `map_id`, `log_status`, `unlinked_only` and a "
+            "free-text `query` over the actual ingest filename and team names. An empty `log_status` "
+            "filters nothing, so observations without an ingest job stay visible."
         ),
     },
     "rpc.tournament.admin_match_get": {
@@ -420,7 +445,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.admin.list#player_sub_role": {
         "summary": "List player sub-roles",
-        "description": "Permission: workspace `player.read`. Lists a workspace's player sub-roles, optionally filtered by role and including inactive ones.",
+        "description": "Permission: workspace `player.read`. Requires workspace_id; lists only that workspace's child roles — every installed game's, or only the optional `discipline`'s (422 `discipline_not_installed` for an unknown code) — optionally filtered by parent role (which needs `discipline`, else 422) and including inactive ones. Each row names its own `discipline`.",
     },
     # ── generic CRUD engine: tournament_link ───────────────────────────────
     "rpc.tournament.admin.create#tournament_link": {
@@ -442,7 +467,7 @@ DOCS: dict[str, dict] = {
     # ── bespoke: tournament status / lifecycle ─────────────────────────────
     "rpc.tournament.tournament_finish": {
         "summary": "Toggle tournament finished",
-        "description": "Permission: superuser only. Toggles a tournament's legacy finished flag and returns it with stages.",
+        "description": "Permission: superuser only. Toggles a tournament's `is_finished` flag and returns it with stages.",
     },
     "rpc.tournament.tournament_status": {
         "summary": "Transition tournament status",
@@ -478,45 +503,45 @@ DOCS: dict[str, dict] = {
     # ── bespoke: pick-ban live-session admin overrides (map + hero) ────────
     "rpc.tournament.admin_pick_ban_session_reset": {
         "summary": "Reset pick-ban session",
-        "description": "Permission: workspace `match.result` on the encounter's workspace. Drops an encounter's pick-ban session (map or hero, per the body's `kind`) and its entries, re-creates them with freshly resolved seeds and returns the new room state.",
+        "description": "Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Drops an encounter's pick-ban session (map or hero, per the body's `kind`) and its entries, re-creates them with freshly resolved seeds and returns the new room state.",
     },
     "rpc.tournament.admin_pick_ban_act": {
         "summary": "Act for a side",
-        "description": "Permission: workspace `match.result` on the encounter's workspace. Performs one ban, pick or protect on behalf of the given side (admin override of the captain flow) against the current OPEN step, optionally naming the opponent roster player a per-player ban is spent on, and returns the full room state with nothing hidden. 400 when the current step is blind — use admin_pick_ban_submit for those.",
+        "description": "Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Performs one ban, pick or protect on behalf of the given side (admin override of the captain flow) against the current OPEN step, optionally naming the opponent roster player a per-player ban is spent on, and returns the full room state with nothing hidden. 400 when the current step is blind — use admin_pick_ban_submit for those. On a mix's member pick `member_id` names the member the hero is for (422 on a tournament match).",
     },
     "rpc.tournament.admin_pick_ban_submit": {
         "summary": "Submit a blind draft for a side",
-        "description": "Permission: workspace `match.result` on the encounter's workspace. Replaces one side's draft on a BLIND step on behalf of an absent captain and, with `lock: true`, locks it; every side locked reveals the step. Returns the full room state with nothing hidden. 400 when the current step is not blind, when the side already locked, or when the items break the step's rules.",
+        "description": "Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Replaces one side's draft on a BLIND step on behalf of an absent captain and, with `lock: true`, locks it; every side locked reveals the step. Returns the full room state with nothing hidden. 400 when the current step is not blind, when the side already locked, or when the items break the step's rules.",
     },
     "rpc.tournament.admin_pick_ban_reopen": {
         "summary": "Reopen the last revealed step",
-        "description": "Permission: workspace `match.result` on the encounter's workspace. Voids the last fully revealed step's submissions and re-opens it for a fresh attempt — the organizer's version of a captain dispute, with no attempt budget and no `dispute.enabled` requirement. Returns the new room state. 400 when there is no revealed step to reopen or a later step has already been acted in.",
+        "description": "Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Voids the last fully revealed step's submissions and re-opens it for a fresh attempt — the organizer's version of a captain dispute, with no attempt budget and no `dispute.enabled` requirement. A reopened open (non-blind) step starts with an empty draft, the voided items available again, so its captain answers it afresh; a blind step's new drafts are prefilled with each side's previous items (still private until everyone locks). A reopened `side_pick` also takes back that game's sides and un-binds the round's side-bound steps, so the re-choice binds them afresh. Returns the new room state. 400 when there is no revealed step to reopen or a later step has already been acted in; 409 `side_locked` when the step is a `side_pick` whose game already has a claim or a confirmed result.",
     },
     "rpc.tournament.admin_pick_ban_elect_opener": {
         "summary": "Elect a round's opener for a side",
-        "description": "Permission: workspace `match.result` on the encounter's workspace. Names who opens the round a `result_loser_choice` rotation is holding and appends it, on behalf of a losing captain who is unreachable; returns the new room state.",
+        "description": "Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Names who opens the round a `result_loser_choice` rotation is holding and appends it, on behalf of a losing captain who is unreachable; returns the new room state.",
     },
     # ── bespoke: the room's emergency controls ───────────────────────────
     "rpc.tournament.admin_pick_ban_pause": {
         "summary": "Pause or resume a pick-ban session",
-        "description": "Permission: workspace `match.result` on the encounter's workspace. Freezes (`{kind, paused: true}`) or releases one kind's room and returns its state. A paused session has no deadline at all: the open step's timer stops, nothing auto-resolves, reveals or times out, and every CAPTAIN write (act, submit, dispute, undo, elect-opener) answers 409 `Pick-ban session is paused` while the admin overrides keep working. Resuming gives the step back exactly the time it had left; a step that opened during the pause gets its full timer. Idempotent, and 409 when no session of that kind exists or it is not active.",
+        "description": "Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Freezes (`{kind, paused: true}`) or releases one kind's room and returns its state. A paused session has no deadline at all: the open step's timer stops, nothing auto-resolves, reveals or times out, and every CAPTAIN write (act, submit, dispute, undo, elect-opener) answers 409 `Pick-ban session is paused` while the admin overrides keep working. Resuming gives the step back exactly the time it had left; a step that opened during the pause gets its full timer. Idempotent, and 409 when no session of that kind exists or it is not active.",
     },
     "rpc.tournament.admin_pick_ban_extend": {
         "summary": "Extend the open step's timer",
-        "description": "Permission: workspace `match.result` on the encounter's workspace. Adds `seconds` (10..3600) to the open step's clock by moving its start forward, and returns the room state. Allowed while paused. 409 when no session of that kind is active or the open step has no timer (an untimed or already settled step has nothing to extend).",
+        "description": "Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Adds `seconds` (10..3600) to the open step's clock by moving its start forward, and returns the room state. Allowed while paused. 409 when no session of that kind is active or the open step has no timer (an untimed or already settled step has nothing to extend).",
     },
     "rpc.tournament.admin_pick_ban_cancel": {
         "summary": "Cancel a pick-ban session",
-        "description": "Permission: workspace `match.result` on the encounter's workspace. Retires one kind's session (body `{kind, reason}`) as CANCELLED and clears any pause, for a room whose veto cannot be played out. A cancelled HERO session simply stops opening rounds; a cancelled MAP session hands the series back to FREEPLAY — the maps it already settled keep their positions and every later one is named by the captains through `captain_select_game_map`. The way back is the session reset. 409 when no session of that kind exists or it is already cancelled.",
+        "description": "Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Retires one kind's session (body `{kind, reason}`) as CANCELLED and clears any pause, for a room whose veto cannot be played out. A cancelled HERO session simply stops opening rounds; a cancelled MAP session hands the series back to FREEPLAY — the maps it already settled keep their positions and every later one is named by the captains through `captain_select_game_map`. The way back is the session reset. 409 when no session of that kind exists or it is already cancelled.",
     },
     "rpc.tournament.admin_encounter_technical_loss": {
         "summary": "Record a technical loss",
-        "description": "Permission: workspace `match.result` on the encounter's workspace. Ends the encounter against `loser_side` without playing it out, in one transaction: every live pick-ban session is cancelled, every position that is not already CONFIRMED is cancelled, and the result is confirmed (same shape `encounter_set_result` returns). Omit the score and it is derived — the winner takes `best_of // 2 + 1` wins or more if it already had them, the forfeiting side keeps the maps it really won, capped one short of winning (a Bo5 standing 2:0 for the side that forfeits is recorded 2:3). An explicit score must put the forfeiting side below its opponent (422). Same guards as the result route: 409 on a preview bracket's encounter, on a result a later stage was already seeded from, and on an already confirmed result (reopen it first). The reason is required and lands in both the admin audit and the room journal.",
+        "description": "Permission: workspace `match.result` on the encounter's workspace. Ends the encounter against `loser_team_id` (a participation, never a side) without playing it out, in one transaction: every live pick-ban session is cancelled, every position that is not already CONFIRMED is cancelled, and the result is confirmed (same shape `encounter_set_result` returns). Omit `results` and the scores are derived — the winner takes `best_of // 2 + 1` wins or more if it already had them, the forfeiting participation keeps the maps it really won, capped one short of winning (a Bo5 standing 2:0 for the participation that forfeits is recorded 2:3). Explicit `results` must put the forfeiting participation below every other (422). Same guards as the result route: 409 on a preview bracket's encounter, on a result a later stage already consumed, and on an already confirmed result. `reason` is mandatory — a walkover is never anonymous.",
     },
     # ── bespoke: readiness override + the pre-game rooms board ────────────
     "rpc.tournament.admin_encounter_readiness_set": {
-        "summary": "Force a side's captain readiness",
-        "description": "Permission: workspace `match.result` on the encounter's workspace. Sets one side's captain readiness (body `{side, ready}`) for an organizer starting a match whose captain is unreachable, and answers `{readiness: {home, away}}`. Signals the room (`encounter:{id}:map-veto`) exactly as the captain's own ready does, so the opposite captain's screen moves without a reload. 404 for an unknown encounter, 409 for a preview bracket's encounter, and 409 on `ready: false` once a pick-ban session of either kind exists — readiness gates session CREATION only, so clearing it afterwards would change nothing; reset the session instead. The readiness row stays unattributed (it names a player identity, which an organizer may not have); the admin audit entry is what names who forced it.",
+        "summary": "Force a captain's readiness",
+        "description": "Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Sets one participation's captain readiness (body `{encounter_team_id, ready}`) for an organizer starting a match whose captain is unreachable, and answers `{readiness}` keyed by participation. Signals the room (`encounter:{id}:map-veto`) exactly as the captain's own ready does, so the other captains' screens move without a reload. 404 for an unknown encounter, 409 for a preview bracket's encounter, and 409 on `ready: false` once a pick-ban session of either kind exists — readiness gates session CREATION only, so clearing it afterwards would change nothing; reset the session instead. The readiness row stays unattributed (it names a player identity, which an organizer may not have); the admin audit records who forced it.",
     },
     "rpc.tournament.admin_pregame_rooms": {
         "summary": "List pre-game rooms",
@@ -524,12 +549,53 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.admin_pregame_room_history": {
         "summary": "Read a pre-game room's journal",
-        "description": "Permission: workspace `match.read` on the encounter's workspace. One room's whole story, newest first: the pre-game journal (readiness, session opened/reset/completed, rounds, every captain and organizer action, step reveals, timeouts, disputes, undo, map and series reports, pause/extend/cancel/technical loss) merged with the encounter's result audit (confirm, reopen, auto_confirm, auto_dispute, import, cascade_reset, game_confirm, game_correct, game_cancel). Each entry carries `id` (`room:<id>`/`result:<id>`), `at`, `origin`, `action`, `kind`, `source` (`captain`/`admin`/`system`), `side`, `actor_auth_user_id`, `actor_name` (null for machine actors), `reason` and an action-specific `data` object. Query `limit` is clamped to 1..500, default 200. The journal is keyed by ENCOUNTER, so resetting a session never erases what it did.",
+        "description": "Permission: workspace `match.read` on the encounter's workspace. One room's whole story, newest first: the pre-game journal (readiness, session opened/reset/completed, rounds, every captain and organizer action, step reveals, timeouts, disputes, undo, map and series reports, pause/extend/cancel/technical loss) merged with the encounter's result audit (confirm, reopen, auto_confirm, auto_dispute, auto_pending, import, cascade_reset, game_confirm, game_correct, game_cancel). Each entry carries `id` (`room:<id>`/`result:<id>`), `at`, `origin`, `action`, `kind`, `source` (`captain`/`admin`/`system`), `side`, `actor_auth_user_id`, `actor_name` (null for machine actors), `reason` and an action-specific `data` object. Query `limit` is clamped to 1..500, default 200. The journal is keyed by ENCOUNTER, so resetting a session never erases what it did.",
     },
     # ── bespoke: admin correction of one series position's result ──────────
     "rpc.tournament.admin_game_result": {
         "summary": "Correct a game result",
-        "description": "Permission: workspace `match.result` on the encounter's workspace. Writes one series position's score as an `admin` result and journals the mandatory `reason`; this is the only way a `confirmed` game (locked against captains with 409 `result_locked`) ever changes. Flipping which side won a position scraps and re-opens the round that outcome had opened, so the response is `{game, rebuilt_rounds}`; 409 `downstream_started` when a later round was already acted in or a later position already has a claim, 409 `map_not_selected` while the position still has no map (an organizer names it through the pick-ban or the captain map choice first), and 404 when the game belongs to another encounter or is cancelled.",
+        "description": "Permission: workspace `match.result` on the encounter's workspace. Writes one series position's numbers as an `admin` result — one `results` line per live participation (`encounter_team_id`, optional score, placement and `column_values`) — and journals the mandatory `reason`; this is the only way a `confirmed` game (locked against captains with 409 `result_locked`) ever changes. When the room's result rotation (`result_*` first-ban rotation) opened the next round off this position and the correction changes who opens it, that round is scrapped and re-opened for the corrected opener in the same commit — provided nobody used it yet; 409 `dependent_round_started` (nothing written, no audit row) when it was already used: a submission on one of its steps, or its game given a side, claimed or confirmed. The way out is to undo that round (captains) or reset the room first. The response is `{game, reset_downstream}`. Also 409 `side_pick_pending` while the position's side step is open, 409 `side_pick_required` while a room that picks this game's sides left them incomplete, 409 `map_not_selected` while the position still has no map (an organizer names it through the pick-ban or the captain map choice first), and 404 when the game belongs to another encounter or is cancelled.",
+    },
+    # ── a game's match imported by external id (src/rpc/match_import.py) ──
+    "rpc.tournament.captain_match_import": {
+        "summary": "Import a game's match by its external id",
+        "description": (
+            "Permission: authenticated user who captains one of the encounter's live teams (403 otherwise). Body "
+            "`{external_id}`: the game's match as its discipline's source names it. The stats service fetches it, "
+            "retrying with backoff for 24 h while the source does not serve it yet, then stores it like an uploaded "
+            "log and ingests it as evidence for this game (binding, `logs_official` and evidence rules unchanged). "
+            "Returns the request `{id, status (pending|done|failed), attempts, last_error, external_id, created_at, "
+            "warnings}`; re-submitting the same id for the same game returns it, a failed one restarts. 422 "
+            "`unsupported_ingestor` when the encounter's discipline has no match source, 422 `invalid_external_id`, "
+            "422 `match_import_tournament_only` outside tournaments (mix, scrim), 404 when the game belongs to "
+            "another encounter or is cancelled, 409 `match_already_imported` when another game of the workspace "
+            "holds the same match, 503 when the stats service is unreachable."
+        ),
+    },
+    "rpc.tournament.captain_match_imports": {
+        "summary": "List a game's match imports",
+        "description": (
+            "Permission: authenticated captain of one of the encounter's live teams. The game's import requests, "
+            "newest first, shaped like the submit's answer; `warnings` is always empty on this read."
+        ),
+    },
+    "rpc.tournament.admin_match_import": {
+        "summary": "Import a game's match by its external id (organizer)",
+        "description": (
+            "Permission: workspace `match.result` on the encounter's workspace. Same request and refusals as the "
+            "captain submission."
+        ),
+    },
+    "rpc.tournament.admin_match_imports": {
+        "summary": "List a game's match imports with warnings (organizer)",
+        "description": (
+            "Permission: workspace `match.read` on the encounter's workspace. The game's import requests, newest "
+            "first, each with its organizer `warnings`, derived on read: `fetch_failed` (the request gave up; "
+            "`last_error` says why), `participants_dropped` (`count` players fewer than the tournament format's "
+            "starters were observed on the game's teams, e.g. anonymous accounts the decoder dropped) and "
+            "`banned_character_played` (`characters` the observation shows that this game's hero room banned). "
+            "Warnings never change a result."
+        ),
     },
     # ── bespoke: generic pick-ban config CRUD (map + hero) ──────────────────
     "rpc.tournament.admin_pick_ban_config_list": {
@@ -538,7 +604,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.admin_pick_ban_config_upsert": {
         "summary": "Upsert pick-ban config",
-        "description": 'Permission: workspace `match.update` on the tournament\'s workspace. Creates or replaces the pick-ban config for one (kind, tournament, stage or stage+round) cascade level after validating the ruleset document and the item pool. A ruleset with validation errors is a 422 whose `details.fields[0]` carries `code: "ruleset_invalid"` plus an `issues` array of `{path, code, severity, message}` — the same issue objects admin_pick_ban_rules_validate returns — so the constructor can highlight the offending fields.',
+        "description": 'Permission: workspace `match.update` on the tournament\'s workspace. Creates or replaces the pick-ban config for one (kind, tournament, stage or stage+round) cascade level after validating the ruleset document and the item pool. A ruleset with validation errors is a 422 whose `details.fields[0]` carries `code: "ruleset_invalid"` plus an `issues` array of `{path, code, severity, message}` — the same issue objects admin_pick_ban_rules_validate returns — so the constructor can highlight the offending fields. A hero config whose ruleset holds a `side_pick` step but whose pool is empty is a 422 `pool_required` (save the champion pool first: a pool-less room never opens, yet its side step would hold the result of every game); a pool item that is not a catalog row of the game of the tournament and of the catalog of the kind is a 422 `pool_item_not_in_catalog`. A map config of a game that declares the `mode` kind may also name its modes in the flat `item_ids` (never in slots): ingested logs of another mode are then refused (`mode_not_in_pool`), maps are checked against the map items alone, and the room vetoes the map items only (a pool of only modes opens no room, like a rules template).',
     },
     "rpc.tournament.admin_pick_ban_rules_validate": {
         "summary": "Validate a pick-ban ruleset",
@@ -552,7 +618,7 @@ DOCS: dict[str, dict] = {
         "summary": "Delete pick-ban config",
         "description": "Permission: workspace `match.update` on the workspace of the config's tournament. Deletes a pick-ban config by id (running sessions keep their snapshot).",
     },
-    # ── bespoke: scrim rooms (docs/plans/2026-08-12-scrim-rooms.md) ─────────
+    # ── bespoke: scrim rooms ───────────────────────────────────────────────
     "rpc.tournament.scrim_create": {
         "summary": "Create scrim room",
         "description": "Permission: authenticated user who is a member of the target workspace (membership only — no resource grant is checked; superusers pass). Creates an ad-hoc pre-game room outside any tournament: the workspace's hidden scrims container (lazily), an isolating stage, that stage's map and optional hero pick-ban configs either copied from an existing tournament round or authored ad hoc, both teams and the encounter; returns the room with its share token. 409s when the caller's active-room cap is reached.",
@@ -641,11 +707,11 @@ DOCS: dict[str, dict] = {
     # ── integrations: division grids ───────────────────────────────────────
     "rpc.tournament.grid_workspace_list": {
         "summary": "List workspace grids",
-        "description": "Permission: workspace `division_grid.read`. Lists a workspace's division grids.",
+        "description": "Permission: workspace `division_grid.read`. Lists a workspace's division grids, each with `tournament_count`: the tournaments pinned to any of its versions.",
     },
     "rpc.tournament.grid_workspace_create": {
         "summary": "Create division grid",
-        "description": "Permission: workspace `division_grid.create`. Creates a division grid in a workspace.",
+        "description": "Permission: workspace `division_grid.create`. Creates a division grid in a workspace. `slug` is optional: when omitted it is derived as `{discipline}-grid`, then `-2`, `-3`… With `from_version_id` (a published version of this workspace's or a system grid of the same game; 422 `division_grid_discipline_mismatch` for another game, 409 for an unpublished one) v1 is a published copy of that version's tiers and label; otherwise v1 is the game's native ladder, and a game without one starts with no version. Never activates anything.",
     },
     "rpc.tournament.grid_update": {
         "summary": "Update division grid metadata",
@@ -721,7 +787,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.grid_save": {
         "summary": "Save the workspace division grid",
-        "description": "Permission: workspace `division_grid.update`. Server-authoritative save: applies cosmetic edits in place, or spawns a new version, auto-generates mappings from every used source version, and auto-activates when complete.",
+        "description": "Permission: workspace `division_grid.update`. Server-authoritative save: applies cosmetic edits in place, or spawns a new version, auto-generates mappings from every used source version, and auto-activates when complete, but only if the grid already holds the workspace's active version for its game (another grid is activated explicitly).",
     },
     "rpc.tournament.grid_version_clone": {
         "summary": "Clone grid version",
@@ -764,7 +830,7 @@ DOCS: dict[str, dict] = {
         "summary": "Get Challonge sync log",
         "description": "Permission: workspace `challonge.read` on the tournament's workspace. Returns recent Challonge sync-log entries for a tournament (limit-bounded).",
     },
-    # ── bootstrap importers (formerly parser-service rpc.parser.*) ─────────
+    # ── bootstrap importers ────────────────────────────────────────────────
     "rpc.tournament.challonge_create_tournament": {
         "summary": "Create tournament from Challonge",
         "description": "Permission: workspace `tournament.create` on the target workspace. Creates a tournament from an existing Challonge bracket -- fetches it for the name/description, links it, and imports its current structure and results in one shot.",
@@ -826,15 +892,15 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.regform_template_list": {
         "summary": "List registration form templates",
-        "description": "Permission: workspace `registration_form.read` on the workspace in the path. Lists that workspace's named registration-form question sets, ordered by name.",
+        "description": "Permission: workspace `registration_form.read` on the workspace in the path. Lists that workspace's named registration-form question sets, ordered by name; each carries its game (`discipline`). The optional `discipline` narrows to one game's (422 `discipline_not_installed` for an unknown code).",
     },
     "rpc.tournament.regform_template_create": {
         "summary": "Create registration form template",
-        "description": "Permission: workspace `registration_form.update` on the workspace in the path. Stores a named question set for the workspace (201 Created). Names are unique per workspace, case-insensitively: a collision is 409 `template_name_taken` on field `name`.",
+        "description": "Permission: workspace `registration_form.update` on the workspace in the path. Stores a named question set for one game of the workspace (201 Created). `discipline` is required (422 `discipline_required`) and must be enabled for the workspace (422 `discipline_not_enabled`). Names are unique per workspace, case-insensitively: a collision is 409 `template_name_taken` on field `name`.",
     },
     "rpc.tournament.regform_template_update": {
         "summary": "Update registration form template",
-        "description": "Permission: workspace `registration_form.update` on the workspace in the path. Replaces a template's name and question set wholesale. 404 `template_not_found` when the id belongs to another workspace; 409 `template_name_taken` on a case-insensitive name collision.",
+        "description": "Permission: workspace `registration_form.update` on the workspace in the path. Replaces a template's name and question set wholesale. Its game never changes: `discipline` is omitted or equal, another game is 409 `template_discipline_immutable`. 404 `template_not_found` when the id belongs to another workspace; 409 `template_name_taken` on a case-insensitive name collision.",
     },
     "rpc.tournament.regform_template_delete": {
         "summary": "Delete registration form template",
@@ -842,11 +908,11 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.regform_template_apply": {
         "summary": "Apply template to registration form",
-        "description": "Permission: workspace `registration_form.update` on the tournament's workspace. Copies the template's question set onto the tournament's registration form and returns the form. An ordinary schema save: a changed question set appends a new version, an identical one appends nothing. The form is NOT linked to the template afterwards, so editing the template later never rewrites a live form. The template must belong to the tournament's workspace (else 404 `template_not_found`).",
+        "description": "Permission: workspace `registration_form.update` on the tournament's workspace. Copies the template's question set onto the tournament's registration form and returns the form. An ordinary schema save: a changed question set appends a new version, an identical one appends nothing. The form is NOT linked to the template afterwards, so editing the template later never rewrites a live form. The template must belong to the tournament's workspace (else 404 `template_not_found`). The template's game must be the tournament's (else 409 `template_discipline_mismatch`).",
     },
     "rpc.tournament.regform_template_save_from_form": {
         "summary": "Save registration form as template",
-        "description": "Permission: workspace `registration_form.update` on the tournament's workspace. Snapshots the tournament form's CURRENT question set into a new workspace template under the given name (201 Created). A snapshot, not a link: later edits to either side are invisible to the other. 404 `form_not_configured` when the tournament has no form yet; 409 `template_name_taken` on a case-insensitive name collision.",
+        "description": "Permission: workspace `registration_form.update` on the tournament's workspace. Snapshots the tournament form's CURRENT question set into a new workspace template under the given name (201 Created). A snapshot, not a link: later edits to either side are invisible to the other. 404 `form_not_configured` when the tournament has no form yet; 409 `template_name_taken` on a case-insensitive name collision. The template takes the tournament's game.",
     },
     "rpc.tournament.reg_list": {
         "summary": "List registrations (admin)",
@@ -910,7 +976,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.reg_user_rank_history": {
         "summary": "Get user rank history",
-        "description": "Permission: workspace `registration.read` on the workspace named by the required `workspace_id` query param. Returns a user's balancer rank history within that workspace.",
+        "description": "Permission: workspace `registration.read` on the workspace named by the required `workspace_id` query param. Returns a user's balancer rank history within that workspace for the installed game named by the required `discipline` query param (422 `discipline_not_installed` otherwise); another game's ranks are never included.",
     },
     "rpc.tournament.reg_check_in": {
         "summary": "Toggle registration check-in",
@@ -1070,19 +1136,23 @@ DOCS: dict[str, dict] = {
     },
     # ── public registration (captain / self-service) ──────────────────────
     "rpc.tournament.captain_my_role": {
-        "summary": "Get my captain side",
-        "description": "Permission: authenticated user; self-service — the answer is only about the caller's own captaincy. Returns the calling user's captain side (home/away) for an encounter, or null if they are not a captain.",
+        "summary": "Get my seat",
+        "description": "Permission: authenticated user; self-service — the answer is only about the caller's own captaincy. Returns the calling user's participation for an encounter as `{encounter_team_id, slot}`, both null if they captain none of its seats.",
     },
     "rpc.tournament.captain_submit_report": {
-        "summary": "Submit captain report",
+        "summary": "Submit team report",
         "description": (
-            "Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). "
-            "Lets an encounter captain submit their own report: series score plus whatever the tournament's "
-            "match-report form enables — closeness 1..10, per-map match codes, a free-text comment and any "
-            "organizer-defined text fields. Fields the config disables are dropped rather than rejected, so a "
-            "stale client cannot fail a submit; fields it marks required are enforced with a 422. Reports are "
-            "per-captain; when both captains' scores match the encounter auto-confirms and closeness becomes "
-            "their average (null when either side left it blank), otherwise it is disputed — comments and "
+            "Permission: authenticated user who captains one of the encounter's live participations (403 "
+            "otherwise). Lets a captain submit their own report of the finished series: `basis_version`, "
+            "`games_played` and one `results` line per live participation (`encounter_team_id`, score and "
+            "optionally placement or wins — never a side), plus whatever the tournament's match-report form "
+            "enables — closeness 1..10, per-map match codes, a free-text comment and any organizer-defined "
+            "text fields. The reporting seat is resolved from the caller, never taken from the body. Fields "
+            "the config disables are dropped rather than rejected, so a stale client cannot fail a submit; "
+            "fields it marks required are enforced with a 422. A `basis_version` behind the encounter's "
+            "current one is stale and refused rather than silently winning. Reports are per-participation; "
+            "when every live participation's numbers agree the encounter auto-confirms and closeness becomes "
+            "their average (null when any of them left it blank), otherwise it is disputed — comments and "
             "custom values never take part in that comparison. Upsert allowed until confirmed."
         ),
     },
@@ -1090,9 +1160,10 @@ DOCS: dict[str, dict] = {
         "summary": "Get captain reports",
         "description": (
             "Permission: public; no authentication required — visible to anyone who may view the tournament. "
-            "Returns both captains' reports for an encounter (score, closeness, per-map codes, comment and "
-            "custom field values) alongside the tournament's match-report form config under `form`, so the "
-            "report dialog renders exactly the rules the submit endpoint enforces."
+            "Returns every participation's report for an encounter (score, closeness, comment and custom field "
+            "values), every participation's per-position replay codes under `replay_codes`, and the tournament's "
+            "match-report form config under `form`, so the report dialog renders exactly the rules the submit "
+            "endpoint enforces."
         ),
     },
     # ── captain pre-game room (pick/ban, readiness, per-map results) ───────
@@ -1103,7 +1174,8 @@ DOCS: dict[str, dict] = {
     "rpc.tournament.captain_pick_ban_state": {
         "summary": "Get pick-ban room state",
         "description": (
-            "Permission: public; no authentication required — gated only by the tournament's visibility rule. "
+            "Permission: public; no authentication required — gated only by the tournament's visibility rule; a "
+            "mix match's room is public. "
             "Returns the live pick/ban room for an encounter and the `kind` path segment ('map' or 'hero', "
             "422 otherwise): the resolved steps, the candidate pool, which sides still owe the current step, "
             "both sides' readiness, any open undo request, and for maps the captains' per-map result claims. "
@@ -1112,6 +1184,9 @@ DOCS: dict[str, dict] = {
             "side's. When no session can exist yet the payload names why (teams unknown, bracket still a "
             "preview, no pick-ban configured, slot count mismatch, sides not ready, waiting on the map round) "
             "instead of erroring."
+            " A mix room also lists `members` (seats in pick order), the member step's `acting_member_ids`, whom the"
+            " viewer may pick for (`viewer_member_ids`; a member owes their own pick, a captain also their team's)"
+            " and each member's choosable heroes (`member_eligible`, Fearless applied)."
         ),
     },
     "rpc.tournament.captain_pick_ban_act": {
@@ -1124,6 +1199,10 @@ DOCS: dict[str, dict] = {
             "current step, sending the wrong action for it, naming an item the step's rules do not allow, or "
             "omitting the opponent player a per-player ban must name is a 400, as is a session that is not "
             "initialized or no longer active."
+            " On a mix match the captain is the roster snapshot's (the lineup's crown)."
+            " On a mix match's member pick (spec §11.6) the body names `member_id`, the `encounter.team_member` seat"
+            " the hero is for: the member themselves or their team's captain may pick (403 otherwise; 422 on a"
+            " tournament match). An assignment step is answered through captain_pick_ban_submit."
         ),
     },
     "rpc.tournament.captain_pick_ban_submit": {
@@ -1136,6 +1215,9 @@ DOCS: dict[str, dict] = {
             "own items and only the opponent's progress counts. 400 when the current step is not blind, when "
             "the caller already locked, or when the items break the step's rules (the reasons are also "
             "listed in the state's `draft_issues`)."
+            " On a mix match the captain is the roster snapshot's (the lineup's crown)."
+            " It also answers a mix's assignment step (open, not blind): each item names `member_id`, one hero of"
+            " the team's picks per member, none a member's Fearless excludes (422 on a tournament match)."
         ),
     },
     "rpc.tournament.captain_pick_ban_dispute": {
@@ -1147,6 +1229,7 @@ DOCS: dict[str, dict] = {
             "opponent player can redo it. Allowed only while that step's `dispute` is enabled, its attempt "
             "budget is not spent, no later step has been acted in, and the map that round settled has no "
             "result yet; anything else is a 400. Returns the caller's new room state."
+            " On a mix match the captain is the roster snapshot's (the lineup's crown)."
         ),
     },
     "rpc.tournament.captain_pick_ban_elect_opener": {
@@ -1157,6 +1240,7 @@ DOCS: dict[str, dict] = {
             "Resolves a round the `result_loser_choice` rotation is holding by naming which side opens it, "
             "then appends that round and returns the session. 400 when no round is awaiting a "
             "choice. An organizer overrides an unreachable captain through admin_pick_ban_elect_opener."
+            " On a mix match the captain is the roster snapshot's (the lineup's crown)."
         ),
     },
     "rpc.tournament.captain_pick_ban_undo": {
@@ -1165,24 +1249,32 @@ DOCS: dict[str, dict] = {
             "Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). "
             "Records the calling captain's consent to undo the session's last action and applies it the "
             "moment the opposing captain consents too; `consent=false` withdraws an open request (either "
-            "side may). Returns the resulting undo block. 400 when the session is not "
+            "side may). An applied undo of a `side_pick` takes that game's sides back. Returns the resulting "
+            "undo block. 400 when the session is not "
             "initialized or cancelled, when there is nothing left to undo, or when the target is a map pick "
-            "whose hero round has already started -- undo those hero actions first."
+            "whose hero round has already started -- undo those hero actions first; 409 `side_locked` when "
+            "the undo would take back a side whose game already has a claim or a confirmed result."
+            " On a mix match the captain is the roster snapshot's (the lineup's crown)."
         ),
     },
     "rpc.tournament.captain_report_game": {
-        "summary": "Report a game result",
+        "summary": "Claim a game result",
         "description": (
-            "Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). "
-            "Files the calling captain's own claim of ONE series position's score, immediately after that "
-            "game rather than at series end; the side is taken from the caller, never from the body. Both "
-            "sides claim independently: matching claims accept the game's result and open whatever the "
-            "series owes next, differing ones mark the game `disputed` for an organizer. Returns "
+            "Permission: authenticated user who captains one of the encounter's live participations (403 "
+            "otherwise). Files the calling captain's own claim of ONE series position's result, immediately "
+            "after that game rather than at series end: `basis_version` plus one `results` line per "
+            "participation (`encounter_team_id`, optional score, placement and the stage's own "
+            "`column_values`). The claiming seat is taken from the caller, never from the body. Every live "
+            "participation claims independently: matching claims accept the game's result and open whatever "
+            "the series owes next, differing ones mark the game `disputed` for an organizer. Returns "
             "`{disputed, resolved, game}`. 404 when the game belongs to another encounter or is cancelled, "
             "409 `result_locked` once the game is confirmed (only the admin correction changes it), 409 "
             "`map_not_selected` while the position still has no map (choose it first, through "
-            "captain_select_game_map or the map pick-ban), and 409 while the stage bracket is still a "
-            "preview the organizer has not activated."
+            "captain_select_game_map or the map pick-ban), 409 `side_pick_pending` while the position's side "
+            "step is open, 409 `side_pick_required` while a room that picks this game's sides left them "
+            "incomplete, 409 on a `basis_version` behind the game's "
+            "current one, and 409 while the stage bracket is still a preview the organizer has not "
+            "activated."
         ),
     },
     "rpc.tournament.captain_select_game_map": {
@@ -1192,17 +1284,20 @@ DOCS: dict[str, dict] = {
             "Freeplay's half of what the map pick-ban does automatically: names the map an open position is "
             "played on, moving a `planned` game to `awaiting_result`. Returns `{game}`. 404 when the game "
             "belongs to another encounter, 409 `result_locked` when the position's result is already "
-            "settled, and 409 `map_locked` once a captain has claimed a score against the current map."
+            "settled, 409 `side_pick_pending` / `side_pick_required` while the position's sides are not "
+            "decided where the room picks them, and 409 `map_locked` once a captain has claimed a score "
+            "against the current map."
         ),
     },
     "rpc.tournament.captain_ready": {
         "summary": "Confirm readiness",
         "description": (
-            "Permission: authenticated user who captains one of the encounter's two teams (403 when the "
-            "account captains neither team or has no linked player profile). "
-            "Marks the calling captain's side ready to begin the encounter's pre-game phase and returns the "
-            "resulting `{home, away}` readiness map; idempotent. The pick/ban session only opens once both "
-            "sides are ready, and any change of team assignment clears both."
+            "Permission: authenticated user who captains one of the encounter's live participations (403 "
+            "when the account captains none of them or has no linked player profile). "
+            "Marks the calling captain's seat ready to begin the encounter's pre-game phase and returns the "
+            "resulting readiness map, keyed by participation id; idempotent. The pick/ban session only "
+            "opens once every seat is ready, and any change of team assignment clears them all."
+            " On a mix match the captain is the roster snapshot's (the lineup's crown)."
         ),
     },
     "rpc.tournament.encounter_chat_history": {
@@ -1214,6 +1309,8 @@ DOCS: dict[str, dict] = {
             "tournament is visible only to its workspace's admins and its preview allowlist. "
             "Returns the messages plus the room settings, the caller's own viewer rights and — for "
             "moderators only — the active mutes. `after_id` tails the room; `limit` pages it."
+            " A mix match's chat is read and written only by its seated players (role captain or player) and the "
+            "mix's hosts (staff); everyone else gets 403."
         ),
     },
     "rpc.tournament.encounter_chat_post": {
@@ -1262,7 +1359,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.pick_ban_rules_catalog": {
         "summary": "Get the pick-ban ruleset catalog",
-        "description": "Permission: public; no authentication required — the catalog describes the rules ENGINE (which condition leaves and constraints exist, what parameters they take, which item groups are selectable per kind) plus the built-in presets, not anyone's tournament. The pick-ban constructor loads it before a config exists to attach it to.",
+        "description": "Permission: public; no authentication required — the catalog describes the rules ENGINE (which condition leaves and constraints exist, what parameters they take) plus ONE discipline's vocabulary: its item groups per kind (character classes declared by its module, mode slugs for maps) and its presets (the module's own plus the generic map presets; a preset's `first_ban_rotation`, when set, is the rotation the preset needs; `mix_eligible` says whether a pickup mix may play it -- a hero preset that bans no player on map 1 of a Bo1). `discipline` is required: 422 when absent, 404 `discipline_not_installed` for a code no module declares, never another game's presets. The pick-ban constructor loads it before a config exists to attach it to.",
     },
     "rpc.tournament.reg_pub_form": {
         "summary": "Get public registration form",
@@ -1537,10 +1634,47 @@ DOCS: dict[str, dict] = {
     # ── encounter saved-view writes ────────────────────────────────────────
     "rpc.tournament.saved_view_create": {
         "summary": "Save encounter view",
-        "description": "Permission: authenticated member of the workspace named by `workspace_id` (403 otherwise); self-service — the view belongs to the caller. Creates or upserts the calling user's saved encounter filter view in a workspace.",
+        "description": "Permission: authenticated member of the workspace named by `workspace_id` (403 otherwise); self-service — the view belongs to the caller. Creates the calling user's saved encounter filter view in a workspace; 409 `saved_view_exists` when the caller already has a view of that name, 409 `saved_view_limit` when the caller already keeps 20 views there.",
     },
     "rpc.tournament.saved_view_delete": {
         "summary": "Delete saved view",
         "description": "Permission: authenticated member of the workspace named by `workspace_id` (403 otherwise); self-service — only the caller's own view is deleted. Deletes the calling user's saved encounter view by id in a workspace (204 no body).",
+    },
+    # ── organizer dashboard ──────────────────────────────────────────────────
+    "rpc.tournament.admin_dashboard": {
+        "summary": "Organizer dashboard",
+        "description": (
+            "Permission: any of workspace `tournament.read`, `team.read`, `match.read`, `user.read` or"
+            " `achievement.read`. Returns the organizer home of one workspace: one card per tournament that is not"
+            " finished (hidden ones included) plus completed tournaments within 14 days of finishing whose wrap-up"
+            " (results confirmed, duel logs, achievements, standings) is not done; the next 7 days of phase-schedule"
+            " boundaries plus every overdue phase start; the work queue of those cards ordered by severity; and the"
+            " backlog of every other tournament with a data-quality issue. Each field group is null when the caller"
+            " lacks the permission that gates it, never zero. 422 without `workspace_id`, 403 without any of the"
+            " permissions."
+        ),
+    },
+    "rpc.tournament.admin_dashboard_trends": {
+        "summary": "Organizer dashboard trends",
+        "description": (
+            "Permission: workspace `tournament.read`. Returns participants, newcomers, duel log coverage and the"
+            " median match-end-to-confirmation time of the workspace's last 10 finished, non-league, non-hidden"
+            " tournaments, oldest first, optionally narrowed to one installed `discipline` (404"
+            " `discipline_not_installed` for an unknown code). 422 without `workspace_id`."
+        ),
+    },
+    "rpc.tournament.tournament_readiness": {
+        "summary": "Tournament readiness checklist",
+        "description": (
+            "Permission: workspace `tournament.read` or `team.read` on the tournament's own workspace. Returns the"
+            " living readiness checklist for one tournament, telling its organisers what is still missing before it can"
+            " run: schedule/grid/stage-slot configuration, bracket, duel log coverage and pending standings"
+            " recalculation (`tournament.read`); the registration, pool, balance and draft state (`team.read`); the"
+            " overdue, pending-confirmation and disputed results (`match.read`); and the achievement evaluation status"
+            " (`achievement.read`). Each group of fields is masked to null when the caller lacks the permission that"
+            " gates it, so a partial reader sees no-access rather than zeros. 403 without `tournament.read` or"
+            " `team.read`, 404 if the tournament is unknown; hidden tournaments of the caller's own workspace are"
+            " visible."
+        ),
     },
 }

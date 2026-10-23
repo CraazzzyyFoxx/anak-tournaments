@@ -4,9 +4,11 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import { AuthUserSearchCombobox, type AuthUserOption } from "@/components/kit/AuthUserSearchCombobox";
+import { AuthUserSearchCombobox, type AuthUserOption } from "@/components/kit/ServerSearchCombobox";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { SettingRow } from "@/components/kit/SettingRow";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { notify } from "@/lib/notify";
 import workspaceService from "@/services/workspace.service";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
@@ -35,12 +37,11 @@ function useWorkspaceOwner(workspaceId: number | null) {
  *
  * Its own fetch rather than a field on the workspace row: `Workspace` comes
  * from the anonymous, edge-cached `/api/v1/workspaces` reads, which publish no
- * owner at all — resolving `owner_id` to a name and an email needs the
- * `workspace.update`-gated `/owner` endpoint. Inline-only markup (spans, never
- * a block) because both call sites drop it inside a `<p>`.
+ * `workspace.update`-gated `/owner` endpoint. Call sites wrap it in a block
+ * (`div`, `InspectorField`), never a `<p>`: the loading `Skeleton` is a `div`.
  *
- * `retry: false` and a silent `—` on error are deliberate: a caller who lacks
- * the permission gets a 403, and an informational field must not turn a
+ * `retry: false` and rendering nothing on error are deliberate: a caller who
+ * lacks the permission gets a 403, and an informational field must not turn a
  * settings page into an error state over it.
  */
 export function WorkspaceOwnerValue({ workspaceId }: Readonly<{ workspaceId: number | null }>) {
@@ -48,11 +49,9 @@ export function WorkspaceOwnerValue({ workspaceId }: Readonly<{ workspaceId: num
   const query = useWorkspaceOwner(workspaceId);
 
   if (workspaceId == null || query.isPending) {
-    return <span className="text-muted-foreground">…</span>;
+    return <Skeleton className="h-4 w-32" />;
   }
-  if (query.isError) {
-    return <span className="text-muted-foreground">—</span>;
-  }
+  if (query.isError) return null;
   const owner = query.data;
   if (!owner) {
     return <span className="text-muted-foreground">{t("noOwner")}</span>;
@@ -73,7 +72,11 @@ export function WorkspaceOwnerValue({ workspaceId }: Readonly<{ workspaceId: num
  *
  * Picking an account assigns it immediately, like the tier `Select` next to it:
  * there is nothing to stage, and a Save button over a single field would only
- * add a state that can be abandoned half-set.
+ * add a state that can be abandoned half-set. It is a `SettingRow` of its own,
+ * so a caller it is not offered to gets no row at all.
+ *
+ * The picker starts empty: the current owner is already on the Owner row
+ * above it, and a trigger repeating the name read as a field still to fill.
  */
 export function WorkspaceOwnerControl({
   workspaceId,
@@ -103,16 +106,13 @@ export function WorkspaceOwnerControl({
   if (!isSuperuser || workspaceId == null) return null;
 
   return (
-    <div className="mt-3">
-      <label htmlFor="workspace-owner" className="text-sm font-medium leading-none">
-        {tc("reassignOwner")}
-      </label>
-      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+    <SettingRow htmlFor="workspace-owner" label={tc("reassignOwner")} hint={t("reassignHint")}>
+      <div className="flex w-full items-center gap-2">
         <AuthUserSearchCombobox
           id="workspace-owner"
-          value={owner?.auth_user_id}
-          selectedLabel={owner?.username ?? owner?.email ?? undefined}
-          onSelect={(account) => mutation.mutate(account?.id ?? null)}
+          onSelect={(account) => {
+            if (account) mutation.mutate(account.id);
+          }}
           placeholder={tc("selectAccount")}
           disabled={mutation.isPending}
         />
@@ -121,17 +121,15 @@ export function WorkspaceOwnerControl({
             type="button"
             variant="ghost"
             size="sm"
+            className="shrink-0"
             disabled={mutation.isPending}
             onClick={() => mutation.mutate(null)}
           >
-            {tc("clear")}
+            {t("removeOwner")}
           </Button>
         ) : null}
       </div>
-      <p className="mt-1 max-w-prose text-xs text-muted-foreground">
-        {t("superuserDescription")}
-      </p>
-    </div>
+    </SettingRow>
   );
 }
 
@@ -175,24 +173,19 @@ export function WorkspaceOwnerTransferControl({
   if (workspaceId == null || !(isSuperuser || isOwner)) return null;
 
   return (
-    <div className="mt-3">
-      <label htmlFor="workspace-owner-transfer" className="text-sm font-medium leading-none">
-        {tc("transferOwnership")}
-      </label>
-      <div className="mt-1.5">
-        <AuthUserSearchCombobox
-          id="workspace-owner-transfer"
-          value={target?.id}
-          selectedLabel={target?.label}
-          onSelect={(account) => setTarget(account ?? null)}
-          placeholder={tc("handOverTo")}
-          disabled={mutation.isPending}
-        />
-      </div>
-      <p className="mt-1 max-w-prose text-xs text-muted-foreground">
-        {t("transferDescription")}
-      </p>
-
+    <SettingRow
+      htmlFor="workspace-owner-transfer"
+      label={tc("transferOwnership")}
+      hint={t("transferHint")}
+    >
+      <AuthUserSearchCombobox
+        id="workspace-owner-transfer"
+        value={target?.id}
+        selectedLabel={target?.label}
+        onSelect={(account) => setTarget(account ?? null)}
+        placeholder={tc("handOverTo")}
+        disabled={mutation.isPending}
+      />
       <ConfirmDialog
         open={target != null}
         onOpenChange={(next) => {
@@ -209,6 +202,6 @@ export function WorkspaceOwnerTransferControl({
           if (target) mutation.mutate(target.id);
         }}
       />
-    </div>
+    </SettingRow>
   );
 }

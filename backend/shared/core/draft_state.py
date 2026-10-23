@@ -16,8 +16,6 @@ _VALID_TRANSITIONS: dict[DraftStatus, frozenset[DraftStatus]] = {
     DraftStatus.CANCELLED: frozenset(),
 }
 
-_TERMINAL_STATUSES: frozenset[DraftStatus] = frozenset({DraftStatus.COMPLETED, DraftStatus.CANCELLED})
-
 
 def can_transition(current: DraftStatus, target: DraftStatus) -> bool:
     return target in _VALID_TRANSITIONS.get(current, frozenset())
@@ -38,7 +36,3 @@ def validate_transition(current: DraftStatus, target: DraftStatus) -> None:
                 )
             ],
         )
-
-
-def is_terminal(status: DraftStatus) -> bool:
-    return status in _TERMINAL_STATUSES

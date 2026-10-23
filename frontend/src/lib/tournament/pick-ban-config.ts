@@ -25,11 +25,11 @@ import { projectStage } from "@/lib/bracket/projection";
 import type {
   MapVetoMode,
   PickBanActors,
-  PickBanCondition,
   PickBanConfig,
   PickBanConfigUpsertInput,
   PickBanFirstBanRotation,
   PickBanKind,
+  PickBanPreset,
   PickBanRuleset,
   PickBanRulesetPhase,
   PickBanRulesetStep,
@@ -50,17 +50,36 @@ export const PICK_BAN_ROTATIONS: PickBanFirstBanRotation[] = [
   "result_loser_choice",
 ];
 
-/** Every actor resolution the engine implements, in menu order (§1). */
+/** Every actor resolution the menu offers, in menu order (§1). `side:<code>` is authored only for a discipline with sides. */
 export const PICK_BAN_ACTORS: PickBanActors[] = [
   "first",
   "second",
   "both",
-  "home",
-  "away",
+  "slot:1",
+  "slot:2",
   "winner_prev",
   "loser_prev",
   "system",
 ];
+
+/** The `actors.*` / `actorsHint.*` message key of an actor token. */
+export type PickBanActorsKey =
+  | "first"
+  | "second"
+  | "both"
+  | "slot_1"
+  | "slot_2"
+  | "other"
+  | "winner_prev"
+  | "loser_prev"
+  | "system";
+
+export function actorsMessageKey(actors: PickBanActors): PickBanActorsKey {
+  if (actors === "slot:1") return "slot_1";
+  if (actors === "slot:2") return "slot_2";
+  if (actors.startsWith("slot:") || actors.startsWith("side:")) return "other";
+  return actors as PickBanActorsKey;
+}
 
 export const PICK_BAN_STEP_ACTIONS: PickBanStepAction[] = ["ban", "pick", "protect", "decider"];
 export const PICK_BAN_TIMEOUTS: PickBanTimeoutPolicy[] = ["random_fill", "lock_draft", "wait"];
@@ -122,9 +141,6 @@ export interface PickBanDraft {
 }
 
 // ── ruleset factories ────────────────────────────────────────────────────────
-
-/** The default step timer a new ruleset offers, in seconds (§12 uses 90). */
-export const DEFAULT_TIMER_SECONDS = 90;
 
 /**
  * A fresh ruleset for `kind`, in the shape that reproduces what the scope used
@@ -376,11 +392,6 @@ function updatePhaseSteps(
   };
 }
 
-/** Is this condition tree "anything"? `{}` is the DSL's always-true. */
-export function isEmptyCondition(condition: PickBanCondition): boolean {
-  return Object.keys(condition ?? {}).length === 0;
-}
-
 /**
  * How one step reads on its card: a message key under `pickBan.rules.summary`
  * plus its ICU arguments.
@@ -489,6 +500,20 @@ export function pickBanDraftFromConfig(config: PickBanConfig): PickBanDraft {
     })),
     roundSlots: [],
     inheritedFrom: null,
+  };
+}
+
+/**
+ * What choosing a catalog preset changes in a draft: its ruleset, and the rotation only when the module's preset
+ * declares one (the rotation lives outside the ruleset document). Everything else -- pool, mode, scope, and a
+ * rotation the preset does not mention -- stays the organizer's.
+ */
+export function presetDraftPatch(
+  preset: Pick<PickBanPreset, "ruleset" | "first_ban_rotation">
+): Partial<PickBanDraft> {
+  return {
+    ruleset: preset.ruleset,
+    ...(preset.first_ban_rotation == null ? {} : { firstBanRotation: preset.first_ban_rotation })
   };
 }
 

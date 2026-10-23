@@ -1,10 +1,12 @@
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { Window } from "happy-dom";
 import { act, type ReactNode } from "react";
 
 import { ApiError } from "@/lib/api/error";
 import type { FormField, FormSchema } from "@/types/forms.types";
 import type { RegistrationForm } from "@/types/registration.types";
+
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
 
 const testWindow = new Window({ url: "http://localhost:3000/", width: 900, height: 900 });
 const previousGlobals = new Map<PropertyKey, PropertyDescriptor | undefined>();
@@ -34,7 +36,6 @@ vi.mock("@/components/ui/switch", () => ({
 }));
 vi.mock("@/hooks/useAuthProfile", () => ({ useAuthProfile: () => ({ user: null }) }));
 vi.mock("@/services/me.service", () => ({ default: { getSocialAccounts: async () => null } }));
-vi.mock("@/services/hero.service", () => ({ default: { getAll: async () => ({ results: [] }) } }));
 vi.mock("@/services/registration.service", () => ({
   default: {
     getMySubscriptionStatus: async () => ({ required: false, verdicts: {} }),
@@ -98,6 +99,7 @@ const FORM = {
   workspace_id: 3,
   is_open: true,
   form_schema: SCHEMA,
+  discipline: "overwatch",
   version_id: 42,
   version_number: 2,
   subrole_catalog: {},
@@ -121,6 +123,14 @@ async function submitWith(error: unknown) {
       </QueryClientProvider>,
     );
   });
+  // The form reads its owner game's metadata before it renders; the submit button exists only after that.
+  for (let attempt = 0; attempt < 20 && container.querySelectorAll("button").length === 0; attempt += 1) {
+    await act(async () => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      setTimeout(resolve, 5);
+      await promise;
+    });
+  }
   const buttons = container.querySelectorAll("button");
   await act(async () => {
     buttons[buttons.length - 1].dispatchEvent(
@@ -129,6 +139,7 @@ async function submitWith(error: unknown) {
   });
 }
 
+afterEach(() => act(() => root.unmount()));
 describe("RegistrationWizard", () => {
   it("leaves the banner to the form when the rejection names a field", async () => {
     // react-query runs a mutation's `onError` even though `RegistrationSchemaForm`
@@ -148,6 +159,15 @@ describe("RegistrationWizard", () => {
     await submitWith(new ApiError(500, [{ msg: "Upstream exploded", code: "unknown" }]));
 
     expect(container.querySelector('div[role="alert"]')?.textContent).toBe("Upstream exploded");
+  });
+
+  it("words the sign-up gate's refusal from its reason code, not the English default", async () => {
+    await submitWith(
+      new ApiError(400, [{ msg: "An active subscription is required for registration.", code: "not_subscribed" }]),
+    );
+
+    // `next-intl` is the identity mock here: the banner is the reason's message key.
+    expect(container.querySelector('div[role="alert"]')?.textContent).toBe("admission.reason.not_subscribed");
   });
 });
 

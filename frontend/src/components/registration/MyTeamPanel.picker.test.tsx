@@ -22,6 +22,8 @@ import type { RegistrationTeam } from "@/types/registration-team.types";
 
 import MyTeamPanel from "./MyTeamPanel";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
@@ -77,11 +79,11 @@ const TEAM: RegistrationTeam = {
 } as unknown as RegistrationTeam;
 
 const AGENTS = [
-  { registration_id: 900, primary_handle: "Ana#1111", roles: ["support"] },
-  { registration_id: 901, primary_handle: "Zen#2222", roles: ["damage", "tank"] }
+  { registration_id: 900, primary_handle: "Ana#1111", roles: [{ dimension: "player_role", role: "support" }] },
+  { registration_id: 901, primary_handle: "Zen#2222", roles: [{ dimension: "player_role", role: "damage" }, { dimension: "player_role", role: "tank" }] }
 ];
 
-async function openDialog(): Promise<HTMLElement> {
+async function openDialog(discipline = "overwatch", team: RegistrationTeam = TEAM): Promise<HTMLElement> {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -91,9 +93,10 @@ async function openDialog(): Promise<HTMLElement> {
       <NextIntlClientProvider locale="en" messages={en}>
         <QueryClientProvider client={client}>
           <MyTeamPanel
+            discipline={discipline}
             workspaceId={1}
             tournamentId={1}
-            team={TEAM}
+            team={team}
             isCaptain
             registrationOpen
             checkInAvailable={false}
@@ -127,21 +130,28 @@ function findButton(text: string): HTMLButtonElement {
   return match as HTMLButtonElement;
 }
 
-/** Free-agent rows are a native radio group (`<label><input type="radio">…`),
- *  not buttons, so selecting one activates the input directly rather than
- *  dispatching a click on a `<button>` that no longer exists. */
+/** The radios of the group named `label` — Radix radios are `<button role="radio" value>`
+ *  inside a radiogroup named by `aria-labelledby` or `aria-label`. */
+function radiosIn(label: string): HTMLButtonElement[] {
+  const group = [...document.querySelectorAll('[role="radiogroup"]')].find((el) => {
+    const labelledBy = el.getAttribute("aria-labelledby");
+    const name = labelledBy ? document.getElementById(labelledBy)?.textContent : el.getAttribute("aria-label");
+    return name === label;
+  });
+  return group ? [...group.querySelectorAll<HTMLButtonElement>('[role="radio"]')] : [];
+}
+
+/** A free agent's row (or an invite mode) is a radio named by its text; a click selects it. */
 function selectAgent(text: string): void {
-  const label = [...document.querySelectorAll("label")].find((el) =>
+  const radio = [...document.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find((el) =>
     (el.textContent ?? "").includes(text)
   );
-  if (!label) throw new Error(`no label matching ${text}`);
-  const input = label.querySelector("input");
-  if (!input) throw new Error(`label matching ${text} has no input`);
-  (input as HTMLInputElement).click();
+  if (!radio) throw new Error(`no radio matching ${text}`);
+  radio.click();
 }
 
 /** The two invite modes are radios like the free-agent rows, so the same
- *  label-then-input activation works for both. */
+ *  activation works for both. */
 async function chooseTargetedMode(): Promise<void> {
   await act(async () => {
     selectAgent(en.registrationTeams.invite.modeAccount);
@@ -177,15 +187,15 @@ describe("captain's free-agent picker", () => {
   it("offers each candidate with their roles, translated", async () => {
     await openDialog();
     await chooseTargetedMode();
-    const text = document.body.textContent ?? "";
+    const agents = radiosIn(en.registrationTeams.picker.label);
 
-    expect(text).toContain("Ana#1111");
-    expect(text).toContain("Zen#2222");
+    expect(agents.map((radio) => radio.textContent?.slice(0, 8))).toEqual(["Ana#1111", "Zen#2222"]);
     // Roles are the reason the picker is not a bare name list: the captain is
-    // filling one slot and must spot a tank without opening profiles.
-    expect(text).toContain("Support");
-    expect(text).toContain("Tank");
-    expect(text).toContain("Damage");
+    // filling one slot and must spot a tank without opening profiles. Each role
+    // is a glyph named by the translated role.
+    expect(
+      agents.map((radio) => [...radio.querySelectorAll('[role="img"]')].map((glyph) => glyph.getAttribute("aria-label")))
+    ).toEqual([["Support"], ["Damage", "Tank"]]);
   });
 
   it("sends target_registration_id once a candidate is chosen", async () => {
@@ -210,9 +220,7 @@ describe("captain's free-agent picker", () => {
     // different request than "no target" — and would resolve nothing.
     await openDialog();
 
-    expect(
-      document.querySelector<HTMLInputElement>('input[name="invite-target-agent"]')
-    ).toBeNull();
+    expect(radiosIn(en.registrationTeams.picker.label)).toHaveLength(0);
 
     await act(async () => {
       findButton(en.registrationTeams.invite.submit).dispatchEvent(
@@ -307,5 +315,34 @@ describe("captain's free-agent picker", () => {
     });
 
     expect(listInviteHistory).not.toHaveBeenCalled();
+  });
+});
+
+describe("inviting in a one-role game", () => {
+  const ONE_ROLE_TEAM = {
+    ...TEAM,
+    members: [{ ...TEAM.members[0], slot_code: "agent" }],
+    open_slots: { agent: 1 },
+    shortfall: "1x agent"
+  } as RegistrationTeam;
+
+  it("offers no slot choice: every slot is the game's one role", async () => {
+    await openDialog("deadlock", ONE_ROLE_TEAM);
+
+    expect(radiosIn(en.registrationTeams.invite.slotLabel)).toHaveLength(0);
+  });
+
+  it("tags no free agent with the game's one role", async () => {
+    listFreeAgents.mockResolvedValue({
+      items: [{ registration_id: 900, primary_handle: "Ana#1111", roles: [{ dimension: "agent", role: "agent" }] }],
+      total: 1
+    });
+    await openDialog("deadlock", ONE_ROLE_TEAM);
+    await chooseTargetedMode();
+
+    // Every candidate plays it, so a chip would only repeat the game's one role on every row.
+    const [row] = radiosIn(en.registrationTeams.picker.label);
+    expect(row?.textContent).toBe("Ana#1111");
+    expect(row?.querySelector('[role="img"]')).toBeNull();
   });
 });

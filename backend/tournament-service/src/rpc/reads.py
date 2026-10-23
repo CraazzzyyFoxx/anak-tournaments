@@ -1,9 +1,7 @@
-"""Public tournament read methods over RPC (typed; reuse the existing flows).
+"""Public tournament read methods over typed RPC.
 
-Each handler mirrors a public route in ``src/routes/tournament.py`` exactly,
-calling the same flow function and serializing with ``exclude_none=True`` to match
-the routes' ``response_model_exclude_none``. The gateway provides path params as
-``data["id"]`` and query params as ``data["query"][key] = [values]``.
+Most reads serialize with ``exclude_none=True``. The gateway provides path
+params as ``data["id"]`` and query params as ``data["query"][key] = [values]``.
 """
 
 from __future__ import annotations
@@ -19,12 +17,13 @@ from shared.domain import pick_ban_rules as pbr
 from shared.repository import TournamentRepository
 from shared.rpc.identity import rehydrate_user_optional
 from shared.rpc.query import build_query_model
+from shared.schemas.discipline_filter import DisciplineFilterQuery
 from shared.services.division_grid.access import build_workspace_division_grid_normalizer
 from shared.services.division_grid.normalization import DivisionGridNormalizationError
 from shared.services.tournament.visibility import assert_tournament_viewable, ensure_tournament_viewable
 from src import schemas
 from src.core.workspace import get_division_grid
-from src.rpc._helpers import _bool, _path_int, _q, _q1, _read, _require_id
+from src.rpc._helpers import _bool, _path_int, _q, _q1, _read, _require_id, _require_q1
 from src.services import visibility_resolvers
 from src.services.admin.stage import stage_service as admin_stage_service
 from src.services.encounter import flows as encounter_flows
@@ -80,6 +79,8 @@ def register(broker: Any, logger: Any) -> None:
                 session,
                 workspace_id=_q1(data, "workspace_id", int),
                 is_league=_q1(data, "is_league", _bool),
+                # One game's tournaments: absent is every game, a code nobody installed is 422.
+                discipline=build_query_model(DisciplineFilterQuery, data.get("query")).discipline,
             )
 
         return await _read(logger, op)
@@ -130,18 +131,20 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.tournament.statistics_division")
     async def _statistics_division(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
+            # One game's tournaments, its grid and its rated roles: absent is 422, unknown 404.
+            discipline = pick_ban_config.installed_discipline(_require_q1(data, "discipline")).code
             workspace_id = _q1(data, "workspace_id", int)
-            fallback_grid = await get_division_grid(session, workspace_id)
+            fallback_grid = await get_division_grid(session, workspace_id, discipline=discipline)
             normalizer = None
             if workspace_id is not None:
                 try:
                     normalizer = await build_workspace_division_grid_normalizer(
-                        session, workspace_id, require_complete=False
+                        session, workspace_id, require_complete=False, discipline=discipline
                     )
                 except DivisionGridNormalizationError:
                     pass  # fall back to the global grid for all tournaments
             return await tournament_flows.flows_service.get_avg_divisions_tournaments(
-                session, workspace_id=workspace_id, normalizer=normalizer, fallback_grid=fallback_grid
+                session, discipline, workspace_id=workspace_id, normalizer=normalizer, fallback_grid=fallback_grid
             )
 
         return await _read(logger, op)
@@ -213,17 +216,31 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _read(logger, op, exclude_none=True)
 
+    async def _encounter_board(data: dict, session: Any, read: Any) -> Any:
+        """The overview and the insights: the list's params and gate, one board read."""
+        tid = _q1(data, "tournament_id", int)
+        if tid is not None:
+            # Gate BEFORE the cached read: its key carries no visibility, and the strips name hidden encounters.
+            await ensure_tournament_viewable(session, rehydrate_user_optional(data.get("identity")), tid)
+        qp = build_query_model(schemas.EncounterSearchQueryParams, data.get("query"))
+        return await read(
+            session,
+            schemas.EncounterSearchParams.from_query_params(qp),
+            workspace_id=_q1(data, "workspace_id", int),
+            viewer_auth_user_id=_identity_user_id(data),
+        )
+
     @broker.subscriber("rpc.tournament.encounters_overview")
     async def _encounters_overview(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            qp = build_query_model(schemas.EncounterSearchQueryParams, data.get("query"))
-            params = schemas.EncounterSearchParams.from_query_params(qp)
-            return await encounter_flows.flows_service.get_encounters_overview(
-                session,
-                params,
-                workspace_id=_q1(data, "workspace_id", int),
-                viewer_auth_user_id=_identity_user_id(data),
-            )
+            return await _encounter_board(data, session, encounter_flows.flows_service.get_encounters_overview)
+
+        return await _read(logger, op, exclude_none=True)
+
+    @broker.subscriber("rpc.tournament.encounters_insights")
+    async def _encounters_insights(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            return await _encounter_board(data, session, encounter_flows.flows_service.get_encounters_insights)
 
         return await _read(logger, op, exclude_none=True)
 
@@ -264,6 +281,7 @@ def register(broker: Any, logger: Any) -> None:
                 workspace_id=qp.workspace_id,
                 status=qp.status,
                 is_league=qp.is_league,
+                discipline=qp.discipline,
                 query=qp.query,
             )
 
@@ -333,15 +351,20 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             # No tournament, no workspace, no gate: the catalog is the ruleset
             # GRAMMAR (which leaves exist, which params they take, which groups
-            # are selectable) plus the built-in presets. It describes the engine,
-            # not anyone's tournament, and the constructor needs it before a
-            # config exists to attach it to. The only DB read is the map-group
-            # vocabulary, which is public catalog data.
+            # are selectable) plus the presets of ONE game. It describes the
+            # engine and that game's vocabulary, not anyone's tournament, and the
+            # constructor needs it before a config exists to attach it to. The
+            # game is explicit: absent is 422, a code nobody installed is 404
+            # ``discipline_not_installed`` (never another game's presets). The
+            # only DB read is the map-group vocabulary, which is public catalog
+            # data.
+            discipline = _require_q1(data, "discipline")
             return pbr.catalog(
+                discipline=discipline,
                 groups={
-                    "hero": await pick_ban_config.group_vocabulary(session, PickBanKind.HERO),
-                    "map": await pick_ban_config.group_vocabulary(session, PickBanKind.MAP),
-                }
+                    "hero": await pick_ban_config.group_vocabulary(session, PickBanKind.HERO, discipline),
+                    "map": await pick_ban_config.group_vocabulary(session, PickBanKind.MAP, discipline),
+                },
             )
 
         return await _read(logger, op)

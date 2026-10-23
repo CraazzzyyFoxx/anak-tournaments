@@ -1,8 +1,8 @@
 /**
  * What an FFA league is scored by, as the stage editor offers it.
  *
- * A stage's `ffa_scoring` is read by the points adder
- * (`shared.domain.ffa_scoring.ffa_rules`): `columns` is what the organizer
+ * A stage's `scoring` rule is read by the points adder
+ * (`shared.domain.encounter_scoring`): `columns` is what the organizer
  * enters for each team in each game, `placement_points[i]` is what place
  * `i + 1` is worth, and `formula` turns both into the points of that game.
  *
@@ -35,8 +35,8 @@ export const FFA_COLUMN_LABEL_MAX = 32;
 /** `FORMULA_MAX_LENGTH` of `shared/domain/ffa_formula.py`. */
 export const FFA_FORMULA_MAX = 500;
 
-/** Names every formula may read on top of the column keys. */
-export const FFA_FORMULA_VARIABLES = ["place", "place_pts", "teams"] as const;
+/** Names a game formula may read on top of the column keys (`GAME_VARIABLES` of `ffa_formula.py`). */
+export const FFA_FORMULA_VARIABLES = ["place", "place_pts", "teams", "win"] as const;
 
 /** The functions the parser accepts (`FUNCTIONS` of `ffa_formula.py`). */
 export const FFA_FORMULA_FUNCTIONS = ["min", "max", "abs", "round", "if"] as const;

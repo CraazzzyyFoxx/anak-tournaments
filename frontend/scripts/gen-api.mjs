@@ -31,9 +31,16 @@ function dump(kind) {
 
 const publicDoc = dump("public");
 const adminDoc = dump("admin");
+// A path can carry public methods in one document and admin methods in the
+// other (`GET /workspaces` public, `POST /workspaces` admin): merge the path
+// items method by method, never let one document's item replace the other's.
+const paths = { ...publicDoc.paths };
+for (const [path, item] of Object.entries(adminDoc.paths ?? {})) {
+  paths[path] = { ...paths[path], ...item };
+}
 const merged = {
   ...publicDoc,
-  paths: { ...publicDoc.paths, ...adminDoc.paths },
+  paths,
   components: {
     ...publicDoc.components,
     schemas: {

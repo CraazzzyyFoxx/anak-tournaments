@@ -4,10 +4,13 @@
 // is a PARTIAL override: the server merges it field by field over its own
 // defaults, so echoing the whole table back would freeze today's numbers onto
 // this tournament and silently ignore every later default change.
+import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import en from "@/i18n/messages/en.json";
+import ru from "@/i18n/messages/ru.json";
 import type { BalancerConfig, BalancerConfigField } from "@/types/balancer.types";
 
 import { BalancerConfigDrawer } from "./BalancerConfigDrawer";
@@ -42,24 +45,31 @@ const ROLE_FIELD: BalancerConfigField = {
 
 const onChange = vi.fn();
 
-async function mount(config: BalancerConfig, roleCodes: string[] | null = null) {
+async function mount(
+  config: BalancerConfig,
+  roleCodes: string[] | null = null,
+  locale: "en" | "ru" = "en",
+  fields: BalancerConfigField[] = [ROLE_FIELD],
+) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   await act(async () => {
     createRoot(container).render(
-      <BalancerConfigDrawer
-        open
-        onOpenChange={() => {}}
-        fields={[ROLE_FIELD]}
-        config={config}
-        selectedPresetLabel="Default"
-        dirty={false}
-        saving={false}
-        onChange={onChange}
-        onSave={() => {}}
-        onReset={() => {}}
-        roleCodes={roleCodes}
-      />,
+      <NextIntlClientProvider locale={locale} messages={locale === "en" ? en : ru}>
+        <BalancerConfigDrawer
+          open
+          onOpenChange={() => {}}
+          fields={fields}
+          config={config}
+          selectedPresetLabel="Default"
+          dirty={false}
+          saving={false}
+          onChange={onChange}
+          onSave={() => {}}
+          onReset={() => {}}
+          roleCodes={roleCodes}
+        />
+      </NextIntlClientProvider>,
     );
   });
 }
@@ -132,5 +142,39 @@ describe("BalancerConfigDrawer role weights", () => {
     await typeInto(cell("tank", "line_gap_weight"), "0.8");
 
     expect(onChange).toHaveBeenLastCalledWith("role_settings", undefined);
+  });
+});
+
+describe("BalancerConfigDrawer copy", () => {
+  it("reads Russian under the ru catalog, the knob's label included", async () => {
+    await mount({}, null, "ru");
+    const text = document.body.textContent ?? "";
+
+    expect(text).toContain("Настройки балансировщика");
+    expect(text).toContain("Веса качества");
+    expect(text).toContain("Веса ролей");
+    expect(text).toContain("Влияние");
+    expect(text).toContain("Сохранить настройки");
+    expect(text).not.toContain("Balancer settings");
+    expect(text).not.toContain("Role weights");
+    expect(text).not.toContain("Impact");
+  });
+
+  it("keeps the server's copy for a knob the catalog does not know yet", async () => {
+    const fresh: BalancerConfigField = {
+      key: "brand_new_knob",
+      label: "Brand new knob",
+      description: "Server-side help text",
+      type: "integer",
+      group: "Strategy",
+      default: 3,
+      limits: { min: 0, max: 10 },
+    };
+    await mount({}, null, "ru", [fresh]);
+    const text = document.body.textContent ?? "";
+
+    expect(text).toContain("Brand new knob");
+    expect(text).toContain("Server-side help text");
+    expect(text).toContain("Стратегия");
   });
 });

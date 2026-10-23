@@ -1,28 +1,31 @@
-import { normalizeRole } from "@/lib/roster/player-role";
 import {
+  characterClassOf,
   acceptedScore,
-  appliedItemsBySide,
+  appliedItemsByTeam,
   bannedEntries,
   carriedBanEntries,
   gameAtPosition,
-  groupItemsByRole,
+  groupItemsByClass,
   highestPoolRound,
   pickedItemsInOrder
 } from "@/components/pick-ban/pick-ban-model";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
-import type { Encounter } from "@/types/encounter.types";
+import type {
+  PregameCharacterAction,
+  PregameCharacterBoard,
+  PregameCharacterRound
+} from "@/disciplines/types";
+import { seatsBySlot } from "@/lib/encounter/seats";
+import type { Encounter, EncounterTeam } from "@/types/encounter.types";
 import type { PickBanEntry, PickBanGame, PickBanKind, PickBanState } from "@/types/tournament.types";
 
-import type {
-  PregameHeroAction,
-  PregameHeroBoard,
-  PregameHeroRound
-} from "./PregameHeroBans";
 import type { PregamePhase, PregamePhaseStatus, PregameSeriesMap } from "./PregameHeader";
 
 type ItemLookup = Record<number, PickBanItemLike | undefined>;
 
 export interface PregameLoopState {
+  /** The encounter's live seats in slot order — every per-team read below is keyed by their ids. */
+  teams: EncounterTeam[];
   statesByKind: Record<PickBanKind, PickBanState>;
   /** Something WOULD open for this kind once teams/rules/readiness allow it. */
   mapApplies: boolean;
@@ -79,9 +82,11 @@ export function derivePregameLoop(
   // Readiness blocks EVERY kind's session at once (one gate per encounter) --
   // any applicable kind reporting "not_ready" means the room as a whole is
   // waiting on captains, never a per-kind state.
+  const teams = seatsBySlot(encounter.teams);
   const readiness = mapState.readiness;
+  const everyoneReady = teams.length > 0 && teams.every((seat) => readiness[String(seat.id)] === true);
   const waitingOnReadiness =
-    !(readiness.home && readiness.away) &&
+    !everyoneReady &&
     (["map", "hero"] as PickBanKind[]).some(
       (kind) => applicable(kind) && statesByKind[kind].reason === "not_ready"
     );
@@ -119,12 +124,13 @@ export function derivePregameLoop(
   // report its score. That agreed report is the barrier that opens the next
   // hero round.
   const winsNeeded = Math.floor((encounter.best_of ?? 0) / 2) + 1;
+  const seatScores = teams.map((seat) => seat.score);
   const seriesDecided =
     seriesSummary != null
-      ? seriesSummary.complete
+      ? seriesSummary.ended
       : (encounter.best_of ?? 0) > 0 &&
-        ((encounter.score?.home ?? 0) + (encounter.score?.away ?? 0) >= (encounter.best_of ?? 0) ||
-          Math.max(encounter.score?.home ?? 0, encounter.score?.away ?? 0) >= winsNeeded);
+        (seatScores.reduce((sum, score) => sum + score, 0) >= (encounter.best_of ?? 0) ||
+          Math.max(0, ...seatScores) >= winsNeeded);
   const freeplayRound = !mapApplies ? (heroRound ?? 1) : null;
   const awaitingFreeplayReport =
     !mapApplies &&
@@ -141,6 +147,7 @@ export function derivePregameLoop(
         : "done";
 
   return {
+    teams,
     statesByKind,
     mapApplies,
     heroApplies,
@@ -186,7 +193,7 @@ export function buildSeriesMaps(
       round: index + 1,
       name: mapsById[entry.item_id]?.name ?? mapName(entry.item_id),
       item: mapsById[entry.item_id],
-      score: acceptedScore(game),
+      score: acceptedScore(game, loop.teams),
       state:
         game?.state === "confirmed"
           ? "played"
@@ -201,9 +208,9 @@ export function buildSeriesMaps(
  * The hero board of one map of the series: who banned or protected what, and
  * the final list of everything banned there.
  *
- * Per-side lists come from the SUBMISSIONS, not from the pool: a blind step
+ * Per-team lists come from the SUBMISSIONS, not from the pool: a blind step
  * where both captains ban the same hero projects ONE banned entry carrying one
- * `picked_by`, so reading the board would credit that ban to a single side and
+ * `picked_by_team_id`, so reading the board would credit that ban to a single team and
  * leave the other one a ban short of what it actually spent. Bans carried over
  * from an earlier map have no submission of this round at all — they come off
  * the entries, badged with the map they were spent on.
@@ -212,38 +219,39 @@ export function heroBoardForRound(
   state: PickBanState,
   round: number | null,
   heroesById: ItemLookup,
-  heroName: (itemId: number) => string
-): PregameHeroBoard {
+  heroName: (itemId: number) => string,
+  characterClasses: readonly string[] = []
+): PregameCharacterBoard {
   const describe = (
     itemId: number,
     action: "ban" | "protect",
-    side: "home" | "away",
+    teamId: number,
     carriedFromRound: number | null
-  ): PregameHeroAction => {
+  ): PregameCharacterAction => {
     const item = heroesById[itemId];
     return {
       itemId,
       name: item?.name ?? heroName(itemId),
       item,
-      role: normalizeRole(item?.type ?? item?.role),
+      group: characterClassOf(item),
       action,
-      side,
+      teamId,
       carriedFromRound
     };
   };
 
-  const actions: PregameHeroAction[] = [];
+  const actions: PregameCharacterAction[] = [];
   for (const entry of carriedBanEntries(state.pool, round)) {
-    // A system-resolved (roulette) ban projects `picked_by: "decider"`: it
-    // belongs to no captain, so it stays out of the side columns and is named
+    // A system-resolved (roulette) ban projects `picked_by_kind: "decider"`: it
+    // belongs to no captain, so it stays out of the team columns and is named
     // only by the final bans list below.
-    if (entry.picked_by !== "home" && entry.picked_by !== "away") continue;
-    actions.push(describe(entry.item_id, "ban", entry.picked_by, entry.carried_from_round));
+    if (entry.picked_by_kind !== "team" || entry.picked_by_team_id == null) continue;
+    actions.push(describe(entry.item_id, "ban", entry.picked_by_team_id, entry.carried_from_round));
   }
   for (const action of ["ban", "protect"] as const) {
-    const bySide = appliedItemsBySide(state.sequence, state.submissions, { round, action });
-    for (const side of ["home", "away"] as const) {
-      for (const item of bySide[side]) actions.push(describe(item.item_id, action, side, null));
+    const byTeam = appliedItemsByTeam(state.sequence, state.submissions, { round, action });
+    for (const [teamId, items] of Object.entries(byTeam)) {
+      for (const item of items) actions.push(describe(item.item_id, action, Number(teamId), null));
     }
   }
 
@@ -255,11 +263,11 @@ export function heroBoardForRound(
       itemId: entry.item_id,
       name: item?.name ?? heroName(entry.item_id),
       item,
-      role: normalizeRole(item?.type ?? item?.role)
+      group: characterClassOf(item)
     };
   });
 
-  return { round, actions, banned: groupItemsByRole(banned) };
+  return { round, actions, banned: groupItemsByClass(banned, characterClasses) };
 }
 
 /**
@@ -273,23 +281,24 @@ export function buildHeroRounds(
   state: PickBanState,
   series: PregameSeriesMap[],
   heroesById: ItemLookup,
-  heroName: (itemId: number) => string
-): PregameHeroRound[] {
+  heroName: (itemId: number) => string,
+  characterClasses: readonly string[] = []
+): PregameCharacterRound[] {
   return (
     state.pool.some((entry) => entry.round != null)
       ? series.map((map) => ({
-          ...heroBoardForRound(state, map.round, heroesById, heroName),
+          ...heroBoardForRound(state, map.round, heroesById, heroName, characterClasses),
           mapName: map.name,
           mapItem: map.item
         }))
       : [
           {
-            ...heroBoardForRound(state, null, heroesById, heroName),
+            ...heroBoardForRound(state, null, heroesById, heroName, characterClasses),
             mapName: null,
             mapItem: undefined
           }
         ]
-    // A map whose only bans were rolled by the engine has no side column to
+    // A map whose only bans were rolled by the engine has no team column to
     // show and still has a lobby to set up.
   ).filter((block) => block.actions.length > 0 || block.banned.length > 0);
 }

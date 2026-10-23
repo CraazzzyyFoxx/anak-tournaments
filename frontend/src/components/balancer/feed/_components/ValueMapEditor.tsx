@@ -14,7 +14,10 @@ import {
 } from "@/components/ui/select";
 import type { ValueMapRow } from "@/types/balancer-admin.types";
 import type { SubroleCatalog, SubroleOption } from "@/types/registration.types";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
+import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
 import { useTranslations } from "next-intl";
 
 type ValueEditorKind = "boolean" | "role" | "text" | "number" | "role_subrole" | "subrole";
@@ -27,6 +30,8 @@ interface ValueMapEditorProps {
   /** Whether catalog defaults are available to seed. */
   canSeed: boolean;
   subroleCatalog?: SubroleCatalog;
+  /** The tournament's game: the roles a sheet's text can map to. Only the role editors read it; `null` while it loads (no role is offered). */
+  ontology?: RoleOntology | null;
   onAdd: () => void;
   onUpdate: (id: string, updates: Partial<Pick<ValueMapRow, "key" | "value">>) => void;
   onRemove: (id: string) => void;
@@ -36,7 +41,7 @@ interface ValueMapEditorProps {
 const NONE = "__none__";
 
 function optionsForRole(catalog: SubroleCatalog | undefined, role: string): SubroleOption[] {
-  if (!role || role === "flex") return [];
+  if (!role || role === OPEN_SLOT_CODE) return [];
   return catalog?.[role] ?? [];
 }
 
@@ -58,19 +63,6 @@ function flattenSubroleOptions(catalog: SubroleCatalog | undefined): { value: st
 const BOOLEAN_OPTIONS = [
   { value: "true", label: "true" },
   { value: "false", label: "false" },
-] as const;
-
-const ROLE_OPTIONS = [
-  { value: "tank", labelKey: "tank" },
-  { value: "damage", labelKey: "damage" },
-  { value: "support", labelKey: "support" },
-] as const;
-
-const ROLE_SUBROLE_ROLE_OPTIONS = [
-  { value: "flex", labelKey: "flex" },
-  { value: "tank", labelKey: "tank" },
-  { value: "damage", labelKey: "damage" },
-  { value: "support", labelKey: "support" },
 ] as const;
 
 type RoleSubroleItem = { role: string; subrole: string | null };
@@ -105,12 +97,17 @@ function RoleSubroleSubForm({
   row,
   onUpdate,
   catalog,
+  ontology,
 }: Readonly<{
   row: ValueMapRow;
   onUpdate: (id: string, updates: Partial<Pick<ValueMapRow, "key" | "value">>) => void;
   catalog: SubroleCatalog | undefined;
+  ontology: RoleOntology | null;
 }>) {
   const t = useTranslations("sheetsFeed.valueMapping");
+  const slotLabel = useSlotLabel(ontology);
+  // The open slot ("any role") first, then the owner game's roles in declared order.
+  const roleCodes = [OPEN_SLOT_CODE, ...registrationRoles(ontology).map((role) => role.code)];
   const items = parseRoleSubroleItems(row.value);
 
   const commit = (next: RoleSubroleItem[]) => {
@@ -126,7 +123,7 @@ function RoleSubroleSubForm({
           const allowed = optionsForRole(catalog, nextRole).map((option) => option.slug);
           const keep =
             nextRole !== "" &&
-            nextRole !== "flex" &&
+            nextRole !== OPEN_SLOT_CODE &&
             item.subrole != null &&
             allowed.includes(item.subrole);
           return { role: nextRole, subrole: keep ? item.subrole : null };
@@ -147,17 +144,17 @@ function RoleSubroleSubForm({
     <div className="space-y-1.5">
       {items.map((item, index) => {
         const roleOptions = optionsForRole(catalog, item.role);
-        const subroleDisabled = item.role === "" || item.role === "flex" || roleOptions.length === 0;
+        const subroleDisabled = item.role === "" || item.role === OPEN_SLOT_CODE || roleOptions.length === 0;
         return (
           <div key={index} className="flex items-center gap-1.5">
             <Select value={item.role || undefined} onValueChange={(v) => updateItem(index, "role", v)}>
-              <SelectTrigger className="h-8 flex-1">
+              <SelectTrigger size="sm" className="flex-1">
                 <SelectValue placeholder={t("role")} />
               </SelectTrigger>
               <SelectContent>
-                {ROLE_SUBROLE_ROLE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {t(`roles.${opt.labelKey}` as Parameters<typeof t>[0])}
+                {roleCodes.map((code) => (
+                  <SelectItem key={code} value={code}>
+                    {slotLabel(code)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -167,7 +164,7 @@ function RoleSubroleSubForm({
               onValueChange={(v) => updateItem(index, "subrole", v === NONE ? null : v)}
               disabled={subroleDisabled}
             >
-              <SelectTrigger className="h-8 flex-1">
+              <SelectTrigger size="sm" className="flex-1">
                 <SelectValue placeholder={subroleDisabled ? "—" : t("subrole")} />
               </SelectTrigger>
               <SelectContent>
@@ -192,7 +189,7 @@ function RoleSubroleSubForm({
           </div>
         );
       })}
-      <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs text-muted-foreground" onClick={addItem}>
+      <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-muted-foreground" onClick={addItem}>
         <Plus className="size-3" />
         {t("addRole")}
       </Button>
@@ -205,13 +202,16 @@ function ValueInput({
   row,
   onUpdate,
   catalog,
+  ontology,
 }: Readonly<{
   kind: ValueEditorKind;
   row: ValueMapRow;
   onUpdate: (id: string, updates: Partial<Pick<ValueMapRow, "key" | "value">>) => void;
   catalog: SubroleCatalog | undefined;
+  ontology: RoleOntology | null;
 }>) {
   const t = useTranslations("sheetsFeed.valueMapping");
+  const slotLabel = useSlotLabel(ontology);
   if (kind === "number") {
     return (
       <Input
@@ -219,7 +219,6 @@ function ValueInput({
         value={row.value}
         onChange={(event) => onUpdate(row.id, { value: event.target.value })}
         placeholder={t("rankValue")}
-        className="h-9"
       />
     );
   }
@@ -230,13 +229,12 @@ function ValueInput({
         value={row.value}
         onChange={(event) => onUpdate(row.id, { value: event.target.value })}
         placeholder={t("mappedValue")}
-        className="h-9"
       />
     );
   }
 
   if (kind === "role_subrole") {
-    return <RoleSubroleSubForm row={row} onUpdate={onUpdate} catalog={catalog} />;
+    return <RoleSubroleSubForm row={row} onUpdate={onUpdate} catalog={catalog} ontology={ontology} />;
   }
 
   if (kind === "subrole") {
@@ -247,7 +245,7 @@ function ValueInput({
         onValueChange={(value) => onUpdate(row.id, { value })}
         disabled={options.length === 0}
       >
-        <SelectTrigger className="h-9">
+        <SelectTrigger>
           <SelectValue placeholder={options.length === 0 ? t("noSubroles") : t("subrole")} />
         </SelectTrigger>
         <SelectContent>
@@ -264,13 +262,10 @@ function ValueInput({
   const options =
     kind === "boolean"
       ? BOOLEAN_OPTIONS
-      : ROLE_OPTIONS.map((role) => ({
-          value: role.value,
-          label: t(`roles.${role.labelKey}` as Parameters<typeof t>[0])
-        }));
+      : registrationRoles(ontology).map((role) => ({ value: role.code, label: slotLabel(role.code) }));
   return (
     <Select value={row.value || undefined} onValueChange={(value) => onUpdate(row.id, { value })}>
-      <SelectTrigger className="h-9">
+      <SelectTrigger>
         <SelectValue placeholder={kind === "boolean" ? t("booleanPlaceholder") : t("role")} />
       </SelectTrigger>
       <SelectContent>
@@ -292,6 +287,7 @@ export function ValueMapEditor({
   rows,
   canSeed,
   subroleCatalog,
+  ontology = null,
   onAdd,
   onUpdate,
   onRemove,
@@ -307,12 +303,12 @@ export function ValueMapEditor({
         </div>
         <div className="flex items-center gap-2">
           {canSeed ? (
-            <Button variant="outline" size="sm" className="h-8" onClick={onSeedDefaults}>
+            <Button variant="outline" size="sm" onClick={onSeedDefaults}>
               <Sprout className="mr-1.5 size-3.5" />
               {t("seedDefaults")}
             </Button>
           ) : null}
-          <Button variant="outline" size="sm" className="h-8" onClick={onAdd}>
+          <Button variant="outline" size="sm" onClick={onAdd}>
             <Plus className="mr-1.5 size-3.5" />
             {t("addRow")}
           </Button>
@@ -324,10 +320,10 @@ export function ValueMapEditor({
       ) : (
         <div className="space-y-2">
           <div className={`grid items-center gap-2 ${kind === "role_subrole" ? "grid-cols-[1fr_2fr_auto]" : "grid-cols-[1fr_1fr_auto]"}`}>
-            <Label className={EYEBROW_CLASS}>
+            <Label className={eyebrowClass("muted")}>
               {t("sheetText")}
             </Label>
-            <Label className={EYEBROW_CLASS}>
+            <Label className={eyebrowClass("muted")}>
               {t("mappedValue")}
             </Label>
             <span />
@@ -338,9 +334,8 @@ export function ValueMapEditor({
                 value={row.key}
                 onChange={(event) => onUpdate(row.id, { key: event.target.value })}
                 placeholder={t("textFromSheet")}
-                className="h-9"
               />
-              <ValueInput kind={kind} row={row} onUpdate={onUpdate} catalog={subroleCatalog} />
+              <ValueInput kind={kind} row={row} onUpdate={onUpdate} catalog={subroleCatalog} ontology={ontology} />
               <Button
                 variant="ghost"
                 size="icon"

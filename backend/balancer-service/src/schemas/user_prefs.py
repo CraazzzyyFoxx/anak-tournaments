@@ -3,22 +3,22 @@
 Deliberately not the full ``ConfigOverrides`` vocabulary -- only these keys ever
 reach the mix engine, so the wire names them one by one instead of carrying an
 opaque blob a client could stuff a tournament-GA knob into. The read and the
-write carry the same six stored fields: a PUT answers with exactly what the
-next GET would return, plus one derived, read-only ``roster_shape``.
+write carry the same stored fields: a PUT answers with exactly what the next GET returns.
 """
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field
 
-from shared.domain.roster_shape import RosterSlotCode
-from shared.schemas.roster_slots import RosterShapeRead
-from src.services.balancer.config.defaults import MAX_RESULT_VARIANTS
+from shared.disciplines import DISCIPLINES
+from shared.domain.pick_ban_rules import mix_ban_preset
+from src.domain.balancer.config.defaults import MAX_RESULT_VARIANTS, validate_role_settings
 
 __all__ = (
     "MAX_POINTS_PER_WIN",
+    "MixFormationDefault",
     "MixRoleSettings",
     "UserMixPreferencesRead",
     "UserMixPreferencesUpsert",
@@ -33,14 +33,10 @@ _TILT_DOC = (
     "Trade-off between rank balance (0) and role comfort (1); null leaves the mix engine's own 0.5 weighting in place."
 )
 _SETTINGS_DOC = (
-    "Per-role mix weights, keyed by roster slot code: how much this role's gap counts "
+    "Per-role mix weights, keyed by declared role code: how much this role's gap counts "
     "towards role fairness. An omitted role weighs 1.0; null means no per-role opinion at all."
 )
 _VARIANTS_DOC = "How many balance options the solver keeps for the host to page through; null leaves the mix default."
-_MASK_DOC = (
-    "How many seats of each role a team gets in this account's mixes, keyed by roster slot code; "
-    "null inherits the workspace default and then the built-in Overwatch 5v5 shape."
-)
 _POINTS_DOC = (
     "How far a decided match moves both teams' ranks in this account's own rank book. "
     "0 and null both mean recording a match adjusts nothing."
@@ -50,12 +46,47 @@ _MODE_DOC = (
     "mix ranker (each seat by its own amount; mixes then balance on the effective rating). The workspace's "
     "hidden ratings advance in both."
 )
+_BANS_DOC = (
+    "Per game (discipline code): the hero ban preset a new mix of that game starts with. "
+    "A game left out starts without bans."
+)
+
+
+def _valid_ban_presets(value: dict[str, str]) -> dict[str, str]:
+    for discipline, code in value.items():
+        if mix_ban_preset(discipline, code) is None:
+            raise ValueError(f"{code!r} is not a hero ban preset a {discipline!r} mix can play")
+    return value
+
+
+_BanPresets = Annotated[dict[str, str], AfterValidator(_valid_ban_presets)]
+
+_FORMATION_DOC = (
+    "Per game (discipline code): how a new mix of that game forms its teams -- 'balance' (the solver) or 'draft' "
+    "(captains pick) -- and the draft's pick clock in seconds (10..600). A game left out starts with the balancer "
+    "and 30 seconds."
+)
+
+
+class MixFormationDefault(BaseModel):
+    """How a new mix of one game forms its teams (spec §4.3)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    team_formation: Literal["balance", "draft"] = "balance"
+    draft_pick_seconds: int = Field(default=30, ge=10, le=600)
+
+
+def _valid_formation_games(value: dict[str, MixFormationDefault]) -> dict[str, MixFormationDefault]:
+    unknown = sorted(set(value) - set(DISCIPLINES))
+    if unknown:
+        raise ValueError(f"not installed games: {unknown}")
+    return value
+
+
+_FormationDefaults = Annotated[dict[str, MixFormationDefault], AfterValidator(_valid_formation_games)]
 
 RatingMode = Literal["points", "ranker"]
-_SHAPE_DOC = (
-    "Read-only: role_mask resolved through the fallback chain, so the client never recomputes it. "
-    "source is 'user' when this account stored a mask and 'default' when it did not."
-)
 
 
 class MixRoleSettings(BaseModel):
@@ -71,43 +102,32 @@ class MixRoleSettings(BaseModel):
     mix_weight: float = Field(ge=0.0, le=100.0, description="Multiplier for this role's gap in role fairness.")
 
 
-#: A settings block per roster slot, ``flex`` included -- the mix engine drops the
-#: slots this roster does not field, so an unused code is harmless, but an unknown
-#: one would silently weigh nothing and is rejected here instead.
-_RoleSettings = dict[RosterSlotCode, MixRoleSettings]
-
-#: The slot map itself is validated (and normalized) by the service through
-#: ``normalize_roster_slots``, the same call the deleted per-mix override used --
-#: one place decides what a legal roster shape is, and its ``RosterShapeError``
-#: code is what the frontend localizes off.
-_RoleMask = dict[str, int] | None
+_RoleSettings = Annotated[dict[str, MixRoleSettings], BeforeValidator(validate_role_settings)]
 
 
 class UserMixPreferencesRead(BaseModel):
-    """What is stored, plus the shape it resolves to.
-
-    All six stored fields are null (``rating_mode``: ``points``) for an
-    account that never saved any; ``roster_shape`` is always present, since a
-    mix always has *some* shape.
-    """
+    """Stored preferences; unset knobs use the engine defaults."""
 
     mix_comfort_tilt: float | None = Field(default=None, ge=0.0, le=1.0, description=_TILT_DOC)
     role_settings: _RoleSettings | None = Field(default=None, description=_SETTINGS_DOC)
     max_result_variants: int | None = Field(default=None, ge=1, le=MAX_RESULT_VARIANTS, description=_VARIANTS_DOC)
-    role_mask: _RoleMask = Field(default=None, description=_MASK_DOC)
+    open_slot_settings: MixRoleSettings | None = None
     points_per_win: int | None = Field(default=None, ge=0, le=MAX_POINTS_PER_WIN, description=_POINTS_DOC)
     rating_mode: RatingMode = Field(default="points", description=_MODE_DOC)
-    roster_shape: RosterShapeRead = Field(description=_SHAPE_DOC)
+    hero_ban_presets: dict[str, str] = Field(default_factory=dict, description=_BANS_DOC)
+    formation_defaults: dict[str, MixFormationDefault] = Field(default_factory=dict, description=_FORMATION_DOC)
 
 
 class UserMixPreferencesUpsert(BaseModel):
-    """A full replacement: all six keys required, the five knobs nullable to unset one."""
+    """A full replacement; nullable knobs unset the corresponding override."""
 
     model_config = ConfigDict(extra="forbid")
 
     mix_comfort_tilt: float | None = Field(ge=0.0, le=1.0, description=_TILT_DOC)
     role_settings: _RoleSettings | None = Field(description=_SETTINGS_DOC)
     max_result_variants: int | None = Field(ge=1, le=MAX_RESULT_VARIANTS, description=_VARIANTS_DOC)
-    role_mask: _RoleMask = Field(description=_MASK_DOC)
+    open_slot_settings: MixRoleSettings | None
     points_per_win: int | None = Field(ge=0, le=MAX_POINTS_PER_WIN, description=_POINTS_DOC)
     rating_mode: RatingMode = Field(description=_MODE_DOC)
+    hero_ban_presets: _BanPresets = Field(description=_BANS_DOC)
+    formation_defaults: _FormationDefaults = Field(description=_FORMATION_DOC)

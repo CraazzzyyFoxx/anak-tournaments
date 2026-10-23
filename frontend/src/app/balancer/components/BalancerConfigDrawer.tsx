@@ -2,7 +2,9 @@
 
 import { Fragment } from "react";
 import { Save, RotateCcw } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import {
@@ -15,8 +17,8 @@ import {
 } from "@/components/ui/sheet";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { normalizePlayerRole } from "@/lib/roster/player-role";
-import { ROSTER_SLOT_CODES, isRosterSlotCode } from "@/lib/roster/shape";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import type {
   BalancerConfig,
   BalancerConfigField,
@@ -24,12 +26,13 @@ import type {
   BalancerRoleSettings,
 } from "@/types/balancer.types";
 
-const GROUP_ORDER: BalancerConfigField["group"][] = [
-  "Algorithm",
-  "Quality weights",
-  "Strategy",
-  "Solver output",
-];
+/** Drawer sections in order, each with its `config.groups.*` message. */
+const GROUPS = [
+  ["Algorithm", "algorithm"],
+  ["Quality weights", "qualityWeights"],
+  ["Strategy", "strategy"],
+  ["Solver output", "solverOutput"],
+] as const satisfies ReadonlyArray<readonly [BalancerConfigField["group"], string]>;
 
 type BalancerConfigDrawerProps = {
   open: boolean;
@@ -46,6 +49,8 @@ type BalancerConfigDrawerProps = {
    *  offers a row for. `null` until the shape is known -- then every role the
    *  backend declares gets a row, which is also what a shapeless run uses. */
   roleCodes?: string[] | null;
+  /** The tournament owner's role dictionary: the names the role rows are labelled with. */
+  ontology?: RoleOntology | null;
 };
 
 function formatValue(value: unknown): string {
@@ -60,19 +65,23 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
+/** A knob's or a role column's catalog copy, keyed like the server row; one the
+ * catalog does not know yet keeps the server's own English. */
+function useKnobCopy() {
+  const t = useTranslations("balancerTool.playerEdit.config");
+  return (kind: "fields" | "columns", key: string, part: "label" | "description", fallback: string) => {
+    const id = `${kind}.${key}.${part}` as "fields.population_size.label";
+    return t.has(id) ? t(id) : fallback;
+  };
+}
+
 /** Role rows in the roster vocabulary's order, anything newer appended as it
  * came. The roster shape decides WHICH roles get a row; without one, every
  * role the backend declares in its `role_settings` default does. A role left
  * out still keeps whatever this tournament stored for it -- the table only
  * stops showing it, it never rewrites it. */
 function roleRowOrder(defaults: BalancerRoleSettings, roleCodes?: string[] | null): string[] {
-  const codes = Object.keys(defaults).filter(
-    (code) => roleCodes == null || roleCodes.includes(code)
-  );
-  return [
-    ...ROSTER_SLOT_CODES.filter((code) => codes.includes(code)),
-    ...codes.filter((code) => !isRosterSlotCode(code)),
-  ];
+  return Object.keys(defaults).filter((code) => roleCodes == null || roleCodes.includes(code));
 }
 
 /** Only the cells moved off their default travel. The server merges a stored
@@ -105,13 +114,17 @@ function ConfigRolesTable({
   field,
   value,
   roleCodes,
+  ontology,
   onChange,
 }: Readonly<{
   field: BalancerConfigField;
   value: BalancerConfigValue;
   roleCodes?: string[] | null;
+  ontology?: RoleOntology | null;
   onChange: (value: BalancerConfigValue) => void;
 }>) {
+  const slotLabel = useSlotLabel(ontology);
+  const knobCopy = useKnobCopy();
   const defaults = (field.default ?? {}) as BalancerRoleSettings;
   const overrides = (value ?? {}) as BalancerRoleSettings;
   const columns = field.columns ?? [];
@@ -132,29 +145,31 @@ function ConfigRolesTable({
     >
       <div />
       {columns.map((column) => (
-        <div
+        <Eyebrow
+          as="div"
           key={column.key}
-          title={column.description}
-          className="text-center text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]"
+          title={knobCopy("columns", column.key, "description", column.description)}
+          tone="dim"
+          className="text-center"
         >
-          {column.label}
-        </div>
+          {knobCopy("columns", column.key, "label", column.label)}
+        </Eyebrow>
       ))}
       {roles.map((role) => (
         <Fragment key={role}>
           <div className="self-center text-sm text-[color:var(--aqt-fg)]">
-            {isRosterSlotCode(role) ? normalizePlayerRole(role) : role}
+            {slotLabel(role)}
           </div>
           {columns.map((column) => (
             <NumberInput
               key={column.key}
               id={`config-${field.key}-${role}-${column.key}`}
-              aria-label={`${role} ${column.label}`}
+              aria-label={`${role} ${knobCopy("columns", column.key, "label", column.label)}`}
               value={overrides[role]?.[column.key] ?? defaults[role]?.[column.key] ?? null}
               onValueChange={(next) => setCell(role, column.key, next)}
               min={column.limits?.min}
               max={column.limits?.max}
-              className="h-9 rounded-lg px-2 text-center tabular-nums"
+              className="rounded-lg px-2 text-center tabular-nums"
             />
           ))}
         </Fragment>
@@ -167,25 +182,40 @@ function ConfigFieldControl({
   field,
   value,
   roleCodes,
+  ontology,
   onChange,
 }: Readonly<{
   field: BalancerConfigField;
   value: BalancerConfigValue;
   roleCodes?: string[] | null;
+  ontology?: RoleOntology | null;
   onChange: (value: BalancerConfigValue) => void;
 }>) {
+  const t = useTranslations("balancerTool.playerEdit.config");
   if (field.type === "boolean") {
     return <Switch checked={Boolean(value)} onCheckedChange={onChange} />;
   }
 
   if (field.type === "roles") {
     return (
-      <ConfigRolesTable field={field} value={value} roleCodes={roleCodes} onChange={onChange} />
+      <ConfigRolesTable field={field} value={value} roleCodes={roleCodes} ontology={ontology} onChange={onChange} />
+    );
+  }
+
+  if (field.type === "open_slot") {
+    return (
+      <ConfigRolesTable
+        field={{ ...field, default: { flex: field.default as Record<string, number> } }}
+        value={value == null ? null : ({ flex: value } as BalancerConfigValue)}
+        roleCodes={null}
+        ontology={ontology}
+        onChange={(next) => onChange((next as BalancerRoleSettings | undefined)?.flex ?? null)}
+      />
     );
   }
 
   // No `select`/`role_mask` branches: the backend emits only
-  // boolean/integer/float/slider/roles rows. `algorithm` died with the
+  // boolean/integer/float/slider/roles/open_slot rows. `algorithm` died with the
   // pure-Python solver, and the per-team slot counts come from the tournament
   // roster shape rather than from this drawer.
   if (field.type === "slider") {
@@ -203,9 +233,9 @@ function ConfigFieldControl({
           onValueChange={(next) => onChange(next[0])}
         />
         <div className="flex justify-between text-label text-[color:var(--aqt-fg-dim)]">
-          <span>balance</span>
+          <span>{t("balance")}</span>
           <span className="tabular-nums text-[color:var(--aqt-fg-muted)]">{numeric.toFixed(2)}</span>
-          <span>comfort</span>
+          <span>{t("comfort")}</span>
         </div>
       </div>
     );
@@ -226,7 +256,7 @@ function ConfigFieldControl({
       min={field.limits?.min}
       max={field.limits?.max}
       integer={field.type === "integer"}
-      className="h-9 rounded-lg"
+      className="rounded-lg"
     />
   );
 }
@@ -243,29 +273,34 @@ export function BalancerConfigDrawer({
   onSave,
   onReset,
   roleCodes,
+  ontology,
 }: Readonly<BalancerConfigDrawerProps>) {
-  const fieldsByGroup = GROUP_ORDER.map((group) => ({
+  const t = useTranslations("balancerTool.playerEdit.config");
+  const tCommon = useTranslations("common");
+  const knobCopy = useKnobCopy();
+  const fieldsByGroup = GROUPS.map(([group, labelKey]) => ({
     group,
+    labelKey,
     fields: fields.filter((field) => field.group === group),
   })).filter((item) => item.fields.length > 0);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col gap-0 overflow-hidden border-border bg-popover p-0 text-[color:var(--aqt-fg)] sm:max-w-2xl">
-        <SheetHeader className="border-b border-[color:var(--aqt-border-2)] px-5 py-4">
-          <SheetTitle className="text-[color:var(--aqt-fg)]">Balancer settings</SheetTitle>
+      <SheetContent variant="panel" className="w-full sm:max-w-2xl">
+        <SheetHeader variant="panel">
+          <SheetTitle className="text-[color:var(--aqt-fg)]">{t("title")}</SheetTitle>
           <SheetDescription className="text-[color:var(--aqt-fg-muted)]">
-            Active preset: {selectedPresetLabel}. Changes are saved for this tournament.
+            {t("description", { preset: selectedPresetLabel })}
           </SheetDescription>
         </SheetHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           <div className="space-y-5">
-            {fieldsByGroup.map(({ group, fields: groupFields }) => (
+            {fieldsByGroup.map(({ group, labelKey, fields: groupFields }) => (
               <section key={group} className="space-y-3">
-                <div className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-                  {group}
-                </div>
+                <Eyebrow as="div" tone="dim">
+                  {t(`groups.${labelKey}`)}
+                </Eyebrow>
                 <div className="space-y-3">
                   {groupFields.map((field) => {
                     const value = config[field.key] ?? field.default;
@@ -278,30 +313,30 @@ export function BalancerConfigDrawer({
                           className={
                             // The table is as wide as it has columns; a knob
                             // with one input keeps the narrow control column.
-                            field.type === "roles"
+                            field.type === "roles" || field.type === "open_slot"
                               ? "grid gap-3"
                               : "grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]"
                           }
                         >
                           <div>
                             <Label
-                              htmlFor={field.type === "roles" ? undefined : `config-${field.key}`}
+                              htmlFor={field.type === "roles" || field.type === "open_slot" ? undefined : `config-${field.key}`}
                               className="text-sm text-[color:var(--aqt-fg)]"
                             >
-                              {field.label}
+                              {knobCopy("fields", field.key, "label", field.label)}
                             </Label>
                             <p className="mt-1 text-xs leading-5 text-[color:var(--aqt-fg-dim)]">
-                              {field.description}
+                              {knobCopy("fields", field.key, "description", field.description)}
                             </p>
                             <div className="mt-2 flex flex-wrap gap-2 text-label text-[color:var(--aqt-fg-dim)]">
                               {/* A roles table shows its own defaults in the
                                   cells; dumping the whole dict here is noise. */}
-                              {field.type === "roles" ? null : (
-                                <span>Default: {formatValue(field.default)}</span>
+                              {field.type === "roles" || field.type === "open_slot" ? null : (
+                                <span>{t("default", { value: formatValue(field.default) })}</span>
                               )}
                               {field.limits ? (
                                 <span>
-                                  Limit: {field.limits.min} - {field.limits.max}
+                                  {t("limit", { min: String(field.limits.min), max: String(field.limits.max) })}
                                 </span>
                               ) : null}
                             </div>
@@ -311,6 +346,7 @@ export function BalancerConfigDrawer({
                               field={field}
                               value={value}
                               roleCodes={roleCodes}
+                              ontology={ontology}
                               onChange={(nextValue) => onChange(field.key, nextValue)}
                             />
                           </div>
@@ -327,7 +363,7 @@ export function BalancerConfigDrawer({
         <SheetFooter className="border-t border-[color:var(--aqt-border-2)] px-5 py-4">
           <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-xs text-[color:var(--aqt-fg-dim)]">
-              {dirty ? "Unsaved settings will be saved before the next run." : "Settings are saved."}
+              {dirty ? t("unsaved") : t("saved")}
             </div>
             <div className="flex gap-2">
               <Button
@@ -337,11 +373,11 @@ export function BalancerConfigDrawer({
                 className="rounded-lg"
               >
                 <RotateCcw className="mr-2 h-4 w-4" />
-                Reset
+                {tCommon("reset")}
               </Button>
               <Button type="button" onClick={onSave} disabled={!dirty || saving} className="rounded-lg">
                 <Save className="mr-2 h-4 w-4" />
-                Save settings
+                {t("save")}
               </Button>
             </div>
           </div>

@@ -3,13 +3,12 @@
 import { Ban, Repeat2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { RankCrest } from "@/components/RankCrest";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RowButton } from "@/components/ui/row-button";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
-import { getDivisionLabel } from "@/lib/divisions/grid";
-import { normalizePlayerRole, PLAYER_ROLE_LABEL_KEY } from "@/lib/roster/player-role";
-import { formatSubroleSlug } from "@/lib/roster/roles";
+import { findRole, type RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { PickBanTarget } from "@/types/tournament.types";
 
@@ -39,6 +38,8 @@ export function PickBanTargetBoard({
   itemsById,
   onSelect,
   teamName,
+  discipline,
+  ontology = null,
   disabled = false
 }: Readonly<{
   targets: PickBanTarget[];
@@ -50,12 +51,14 @@ export function PickBanTargetBoard({
   onSelect: (playerId: number) => void;
   /** The opponent's team name — whose roster this is. */
   teamName: string;
+  discipline: string;
+  /** The owner's scoped role dictionary: names and artwork of the targets' roles. Absent: neutral unknown. */
+  ontology?: RoleOntology | null;
   /** True once the draft is locked: the rows stay readable, they stop moving. */
   disabled?: boolean;
 }>) {
   const t = useTranslations("pickBan.room");
-  const tRoot = useTranslations();
-  const divisionGrid = useDivisionGrid();
+  const divisionGrid = useDivisionGrid(discipline);
 
   return (
     <Card data-pick-ban-targets>
@@ -75,12 +78,11 @@ export function PickBanTargetBoard({
                 ? (assigned?.name ?? t("hero.itemNumber", { id: assignedId }))
                 : null;
             const selected = selectedPlayerId === target.player_id;
-            const role = target.role != null ? normalizePlayerRole(target.role) : null;
-            const roleText = target.sub_role
-              ? formatSubroleSlug(target.sub_role)
-              : role != null
-                ? tRoot(PLAYER_ROLE_LABEL_KEY[role])
-                : null;
+            // The target's own leaf role, named by the owner's dictionary; an unknown ref keeps its code.
+            const roleText =
+              target.role == null
+                ? null
+                : ((ontology ? findRole(ontology, target.role)?.name : null) ?? target.role.role);
             return (
               <li
                 key={target.player_id}
@@ -92,31 +94,20 @@ export function PickBanTargetBoard({
                   !disabled ? "hover:border-[color:var(--aqt-teal)]/50" : null
                 )}
               >
-                <button
-                  type="button"
+                <RowButton
                   disabled={disabled}
                   data-target-player={target.player_id}
                   aria-pressed={selected}
                   onClick={() => onSelect(target.player_id)}
-                  className={cn(
-                    "flex w-full min-w-0 items-center gap-3 rounded-lg px-3 py-2.5 text-left outline-none",
-                    disabled
-                      ? "cursor-default opacity-70"
-                      : "cursor-pointer focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
-                  )}
+                  className="flex min-w-0 items-center gap-3 rounded-lg px-3 py-2.5 disabled:opacity-70"
                 >
-                  <span
-                    className="shrink-0"
-                    title={getDivisionLabel(divisionGrid, target.division) ?? undefined}
-                  >
-                    <DivisionIcon division={target.division} width={30} height={30} />
-                  </span>
+                  <RankCrest division={target.division} grid={divisionGrid} size={30} />
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="truncate text-sm font-semibold">{target.name}</span>
                     <span className="flex min-w-0 items-center gap-2.5 text-xs text-[color:var(--aqt-fg-muted)]">
                       {roleText != null ? (
                         <span className="flex min-w-0 items-center gap-1">
-                          <PlayerRoleIcon role={role} size={12} decorative />
+                          <PlayerRoleIcon role={target.role} ontology={ontology} size={12} decorative />
                           <span className="truncate">{roleText}</span>
                         </span>
                       ) : null}
@@ -161,11 +152,8 @@ export function PickBanTargetBoard({
                       )}
                     />
                   )}
-                </button>
-                <PickBanPlayerHeroes
-                  playerId={target.player_id}
-                  matchId={previousMatchId}
-                />
+                </RowButton>
+                <PickBanPlayerHeroes playerId={target.player_id} matchId={previousMatchId} />
               </li>
             );
           })}

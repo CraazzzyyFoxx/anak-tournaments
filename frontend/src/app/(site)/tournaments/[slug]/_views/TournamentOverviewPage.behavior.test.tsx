@@ -19,14 +19,17 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
-import type { Encounter } from "@/types/encounter.types";
-import type { MapRead } from "@/types/map.types";
+import type { Encounter, EncounterTeam } from "@/types/encounter.types";
+import { catalogMap, catalogMode } from "@/test/catalog";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { Registration, RegistrationListResponse } from "@/types/registration.types";
 import type { Team } from "@/types/team.types";
 import type { TournamentLink } from "@/types/stream.types";
 import type { PickBanConfig, Stage, StageSummary, Tournament, TournamentStatus } from "@/types/tournament.types";
 
 import TournamentOverviewPage from "./TournamentOverviewPage";
+
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -43,7 +46,7 @@ const listRegistrations = vi.fn();
 const getStandings = vi.fn();
 const getStages = vi.fn();
 const getTeams = vi.fn();
-const getHeroPlaytime = vi.fn();
+const getCharacterPlaytime = vi.fn();
 const listPublicConfigs = vi.fn();
 const getAllMaps = vi.fn();
 const getTournamentStreams = vi.fn();
@@ -64,14 +67,14 @@ vi.mock("@/services/tournament.service", () => ({
 vi.mock("@/services/team.service", () => ({
   default: { getAll: (...args: unknown[]) => getTeams(...args) }
 }));
-vi.mock("@/services/hero.service", () => ({
-  default: { getHeroPlaytime: (...args: unknown[]) => getHeroPlaytime(...args) }
+vi.mock("@/services/statistics.service", () => ({
+  default: { getCharacterPlaytime: (...args: unknown[]) => getCharacterPlaytime(...args) }
 }));
 vi.mock("@/services/pickBan.service", () => ({
   default: { listPublicConfigs: (...args: unknown[]) => listPublicConfigs(...args) }
 }));
-vi.mock("@/services/map.service", () => ({
-  default: { getAll: (...args: unknown[]) => getAllMaps(...args) }
+vi.mock("@/services/catalog.service", () => ({
+  default: { list: (...args: unknown[]) => getAllMaps(...args) }
 }));
 vi.mock("@/services/stream.service", () => ({
   default: { getTournamentStreams: (...args: unknown[]) => getTournamentStreams(...args) }
@@ -89,10 +92,12 @@ vi.mock("next/link", () => ({
   default: ({
     href,
     children,
+    prefetch: _prefetch,
     ...rest
   }: {
     href: string;
     children: React.ReactNode;
+    prefetch?: boolean | null;
   } & React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
     <a href={href} {...rest}>
       {children}
@@ -127,12 +132,22 @@ function makeStage(overrides: Partial<StageSummary> & { id: number }): StageSumm
     is_completed: false,
     ranking_preset: null,
     tiebreak_order: null,
-    scoring: { win: null, draw: null, loss: null },
+    scoring: {
+      win: null,
+      draw: null,
+      loss: null,
+      preset: null,
+      columns: null,
+      placement_points: null,
+      formula: null
+    },
     swiss_bye_points: null,
+    swiss_qualify_wins: null,
+    swiss_eliminate_losses: null,
     de_grand_final_type: "no_reset",
     seed_ranking: "slot",
-    best_of: { default: 3, by_round: {}, final: null },
-    ffa_scoring: { placement_points: [], score_points: 1, score_label: null },
+    best_of: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
+    has_custom_bracket: false,
     challonge_id: null,
     challonge_slug: null,
     ...overrides
@@ -188,7 +203,7 @@ function makeTournament(status: TournamentStatus, overrides: Partial<Tournament>
     teams_count: 4,
     division_grid_version_id: null,
     division_grid_version: null,
-    roster_slots_json: null,
+    discipline: "overwatch",
     roster_shape: {
       slots: { tank: 1, damage: 2, support: 2 },
       team_size: 5,
@@ -221,10 +236,9 @@ function makeTeam(id: number, name: string, players: string[] = []): Team {
       created_at: new Date(0),
       updated_at: null,
       name: playerName,
-      sub_role: null,
       rank: 3500,
       division: 3,
-      role: "Damage",
+      role: { dimension: "player_role", role: "damage" },
       tournament_id: TOURNAMENT_ID,
       user_id: id * 1000 + index,
       team_id: id,
@@ -245,12 +259,27 @@ const BETA = makeTeam(2, "Beta");
 const GAMMA = makeTeam(3, "Gamma");
 const DELTA = makeTeam(4, "Delta");
 
+function seat(slot: number, team: Team, score: number): EncounterTeam {
+  return {
+    id: team.id * 10 + slot,
+    slot,
+    team_id: team.id,
+    name: team.name,
+    seed: null,
+    score,
+    placement: null,
+    active: true,
+    team
+  };
+}
+
+/** `scores` are the standings of slot 1 and slot 2. */
 function makeEncounter(
   id: number,
   round: number,
-  home: Team,
-  away: Team,
-  score: { home: number; away: number },
+  one: Team,
+  two: Team,
+  scores: [number, number],
   overrides: Partial<Encounter> = {}
 ): Encounter {
   return {
@@ -258,9 +287,7 @@ function makeEncounter(
     created_at: new Date("2024-08-12T12:00:00Z"),
     updated_at: null,
     name: `M${id}`,
-    home_team_id: home.id,
-    away_team_id: away.id,
-    score,
+    slot_count: 2,
     round,
     best_of: 3,
     tournament_id: TOURNAMENT_ID,
@@ -271,14 +298,19 @@ function makeEncounter(
     closeness: null,
     has_logs: false,
     result_status: "confirmed",
+    result_source: "series_claim",
+    result_version: 1,
     scheduled_at: null,
     started_at: new Date("2024-08-12T12:00:00Z").toISOString(),
     ended_at: new Date("2024-08-12T13:00:00Z").toISOString(),
+    played_at: null,
+    is_live: false,
+    is_final: false,
     current_map_index: null,
     confirmed_at: null,
     matches: [],
-    home_team: home,
-    away_team: away,
+    games: [],
+    teams: [seat(1, one, scores[0]), seat(2, two, scores[1])],
     tournament,
     stage: null,
     stage_item: null,
@@ -294,10 +326,10 @@ function makeEncounter(
  */
 function playedBracket(): Encounter[] {
   return [
-    makeEncounter(1, 1, ALPHA, GAMMA, { home: 2, away: 0 }),
-    makeEncounter(2, 1, BETA, DELTA, { home: 2, away: 0 }),
-    makeEncounter(4, -1, BETA, GAMMA, { home: 2, away: 0 }),
-    makeEncounter(3, 2, ALPHA, BETA, { home: 3, away: 2 })
+    makeEncounter(1, 1, ALPHA, GAMMA, [2, 0]),
+    makeEncounter(2, 1, BETA, DELTA, [2, 0]),
+    makeEncounter(4, -1, BETA, GAMMA, [2, 0]),
+    makeEncounter(3, 2, ALPHA, BETA, [3, 2])
   ];
 }
 
@@ -308,7 +340,7 @@ function makeRegistration(id: number, role: string, battleTag: string): Registra
     workspace_id: WORKSPACE_ID,
     user_id: id,
     primary_handle: battleTag,
-    roles: [{ role, subrole: null, is_primary: true, priority: 0, top_heroes: [] }],
+    roles: [{ role: { dimension: "player_role", role }, is_primary: true, priority: 0, top_characters: [] }],
     answers: { stream_pov: false, identity_battlenet: [battleTag] },
     form_version_id: 1,
     form_version_stale: false,
@@ -332,7 +364,10 @@ function regList(
   const role_counts: Record<string, number> = {};
   for (const registration of registrations) {
     const primary = registration.roles.find((role) => role.is_primary) ?? registration.roles[0];
-    if (primary) role_counts[primary.role] = (role_counts[primary.role] ?? 0) + 1;
+    if (primary) {
+      const code = primary.role.parent ?? primary.role.role;
+      role_counts[code] = (role_counts[code] ?? 0) + 1;
+    }
   }
   return {
     registrations,
@@ -345,51 +380,15 @@ function regList(
   };
 }
 
-const GAMEMODE = {
-  id: 1,
-  created_at: new Date(0),
-  updated_at: null,
-  name: "Control",
-  image_path: "/modes/control.png",
-  slug: "control",
-  description: "",
-  aliases: []
-};
+const GAMEMODE = { ...catalogMode(1, "Control"), image_path: "/modes/control.png" };
 
-const MAPS: MapRead[] = [
-  {
-    id: 41,
-    created_at: new Date(0),
-    updated_at: null,
-    name: "Ilios",
-    image_path: "/maps/ilios.png",
-    gamemode_id: 1,
-    in_competitive: true,
-    aliases: [],
-    gamemode: GAMEMODE
-  },
-  {
-    id: 42,
-    created_at: new Date(0),
-    updated_at: null,
-    name: "Busan",
-    image_path: "/maps/busan.png",
-    gamemode_id: 1,
-    in_competitive: true,
-    aliases: [],
-    gamemode: GAMEMODE
-  },
-  {
-    id: 43,
-    created_at: new Date(0),
-    updated_at: null,
+const MAPS: CatalogEntityRead[] = [
+  catalogMap(41, GAMEMODE, { name: "Ilios", image_path: "/maps/ilios.png" }),
+  catalogMap(42, GAMEMODE, { name: "Busan", image_path: "/maps/busan.png" }),
+  catalogMap(43, { ...catalogMode(2, "Hybrid"), image_path: "/modes/hybrid.png" }, {
     name: "King's Row",
-    image_path: "/maps/kings-row.png",
-    gamemode_id: 2,
-    in_competitive: true,
-    aliases: [],
-    gamemode: { ...GAMEMODE, id: 2, name: "Hybrid", slug: "hybrid" }
-  }
+    image_path: "/maps/kings-row.png"
+  })
 ];
 
 const POOL_CONFIG: PickBanConfig = {
@@ -431,7 +430,7 @@ beforeEach(() => {
   getStandings.mockResolvedValue([]);
   getStages.mockResolvedValue([] as Stage[]);
   getTeams.mockResolvedValue({ results: [ALPHA, BETA, GAMMA, DELTA], total: 4, page: 1, per_page: -1 });
-  getHeroPlaytime.mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 });
+  getCharacterPlaytime.mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 });
   listPublicConfigs.mockResolvedValue({ configs: [POOL_CONFIG] });
   getAllMaps.mockResolvedValue({ results: MAPS, total: MAPS.length, page: 1, per_page: -1 });
   getTournamentStreams.mockResolvedValue({ official: [], participants: [] });
@@ -561,11 +560,12 @@ describe("while it is being played (§3B)", () => {
   it("puts the live matches first", async () => {
     getAllEncounters.mockResolvedValue({
       results: [
-        makeEncounter(1, 1, ALPHA, GAMMA, { home: 1, away: 1 }, {
+        makeEncounter(1, 1, ALPHA, GAMMA, [1, 1], {
           status: "in_progress",
-          ended_at: null
+          ended_at: null,
+          is_live: true
         }),
-        makeEncounter(2, 1, BETA, DELTA, { home: 2, away: 0 })
+        makeEncounter(2, 1, BETA, DELTA, [2, 0])
       ],
       total: 2,
       page: 1,
@@ -600,8 +600,8 @@ describe("while it is being played (§3B)", () => {
     const soon = new Date(Date.now() + 3_600_000).toISOString();
     getAllEncounters.mockResolvedValue({
       results: [
-        makeEncounter(1, 1, ALPHA, GAMMA, { home: 2, away: 0 }),
-        makeEncounter(9, 2, ALPHA, BETA, { home: 0, away: 0 }, {
+        makeEncounter(1, 1, ALPHA, GAMMA, [2, 0]),
+        makeEncounter(9, 2, ALPHA, BETA, [0, 0], {
           status: "pending",
           scheduled_at: soon,
           started_at: null,
@@ -621,8 +621,8 @@ describe("while it is being played (§3B)", () => {
   // matches, no schedule, no results. The overview used to call that "nothing
   // published yet" while the bracket page showed the full grid.
   it("lists a drawn round that has no schedule and no results yet", async () => {
-    const drawn = (id: number, round: number, home: Team, away: Team) =>
-      makeEncounter(id, round, home, away, { home: 0, away: 0 }, {
+    const drawn = (id: number, round: number, one: Team, two: Team) =>
+      makeEncounter(id, round, one, two, [0, 0], {
         status: "open",
         result_status: "none",
         scheduled_at: null,
@@ -691,7 +691,7 @@ describe("while it is being played (§3B)", () => {
       }
     ]);
     getAllEncounters.mockResolvedValue({
-      results: [makeEncounter(1, 1, ALPHA, GAMMA, { home: 2, away: 0 })],
+      results: [makeEncounter(1, 1, ALPHA, GAMMA, [2, 0])],
       total: 1,
       page: 1,
       per_page: -1
@@ -786,6 +786,7 @@ describe("while it is being played (§3B)", () => {
       full_buchholz: null,
       tie_group: null,
       is_pinned: false,
+      swiss_status: null,
       tb: null,
       score_differential: null,
       ranking_context: null,
@@ -807,7 +808,7 @@ describe("while it is being played (§3B)", () => {
       standingRow(4, DELTA, 12, "B", 2, [2, 0, 3], 2)
     ]);
     getAllEncounters.mockResolvedValue({
-      results: [makeEncounter(1, 1, ALPHA, GAMMA, { home: 2, away: 0 })],
+      results: [makeEncounter(1, 1, ALPHA, GAMMA, [2, 0])],
       total: 1,
       page: 1,
       per_page: -1
@@ -905,8 +906,8 @@ describe("once it is over (§3C)", () => {
   });
 
   it("counts the tournament up and links onward to the statistics", async () => {
-    getHeroPlaytime.mockResolvedValue({
-      results: [{ hero: { id: 1, name: "Kiriko", image_path: "/heroes/kiriko.png" }, playtime: 0.091 }],
+    getCharacterPlaytime.mockResolvedValue({
+      results: [{ entity: { id: 1, name: "Kiriko", image_path: "/heroes/kiriko.png", attrs: {} }, playtime: 0.091 }],
       total: 1,
       page: 1,
       per_page: -1
@@ -934,7 +935,7 @@ describe("once it is over (§3C)", () => {
       stages: [makeStage({ id: 7, name: "League", stage_type: "round_robin", is_completed: true })]
     });
     getAllEncounters.mockResolvedValue({
-      results: [makeEncounter(1, 1, ALPHA, GAMMA, { home: 2, away: 0 })],
+      results: [makeEncounter(1, 1, ALPHA, GAMMA, [2, 0])],
       total: 1,
       page: 1,
       per_page: -1
@@ -971,6 +972,8 @@ describe("once it is over (§3C)", () => {
 
     const podium = container.querySelector(`[aria-label="${en.tournamentDetail.podium.label}"]`);
     expect(podium?.textContent).toContain("Gamma");
+    expect(podium?.textContent).toContain("Alpha");
+    expect(podium?.textContent).toContain("Beta");
     expect(podium?.textContent).toContain(en.tournamentDetail.podium.place3);
   });
 });

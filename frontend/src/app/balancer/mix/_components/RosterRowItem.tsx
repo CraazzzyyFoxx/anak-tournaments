@@ -1,17 +1,20 @@
+import { useTranslations } from "next-intl";
 import { Check, CornerDownLeft, Plus } from "lucide-react";
 
-import { splitBattleTag } from "@/components/balancer/balancer-page-helpers";
 import DivisionIcon from "@/components/DivisionIcon";
+import { HandleLabel } from "@/components/HandleLabel";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
-import { OW_REFERENCE_GRID, getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
-import { ROLES, ROLE_LABELS } from "@/lib/roster/roles";
+import { RowButton } from "@/components/ui/row-button";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { cn } from "@/lib/utils";
 
 import type { RosterRow } from "../_hooks/useRosterPicker";
+import type { MixOwner } from "../pickup-lineup";
 
 /**
  * One roster row: membership indicator on the left, identity in the middle,
- * this host's three effective ranks read-only on the right.
+ * this host's effective rank per role of the mix's game, read-only, on the right.
  *
  * The whole row is the membership toggle -- there is no picker on it to miss
  * by four pixels anymore, ranks here are read-only. The keyboard path is
@@ -21,30 +24,34 @@ import type { RosterRow } from "../_hooks/useRosterPicker";
  */
 export function RosterRowItem({
   row,
+  owner,
   isInMix,
   isCursor,
   canWrite,
   onToggle
 }: Readonly<{
   row: RosterRow;
+  owner: MixOwner;
   isInMix: boolean;
   isCursor: boolean;
   canWrite: boolean;
   onToggle: () => void;
 }>) {
-  const label = row.displayName || row.battleTag || `#${row.memberId}`;
-  const { name, suffix } = splitBattleTag(label);
+  const t = useTranslations("mixes.addPlayers.row");
+  const tLineup = useTranslations("mixes.lineup");
+  const slotLabel = useSlotLabel(owner.ontology);
+  const label = row.displayName || row.handle || `#${row.memberId}`;
+  const { grid } = owner;
 
   return (
     <li data-roster-row>
-      <button
-        type="button"
+      <RowButton
         disabled={!canWrite}
         aria-pressed={isInMix}
-        aria-label={isInMix ? `Remove ${label} from this mix` : `Add ${label} to this mix`}
+        aria-label={isInMix ? tLineup("removeNamed", { name: label }) : t("add", { name: label })}
         onClick={onToggle}
         className={cn(
-          "relative flex w-full items-center gap-2.5 rounded-lg border px-2 py-1.5 text-left transition-colors",
+          "relative flex items-center gap-2.5 rounded-lg border px-2 py-1.5",
           // A left rail rather than a filled row: at 24 rows a wash of teal
           // fought the rank crests for attention, and "already in" is a state, not
           // an emphasis.
@@ -52,7 +59,6 @@ export function RosterRowItem({
             ? "border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] before:absolute before:inset-y-1.5 before:left-0 before:w-[2px] before:rounded-full before:bg-[color:var(--aqt-teal)]"
             : "border-transparent hover:border-[color:var(--aqt-border-2)] hover:bg-[color:var(--aqt-overlay-2)]",
           isCursor && "ring-1 ring-[color:color-mix(in_srgb,var(--aqt-teal)_45%,transparent)]",
-          "disabled:cursor-default"
         )}
       >
         <span
@@ -68,15 +74,12 @@ export function RosterRowItem({
         </span>
 
         <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-          <span
-            className="truncate text-caption font-semibold text-[color:var(--aqt-fg)]"
+          <HandleLabel
+            handle={label}
             title={label}
-          >
-            {name}
-          </span>
-          {suffix ? (
-            <span className="shrink-0 text-label text-[color:var(--aqt-fg-faint)]">{suffix}</span>
-          ) : null}
+            className="text-caption font-semibold text-[color:var(--aqt-fg)]"
+            tagClassName="text-label"
+          />
           {isCursor && canWrite ? (
             <span
               aria-hidden="true"
@@ -88,26 +91,27 @@ export function RosterRowItem({
         </span>
 
         <span className="flex shrink-0 items-center gap-1.5">
-          {ROLES.map((role) => {
-            const own = row.authorRanks[role.code] ?? null;
-            const inherited = own == null ? (row.ranks[role.code] ?? null) : null;
-            // The global OW grid: a mix's ranks resolve against it
-            // (`workspace_id=None`), so a workspace's tiers here would show
-            // the wrong crest for the same number.
-            const division = resolveDivisionFromRank(OW_REFERENCE_GRID, own ?? inherited);
+          {owner.roles.map((role) => {
+            const own = row.authorRanks[role] ?? null;
+            const inherited = own == null ? (row.ranks[role] ?? null) : null;
+            // The owner game's global ladder: the scale these ranks are on in every
+            // workspace, so the crest names the number the balance will use.
+            const division = resolveDivisionFromRank(grid, own ?? inherited);
             const rank = own ?? inherited;
+            // A one-role game names no role: the crest is just the player's rank.
+            const what = owner.showsRoles ? t("roleRank", { role: slotLabel(role) }) : t("rank");
             return (
               <IconTooltip
-                key={role.code}
+                key={role}
                 label={
                   inherited == null
-                    ? `${ROLE_LABELS[role.code]} rank for ${label}`
-                    : `${ROLE_LABELS[role.code]} rank for ${label}, inherited ${inherited} from the workspace`
+                    ? t("rankFor", { what, name: label })
+                    : t("rankForInherited", { what, name: label, rank: String(inherited) })
                 }
                 hint={
                   rank == null
-                    ? "No rank"
-                    : `${getDivisionLabel(OW_REFERENCE_GRID, division) ?? ""} \u00B7 ${rank}`
+                    ? t("noRank")
+                    : `${getDivisionLabel(grid, division) ?? ""} \u00B7 ${rank}`
                 }
                 // Dimmed means "not yours": painting an inherited number the
                 // same as the host's own made "set" and "leave alone" look
@@ -125,7 +129,7 @@ export function RosterRowItem({
                 ) : (
                   <DivisionIcon
                     division={division}
-                    tournamentGrid={OW_REFERENCE_GRID}
+                    tournamentGrid={grid}
                     width={22}
                     height={22}
                   />
@@ -134,7 +138,7 @@ export function RosterRowItem({
             );
           })}
         </span>
-      </button>
+      </RowButton>
     </li>
   );
 }

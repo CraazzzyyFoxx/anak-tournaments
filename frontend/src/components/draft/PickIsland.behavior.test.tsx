@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DraftMutations } from "@/hooks/useDraftData";
 import type { DraftGating } from "@/lib/draft/logic";
 import { buildTeamViews, type RoomSelection } from "@/lib/draft/room-model";
+import { DEADLOCK_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 import type { RosterShape } from "@/lib/roster/shape";
 import type { DraftBoard, DraftPick, DraftPlayer, DraftTeam } from "@/types/draft.types";
 import type { UserDraftCard } from "@/types/user.types";
@@ -22,8 +23,11 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // Message keys, not copy: every assertion is about WHICH fact reaches the screen.
 vi.mock("next-intl", () => ({
   useLocale: () => "en",
-  useTranslations: () => (key: string, values?: Record<string, unknown>) =>
-    values ? `${key}:${JSON.stringify(values)}` : key
+  useTranslations: () =>
+    Object.assign(
+      (key: string, values?: Record<string, unknown>) => (values ? `${key}:${JSON.stringify(values)}` : key),
+      { has: () => false }
+    )
 }));
 vi.mock("@/lib/datetime/client", () => ({
   useFormatter: () => ({ dateTime: (value: Date) => value.toISOString() })
@@ -44,10 +48,10 @@ vi.mock("@/hooks/useCurrentWorkspace", () => ({
 
 const getDraftCard = vi.fn();
 vi.mock("@/hooks/useDraftData", () => ({
-  useDraftPlayerCardQuery: (userId: number | null) =>
+  useDraftPlayerCardQuery: (userId: number | null, discipline: string) =>
     useQuery({
-      queryKey: ["card", userId],
-      queryFn: () => getDraftCard(userId),
+      queryKey: ["card", userId, discipline],
+      queryFn: () => getDraftCard(userId, discipline),
       enabled: userId != null
     })
 }));
@@ -62,6 +66,7 @@ vi.mock("@/lib/notify", () => ({
 }));
 
 const SHAPE: RosterShape = {
+  dimension: "player_role",
   slots: { tank: 1, damage: 2, support: 2 },
   team_size: 5,
   flex_slots: 0,
@@ -76,9 +81,8 @@ function player(overrides: Partial<DraftPlayer> = {}): DraftPlayer {
     session_id: 1,
     registration_id: 70,
     user_id: null,
-    battle_tag: "Ana#1234",
-    primary_role: "support",
-    sub_role: null,
+    identity: { provider: "battlenet", handle: "Ana#1234" }, player_name: null,
+    primary_role: { dimension: "player_role", role: "support" },
     is_flex: false,
     effective_rank: 3000,
     status: "available",
@@ -87,7 +91,7 @@ function player(overrides: Partial<DraftPlayer> = {}): DraftPlayer {
     secondary_roles: [],
     role_ranks: { support: 3000 },
     role_sources: {},
-    role_top_heroes: {},
+    role_top_characters: {},
     role_sub_roles: {},
     notes: null,
     custom_fields: [],
@@ -129,7 +133,7 @@ const CURRENT: DraftPick = {
 function board(players: DraftPlayer[], sessionPatch: Partial<DraftBoard["session"]> = {}): DraftBoard {
   return {
     session: {
-      id: 1, tournament_id: 1, workspace_id: 1, status: "live", blocked_reason: null, format: "snake",
+      id: 1, tournament_id: 1, custom_game_id: null, lobby_index: null, workspace_id: 1, discipline: "overwatch", status: "live", blocked_reason: null, format: "snake",
       rounds: 4, pick_time_seconds: 45, overtime_seconds: 0, roster_shape: SHAPE, current_pick_id: CURRENT.id,
       pool_source: "manual", source_balance_id: null, autopick_strategy: "best_fit", allow_admin_override: true,
       exported_at: null, export_status: null, settings_json: {}, version: 1, created_at: null,
@@ -174,6 +178,7 @@ interface Setup {
   queue?: boolean;
   /** Everyone else on the board (rostered players shape the acting team's open slots). */
   others?: DraftPlayer[];
+  ontology?: typeof OW_METADATA;
 }
 
 async function open(setup: Setup = {}) {
@@ -207,6 +212,7 @@ async function open(setup: Setup = {}) {
           autopickPreview={null}
           queue={setup.queue ? { ids: [], toggle: vi.fn(), move: vi.fn() } : null}
           divisionGrid={GRID}
+          ontology={setup.ontology ?? OW_METADATA}
           onPicked={onPicked}
         />
       </QueryClientProvider>
@@ -259,7 +265,7 @@ async function showStats() {
 }
 
 function tile(role: string): HTMLElement | null {
-  return document.body.querySelector<HTMLElement>(`[role='group'] [title^='roles.${role}']`);
+  return document.body.querySelector<HTMLElement>(`[role='group'] [title^='${role.charAt(0).toUpperCase()}${role.slice(1)}']`);
 }
 
 function card(overrides: Partial<UserDraftCard> = {}): UserDraftCard {
@@ -272,13 +278,17 @@ function card(overrides: Partial<UserDraftCard> = {}): UserDraftCard {
     mvp_maps: 4,
     best_placement: 1,
     avg_placement: 4.4,
-    roles: [{ role: "support", maps: 40, maps_won: 26 }],
-    heroes: [
-      { hero: { id: 1, slug: "ana", name: "Ana", image_path: null } as never, role: "support", maps: 30, maps_won: 20 }
+    roles: [
+      { role: { dimension: "position", role: "support" }, maps: 9, maps_won: 9 },
+      { role: { dimension: "player_role", role: "support_main", parent: "support" }, maps: 20, maps_won: 10 },
+      { role: { dimension: "player_role", role: "support_flex", parent: "support" }, maps: 20, maps_won: 16 }
+    ],
+    characters: [
+      { character: { id: 1, slug: "ana", name: "Ana", image_path: null } as never, maps: 30, maps_won: 20 }
     ],
     recent_tournaments: [
-      { id: 9, name: "Spring Cup", date: "2026-05-01", role: "support", rank: 3100, placement: 2, teams_count: 16 },
-      { id: 2, name: "Winter Cup", date: "2026-01-01", role: "support", rank: 2900, placement: 5, teams_count: 16 }
+      { id: 9, name: "Spring Cup", date: "2026-05-01", role: { dimension: "player_role", role: "support" }, rank: 3100, placement: 2, teams_count: 16 },
+      { id: 2, name: "Winter Cup", date: "2026-01-01", role: { dimension: "player_role", role: "support" }, rank: 2900, placement: 5, teams_count: 16 }
     ],
     ...overrides
   };
@@ -306,6 +316,25 @@ describe("spectator", () => {
     expect(body.querySelector("[role='radiogroup']")).toBeNull();
     expect(tile("support")?.tagName).toBe("DIV");
   });
+
+  it("links the profile by the player's canonical name, never by the displayed game handle", async () => {
+    const { body } = await open({
+      subject: player({
+        identity: { provider: "riot", handle: "Mid#Lane" },
+        player_name: "Legacy Owner#7"
+      })
+    });
+
+    const link = body.querySelector<HTMLAnchorElement>("#pick-island-title a");
+    expect(link?.textContent).toBe("Mid#Lane");
+    expect(link?.getAttribute("href")).toBe("/users/Legacy Owner-7");
+  });
+
+  it("renders no profile link for a player without a canonical name", async () => {
+    const { body } = await open({ subject: player({ player_name: null }) });
+
+    expect(body.querySelector("#pick-island-title a")).toBeNull();
+  });
 });
 
 describe("captain", () => {
@@ -327,7 +356,7 @@ describe("captain", () => {
     await click(confirm!);
 
     expect(m.makePick.mutate).toHaveBeenCalledWith(
-      { pickId: 11, playerId: 7, version: 4, role: "support" },
+      { pickId: 11, playerId: 7, version: 4, role: "support", dimension: "player_role" },
       expect.anything()
     );
     await act(async () => m.makePick.mutate.mock.calls[0][1].onSuccess());
@@ -368,9 +397,9 @@ describe("captain", () => {
     const { onSelectRole } = await open({
       gating: CAPTAIN_WAITING,
       actingTeamId: 2,
-      subject: player({ secondary_roles: ["tank"], role_ranks: { support: 3000, tank: 2500 } }),
+      subject: player({ secondary_roles: [{ dimension: "player_role", role: "tank" }], role_ranks: { support: 3000, tank: 2500 } }),
       others: [
-        player({ id: 8, primary_role: "tank", status: "picked", drafted_by_team_id: 2, role_ranks: { tank: 3000 } })
+        player({ id: 8, primary_role: { dimension: "player_role", role: "tank" }, status: "picked", drafted_by_team_id: 2, role_ranks: { tank: 3000 } })
       ]
     });
 
@@ -402,7 +431,7 @@ describe("admin override", () => {
     await click(apply);
 
     expect(m.override.mutate).toHaveBeenCalledWith(
-      { pickId: 11, playerId: 7, version: 4, role: "support", note: "captain AFK" },
+      { pickId: 11, playerId: 7, version: 4, role: "support", dimension: "player_role", note: "captain AFK" },
       expect.anything()
     );
   });
@@ -424,7 +453,7 @@ describe("admin override", () => {
 
 describe("role tiles", () => {
   it("shows no rank on a role the player has none on, not the primary's", async () => {
-    await open({ subject: player({ secondary_roles: ["tank"], is_flex: true, role_ranks: { support: 2814 } }) });
+    await open({ subject: player({ secondary_roles: [{ dimension: "player_role", role: "tank" }], is_flex: true, role_ranks: { support: 2814 } }) });
 
     expect(tile("support")?.textContent).toContain("2814");
     expect(tile("tank")?.textContent).not.toContain("2814");
@@ -433,17 +462,17 @@ describe("role tiles", () => {
 
   it("puts the rank the server resolved for this draft in the header crest", async () => {
     const { body } = await open({
-      subject: player({ secondary_roles: ["damage"], effective_rank: 2814, role_ranks: { support: 2814, damage: 3900 } })
+      subject: player({ secondary_roles: [{ dimension: "player_role", role: "damage" }], effective_rank: 2814, role_ranks: { support: 2814, damage: 3900 } })
     });
 
     expect(body.querySelector("[role='dialog'] img")?.getAttribute("alt")).toBe("Low");
   });
 
   it("labels a rank the registration did not declare with its source", async () => {
-    const { body } = await open({ subject: player({ role_ranks: { support: 2814 }, role_sources: { support: "ow" } }) });
+    const { body } = await open({ subject: player({ role_ranks: { support: 2814 }, role_sources: { support: "native" } }) });
 
-    expect(body.innerHTML).toContain("rankSourceShort.ow");
-    expect(body.innerHTML).toContain("rankSource.ow");
+    expect(body.innerHTML).toContain("rankSourceShort.native");
+    expect(body.innerHTML).toContain("rankSource.native");
   });
 
   it("explains a player left without any role", async () => {
@@ -491,7 +520,8 @@ describe("career stats", () => {
     expect(tile("support")?.textContent).toContain("65%");
     await showStats();
 
-    expect(getDraftCard).toHaveBeenCalledWith(42);
+    // The card is read in the draft session's own game.
+    expect(getDraftCard).toHaveBeenCalledWith(42, "overwatch");
     expect(body.textContent).toContain("60%");
     expect(body.textContent).toContain("30–20");
     // Newest 3100 against oldest 2900.
@@ -509,7 +539,7 @@ describe("career stats", () => {
   });
 
   it("says it is the player's first tournament when there is no history", async () => {
-    getDraftCard.mockResolvedValue(card({ tournaments: 0, maps: 0, heroes: [], recent_tournaments: [], roles: [] }));
+    getDraftCard.mockResolvedValue(card({ tournaments: 0, maps: 0, characters: [], recent_tournaments: [], roles: [] }));
     const { body } = await open({ subject: player({ user_id: 42 }) });
     await showStats();
 
@@ -523,5 +553,29 @@ describe("career stats", () => {
 
     expect(body.innerHTML).toContain("profile.stats.error");
     expect(body.innerHTML).toContain("profile.stats.retry");
+  });
+});
+
+describe("PickIsland in a one-role game", () => {
+  it("picks the player: no role priority, no role tile name, and the action names nobody's role", async () => {
+    const agent = { dimension: "agent", role: "agent" };
+    const { body } = await open({
+      subject: player({ primary_role: agent, role_ranks: { agent: 3000 } }),
+      gating: CAPTAIN_ON_TURN,
+      actingTeamId: 1,
+      selection: { playerId: 7, role: "agent" },
+      canConfirm: true,
+      ontology: DEADLOCK_METADATA,
+      sessionPatch: {
+        discipline: "deadlock",
+        roster_shape: { ...SHAPE, dimension: "agent", slots: { agent: 6 }, team_size: 6, draft_rounds: 5 }
+      }
+    });
+
+    expect(body.textContent).not.toContain("island.rolePriority");
+    expect(body.textContent).not.toContain("Agent");
+    expect(body.querySelector('[aria-label^="island.tile.select:"]')).toBeNull();
+    expect(body.querySelector('[aria-label^="island.tile.selectPlayer"]')).not.toBeNull();
+    expect(body.textContent).toContain('island.action.pickPlayer:{"player":"Ana#1234"}');
   });
 });

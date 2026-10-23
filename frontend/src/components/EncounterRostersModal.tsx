@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { Users } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -18,17 +19,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 import EncounterRosterPanel from "@/components/match/EncounterRosterPanel";
 import encounterService from "@/services/encounter.service";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
+import { seatAt } from "@/lib/encounter/seats";
 
 interface EncounterRostersModalProps {
   encounterId: number;
-  homeTeamName: string;
-  awayTeamName: string;
+  /** The two seats' names, slot 1 first. */
+  teamNames: [string, string];
   /** Replaces the bracket card's icon button; must accept a ref (`asChild`). */
   trigger?: ReactElement;
 }
 
 /**
- * Both sides' rosters for a bracket match, without leaving the bracket. The
+ * Both seats' rosters for a bracket match, without leaving the bracket. The
  * names on a card are 210px of truncated text; who is actually on those teams
  * meant opening the encounter page and losing the bracket's scroll position.
  *
@@ -38,8 +40,7 @@ interface EncounterRostersModalProps {
  */
 export function EncounterRostersModal({
   encounterId,
-  homeTeamName,
-  awayTeamName,
+  teamNames,
   trigger
 }: Readonly<EncounterRostersModalProps>) {
   const t = useTranslations();
@@ -58,22 +59,26 @@ export function EncounterRostersModal({
       {trigger ? (
         <DialogTrigger asChild>{trigger}</DialogTrigger>
       ) : (
-        <DialogTrigger
-          className="flex items-center justify-center rounded p-0.5 text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
-          aria-label={t("bracket.viewRosters")}
-          onClick={(e) => {
-            // Keep any future card-level click handler from also firing.
-            e.stopPropagation();
-          }}
-        >
-          <Users className="size-3.5" aria-hidden />
+        <DialogTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="text-[color:var(--aqt-fg-muted)]"
+            aria-label={t("bracket.viewRosters")}
+            onClick={(e) => {
+              // Keep any future card-level click handler from also firing.
+              e.stopPropagation();
+            }}
+          >
+            <Users aria-hidden />
+          </Button>
         </DialogTrigger>
       )}
       <DialogContent className="flex max-h-[85vh] w-[95vw] max-w-[900px] flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="shrink-0 space-y-1 border-b border-[color:var(--aqt-border)] p-4 pr-14 text-left">
           <DialogTitle>{t("bracket.rosters.title")}</DialogTitle>
           <DialogDescription>
-            {t("bracket.rosters.description", { home: homeTeamName, away: awayTeamName })}
+            {t("bracket.rosters.description", { first: teamNames[0], second: teamNames[1] })}
           </DialogDescription>
         </DialogHeader>
         <div className="flex-1 overflow-y-auto p-4">
@@ -87,13 +92,15 @@ export function EncounterRostersModal({
           ) : (
             <div className="grid gap-4 lg:grid-cols-2">
               <EncounterRosterPanel
-                team={encounter.home_team ?? null}
-                side="home"
+                team={seatAt(encounter.teams, 1)?.team ?? null}
+                slot={1}
+                discipline={encounter.tournament.discipline}
                 tournamentGrid={encounter.tournament?.division_grid_version ?? null}
               />
               <EncounterRosterPanel
-                team={encounter.away_team ?? null}
-                side="away"
+                team={seatAt(encounter.teams, 2)?.team ?? null}
+                slot={2}
+                discipline={encounter.tournament.discipline}
                 tournamentGrid={encounter.tournament?.division_grid_version ?? null}
               />
             </div>

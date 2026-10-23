@@ -24,6 +24,19 @@ import type { Tournament, TournamentStatus } from "@/types/tournament.types";
 
 import TournamentParticipantsPage from "../TournamentParticipantsPage";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
+// The owner game's grid is the workspace's effective version of THAT game; no grid is borrowed from another.
+vi.mock("@/hooks/useCurrentWorkspace", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useDivisionGrid: () => ({
+    tiers: [
+      { number: 1, name: "Gold", slug: "gold", sort_order: 1, rank_min: 0, rank_max: 3999, icon_url: "/divisions/gold.png" },
+      { number: 2, name: "Diamond", slug: "diamond", sort_order: 2, rank_min: 4000, rank_max: null, icon_url: "/divisions/diamond.png" }
+    ]
+  })
+}));
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
@@ -52,33 +65,6 @@ vi.mock("@/services/registration.service", () => ({
     getForm: (...args: unknown[]) => getForm(...args),
     checkInMyRegistration: () => Promise.resolve(null),
     withdrawMyRegistration: () => Promise.resolve(null)
-  }
-}));
-
-vi.mock("@/services/hero.service", () => ({
-  default: {
-    getAll: () =>
-      Promise.resolve({
-        results: [
-          {
-            id: 1,
-            name: "Ana",
-            slug: "ana",
-            image_path: "/ana.png",
-            role: "support",
-            type: "support"
-          },
-          {
-            id: 2,
-            name: "Genji",
-            slug: "genji",
-            image_path: "/genji.png",
-            role: "damage",
-            type: "damage"
-          },
-          { id: 3, name: "Rein", slug: "rein", image_path: "/rein.png", role: "tank", type: "tank" }
-        ]
-      })
   }
 }));
 
@@ -174,7 +160,7 @@ function makeTournament(
     teams_count: null,
     division_grid_version_id: null,
     division_grid_version: null,
-    roster_slots_json: null,
+    discipline: "overwatch",
     roster_shape: rosterShape,
     roster_locked_by_draft: null
   };
@@ -186,14 +172,10 @@ function role(
   heroes: string[] = [],
   isPrimary = true
 ): RegistrationRole {
-  return {
-    role: name,
-    subrole: null,
-    is_primary: isPrimary,
-    priority: 0,
-    rank_value: rank,
-    top_heroes: heroes
-  };
+  return { role: {dimension: "player_role", role: name}, is_primary: isPrimary,
+  priority: 0,
+  rank_value: rank,
+  top_characters: heroes };
 }
 
 function makeRegistration(
@@ -465,11 +447,11 @@ describe("participants pool", () => {
       [...(segment?.querySelectorAll('[role="radio"]') ?? [])].map((n) => n.textContent)
     ).toEqual(["Table", "By role"]);
 
-    // The switch opens the toolbar and the search closes it: `.filter-search`
-    // owns the one `auto` margin, so a control after it would be pushed into
-    // the right-hand cluster and jump when the view changes.
+    // The switch opens the toolbar and the search closes it: the search owns
+    // the one `auto` margin, so a control after it would be pushed into the
+    // right-hand cluster and jump when the view changes.
     const toolbar = segment?.closest(".filters");
-    const search = toolbar?.querySelector("input");
+    const search = toolbar?.querySelector('input[type="search"]');
     expect(segment && search && segment.compareDocumentPosition(search)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING
     );
@@ -491,13 +473,13 @@ describe("participants pool", () => {
     const columns = (
       container.querySelector('[data-testid="roster"]')?.getAttribute("data-columns") ?? ""
     ).split(",");
-    for (const id of ["public_notes", "identity_battlenet_extras"]) {
+    for (const id of ["public_notes", "_identity_extras"]) {
       expect(columns).not.toContain(id);
     }
     // The registration's own state is public: check-in, the subscription
     // verdict and the balancer status answer "am I in and what is still
     // missing", which is why the roster is opened at all.
-    for (const id of ["identity_battlenet", "_check_in", "_subscription", "_balancer_status"]) {
+    for (const id of ["_identity", "_check_in", "_subscription", "_balancer_status"]) {
       expect(columns).toContain(id);
     }
   });
@@ -511,8 +493,47 @@ describe("participants pool", () => {
     const columns = (
       container.querySelector('[data-testid="roster"]')?.getAttribute("data-columns") ?? ""
     ).split(",");
-    for (const id of ["public_notes", "identity_battlenet_extras"]) {
+    for (const id of ["public_notes", "_identity_extras"]) {
       expect(columns).toContain(id);
     }
+  });
+});
+
+describe("the pool of a one-role game", () => {
+  it("is one column of players that names no role", async () => {
+    const agent = (rank: number): RegistrationRole => ({
+      role: { dimension: "agent", role: "agent" },
+      is_primary: true,
+      priority: 0,
+      rank_value: rank,
+      top_characters: []
+    });
+    tournament = {
+      ...makeTournament("draft", "check_in", {
+        slots: { agent: 6 },
+        team_size: 6,
+        flex_slots: 0,
+        has_role_slots: true,
+        draft_rounds: 5,
+        source: "tournament"
+      }),
+      discipline: "deadlock"
+    };
+    listRegistrations.mockResolvedValue({
+      registrations: [makeRegistration(1, "206464648", [agent(3900)]), makeRegistration(2, "206464649", [agent(3100)])],
+      division_grids: {},
+      hidden: false,
+      total: 2,
+      role_counts: {},
+      max_participants: null
+    });
+
+    await mountPool();
+
+    const columns = container.querySelectorAll("[data-pool-column]");
+    expect(columns).toHaveLength(1);
+    expect(columns[0].getAttribute("aria-label")).toBe(en.tournamentDetail.participantsPool.players);
+    expect(columns[0].textContent).toContain(en.tournamentDetail.participantsPool.players);
+    expect(columns[0].textContent).not.toContain("Agent");
   });
 });

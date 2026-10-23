@@ -12,7 +12,6 @@ from __future__ import annotations
 import importlib
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -54,26 +53,39 @@ class ListScopeRPCTests(IsolatedAsyncioTestCase):
         self.assertEqual("unprocessable", envelope["error"]["code"])
         lister.assert_not_awaited()
 
-    async def test_serializes_what_the_service_returns(self) -> None:
+    async def test_serializes_what_the_service_returns_without_grids(self) -> None:
         handler = _handler(importlib.import_module("src.rpc.workspaces"), "rpc.app.workspaces.list")
         workspace = importlib.import_module("tests.test_audit_workspace")._workspace(id=3, slug="owt")
         with patch("src.rpc.workspaces.workspace_service.get_all", AsyncMock(return_value=[workspace])):
             envelope = await handler({"query": {"scope": ["all"]}}, MagicMock())
 
         self.assertEqual(["owt"], [w["slug"] for w in envelope["data"]])
+        self.assertNotIn("effective_division_grid_versions", envelope["data"][0])
 
 
-class ListScopeSignatureTests(IsolatedAsyncioTestCase):
-    """The default lives in the service too: a future caller that forgets the
-    keyword gets the directory, not everything."""
+class BySlugRPCTests(IsolatedAsyncioTestCase):
+    """``rpc.app.workspaces.by_slug`` transport; its visibility is ``WorkspaceGetAllVisibilityTests``'."""
 
-    async def test_service_default_is_public(self) -> None:
-        service = importlib.import_module("src.services.workspace.service")
-        rows = [
-            SimpleNamespace(id=1, is_hidden=False, verification_status="verified"),
-            SimpleNamespace(id=2, is_hidden=False, verification_status="unverified"),
-        ]
-        with patch.object(service.workspaces.workspace_repo, "list_ordered", AsyncMock(return_value=rows)):
-            result = await service.workspaces.get_all(SimpleNamespace())
+    async def _call(self, data, found):
+        handler = _handler(importlib.import_module("src.rpc.workspaces"), "rpc.app.workspaces.by_slug")
+        lookup = AsyncMock(return_value=found)
+        with patch("src.rpc.workspaces.workspace_service.get_visible_by_slug", lookup):
+            return await handler(data, MagicMock()), lookup
 
-        self.assertEqual([1], [w.id for w in result])
+    async def test_asks_with_the_slug_and_the_viewer(self) -> None:
+        _envelope, lookup = await self._call({"query": {"slug": ["owt"]}, "identity": _SUPERUSER}, None)
+
+        self.assertEqual("owt", lookup.await_args.args[1])
+        self.assertTrue(lookup.await_args.kwargs["user"].is_superuser)
+
+    async def test_a_workspace_the_viewer_may_not_see_is_a_404(self) -> None:
+        envelope, _lookup = await self._call({"query": {"slug": ["hidden"]}}, None)
+
+        self.assertEqual("not_found", envelope["error"]["code"])
+
+    async def test_answers_the_full_read(self) -> None:
+        workspace = importlib.import_module("tests.test_audit_workspace")._workspace(id=3, slug="owt")
+        envelope, _lookup = await self._call({"query": {"slug": ["owt"]}}, workspace)
+
+        self.assertEqual("owt", envelope["data"]["slug"])
+        self.assertIn("effective_division_grid_versions", envelope["data"])

@@ -3,17 +3,18 @@
 import { useTranslations } from "next-intl";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
+import { Card } from "@/components/ui/card";
+import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
+import Image from "@/components/ui/image";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
 import { getStreamStatus, STREAM_STATUS_META } from "@/lib/social/stream-platform";
 import { cn } from "@/lib/utils";
 import type { StreamEntry } from "@/types/stream.types";
 
-import styles from "../../TournamentDetail.module.css";
-
 /**
- * One block of the overview: a card on the site's first-level surface with a
- * mono eyebrow (wireframes §11) — see `.block` in the module CSS for the
- * treatment and why it is framed.
+ * One block of the overview: a flat card with a mono eyebrow (wireframes §11).
+ * Deliberately no `overflow: hidden`: the mini-bracket scrolls horizontally
+ * inside its own block, and `#phases` must stay scrollable-to.
  */
 export function OverviewCard({
   title,
@@ -27,15 +28,17 @@ export function OverviewCard({
   children: React.ReactNode;
 }>) {
   return (
-    <section className={cn(styles.block, "scroll-mt-28")} id={id}>
-      {title || action ? (
-        <div className={styles.blockHead}>
-          {title ? <h2 className={styles.blockTitle}>{title}</h2> : <span />}
-          {action}
-        </div>
-      ) : null}
-      {children}
-    </section>
+    <Card asChild variant="flat">
+      <section className="min-w-0 scroll-mt-28 px-4 pb-4 pt-3.5" id={id}>
+        {title || action ? (
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            {title ? <Eyebrow as="h2">{title}</Eyebrow> : <span />}
+            {action}
+          </div>
+        ) : null}
+        {children}
+      </section>
+    </Card>
   );
 }
 
@@ -43,7 +46,7 @@ export function CardLink({ href, children }: Readonly<{ href: string; children: 
   return (
     <HoverPrefetchLink
       href={href}
-      className="text-label uppercase tracking-label text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-teal)]"
+      className={cn(eyebrowClass("muted"), "transition-colors hover:text-[color:var(--aqt-teal)]")}
     >
       {children}
     </HoverPrefetchLink>
@@ -72,12 +75,13 @@ export function OverviewStreamCard({
         className="group relative block overflow-hidden rounded-lg bg-[color:var(--aqt-overlay-2)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
       >
         {official.thumbnail_url ? (
-          // eslint-disable-next-line @next/next/no-img-element -- remote poster from an arbitrary streaming host; not in `next.config` image domains.
-          <img
+          // `ui/image` serves a poster from an unconfigured streaming host as is.
+          <Image
             src={official.thumbnail_url}
             alt=""
+            width={640}
+            height={360}
             className="aspect-video w-full object-cover transition-[filter] duration-300 group-hover:brightness-110 motion-reduce:transition-none"
-            loading="lazy"
           />
         ) : (
           <span aria-hidden className="block aspect-video w-full bg-[color:var(--aqt-overlay-3)]" />
@@ -102,15 +106,12 @@ export function OverviewStreamCard({
   );
 }
 
-/* `StatTile` and `ROLE_TINT` moved to `_components/RegistrationSummary` so the
-   participants page can render the same registration figures. */
-
 export function KeyValue({ term, children }: Readonly<{ term: string; children: React.ReactNode }>) {
   return (
     <div className="grid gap-0.5 sm:grid-cols-[9rem_minmax(0,1fr)] sm:gap-3">
-      <dt className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)] sm:pt-0.5">
+      <Eyebrow as="dt" className="sm:pt-0.5">
         {term}
-      </dt>
+      </Eyebrow>
       <dd className="min-w-0 text-ui text-[color:var(--aqt-fg-muted)]">{children}</dd>
     </div>
   );

@@ -1,5 +1,6 @@
 import React from "react";
 
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/utils";
 
 /**
@@ -34,6 +35,12 @@ interface HeroFrameProps {
    * keeps marketing surfaces neutral, without the hairline or corner glow.
    */
   variant?: "default" | "profile" | "plain";
+  /**
+   * The profile hairline's colours, left to right: the profile game's role
+   * colours in declared order. Core has no role palette of its own, so none
+   * (or an unknown game) draws the teal hairline.
+   */
+  spectrum?: readonly string[];
   /**
    * Colour of the soft corner glow (any CSS colour). Defaults to teal; the
    * player profile passes its main-role hue. Ignored when `coverUrl` is set —
@@ -96,6 +103,7 @@ export function HeroFrame({
   variant = "default",
   coverUrl,
   coverFade,
+  spectrum = [],
   tint = "var(--aqt-teal)",
 }: Readonly<HeroFrameProps>) {
   const isProfile = variant === "profile";
@@ -116,7 +124,12 @@ export function HeroFrame({
         <span
           aria-hidden
           className="pointer-events-none absolute inset-x-0 bottom-0 z-[2] h-0.5 opacity-90"
-          style={{ background: "var(--aqt-spectrum)" }}
+          style={{
+            background:
+              spectrum.length > 1
+                ? `linear-gradient(90deg, ${spectrum.join(", ")})`
+                : (spectrum[0] ?? "var(--aqt-teal)")
+          }}
         />
       ) : !isPlain ? (
         <span
@@ -125,7 +138,7 @@ export function HeroFrame({
         />
       ) : null}
       {fadeRight ? (
-        // eslint-disable-next-line @next/next/no-img-element
+        // eslint-disable-next-line @next/next/no-img-element -- next/image cannot express this masked, fixed-width cover-wash sizing
         <img
           src={coverUrl ?? ""}
           alt=""
@@ -148,7 +161,7 @@ export function HeroFrame({
           }}
         />
       ) : coverUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
+        // eslint-disable-next-line @next/next/no-img-element -- next/image cannot express this negative-inset blurred cover-wash sizing
         <img
           src={coverUrl}
           alt=""
@@ -348,16 +361,7 @@ export function HeroCoord({
   children: React.ReactNode;
   className?: string;
 }>) {
-  return (
-    <span
-      className={cn(
-        "text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]",
-        className
-      )}
-    >
-      {children}
-    </span>
-  );
+  return <Eyebrow className={className}>{children}</Eyebrow>;
 }
 
 /** Mono stamp: a small uppercase label with a normal-case value beneath it. */
@@ -371,7 +375,7 @@ export function HeroStamp({
   valueClassName?: string;
 }>) {
   return (
-    <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+    <Eyebrow>
       {label}
       <b
         className={cn(
@@ -381,7 +385,7 @@ export function HeroStamp({
       >
         {value}
       </b>
-    </span>
+    </Eyebrow>
   );
 }
 
@@ -399,9 +403,7 @@ export function HeroStat({
 }>) {
   return (
     <div className={cn("flex flex-col gap-1", className)}>
-      <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-        {label}
-      </span>
+      <Eyebrow>{label}</Eyebrow>
       <span className="font-onest text-[clamp(1.7rem,2.2vw,2.15rem)] font-bold leading-none tabular-nums text-[color:var(--aqt-fg)]">
         {value}
       </span>

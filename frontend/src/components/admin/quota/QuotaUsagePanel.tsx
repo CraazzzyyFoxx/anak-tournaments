@@ -29,8 +29,8 @@ function QuotaScopeBars({ usage }: Readonly<{ usage: QuotaScopeUsage }>) {
   const now = useMinuteClock();
 
   return (
-    <section className="rounded-xl border border-border/60 p-3">
-      <h4 className="text-sm font-medium">{t(`scopes.${usage.scope}.label`)}</h4>
+    <section className="border-t border-border/60 pt-4 first:border-t-0 first:pt-0">
+      <h3 className="text-body font-medium text-foreground">{t(`scopes.${usage.scope}.label`)}</h3>
       <p className="mt-0.5 text-xs text-muted-foreground">{t(`scopes.${usage.scope}.hint`)}</p>
 
       <div className="mt-3 space-y-3">
@@ -64,7 +64,7 @@ function QuotaScopeBars({ usage }: Readonly<{ usage: QuotaScopeUsage }>) {
                 )}
               />
               {resetIn !== null && now !== null ? (
-                <p className="mt-1 text-[11px] text-muted-foreground">
+                <p className="mt-1 text-caption text-muted-foreground">
                   {t("resetsIn", {
                     relative: format.relativeTime(new Date(now + resetIn * 1000), now)
                   })}
@@ -119,10 +119,10 @@ export function QuotaUsagePanel({ usage }: Readonly<{ usage: QuotaUsage }>) {
   }
 
   return (
-    <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">
-        {usage.plan_slug ? t("plan", { slug: usage.plan_slug }) : t("planUnknown")}
-      </p>
+    <div className="space-y-4">
+      {usage.plan_slug ? (
+        <p className="text-xs text-muted-foreground">{t("plan", { slug: usage.plan_slug })}</p>
+      ) : null}
       {usage.scopes.map((scope) => (
         <QuotaScopeBars key={scope.scope} usage={scope} />
       ))}

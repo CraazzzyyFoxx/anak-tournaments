@@ -85,21 +85,23 @@ func TestEncounterReportsNeverCacheable(t *testing.T) {
 	}
 }
 
-// The encounters list grants AuthedRead only because the sole viewer-
-// dependent shape (scope=my_team) is carved out; the grant without the
+// The encounters list and insights grant AuthedRead only because the sole
+// viewer-dependent shape (scope=my_team) is carved out; the grant without the
 // carve-out would serve logged-in players the anonymous (hardcoded-empty)
 // my_team body.
 func TestEncountersAuthedReadRequiresMyTeamCarveOut(t *testing.T) {
-	rule, ok := PublicCacheableReads["/api/v1/encounters"]
-	if !ok {
-		t.Fatal("/api/v1/encounters must be in PublicCacheableReads")
-	}
-	if rule.AuthedRead && rule.AuthedReadUnless == nil {
-		t.Fatal("/api/v1/encounters AuthedRead requires the scope=my_team carve-out")
+	for _, pattern := range []string{"/api/v1/encounters", "/api/v1/encounters/insights"} {
+		rule, ok := PublicCacheableReads[pattern]
+		if !ok {
+			t.Fatalf("%s must be in PublicCacheableReads", pattern)
+		}
+		if !rule.AuthedRead || rule.AuthedReadUnless == nil {
+			t.Fatalf("%s must grant AuthedRead with the scope=my_team carve-out", pattern)
+		}
 	}
 }
 
-// encounters/overview bodies carry a per-viewer my_team_count; the anonymous
+// encounters/overview bodies carry a per-viewer counts.my_team; the anonymous
 // entry would always show 0 to logged-in players.
 func TestEncountersOverviewNeverAuthedRead(t *testing.T) {
 	rule, ok := PublicCacheableReads["/api/v1/encounters/overview"]

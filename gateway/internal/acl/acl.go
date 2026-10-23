@@ -16,14 +16,16 @@ type WorkspaceResolver interface {
 	TournamentWorkspaceID(ctx context.Context, tournamentID int64) (workspaceID int64, found bool, err error)
 }
 
-// MembershipChecker reports workspace membership, encounter captaincy and
-// draft-session captaincy — the "is this principal a participant" lookups the
-// rules below need.
+// MembershipChecker reports workspace membership, encounter captaincy,
+// draft-session captaincy, mix-draft hosting and mix-room membership — the "is
+// this principal a participant" lookups the rules below need.
 type MembershipChecker interface {
 	IsWorkspaceMember(ctx context.Context, userID, workspaceID int64) (bool, error)
 	IsWorkspaceOrganizer(ctx context.Context, userID, workspaceID int64) (bool, error)
 	IsEncounterCaptain(ctx context.Context, authUserID, encounterID int64) (bool, error)
 	IsDraftSessionCaptain(ctx context.Context, authUserID, sessionID int64) (bool, error)
+	IsDraftSessionMixHost(ctx context.Context, authUserID, sessionID int64) (bool, error)
+	IsMixRoomMember(ctx context.Context, authUserID, encounterID int64) (bool, error)
 }
 
 // VisibilityChecker answers hidden-tournament visibility for WS topic gating
@@ -34,8 +36,8 @@ type MembershipChecker interface {
 type VisibilityChecker interface {
 	TournamentIsHidden(ctx context.Context, tournamentID int64) (hidden bool, found bool, err error)
 	IsPreviewAllowed(ctx context.Context, userID, tournamentID int64) (bool, error)
-	EncounterTournamentID(ctx context.Context, encounterID int64) (tournamentID int64, found bool, err error)
-	DraftSessionTournamentID(ctx context.Context, sessionID int64) (tournamentID int64, found bool, err error)
+	EncounterOwner(ctx context.Context, encounterID int64) (tournamentID int64, mix bool, found bool, err error)
+	DraftSessionOwner(ctx context.Context, sessionID int64) (tournamentID int64, mix bool, found bool, err error)
 	RoomSpectatorRead(ctx context.Context, roomKind string, refID int64) (bool, error)
 }
 
@@ -100,7 +102,7 @@ func New(resolver WorkspaceResolver, members MembershipChecker, vis VisibilityCh
 	// below; a separate registration would be dead code the first-match loop
 	// never reaches.
 	r.register("tournament:*:bracket", r.allowSpectateTournament)     // public unless hidden
-	r.register("tournament:*:draft", r.allowSpectateTournament)       // public unless hidden
+	r.register("draft:*:board", r.allowSpectateDraft)                 // a mix's draft is public; a tournament's unless hidden
 	r.register("encounter:*:map-veto", r.allowSpectateEncounter)      // public unless hidden
 	r.register("encounter:*:pick-ban:hero", r.allowSpectateEncounter) // public unless hidden
 	// The two chat rooms. Participants always; everyone who may already watch
@@ -112,6 +114,7 @@ func New(resolver WorkspaceResolver, members MembershipChecker, vis VisibilityCh
 	r.register("tournament:*:streams", r.allowSpectateTournament) // public unless hidden
 	r.register("workspace:*:*", r.allowWorkspaceMember)           // workspace member
 	r.register("user:*:notifications", r.allowOwnNotifications)   // the user themself, no bypass
+	r.register("user:*:catalog-sync", r.allowOwnNotifications)    // the starter's catalog sync progress, same rule
 	return r
 }
 
@@ -130,8 +133,8 @@ func (r *Registry) Allow(ctx context.Context, user *auth.User, topic string) (bo
 	return false, nil
 }
 
-// allowSpectateTournament gates a tournament:<id>:{bracket,draft} topic: public
-// unless the tournament is hidden.
+// allowSpectateTournament gates a tournament:<id>:bracket topic: public unless
+// the tournament is hidden.
 func (r *Registry) allowSpectateTournament(ctx context.Context, user *auth.User, groups []string) (bool, error) {
 	if len(groups) == 0 {
 		return false, nil
@@ -143,8 +146,8 @@ func (r *Registry) allowSpectateTournament(ctx context.Context, user *auth.User,
 	return r.allowSpectate(ctx, user, tournamentID)
 }
 
-// allowSpectateEncounter gates encounter:<id>:map-veto by resolving the owning
-// tournament first, then applying the same hidden-visibility rule.
+// allowSpectateEncounter gates encounter:<id>:{map-veto,pick-ban:hero}: a mix match's room is public (spec §4.4), a
+// tournament encounter's follows its tournament's hidden-visibility rule.
 func (r *Registry) allowSpectateEncounter(ctx context.Context, user *auth.User, groups []string) (bool, error) {
 	if len(groups) == 0 {
 		return false, nil
@@ -153,26 +156,40 @@ func (r *Registry) allowSpectateEncounter(ctx context.Context, user *auth.User, 
 	if err != nil {
 		return false, nil
 	}
-	tournamentID, found, err := r.vis.EncounterTournamentID(ctx, encounterID)
-	if err != nil {
+	tournamentID, mix, found, err := r.vis.EncounterOwner(ctx, encounterID)
+	if err != nil || !found {
 		return false, err
 	}
-	if !found {
-		return false, nil
+	if mix {
+		return true, nil
 	}
 	return r.allowSpectate(ctx, user, tournamentID)
 }
 
-// allowEncounterChat gates encounter:<id>:chat, the pregame room. Participants
-// always: superuser, a captain of either side, or a member of the workspace
-// running the tournament (the organizers who have to moderate it).
-//
-// Everyone else is a spectator, and a spectator is admitted only while the
-// room's spectators_can_read is on. It is OFF by default here, because this is
-// where the two captains exchange the custom-lobby code and a publicly
-// readable lobby code is an open invitation for griefers to join the match; an
-// organizer running a broadcast can switch it on. Anonymous counts as a
-// spectator like anyone else — see allowRoomChat for why that is safe.
+// allowSpectateDraft gates draft:<session_id>:board, the draft board of a tournament or of a mix lobby (spec §9.6): a
+// mix draft is public (spec §4.4), a tournament draft follows its tournament's hidden-visibility rule.
+func (r *Registry) allowSpectateDraft(ctx context.Context, user *auth.User, groups []string) (bool, error) {
+	if len(groups) == 0 {
+		return false, nil
+	}
+	sessionID, err := strconv.ParseInt(groups[0], 10, 64)
+	if err != nil {
+		return false, nil
+	}
+	tournamentID, mix, found, err := r.vis.DraftSessionOwner(ctx, sessionID)
+	if err != nil || !found {
+		return false, err
+	}
+	if mix {
+		return true, nil
+	}
+	return r.allowSpectate(ctx, user, tournamentID)
+}
+
+// allowEncounterChat gates encounter:<id>:chat. A mix match's chat (spec §4.4) is its seated players' and its
+// hosts' only: no spectator branch, because the in-game lobby code is shared there. A tournament pre-game room:
+// participants always -- superuser, a captain of either side, the organizing workspace's staff -- and everyone else
+// only while the room's spectators_can_read is on (OFF by default here; see allowRoomChat).
 func (r *Registry) allowEncounterChat(ctx context.Context, user *auth.User, groups []string) (bool, error) {
 	if len(groups) == 0 {
 		return false, nil
@@ -181,10 +198,20 @@ func (r *Registry) allowEncounterChat(ctx context.Context, user *auth.User, grou
 	if err != nil {
 		return false, nil
 	}
-	if user != nil {
-		if user.IsSuperuser {
-			return true, nil
+	if user != nil && user.IsSuperuser {
+		return true, nil
+	}
+	tournamentID, mix, found, err := r.vis.EncounterOwner(ctx, encounterID)
+	if err != nil || !found {
+		return false, err
+	}
+	if mix {
+		if user == nil {
+			return false, nil
 		}
+		return r.members.IsMixRoomMember(ctx, user.ID, encounterID)
+	}
+	if user != nil {
 		captain, err := r.members.IsEncounterCaptain(ctx, user.ID, encounterID)
 		if err != nil {
 			return false, err
@@ -192,13 +219,6 @@ func (r *Registry) allowEncounterChat(ctx context.Context, user *auth.User, grou
 		if captain {
 			return true, nil
 		}
-	}
-	tournamentID, found, err := r.vis.EncounterTournamentID(ctx, encounterID)
-	if err != nil {
-		return false, err
-	}
-	if !found {
-		return false, nil
 	}
 	return r.allowRoomChat(ctx, user, "encounter", encounterID, tournamentID)
 }
@@ -208,7 +228,8 @@ func (r *Registry) allowEncounterChat(ctx context.Context, user *auth.User, grou
 // a captain of one of the SESSION's draft teams (the room is the session, not
 // the tournament — a re-seed is a different draft and a different room).
 // Spectator read is ON by default for a draft: it is a show, and viewers and
-// casters follow it.
+// casters follow it. A mix lobby's draft is run by the mix's host and co-hosts,
+// who get in whatever the toggle says (U4); everyone else only while it is on.
 func (r *Registry) allowDraftChat(ctx context.Context, user *auth.User, groups []string) (bool, error) {
 	if len(groups) == 0 {
 		return false, nil
@@ -229,12 +250,26 @@ func (r *Registry) allowDraftChat(ctx context.Context, user *auth.User, groups [
 			return true, nil
 		}
 	}
-	tournamentID, found, err := r.vis.DraftSessionTournamentID(ctx, sessionID)
+	tournamentID, mix, found, err := r.vis.DraftSessionOwner(ctx, sessionID)
 	if err != nil {
 		return false, err
 	}
 	if !found {
 		return false, nil
+	}
+	if mix {
+		if user != nil {
+			host, err := r.members.IsDraftSessionMixHost(ctx, user.ID, sessionID)
+			if err != nil {
+				return false, err
+			}
+			if host {
+				return true, nil
+			}
+		}
+		// A mix draft's chat is public while its spectator read is on (spec §4.4); it has no workspace staff or
+		// hidden-tournament gate to consult.
+		return r.vis.RoomSpectatorRead(ctx, "draft", sessionID)
 	}
 	return r.allowRoomChat(ctx, user, "draft", sessionID, tournamentID)
 }

@@ -26,7 +26,7 @@ export function ConnectionIndicator({
       title={label}
       className={cn(
         "inline-flex items-center gap-1.5 text-label",
-        connected ? "text-[color:var(--aqt-support)]" : "text-[color:var(--aqt-warm)]",
+        connected ? "text-[color:var(--aqt-positive)]" : "text-[color:var(--aqt-warm)]",
         className
       )}
     >

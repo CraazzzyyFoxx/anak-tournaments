@@ -22,13 +22,37 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 
-__all__ = ("RotationStatus", "PlayerHistory", "RotationRecommendation", "recommend_rotation", "rotation_priority")
+__all__ = (
+    "RotationStatus",
+    "RotationReason",
+    "PlayerHistory",
+    "RotationRecommendation",
+    "recommend_rotation",
+    "rotation_priority",
+)
 
 
 class RotationStatus(Enum):
     MUST_PLAY = "must_play"
     SHOULD_REST = "should_rest"
     NEUTRAL = "neutral"
+
+
+class RotationReason(Enum):
+    """Why a verdict was given, as a machine code the client words in its own locale.
+
+    The counts a sentence needs are already on the recommendation
+    (``consecutive_sat``, ``consecutive_played``, ``games_played``), so a code
+    carries no parameters of its own.
+    """
+
+    POOL_FITS = "pool_fits"
+    PINNED = "pinned"
+    NO_HISTORY = "no_history"
+    OWED_SEAT = "owed_seat"
+    DEFAULT = "default"
+    PLAYED_STREAK = "played_streak"
+    PLAYED_MOST = "played_most"
 
 
 @dataclass(frozen=True)
@@ -53,7 +77,7 @@ class PlayerHistory:
 class RotationRecommendation:
     member_id: int
     status: RotationStatus
-    reason: str
+    reason: RotationReason
     consecutive_sat: int
     consecutive_played: int
     games_played: int
@@ -69,17 +93,14 @@ def _streak_from_end(played: Sequence[bool], *, value: bool) -> int:
 
 
 def rotation_priority(history: PlayerHistory) -> float:
-    """Single sortable score ranking one player by rotation fairness -- lower sorts first (kept
-    longest before an uneven roster's overflow trim reaches for someone).
+    """One sortable float ranking a player by rotation fairness; lower sorts first (kept longest).
 
-    Combines the same three keys ``recommend_rotation`` ranks by internally into one float wide
-    enough that no later key can outweigh an earlier one (sat-out streak beats played streak beats
-    total games, exactly like the tuple sort there), so it survives a JSON round trip as a single
-    ``identity.rotationPriority`` number on ``domain.balancer.entities.Player`` -- a caller ordering
-    the pool *before* it reaches ``run_balance`` (whose own overflow trim in
-    ``domain.balancer.runtime._prepare_balance_context`` has no fairness of its own) can make that
-    trim land on the same player the rotation hints would flag ``SHOULD_REST``, instead of an
-    arbitrary tail order Balance never explained.
+    Packs the three keys ``recommend_rotation`` ranks by (sat-out streak, played streak, total
+    games) so no later key can outweigh an earlier one, and survives a JSON round trip as
+    ``identity.rotationPriority`` on ``domain.balancer.entities.Player``. A caller that orders the
+    pool by it before ``run_balance`` makes the engine's overflow trim
+    (``domain.balancer.runtime._prepare_balance_context``, which has no fairness of its own) bench
+    the players the rotation hints would flag ``SHOULD_REST``.
     """
     sat = _streak_from_end(history.played, value=False)
     played_streak = _streak_from_end(history.played, value=True)
@@ -108,7 +129,7 @@ def recommend_rotation(histories: Sequence[PlayerHistory], *, usable_count: int)
             RotationRecommendation(
                 member_id=h.member_id,
                 status=RotationStatus.NEUTRAL,
-                reason="Мест хватает на весь пул",
+                reason=RotationReason.POOL_FITS,
                 consecutive_sat=_streak_from_end(h.played, value=False),
                 consecutive_played=_streak_from_end(h.played, value=True),
                 games_played=sum(h.played),
@@ -117,21 +138,13 @@ def recommend_rotation(histories: Sequence[PlayerHistory], *, usable_count: int)
         ]
 
     if all(not h.played for h in histories if not h.pinned_must_play):
-        # Brand-new mix (or every current row joined after the last recorded
-        # map): nobody the ranking below would compete over has a history to
-        # rank by, so its own tie-break (input order) is the only thing that
-        # would separate them -- surfacing that as a "should rest" verdict
-        # dresses up sort stability as a fairness read it never was. A pin
-        # still claims its seat, exactly like the ranking branch would.
+        # Brand-new mix, or every row joined after the last recorded map: only the
+        # input-order tie-break would rank them, which is no reason to rest anyone.
         return [
             RotationRecommendation(
                 member_id=h.member_id,
                 status=RotationStatus.MUST_PLAY if h.pinned_must_play else RotationStatus.NEUTRAL,
-                reason=(
-                    "Закреплён хостом (must_play)"
-                    if h.pinned_must_play
-                    else "Ещё нет истории карт — нечего ранжировать"
-                ),
+                reason=RotationReason.PINNED if h.pinned_must_play else RotationReason.NO_HISTORY,
                 consecutive_sat=_streak_from_end(h.played, value=False),
                 consecutive_played=_streak_from_end(h.played, value=True),
                 games_played=sum(h.played),
@@ -160,15 +173,15 @@ def recommend_rotation(histories: Sequence[PlayerHistory], *, usable_count: int)
         total_played = sum(h.played)
         if h.member_id in playing_ids:
             if h.pinned_must_play:
-                status, reason = RotationStatus.MUST_PLAY, "Закреплён хостом (must_play)"
+                status, reason = RotationStatus.MUST_PLAY, RotationReason.PINNED
             elif sat > 0:
-                status, reason = RotationStatus.MUST_PLAY, f"Сидел {sat} карт(ы) подряд — очередь играть"
+                status, reason = RotationStatus.MUST_PLAY, RotationReason.OWED_SEAT
             else:
-                status, reason = RotationStatus.NEUTRAL, "Играет по умолчанию"
+                status, reason = RotationStatus.NEUTRAL, RotationReason.DEFAULT
         elif played_streak > 0:
-            status, reason = RotationStatus.SHOULD_REST, f"Сыграл {played_streak} карт(ы) подряд"
+            status, reason = RotationStatus.SHOULD_REST, RotationReason.PLAYED_STREAK
         else:
-            status, reason = RotationStatus.SHOULD_REST, f"Сыграл {total_played} карт — пора уступить место"
+            status, reason = RotationStatus.SHOULD_REST, RotationReason.PLAYED_MOST
         recommendations.append(
             RotationRecommendation(
                 member_id=h.member_id,

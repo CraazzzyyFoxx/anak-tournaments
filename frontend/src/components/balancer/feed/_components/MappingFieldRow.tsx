@@ -22,7 +22,7 @@ import type { SubroleCatalog } from "@/types/registration.types";
 import { HeaderCombobox } from "./HeaderCombobox";
 import { HeaderMultiCombobox } from "./HeaderMultiCombobox";
 import { ModeToggle } from "./ModeToggle";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 
 const AUTO_FIELD_MODES: MappingTargetMode[] = ["auto", "columns"];
 const STANDARD_FIELD_MODES: MappingTargetMode[] = ["columns", "constant", "disabled"];
@@ -46,8 +46,9 @@ interface MappingFieldRowProps {
   onIsListChange: (is_list: boolean) => void;
 }
 
+/** The role a `roles.<code>.subrole` target takes its sub-role options from, whatever game's role it is. */
 function subroleRoleFromTarget(key: string): string | null {
-  const match = /^roles\.(damage|support)\.subrole$/.exec(key);
+  const match = /^roles\.([^.]+)\.subrole$/.exec(key);
   return match?.[1] ?? null;
 }
 
@@ -138,7 +139,7 @@ export function MappingFieldRow({
                 onValueChange={(value) => onValueChange(value === NONE ? "" : value)}
                 disabled={disabled || subroleOptions.length === 0}
               >
-                <SelectTrigger className="h-9">
+                <SelectTrigger>
                   <SelectValue
                     placeholder={subroleOptions.length === 0 ? t("noSubroles") : t("subrole")}
                   />
@@ -158,7 +159,6 @@ export function MappingFieldRow({
                 onChange={(event) => onValueChange(event.target.value)}
                 placeholder={t("constantPlaceholder")}
                 disabled={disabled}
-                className="h-9"
               />
             )
           ) : null}
@@ -184,11 +184,11 @@ export function MappingFieldRow({
 
           {showParser ? (
             <div className="flex items-center gap-2">
-              <span className={EYEBROW_CLASS}>
+              <span className={eyebrowClass("muted")}>
                 {t("parser")}
               </span>
               <Select value={activeParser} onValueChange={onParserChange} disabled={disabled}>
-                <SelectTrigger className="h-8 text-xs">
+                <SelectTrigger size="sm">
                   <SelectValue>{parserLabel(parsers, activeParser)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>

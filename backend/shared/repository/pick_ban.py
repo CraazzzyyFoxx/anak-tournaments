@@ -19,6 +19,21 @@ CONFIG_POOL_LOAD = (
     selectinload(models.PickBanConfig.slots).selectinload(models.PickBanConfigSlot.items),
 )
 
+# What a room plays: the same pool without the mode items a map pool may name (they restrict ingested logs, never a
+# veto), so a pool of only modes reads as a rules template. Loader criteria apply to a collection when it is loaded:
+# a config already loaded whole in the same session keeps its modes, so room paths never share a session with the
+# editor's CONFIG_POOL_LOAD.
+CONFIG_ROOM_LOAD = (
+    selectinload(
+        models.PickBanConfig.items.and_(
+            models.PickBanConfigItem.item_id.not_in(
+                sa.select(models.CatalogEntity.id).where(models.CatalogEntity.kind == "mode")
+            )
+        )
+    ),
+    selectinload(models.PickBanConfig.slots).selectinload(models.PickBanConfigSlot.items),
+)
+
 
 class PickBanConfigRepository(BaseRepository[models.PickBanConfig]):
     def __init__(self) -> None:
@@ -102,20 +117,10 @@ class PickBanConfigItemRepository(BaseRepository[models.PickBanConfigItem]):
     def __init__(self) -> None:
         super().__init__(models.PickBanConfigItem)
 
-    async def delete_for_config(self, session: AsyncSession, config_id: int) -> None:
-        await session.execute(
-            sa.delete(models.PickBanConfigItem).where(models.PickBanConfigItem.pick_ban_config_id == config_id)
-        )
-
 
 class PickBanConfigSlotRepository(BaseRepository[models.PickBanConfigSlot]):
     def __init__(self) -> None:
         super().__init__(models.PickBanConfigSlot)
-
-    async def delete_for_config(self, session: AsyncSession, config_id: int) -> None:
-        await session.execute(
-            sa.delete(models.PickBanConfigSlot).where(models.PickBanConfigSlot.pick_ban_config_id == config_id)
-        )
 
 
 class PickBanConfigSlotItemRepository(BaseRepository[models.PickBanConfigSlotItem]):
@@ -126,6 +131,12 @@ class PickBanConfigSlotItemRepository(BaseRepository[models.PickBanConfigSlotIte
 class PickBanSessionRepository(BaseRepository[models.PickBanSession]):
     def __init__(self) -> None:
         super().__init__(models.PickBanSession)
+
+    def add(self, session: AsyncSession, row: models.PickBanSession) -> models.PickBanSession:
+        """Stage a new session. No flush: a duplicate ``(encounter, kind)`` must surface
+        at the caller's commit, which treats it as a lost creation race."""
+        session.add(row)
+        return row
 
     async def get_for_encounter(
         self,
@@ -186,6 +197,10 @@ class PickBanEntryRepository(BaseRepository[models.PickBanEntry]):
     def __init__(self) -> None:
         super().__init__(models.PickBanEntry)
 
+    def add_many(self, session: AsyncSession, rows: Sequence[models.PickBanEntry]) -> None:
+        """Stage entries. No flush: they ride the same flush as their staged session."""
+        session.add_all(rows)
+
     async def list_by_session(
         self,
         session: AsyncSession,
@@ -203,41 +218,11 @@ class PickBanEntryRepository(BaseRepository[models.PickBanEntry]):
         result = await session.execute(query)
         return result.unique().scalars().all()
 
-    async def list_by_status(
-        self,
-        session: AsyncSession,
-        session_id: int,
-        statuses: Sequence[Any],
-        *,
-        options: Sequence[_AbstractLoad] | None = None,
-    ) -> Sequence[models.PickBanEntry]:
-        query = self._apply_options(
-            self.select().where(
-                models.PickBanEntry.session_id == session_id,
-                models.PickBanEntry.status.in_(tuple(statuses)),
-            ),
-            options,
-        )
-        result = await session.execute(query)
-        return result.unique().scalars().all()
-
     async def list_rounds(self, session: AsyncSession, session_id: int) -> Sequence[int | None]:
         result = await session.execute(
             sa.select(models.PickBanEntry.round).where(models.PickBanEntry.session_id == session_id)
         )
         return result.scalars().all()
-
-    async def list_order_tuples(
-        self, session: AsyncSession, session_id: int
-    ) -> Sequence[sa.Row[tuple[int, int | None, int]]]:
-        result = await session.execute(
-            sa.select(
-                models.PickBanEntry.order,
-                models.PickBanEntry.action_index,
-                models.PickBanEntry.item_id,
-            ).where(models.PickBanEntry.session_id == session_id)
-        )
-        return result.all()
 
     async def delete_round_by_status(
         self,
@@ -272,6 +257,11 @@ class PickBanSubmissionRepository(BaseRepository[models.PickBanSubmission]):
     def __init__(self) -> None:
         super().__init__(models.PickBanSubmission)
 
+    def add(self, session: AsyncSession, row: models.PickBanSubmission) -> models.PickBanSubmission:
+        """Stage one submission. No flush: the caller keeps mutating it until its own flush."""
+        session.add(row)
+        return row
+
     async def list_by_session(
         self,
         session: AsyncSession,
@@ -282,11 +272,12 @@ class PickBanSubmissionRepository(BaseRepository[models.PickBanSubmission]):
     ) -> Sequence[models.PickBanSubmission]:
         """Every submission of the session in replay order.
 
-        ``(step_index, attempt, side)`` IS the order the projection walks: steps in
-        sequence order, the latest attempt last, and within one attempt the sides in a
-        stable order so a blind step's duplicate merge resolves the same way on every
-        recomputation. ``populate_existing`` for callers that already mutated rows in
-        this transaction and must not be served the identity map's stale copies.
+        ``(step_index, attempt, encounter_team_id)`` IS the order the projection walks:
+        steps in sequence order, the latest attempt last, and within one attempt the
+        actors in a stable order so a blind step's duplicate merge resolves the same
+        way on every recomputation. ``populate_existing`` for callers that already
+        mutated rows in this transaction and must not be served the identity map's
+        stale copies.
         """
         query = self._apply_options(
             self.select().where(models.PickBanSubmission.session_id == session_id),
@@ -295,7 +286,7 @@ class PickBanSubmissionRepository(BaseRepository[models.PickBanSubmission]):
         query = query.order_by(
             models.PickBanSubmission.step_index,
             models.PickBanSubmission.attempt,
-            models.PickBanSubmission.side,
+            models.PickBanSubmission.encounter_team_id,
         )
         if populate_existing:
             query = query.execution_options(populate_existing=True)
@@ -321,30 +312,33 @@ class EncounterReadinessRepository(BaseRepository[models.EncounterReadiness]):
     def __init__(self) -> None:
         super().__init__(models.EncounterReadiness)
 
-    async def list_sides(self, session: AsyncSession, encounter_id: int) -> Sequence[str]:
+    async def list_ready_teams(self, session: AsyncSession, encounter_id: int) -> Sequence[int]:
+        """The participations that have confirmed readiness for this encounter."""
         result = await session.execute(
-            sa.select(models.EncounterReadiness.side).where(models.EncounterReadiness.encounter_id == encounter_id)
+            sa.select(models.EncounterReadiness.encounter_team_id).where(
+                models.EncounterReadiness.encounter_id == encounter_id
+            )
         )
         return result.scalars().all()
 
-    async def get_for_side(
-        self, session: AsyncSession, *, encounter_id: int, side: str
+    async def get_for_team(
+        self, session: AsyncSession, *, encounter_id: int, encounter_team_id: int
     ) -> models.EncounterReadiness | None:
-        return await self.get_by(session, encounter_id=encounter_id, side=side)
+        return await self.get_by(session, encounter_id=encounter_id, encounter_team_id=encounter_team_id)
 
     async def delete_for_encounter(self, session: AsyncSession, encounter_id: int) -> None:
         await session.execute(
             sa.delete(models.EncounterReadiness).where(models.EncounterReadiness.encounter_id == encounter_id)
         )
 
-    async def delete_for_side(self, session: AsyncSession, *, encounter_id: int, side: str) -> None:
-        """Drop ONE side's confirmation, leaving the opponent's standing -- the
-        organizer's readiness override, where ``delete_for_encounter`` is the
-        team-change reset that must clear both."""
+    async def delete_for_team(self, session: AsyncSession, *, encounter_id: int, encounter_team_id: int) -> None:
+        """Drop ONE participation's confirmation, leaving the others standing --
+        the organizer's readiness override, where ``delete_for_encounter`` is
+        the seat-change reset that must clear every one."""
         await session.execute(
             sa.delete(models.EncounterReadiness).where(
                 models.EncounterReadiness.encounter_id == encounter_id,
-                models.EncounterReadiness.side == side,
+                models.EncounterReadiness.encounter_team_id == encounter_team_id,
             )
         )
 

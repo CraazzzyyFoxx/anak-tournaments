@@ -24,7 +24,7 @@ from shared.core.errors import BaseAPIException as HTTPException
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.services import auth as auth_module  # noqa: E402
+from src.services import audit as audit_module  # noqa: E402
 from src.services.auth import auth  # noqa: E402
 from src.services.session_cache import session_cache  # noqa: E402
 from src.services.sessions import refresh_tokens  # noqa: E402
@@ -50,6 +50,9 @@ class _FakeSession:
 
     async def delete(self, value):
         self.deleted.append(value)
+
+    async def flush(self):
+        return None
 
     async def commit(self):
         self.commit_called = True
@@ -97,7 +100,7 @@ def patched(monkeypatch: pytest.MonkeyPatch) -> dict:
 
     monkeypatch.setattr(refresh_tokens, "revoke_all", fake_revoke)
     monkeypatch.setattr(session_cache, "invalidate_rbac", fake_invalidate)
-    monkeypatch.setattr(auth_module, "record_audit", fake_audit)
+    monkeypatch.setattr(audit_module, "record_audit", fake_audit)
     return calls
 
 

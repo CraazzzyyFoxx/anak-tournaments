@@ -1,14 +1,7 @@
-from shared.core.db import Base, TimeStampIntegerMixin, TimeStampUUIDMixin, create_database_from_settings
+from shared.core.db import create_database_from_settings
 from src.core import config
 
-__all__ = (
-    "Base",
-    "TimeStampIntegerMixin",
-    "TimeStampUUIDMixin",
-    "async_engine",
-    "async_session_maker",
-    "get_async_session",
-)
+__all__ = ("async_engine", "async_session_maker", "get_async_session")
 
 _db = create_database_from_settings(config.settings)
 

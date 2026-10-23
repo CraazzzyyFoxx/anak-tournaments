@@ -3,21 +3,18 @@ from __future__ import annotations
 import dataclasses
 import typing
 
+from src.domain.balancer.config.defaults import AlgorithmConfig
 from src.domain.balancer.entities import Player, Team
 from src.domain.balancer.progress import ProgressCallback
-from src.services.balancer.config.defaults import AlgorithmConfig
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class BalanceMetrics:
     """Backend-reported diagnostics for one balance solution.
 
-    A single flat, typed shape shared by every backend instead of an
-    untyped ``dict[str, float]`` -- each backend only ever sets its own
-    fields (prefixed by engine so two engines' metrics never collide were
-    they ever compared side by side), everything else stays ``None``.
-    Mirrors the equivalent optional fields already on the
-    ``schemas.balancer.Statistics`` response model.
+    One flat shape shared by every backend: each backend sets only its own
+    engine-prefixed fields, everything else stays ``None``. Mirrors the
+    optional fields on the ``schemas.balancer.Statistics`` response model.
     """
 
     # tournament_balancer (Rust NSGA-II Pareto front)
@@ -78,18 +75,12 @@ class BalanceSolution:
 class OptimizerBackend(typing.Protocol):
     """A team-balancing engine, addressed only through this shape.
 
-    Two backends implement it today: ``TournamentBalancerBackend`` (the
-    in-house Rust NSGA-II optimizer, N-team capable -- the default) and
-    ``MixBalancerBackend`` (an exhaustive Rust engine pinned to exactly
-    two teams, used only by the mix/custom-game flow). See
-    ``domain/balancer/backends/__init__.py`` for the registry.
-
-    ``domain/balancer/runtime.py`` prepares the shared context (player
-    loading, must-play/bench trimming, captain assignment, role-assignment
-    feasibility -- all algorithm-agnostic) once, then hands the result to
-    whichever backend was selected. A backend owns everything downstream of
-    that: translating ``Player``/``Team`` into its own engine's request shape,
-    invoking it, and translating the result back into ``BalanceSolution``s.
+    ``runtime.balance_teams`` prepares the shared, algorithm-agnostic context
+    (player loading, must-play/bench trimming, captain assignment,
+    role-assignment feasibility) once, then hands it to the selected backend
+    (registry: ``backends/__init__.py``). A backend owns everything downstream:
+    translating ``Player``/``Team`` into its engine's request shape, invoking
+    it, and translating the result back into ``BalanceSolution``s.
     """
 
     #: Short, stable identifier (used for logging, metrics labels, and the
@@ -98,9 +89,8 @@ class OptimizerBackend(typing.Protocol):
 
     #: Hard ceiling on how many teams this engine can form, or ``None`` if
     #: it scales to any team count. When set, ``runtime._prepare_balance_context``
-    #: caps the natural team count at this value and benches the surplus the
-    #: same way it already benches an uneven remainder -- must-play players
-    #: first, optional players last.
+    #: caps the natural team count at this value and benches the surplus like an
+    #: uneven remainder (optional players sit out before must-play ones).
     max_teams: int | None
 
     def solve(

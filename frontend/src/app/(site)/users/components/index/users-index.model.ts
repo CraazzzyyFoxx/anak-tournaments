@@ -1,5 +1,7 @@
-import type { ROLE_LABEL_KEY } from "@/app/(site)/users/components/shared/list-utils";
-import type { UserOverviewRoleDivision, UserRoleType } from "@/types/user.types";
+import { ratedDimension, registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
+import type { RoleRef } from "@/lib/roster/role-ref";
+import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
+import type { UserOverviewRoleDivision } from "@/types/user.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
 export type SortValue =
@@ -28,20 +30,23 @@ export const PER_PAGE_OPTIONS = [20, 50, 100] as const;
 export const MIN_ENCOUNTERS_OPTIONS = [0, 10, 20, 50, 100] as const;
 export const DEFAULT_MIN_ENCOUNTERS = 20;
 
-// The `Flex` chip filters on `role=Flex` — players whose declared roster role is
-// literally flex — and its count is `stats.flex_declared_count`, the same
-// predicate. `stats.flex_count` counts a strictly wider population ("plays
-// anything": multi-role OR explicit flex) and is not shown beside this chip.
-export const ROLE_FILTERS: Array<{
-  value: "all" | UserRoleType;
-  labelKey: "common.all" | (typeof ROLE_LABEL_KEY)[UserRoleType];
-}> = [
-  { value: "all", labelKey: "common.all" },
-  { value: "Tank", labelKey: "common.roles.tank" },
-  { value: "Damage", labelKey: "common.roles.damage" },
-  { value: "Support", labelKey: "common.roles.support" },
-  { value: "Flex", labelKey: "common.roles.flex" }
-];
+// The role chips are the game's own rated roles plus the open slot (`role=flex`): players with no rated
+// assignment, counted by `stats.flex_declared_count` — the same predicate. `stats.flex_count` counts a
+// strictly wider population ("plays anything": multi-role OR open slot) and is not shown beside this chip.
+
+/** A `?role=` value the game knows (one of its rated roles, or the open slot), else `undefined` (no filter). */
+export function parseRoleChip(ontology: RoleOntology, value: string | null): string | undefined {
+  if (value === OPEN_SLOT_CODE) return value;
+  return registrationRoles(ontology).some((role) => role.code === value) ? (value as string) : undefined;
+}
+
+/** A role chip as the reads' filter: `null` = no rated assignment; `undefined` while the game's dimension is unknown. */
+export function roleFilterOf(ontology: RoleOntology | null, chip: string | undefined): RoleRef | null | undefined {
+  if (chip === undefined) return undefined;
+  if (chip === OPEN_SLOT_CODE) return null;
+  const rated = ontology ? ratedDimension(ontology) : null;
+  return rated ? { dimension: rated.code, role: chip } : undefined;
+}
 
 export const ALPHABET = ["#", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("")];
 
@@ -90,19 +95,10 @@ export const parseDivisions = (value: string | null): number[] => {
   return [...seen].sort((a, b) => a - b);
 };
 
-/** Splits `Player#1234` into the handle and its BattleTag discriminator. */
-export function splitTag(name: string): { handle: string; tag: string | null } {
-  const idx = name.lastIndexOf("#");
-  if (idx === -1) {
-    return { handle: name, tag: null };
-  }
-  return { handle: name.slice(0, idx), tag: name.slice(idx) };
-}
-
 /**
  * The grid version a row's division number belongs to, from the grids the
- * response shipped alongside the rows. `null` means "fall back to the
- * workspace grid" — the only possibility before the backend sends ids.
+ * response shipped alongside the rows. `null`: the number is on the read's own
+ * grid (the workspace's; the game's native ladder across workspaces).
  */
 export function gridForRole(
   role: UserOverviewRoleDivision,

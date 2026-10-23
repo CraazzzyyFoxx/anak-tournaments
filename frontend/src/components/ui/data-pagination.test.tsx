@@ -23,23 +23,23 @@ function render(node: React.ReactNode): string {
   );
 }
 
-// The summary wrapper is the thing that regressed: with a single page the
+// The leading wrapper is the thing that regressed: with a single page the
 // component used to bypass it entirely and emit a bare `<div className={…}>`,
 // so "Showing 1–2 of 2" rendered at default size and color, flush against the
 // card edge, with none of the chrome the caller's className provides.
-const SUMMARY_WRAPPER = '<div class="text-label text-[color:var(--aqt-fg-dim)]">';
+const LEADING_WRAPPER = '<div class="text-label text-[color:var(--aqt-fg-dim)]">';
 
 describe("DataPagination", () => {
-  it("styles the summary identically whether or not page controls render", () => {
+  it("styles the leading content identically whether or not page controls render", () => {
     const single = render(
-      <DataPagination page={1} totalPages={1} onPageChange={() => {}} summary="Showing 1–2 of 2" />
+      <DataPagination page={1} totalPages={1} onPageChange={() => {}} leading="Showing 1–2 of 2" />
     );
     const multiple = render(
-      <DataPagination page={1} totalPages={5} onPageChange={() => {}} summary="Showing 1–2 of 2" />
+      <DataPagination page={1} totalPages={5} onPageChange={() => {}} leading="Showing 1–2 of 2" />
     );
 
-    expect(single).toContain(SUMMARY_WRAPPER);
-    expect(multiple).toContain(SUMMARY_WRAPPER);
+    expect(single).toContain(LEADING_WRAPPER);
+    expect(multiple).toContain(LEADING_WRAPPER);
   });
 
   it("keeps the caller's chrome on the single-page shell", () => {
@@ -49,7 +49,7 @@ describe("DataPagination", () => {
         totalPages={1}
         onPageChange={() => {}}
         className="border-t px-4 py-3"
-        summary="Showing 1–2 of 2"
+        leading="Showing 1–2 of 2"
       />
     );
 
@@ -60,14 +60,14 @@ describe("DataPagination", () => {
 
   it("omits the navigation landmark and page buttons when there is one page", () => {
     const html = render(
-      <DataPagination page={1} totalPages={1} onPageChange={() => {}} summary="Showing 1–2 of 2" />
+      <DataPagination page={1} totalPages={1} onPageChange={() => {}} leading="Showing 1–2 of 2" />
     );
 
     expect(html).not.toContain("<nav");
     expect(html).not.toContain("Previous page");
   });
 
-  it("renders nothing when there is one page and no summary", () => {
+  it("renders nothing when there is one page and no leading content", () => {
     expect(render(<DataPagination page={1} totalPages={1} onPageChange={() => {}} />)).toBe("");
   });
 

@@ -9,16 +9,18 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = ("VERIFICATION_STATUSES", "is_verified_or_trusted")
+__all__ = ("VERIFICATION_STATUSES", "VERIFIED_STATUSES", "is_verified_or_trusted")
 
 # Convention, not a DB constraint (the column is a plain ``String(16)``).
 VERIFICATION_STATUSES = ("unverified", "verified", "trusted")
+#: The tiers past ``unverified``; a SQL filter spells the same bar as ``.in_(VERIFIED_STATUSES)``.
+VERIFIED_STATUSES = ("verified", "trusted")
 
 
 def is_verified_or_trusted(workspace: Any) -> bool:
     """May this workspace use metered resources and appear in the public directory?
 
-    One bar for both since 2026-09-07: ``trusted`` is now a badge on the public
-    card, not a separate admission gate.
+    One bar for both: ``trusted`` is a badge on the public card, not a separate
+    admission gate.
     """
-    return workspace.verification_status in ("verified", "trusted")
+    return workspace.verification_status in VERIFIED_STATUSES

@@ -1,13 +1,16 @@
 "use client";
 
-import Image from "next/image";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import type { RoleAccent } from "@/lib/registration/role-accent";
 import { cn } from "@/lib/utils";
-import type { Hero } from "@/types/hero.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 
 import { HeroPickerBlock } from "./HeroPickerBlock";
 
@@ -15,10 +18,13 @@ import { HeroPickerBlock } from "./HeroPickerBlock";
 const PREVIEW_LIMIT = 3;
 
 interface HeroPickerCellProps {
-  roleCode: string;
+  /** The role's own accent (from its ontology presentation). */
+  accent: RoleAccent;
   roleLabel: string;
-  /** Heroes to offer — pre-filtered to the role's class. */
-  heroes: Hero[];
+  /** `false` in a one-role game: the picker's names, heading and hint say "top heroes", never the role. */
+  showRole?: boolean;
+  /** Characters to offer: the owner game's whole roster. */
+  heroes: CatalogEntityRead[];
   selected: string[];
   max: number;
   onChange: (slugs: string[]) => void;
@@ -35,8 +41,9 @@ interface HeroPickerCellProps {
  * heroes are chosen.
  */
 export function HeroPickerCell({
-  roleCode,
+  accent,
   roleLabel,
+  showRole = true,
   heroes,
   selected,
   max,
@@ -50,27 +57,23 @@ export function HeroPickerCell({
   const preview = selected
     .slice(0, PREVIEW_LIMIT)
     .map((slug) => heroes.find((hero) => hero.slug === slug))
-    .filter((hero): hero is Hero => hero !== undefined);
+    .filter((hero): hero is CatalogEntityRead => hero !== undefined);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
+        <Button
           type="button"
+          variant="outline"
           disabled={disabled}
-          aria-label={t("registration.roles.matrix.heroesLabel", {
-            role: roleLabel,
-            count: selected.length,
-            max,
-          })}
+          aria-label={
+            showRole
+              ? t("registration.roles.matrix.heroesLabel", { role: roleLabel, count: selected.length, max })
+              : t("registration.roles.matrix.heroesLabelNoRole", { count: selected.length, max })
+          }
           className={cn(
-            "flex h-9 w-full items-center gap-2 rounded-lg border border-[color:var(--aqt-border-2)]",
-            "bg-[color:var(--aqt-overlay-2)] px-2 text-label font-medium transition-colors",
-            "hover:bg-[color:var(--aqt-overlay-3)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[color:var(--aqt-overlay-2)]",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-            selected.length > 0
-              ? "text-[color:var(--aqt-fg)]"
-              : "text-[color:var(--aqt-fg-muted)]",
+            "w-full justify-start px-2",
+            selected.length === 0 && "text-[color:var(--aqt-fg-muted)]",
           )}
         >
           {preview.length > 0 ? (
@@ -80,13 +83,7 @@ export function HeroPickerCell({
                   key={hero.slug}
                   className="block size-6 overflow-hidden rounded-md border border-[color:var(--aqt-border-2)]"
                 >
-                  <Image
-                    src={hero.image_path}
-                    alt=""
-                    width={24}
-                    height={24}
-                    className="size-full object-contain"
-                  />
+                  <CatalogEntityImage entity={hero} size={24} rounded="lg" decorative className="border-0" />
                 </span>
               ))}
             </span>
@@ -96,21 +93,25 @@ export function HeroPickerCell({
           <span className="ml-auto shrink-0 tabular-nums text-[color:var(--aqt-fg-muted)]">
             {t("registration.roles.topHeroes.count", { count: selected.length, max })}
           </span>
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        aria-label={t("registration.roles.matrix.heroesPickerLabel", { role: roleLabel })}
+        aria-label={
+          showRole
+            ? t("registration.roles.matrix.heroesPickerLabel", { role: roleLabel })
+            : t("registration.roles.matrix.heroesPickerLabelNoRole")
+        }
         className="w-[min(22rem,calc(100vw-2rem))] space-y-2 p-3"
       >
-        <p className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
-          {roleLabel}
-        </p>
+        <Eyebrow as="p" tone="muted">
+          {showRole ? roleLabel : t("registration.roles.topHeroes.title")}
+        </Eyebrow>
         <HeroPickerBlock
           heroes={heroes}
           selected={selected}
           max={max}
-          roleCode={roleCode}
+          accent={accent}
           onChange={onChange}
         />
         {/* `block`: <output> is inline, so the popover's `space-y-2` rhythm
@@ -118,7 +119,7 @@ export function HeroPickerCell({
         <output className="block text-label leading-4 text-[color:var(--aqt-fg-muted)]">
           {atMax
             ? t("registration.roles.matrix.heroesAtMax", { max })
-            : t("registration.roles.topHeroes.desc", { max })}
+            : t(showRole ? "registration.roles.topHeroes.desc" : "registration.roles.topHeroes.descNoRole", { max })}
         </output>
       </PopoverContent>
     </Popover>

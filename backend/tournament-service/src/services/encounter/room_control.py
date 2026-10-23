@@ -1,6 +1,6 @@
 """The organizer's control over a room that is NOT going the way the rules
-assumed: freeze its clock, hand a side more time, drop a session the series can
-no longer play out, and end a match nobody is going to play at all.
+assumed: freeze its clock, hand a side more time, drop a session the series
+cannot play out, and end a match nobody is going to play at all.
 
 Every command here is staff-only (`match.result`) and every one of them is a
 decision that has to survive being questioned later, so each writes a room
@@ -20,8 +20,9 @@ survives -- all three from one subtraction, because the clock was never read.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,9 +30,10 @@ from shared.core import http_status as status
 from shared.core.enums import EncounterGameState, MapVetoSessionStatus, PickBanKind
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain import pick_ban_rules as pbr
-from shared.models.tournament.encounter import Encounter
-from shared.models.tournament.pick_ban import PickBanSession
-from src.services.encounter.captain import captain_service
+from shared.models.encounter.encounter import Encounter
+from shared.models.encounter.pick_ban import PickBanSession
+from shared.services.encounter.participants import active_teams
+from src.services.encounter.captain import ReportResultIn, captain_service
 from src.services.encounter.games import encounter_game_service
 from src.services.encounter.pick_ban_action import pick_ban_action_service
 from src.services.encounter.pick_ban_session import pick_ban_session_service, resolved_steps
@@ -63,7 +65,7 @@ async def _load_active(
     """
     # Idempotent controls can read state before releasing their session lock.
     # Match the settling reader's encounter -> session order.
-    await captain_service.encounter_repo.get_for_update(session, encounter_id)
+    await pick_ban_session_service._lock_encounter(session, encounter_id)
     pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, kind, for_update=True)
     if pick_ban is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pick-ban session is not initialized")
@@ -76,7 +78,7 @@ async def _settled_state(session: AsyncSession, encounter_id: int, kind: PickBan
     """Publish, commit, and answer the room state the panel re-renders from."""
     await emit_pick_ban_update(session, encounter_id, kind=kind.value)
     await session.commit()
-    return await pick_ban_action_service.get_pick_ban_state(session, encounter_id, kind, viewer_side=None)
+    return await pick_ban_action_service.get_pick_ban_state(session, encounter_id, kind, viewer=None)
 
 
 async def set_paused(
@@ -93,7 +95,7 @@ async def set_paused(
     now = datetime.now(UTC)
     if paused:
         if pick_ban.paused_at is not None:
-            return await pick_ban_action_service.get_pick_ban_state(session, encounter_id, kind, viewer_side=None)
+            return await pick_ban_action_service.get_pick_ban_state(session, encounter_id, kind, viewer=None)
         pick_ban.paused_at = now
         await record_room_event(
             session,
@@ -105,7 +107,7 @@ async def set_paused(
         )
     else:
         if pick_ban.paused_at is None:
-            return await pick_ban_action_service.get_pick_ban_state(session, encounter_id, kind, viewer_side=None)
+            return await pick_ban_action_service.get_pick_ban_state(session, encounter_id, kind, viewer=None)
         paused_at = _aware(pick_ban.paused_at)
         if pick_ban.current_step_started_at is not None:
             # The whole freeze, unconditionally: a step that opened during it
@@ -136,7 +138,7 @@ async def extend_step_timer(
     """Give the open step ``seconds`` more, by moving its start forward. Allowed
     while paused -- an organizer usually decides both at once."""
     pick_ban = await _load_active(session, encounter_id, kind)
-    steps = resolved_steps(pick_ban)
+    steps = resolved_steps(pick_ban, await pick_ban_session_service.teams_of(session, encounter_id))
     submissions = list(
         await pick_ban_action_service.submission_repo.list_by_session(session, pick_ban.id, populate_existing=True)
     )
@@ -190,32 +192,33 @@ async def cancel_session(
     return await _settled_state(session, encounter_id, kind)
 
 
-def default_technical_score(*, best_of: int, loser_side: str, home_wins: int, away_wins: int) -> tuple[int, int]:
-    """The score a forfeit is recorded as when the organizer names no explicit one.
+def default_technical_score(*, best_of: int, wins: dict[int, int], loser_team_id: int) -> dict[int, float]:
+    """The scores a forfeit is recorded as when the organizer names none.
 
     The winner is given a winning series (``best_of // 2 + 1``) or whatever more
-    they had already won; the forfeiting side keeps the maps it really won, capped
-    one short of winning. A Bo5 that stood 2:0 for the side that then forfeits is
-    recorded 2:3 -- the two maps they won are history, the series is not theirs.
+    they had already won; the forfeiting participation keeps the maps it really
+    won, capped one short of winning. A Bo5 that stood 2:0 for the seat that
+    then forfeits is recorded 2:3 -- the two maps they won are history, the
+    series is not theirs.
     """
     need = max(int(best_of), 1) // 2 + 1
-    loser_wins, winner_wins = (home_wins, away_wins) if loser_side == "home" else (away_wins, home_wins)
-    winner, loser = max(winner_wins, need), min(loser_wins, need - 1)
-    return (loser, winner) if loser_side == "home" else (winner, loser)
+    scores: dict[int, float] = {}
+    for team_id, won in wins.items():
+        scores[team_id] = float(min(won, need - 1) if team_id == loser_team_id else max(won, need))
+    return scores
 
 
 async def technical_loss(
     session: AsyncSession,
     encounter: Encounter,
     *,
-    loser_side: Literal["home", "away"],
-    home_score: int | None,
-    away_score: int | None,
+    loser_team_id: int,
+    results: Sequence[ReportResultIn] | None,
     reason: str,
     actor_auth_user_id: int | None,
     actor_player_id: int | None,
 ) -> Encounter:
-    """End the encounter against ``loser_side`` without playing it out.
+    """End the encounter against ``loser_team_id`` without playing it out.
 
     One transaction: every live session is cancelled, every position that was not
     already confirmed is cancelled with it, and the result is confirmed last --
@@ -224,25 +227,32 @@ async def technical_loss(
     encounter) leaves the room exactly as it was. The maps that WERE played keep
     their results: a forfeit ends a series, it does not erase it.
     """
+    teams = await active_teams(session, encounter.id)
+    if loser_team_id not in {team.id for team in teams}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="That participation does not play in this encounter",
+        )
     games = await encounter_game_service.list_games(session, encounter.id)
-    score = encounter_game_service.live_score(games)
-    if (home_score is None) != (away_score is None):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="home_score and away_score must be provided together",
-        )
-    if home_score is None or away_score is None:
-        home_score, away_score = default_technical_score(
+    standing = await encounter_game_service.standing(session, encounter)
+    if results:
+        stated = {line.encounter_team_id: line.score for line in results}
+        loser_score = stated.get(loser_team_id)
+        if loser_score is None or any(
+            score <= loser_score for team_id, score in stated.items() if team_id != loser_team_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="A technical loss must score the forfeiting participation below every opponent",
+            )
+        lines = list(results)
+    else:
+        scores = default_technical_score(
             best_of=encounter.best_of,
-            loser_side=loser_side,
-            home_wins=score.home_wins,
-            away_wins=score.away_wins,
+            wins={team.id: int(standing.wins.get(team.id, 0)) for team in teams},
+            loser_team_id=loser_team_id,
         )
-    elif (home_score > away_score) != (loser_side == "away"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="A technical loss must score the forfeiting side below its opponent",
-        )
+        lines = [ReportResultIn(encounter_team_id=team_id, score=score) for team_id, score in scores.items()]
 
     for kind in (PickBanKind.MAP, PickBanKind.HERO):
         pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter.id, kind, for_update=True)
@@ -261,17 +271,20 @@ async def technical_loss(
         encounter.id,
         action="technical_loss",
         source="admin",
-        side=loser_side,
+        encounter_team_id=loser_team_id,
         actor_auth_user_id=actor_auth_user_id,
         reason=reason,
-        data={"loser_side": loser_side, "home_score": home_score, "away_score": away_score},
+        data={
+            "loser_team_id": loser_team_id,
+            "scores": {str(line.encounter_team_id): line.score for line in lines},
+        },
     )
     # Commits (and confirms the result, and advances the bracket) -- the last
     # thing this transaction does.
     return await captain_service.set_encounter_result(
         session,
         encounter.id,
+        results=lines,
+        reason=reason,
         actor_user_id=actor_player_id,
-        home_score=home_score,
-        away_score=away_score,
     )

@@ -12,12 +12,19 @@
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/lib/api/error";
 import { notify } from "@/lib/notify";
+import type * as CustomGameModule from "@/services/custom-game.service";
 
 import { usePickupMix } from "./usePickupMix";
+
+declare global {
+  var IS_REACT_ACT_ENVIRONMENT: boolean;
+}
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const updateRoster = vi.fn();
 const updatePlayer = vi.fn();
@@ -38,10 +45,18 @@ const setSelfService = vi.fn();
 const postSignup = vi.fn();
 const voiceMove = vi.fn();
 
-vi.mock("@/services/custom-game.service", () => ({
+// Start goes through the real `startMatch` down to `fetch`: the request body is what reaches the server.
+vi.mock("@/services/custom-game.service", async (importOriginal) => ({
   customGameKeys: {
     all: (workspaceId: number) => ["custom-games", workspaceId],
-    list: (workspaceId: number) => ["custom-games", workspaceId],
+    lists: (workspaceId: number) => ["custom-games", workspaceId, "list"],
+    list: (workspaceId: number, discipline: string | null = null, filter: { status?: string } = {}) => [
+      "custom-games",
+      workspaceId,
+      "list",
+      discipline ?? "all",
+      filter.status ?? "all",
+    ],
     one: (workspaceId: number, gameId: number) => ["custom-games", workspaceId, gameId],
     matches: (workspaceId: number, gameId: number) => ["custom-games", workspaceId, gameId, "matches"],
     rotationAll: (workspaceId: number, gameId: number) => [
@@ -86,6 +101,7 @@ vi.mock("@/services/custom-game.service", () => ({
     voiceOptions: vi.fn(),
     setVoiceChannels: vi.fn(),
     voiceMove: (...args: unknown[]) => voiceMove(...args),
+    startMatch: (await importOriginal<typeof CustomGameModule>()).customGameService.startMatch,
     voiceReturn: vi.fn(),
   },
 }));
@@ -112,7 +128,7 @@ vi.mock("@/hooks/useRealtimeCoalescedRefetch", () => ({
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() },
 }));
-// The voice refusals are the only strings this hook renders itself.
+// Echoes the key under `voice.`, so the voice refusals read as their own message keys.
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => `voice.${key}` }));
 
 const WORKSPACE_ID = 7;
@@ -171,14 +187,21 @@ type HarnessApi = {
   postToDiscord: (variantIndex: number) => void;
   setVariantIndex: (index: number) => void;
   voiceMove: (lobbyIndex: number | null) => void;
+  startMatch: (lobbyIndex: number, flipOpener: boolean) => void;
   client: QueryClient;
+  activeLobby: number;
+  myQueuePosition: number | null;
 };
 
 /** Exposes the mutations these tests drive, plus the shared `QueryClient`, to assertions. */
 function Harness({
   onReady,
+  initialLobby,
+  seatEnabled,
 }: {
   onReady: (api: HarnessApi) => void;
+  initialLobby?: number;
+  seatEnabled?: boolean;
 }) {
   const client = useQueryClient();
   const {
@@ -188,7 +211,10 @@ function Harness({
     postToDiscord: post,
     setVariantIndex: paging,
     voiceMove: move,
-  } = usePickupMix(WORKSPACE_ID, GAME_ID);
+    startMatch: start,
+    activeLobby,
+    myQueuePosition,
+  } = usePickupMix(WORKSPACE_ID, GAME_ID, { initialLobby, seatEnabled });
   onReady({
     setRoster: (ids) => setRoster.mutate(ids),
     applyRotationHints: () => applyRotationHints.mutate(),
@@ -196,12 +222,16 @@ function Harness({
     postToDiscord: (variantIndex) => post.mutate({ lobbyIndex: 0, variantIndex }),
     setVariantIndex: (index) => paging.mutate({ lobbyIndex: 0, variantIndex: index }),
     voiceMove: (lobbyIndex) => move.mutate(lobbyIndex),
+    startMatch: (lobbyIndex, flipOpener) => start.mutate({ lobbyIndex, flipOpener }),
     client,
+    activeLobby,
+    myQueuePosition,
   });
   return null;
 }
 
-async function mount() {
+/** Mounts the hook and returns a reader of its latest render, for state that moves after mount. */
+async function mountLatest(initialLobby?: number, seatEnabled = false) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -209,7 +239,7 @@ async function mount() {
   await act(async () => {
     createRoot(container).render(
       <QueryClientProvider client={client}>
-        <Harness onReady={(value) => (api = value)} />
+        <Harness onReady={(value) => (api = value)} initialLobby={initialLobby} seatEnabled={seatEnabled} />
       </QueryClientProvider>,
     );
   });
@@ -221,14 +251,18 @@ async function mount() {
     await tick();
   });
   if (!api) throw new Error("hook did not render");
-  return api;
+  return () => api as HarnessApi;
+}
+
+async function mount() {
+  return (await mountLatest())();
 }
 
 beforeEach(() => {
   document.body.innerHTML = "";
   vi.clearAllMocks();
   realtimeCalls.length = 0;
-  listGames.mockResolvedValue([game()]);
+  listGames.mockResolvedValue({ items: [game()], next_before_id: null });
   getGame.mockResolvedValue(game({ players: [] }));
   updateRoster.mockResolvedValue(game({ players: [] }));
   listMatches.mockResolvedValue([]);
@@ -253,9 +287,46 @@ beforeEach(() => {
   );
 });
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("usePickupMix", () => {
+  it("asks the server to start the lobby with the opener the host swapped, and shows the pre-game it answers", async () => {
+    const sent: { url: string; method?: string; body: unknown }[] = [];
+    const started = game({
+      players: [],
+      lobbies: [{ ...game().lobbies[0], state: "pregame", live_encounter_id: 50, opener_index: 1 }],
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        sent.push({ url, method: init.method, body: JSON.parse(String(init.body)) });
+        return new Response(JSON.stringify(started), { status: 200, headers: { "Content-Type": "application/json" } });
+      }),
+    );
+    const { startMatch, client } = await mount();
+
+    await act(async () => {
+      startMatch(0, true);
+      await tick();
+      await tick();
+    });
+
+    expect(sent).toEqual([
+      {
+        url: `/api/v1/balancer/workspaces/${WORKSPACE_ID}/custom-games/${GAME_ID}/match/start`,
+        method: "POST",
+        body: { lobby_index: 0, flip_opener: true },
+      },
+    ]);
+    expect(client.getQueryData<{ lobbies: { state?: string }[] }>(["custom-games", WORKSPACE_ID, GAME_ID])?.lobbies[0].state).toBe(
+      "pregame",
+    );
+  });
+
   it("keeps the route game pinned when the workspace list contains a different mix", async () => {
-    listGames.mockResolvedValue([game({ id: 99 })]);
+    listGames.mockResolvedValue({ items: [game({ id: 99 })], next_before_id: null });
     const { setRoster } = await mount();
     expect(getGame).toHaveBeenCalledWith(GAME_ID, WORKSPACE_ID);
     expect(listMatches).toHaveBeenCalledWith(WORKSPACE_ID, GAME_ID);
@@ -265,6 +336,25 @@ describe("usePickupMix", () => {
     });
     expect(updateRoster).toHaveBeenCalledWith(WORKSPACE_ID, GAME_ID, [9]);
     expect(getGame.mock.calls.every(([id]) => id === GAME_ID)).toBe(true);
+  });
+
+  it("keeps a room's requested lobby while the mix detail is still loading", async () => {
+    const { promise, resolve } = Promise.withResolvers<unknown>();
+    getGame.mockReturnValueOnce(promise);
+
+    const latest = await mountLatest(1);
+    expect(latest().activeLobby).toBe(1);
+
+    await act(async () => {
+      resolve(game({ players: [], lobby_count: 2 }));
+      await tick();
+    });
+    expect(latest().activeLobby).toBe(1);
+  });
+
+  it("drops a requested lobby the loaded mix does not have", async () => {
+    const latest = await mountLatest(1);
+    expect(latest().activeLobby).toBe(0);
   });
 
   it("invalidates the workspace-player cache after updating the roster", async () => {
@@ -367,7 +457,7 @@ describe("usePickupMix", () => {
             id: 1,
             workspace_member_id: 9,
             display_name: null,
-            battle_tag: "Aria#1111",
+            identity: { provider: "battlenet", handle: "Aria#1111" },
             sort_order: 0,
             participation: "benched",
             role_selection_mode: "all_ranked",
@@ -384,7 +474,7 @@ describe("usePickupMix", () => {
       {
         workspace_member_id: 9,
         status: "must_play",
-        reason: "Owed a seat",
+        reason: "owed_seat",
         consecutive_sat: 1,
         consecutive_played: 0,
         games_played: 2,
@@ -418,7 +508,7 @@ describe("usePickupMix", () => {
             id: 1,
             workspace_member_id: 9,
             display_name: null,
-            battle_tag: "Aria#1111",
+            identity: { provider: "battlenet", handle: "Aria#1111" },
             sort_order: 0,
             participation: "must_play",
             role_selection_mode: "all_ranked",
@@ -435,7 +525,7 @@ describe("usePickupMix", () => {
       {
         workspace_member_id: 9,
         status: "must_play",
-        reason: "Owed a seat",
+        reason: "owed_seat",
         consecutive_sat: 1,
         consecutive_played: 0,
         games_played: 2,
@@ -451,6 +541,75 @@ describe("usePickupMix", () => {
     });
 
     expect(setParticipation).not.toHaveBeenCalled();
+  });
+
+  // Each lobby's rotation leaves out whoever is pinned to another lobby, so lobby A's read alone -- the overview's --
+  // would rank a player pinned to B as if they had never sat out.
+  it("ranks a waiting player pinned to lobby B by their real sit-out while the overview shows lobby A", async () => {
+    const player = (memberId: number, sortOrder: number, lobbyPin: number | null) => ({
+      id: memberId,
+      workspace_member_id: memberId,
+      display_name: null,
+      identity: null,
+      sort_order: sortOrder,
+      participation: "pool",
+      role_selection_mode: "all_ranked",
+      is_flex: false,
+      roles: null,
+      ranks: {},
+      rank_sources: {},
+      author_ranks: {},
+      away: false,
+      lobby_pin: lobbyPin,
+      current_lobby: null,
+    });
+    const lobby = (lobbyIndex: number) => ({
+      lobby_index: lobbyIndex,
+      balance_result: null,
+      selected_variant_index: 0,
+      next_map_id: null,
+      balanced_at: null,
+      lineup_recorded: true,
+      matches_count: 0,
+    });
+    const history = (memberId: number, sat: number) => ({
+      workspace_member_id: memberId,
+      status: "neutral",
+      reason: "default",
+      consecutive_sat: sat,
+      consecutive_played: 0,
+      games_played: 0,
+    });
+    // The newcomer (2) comes first in host order; the player pinned to B (1) has sat out three maps.
+    getGame.mockResolvedValue(
+      game({ lobby_count: 2, lobbies: [lobby(0), lobby(1)], players: [player(2, 0, null), player(1, 1, 1)] }),
+    );
+    rotation.mockImplementation((_workspaceId: number, _gameId: number, lobbyIndex: number) =>
+      Promise.resolve(lobbyIndex === 1 ? [history(1, 3), history(2, 0)] : [history(2, 0)]),
+    );
+    getMySeat.mockResolvedValue({
+      custom_game_id: GAME_ID,
+      lobby_count: 2,
+      seat: {
+        participation: "pool",
+        roles: null,
+        is_flex: false,
+        workspace_member_id: 1,
+        away: false,
+        voice_url: null,
+        ranks: {},
+        current_lobby: null,
+      },
+    });
+
+    const latest = await mountLatest(undefined, true);
+    await act(async () => {
+      await tick();
+      await tick();
+    });
+
+    expect(latest().activeLobby).toBe(0);
+    expect(latest().myQueuePosition).toBe(1);
   });
 
   it("says a voice refusal in the reader's language, and leaves anything else to the generic toast", async () => {

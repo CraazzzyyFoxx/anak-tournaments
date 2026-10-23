@@ -79,7 +79,7 @@ class AuthUser(db.TimeStampIntegerMixin):
     ) -> None:
         """Attach RBAC data from auth-service /validate response.
 
-        When set, has_role() and has_permission() use these cached
+        When set, has_permission() and the role checks use these cached
         values instead of traversing ORM relationships, avoiding an
         extra DB query and ensuring instant propagation of changes.
 
@@ -302,15 +302,6 @@ class AuthUser(db.TimeStampIntegerMixin):
 
         return False
 
-    def has_role(self, role_name: str) -> bool:
-        """Check if user has a specific role"""
-        if self.is_superuser:
-            return True
-        cached_roles = getattr(self, "_cached_role_names", None)
-        if cached_roles is not None:
-            return role_name in cached_roles
-        return any(role.name == role_name and role.workspace_id is None for role in self.roles)
-
 
 class RefreshToken(db.TimeStampIntegerMixin):
     """Refresh token model for JWT authentication"""
@@ -319,7 +310,7 @@ class RefreshToken(db.TimeStampIntegerMixin):
     __table_args__ = ({"schema": "auth"},)
 
     token: Mapped[str] = mapped_column(Text(), unique=True, index=True, nullable=False)
-    user_id: Mapped[int] = mapped_column(ForeignKey("auth.user.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("auth.user.id", ondelete="CASCADE"), index=True, nullable=False)
     session_id: Mapped[UUID] = mapped_column(Uuid(), index=True, nullable=False)
     session_started_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), nullable=False)

@@ -1,17 +1,18 @@
 """Who somebody is inside a draft room's chat.
 
 The draft half of ``shared.services.chat.ChatAccess``: a domain question only
-("captain of a team in THIS session, organizer of the owning workspace, or just
-watching?"). Whether a spectator may actually READ, and whether this account is
-muted, are room policy and belong to ``ChatService`` — see
-docs/plans/2026-09-21-shared-room-chat.md.
+("captain of a team in THIS session, organizer of the owning tournament's workspace or host of the owning mix, or
+just watching?"). Whether a spectator may actually READ, and whether this account is
+muted, are room policy and belong to ``ChatService``.
 
-The room is the SESSION, not the tournament (ruling R3): a re-seed is a
-different draft with a different conversation, so ``room.ref_id`` is a
-``balancer.draft_session.id``.
+The room is the SESSION, not the tournament: a re-seed is a different draft
+with a different conversation, so ``room.ref_id`` is a
+``draft.session.id``.
 """
 
 from __future__ import annotations
+
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +21,7 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.identity.auth_user import AuthUser
 from shared.repository.draft import DraftSessionRepository, DraftTeamRepository
 from shared.services.chat import SPECTATOR_ROLE, ChatMembership, ChatRoom, ChatService
+from shared.services.mix_hosts import is_mix_host
 from shared.services.tournament.display_name import tournament_display_name
 from shared.services.tournament.visibility import ensure_tournament_viewable
 
@@ -48,9 +50,11 @@ class DraftChatAccess:
     ) -> ChatMembership:
         draft = await self.sessions_repo.get(session, room.ref_id)
         if draft is None:
-            # 403, not 404: the caller may not see this room, and which of the
-            # two reasons applies is not theirs to learn.
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Draft chat is not available")
+            # 404, the same answer a hidden tournament gets just below: a 403 here
+            # would tell "no such draft" apart from "a draft you may not see".
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft session not found")
+        if draft.custom_game_id is not None:
+            return await self._mix_member(session, auth_user, draft)
         # Before anything else: an outsider must not learn that a hidden
         # tournament is drafting, chat setting or not.
         await ensure_tournament_viewable(session, auth_user, draft.tournament_id)
@@ -76,7 +80,7 @@ class DraftChatAccess:
         # Organizer staff, NOT the workspace roster: ``workspace_member`` rows
         # (and the baseline ``member`` role they autofill) exist for every
         # registrant, and the token's ``workspaces`` list is built from them, so
-        # ``is_workspace_member`` handed moderation to every player of the
+        # ``is_workspace_member`` would hand moderation to every player of the
         # workspace. ``has_admin_panel_access`` is the scoped organizer
         # predicate: superuser, a global admin-panel role, or any non-read grant
         # in THIS workspace.
@@ -90,6 +94,18 @@ class DraftChatAccess:
                 can_moderate=True,
             )
 
+        return _SPECTATOR
+
+    async def _mix_member(self, session: AsyncSession, auth_user: AuthUser | None, draft: Any) -> ChatMembership:
+        """A mix draft room (spec §4.4): public to watch, its hosts moderate, its captains write -- under their account
+        name, a mix having no registration to name them by."""
+        if auth_user is None:
+            return _SPECTATOR
+        if await is_mix_host(session, auth_user, draft.custom_game_id):
+            return ChatMembership(role="staff", display_name=auth_user.username, can_write=True, can_moderate=True)
+        teams = await self.teams_repo.list_by_session(session, draft.id)
+        if any(team.captain_auth_user_id == auth_user.id for team in teams):
+            return ChatMembership(role="captain", display_name=auth_user.username, can_write=True, can_moderate=False)
         return _SPECTATOR
 
 

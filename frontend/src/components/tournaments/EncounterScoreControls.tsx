@@ -2,7 +2,7 @@ import { Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import {
@@ -15,9 +15,9 @@ import {
 
 type EncounterScoreControlsProps = EncounterScore & {
   idPrefix: string;
-  /** Team name where one is known; the generic side otherwise. */
-  homeLabel?: string;
-  awayLabel?: string;
+  /** Team name where one is known; the generic slot label otherwise. */
+  firstLabel?: string;
+  secondLabel?: string;
   presetLabel?: string;
   showGroupStageHint?: boolean;
   /** When set, presets adapt to the series length; BO4+ shows no presets (manual only). */
@@ -28,10 +28,10 @@ type EncounterScoreControlsProps = EncounterScore & {
 
 export function EncounterScoreControls({
   idPrefix,
-  homeScore,
-  awayScore,
-  homeLabel = "Home",
-  awayLabel = "Away",
+  one,
+  two,
+  firstLabel = "Team 1",
+  secondLabel = "Team 2",
   presetLabel,
   showGroupStageHint = false,
   bestOf,
@@ -42,17 +42,15 @@ export function EncounterScoreControls({
   const scoreT = useTranslations("encounterScore");
   const presets: EncounterScorePreset[] =
     bestOf != null ? getScorePresetsForBestOf(bestOf) : GROUP_STAGE_SCORE_PRESETS;
-  const selectedPreset = presets.find(
-    (preset) => preset.homeScore === homeScore && preset.awayScore === awayScore
-  );
+  const selectedPreset = presets.find((preset) => preset.one === one && preset.two === two);
   const resolvedPresetLabel = presetLabel ?? t("matchEdit.resultPresets");
 
-  const updateHomeScore = (value: string | number) => {
-    onScoreChange({ homeScore: clampScoreValue(value), awayScore });
+  const updateFirstScore = (value: string | number) => {
+    onScoreChange({ one: clampScoreValue(value), two });
   };
 
-  const updateAwayScore = (value: string | number) => {
-    onScoreChange({ homeScore, awayScore: clampScoreValue(value) });
+  const updateSecondScore = (value: string | number) => {
+    onScoreChange({ one, two: clampScoreValue(value) });
   };
 
   const applyPreset = (score: EncounterScore) => {
@@ -68,7 +66,7 @@ export function EncounterScoreControls({
     <div className="space-y-4 rounded-xl border border-border/60 bg-muted/10 p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className={EYEBROW_CLASS}>{t("matchEdit.matchScore")}</p>
+          <p className={eyebrowClass("muted")}>{t("matchEdit.matchScore")}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {showGroupStageHint ? scoreT("groupStageQuickResults") : t("matchEdit.manualEntry")}
           </p>
@@ -81,24 +79,24 @@ export function EncounterScoreControls({
           className="rounded-lg border border-border/60 bg-background px-3.5 py-1.5 text-lg font-bold tracking-label text-foreground tabular-nums"
         >
           <span aria-hidden>
-            {homeScore} – {awayScore}
+            {one} – {two}
           </span>
-          <span className="sr-only">{`${homeLabel} ${homeScore}, ${awayLabel} ${awayScore}`}</span>
+          <span className="sr-only">{`${firstLabel} ${one}, ${secondLabel} ${two}`}</span>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <ScoreStepper
-          id={`${idPrefix}-home-score`}
-          label={homeLabel}
-          value={homeScore}
-          onChange={updateHomeScore}
+          id={`${idPrefix}-first-score`}
+          label={firstLabel}
+          value={one}
+          onChange={updateFirstScore}
         />
         <ScoreStepper
-          id={`${idPrefix}-away-score`}
-          label={awayLabel}
-          value={awayScore}
-          onChange={updateAwayScore}
+          id={`${idPrefix}-second-score`}
+          label={secondLabel}
+          value={two}
+          onChange={updateSecondScore}
         />
       </div>
 
@@ -108,7 +106,7 @@ export function EncounterScoreControls({
             <p className="text-xs font-semibold text-muted-foreground">{resolvedPresetLabel}</p>
             {selectedPreset ? (
               <span className="text-xs font-semibold text-foreground">
-                  {scoreT(`presetDescriptions.${selectedPreset.descriptionKey}` as Parameters<typeof scoreT>[0])}
+                  {t(`matchEdit.presetDescriptions.${selectedPreset.description}` as Parameters<typeof t>[0])}
               </span>
             ) : null}
           </div>
@@ -122,20 +120,20 @@ export function EncounterScoreControls({
                   type="button"
                   variant="ghost"
                   className={cn(
-                    "h-9 px-2 font-bold rounded-lg tabular-nums transition-all duration-150",
+                    "px-2 rounded-lg tabular-nums transition-all duration-150",
                     isSelected
                       ? "border border-primary bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground"
                       : "border border-border/60 bg-muted/10 text-foreground hover:border-border hover:bg-accent hover:text-accent-foreground"
                   )}
                   aria-pressed={isSelected}
-                  aria-label={scoreT("setScore", { homeLabel, homeScore: preset.homeScore, awayLabel, awayScore: preset.awayScore })}
-                  title={scoreT(`presetDescriptions.${preset.descriptionKey}` as Parameters<typeof scoreT>[0])}
-                  onClick={() =>
-                    applyPreset({
-                      homeScore: preset.homeScore,
-                      awayScore: preset.awayScore,
-                    })
-                  }
+                  aria-label={scoreT("setScore", {
+                    firstLabel,
+                    firstScore: preset.one,
+                    secondLabel,
+                    secondScore: preset.two
+                  })}
+                  title={t(`matchEdit.presetDescriptions.${preset.description}` as Parameters<typeof t>[0])}
+                  onClick={() => applyPreset({ one: preset.one, two: preset.two })}
                 >
                   {preset.label}
                 </Button>
@@ -183,7 +181,7 @@ function ScoreStepper({ id, label, value, onChange }: Readonly<ScoreStepperProps
           pattern="[0-9]*"
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className="h-full rounded-none border-0 bg-transparent text-center text-base font-bold tabular-nums text-foreground shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+          className="h-full rounded-none border-0 bg-transparent text-center tabular-nums text-foreground shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
           aria-label={t("scoreFor", { label })}
         />
         <Button

@@ -1,11 +1,9 @@
 "use client";
 
-import {
-  TEAM_BADGE_ACCENTS,
-  calculateTeamAverageFromPayload,
-  calculateTeamTotalFromPayload,
-} from "@/components/balancer/balancer-page-helpers";
-import { Badge } from "@/components/ui/badge";
+import { useTranslations } from "next-intl";
+
+import { Card } from "@/components/ui/card";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import {
   Table,
   TableHead,
@@ -13,12 +11,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import type {
   BalancerRosterKey,
   InternalBalancePayload,
 } from "@/types/balancer-admin.types";
 import type { DivisionGrid } from "@/types/workspace.types";
 
+import { BalanceTeamHeader } from "./BalanceTeamHeader";
 import { DroppableRoleSection } from "./BalanceEditorPlayerRows";
 import { isRoleDropAllowed, type BalanceActiveDrag } from "./balance-editor-helpers";
 import type { RemoteDrag } from "./useBalancerDragGhosts";
@@ -29,6 +30,8 @@ type BalanceEditorTeamCardProps = {
   /** Roster buckets to draw, in order — the ones the tournament's shape fields. */
   bucketKeys: BalancerRosterKey[];
   divisionGrid: DivisionGrid;
+  /** The tournament owner's role dictionary: names the buckets and glyphs the rows. `null` while it loads. */
+  ontology: RoleOntology | null;
   selectedPlayerId?: number | null;
   collapsed: boolean;
   activeDrag?: BalanceActiveDrag | null;
@@ -44,44 +47,19 @@ export function BalanceEditorTeamCard({
   teamIndex,
   bucketKeys,
   divisionGrid,
+  ontology,
   selectedPlayerId,
   activeDrag = null,
   remoteDrags = [],
   resolveActorName,
   onSelectPlayer,
 }: Readonly<BalanceEditorTeamCardProps>) {
-  const total = Math.round(calculateTeamTotalFromPayload(team));
-  const average = Math.round(calculateTeamAverageFromPayload(team));
-  const teamAccent = TEAM_BADGE_ACCENTS[teamIndex % TEAM_BADGE_ACCENTS.length];
+  const t = useTranslations("balancerTool.editor");
+  const slotLabel = useSlotLabel(ontology);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card">
-      <div className="flex items-start justify-between gap-3 border-b border-[color:var(--aqt-border)] px-4 py-3">
-        <div className="flex min-w-0 gap-2 items-center">
-          <Badge
-            className={cn(
-              "rounded-full border px-2.5 py-1 text-label font-semibold uppercase tracking-label",
-              teamAccent,
-            )}
-          >
-            #{team.id}
-          </Badge>
-          <div className="truncate text-sm font-semibold text-[color:var(--aqt-fg)]" title={team.name}>
-            {team.name}
-          </div>
-        </div>
-
-        <div className="shrink-0 text-right">
-          <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-label font-medium text-[color:var(--aqt-fg-muted)]">
-            <span>
-              Total: <span className="tabular-nums text-[color:var(--aqt-fg)]">{total}</span>
-            </span>
-            <span>
-              Avg: <span className="tabular-nums text-[color:var(--aqt-fg)]">{average}</span>
-            </span>
-          </div>
-        </div>
-      </div>
+    <Card variant="flat" className="overflow-hidden">
+      <BalanceTeamHeader team={team} teamIndex={teamIndex} />
       {remoteDrags.length > 0 ? (
         <div className="flex flex-col gap-1 border-b border-cyan-300/15 bg-cyan-500/5 px-4 py-2">
           {remoteDrags.map((drag) => (
@@ -94,14 +72,14 @@ export function BalanceEditorTeamCard({
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-300" />
               </span>
               <span className="font-medium text-cyan-50/90">
-                {resolveActorName?.(drag.userId) ?? `User #${drag.userId}`}
+                {resolveActorName?.(drag.userId) ?? t("remoteDrag.unknownUser", { id: drag.userId })}
               </span>
-              <span className="text-cyan-100/55">moving</span>
+              <span className="text-cyan-100/55">{t("remoteDrag.moving")}</span>
               <span className="truncate font-medium text-cyan-50/90" title={drag.playerName}>
-                {drag.playerName || "player"}
+                {drag.playerName || t("remoteDrag.player")}
               </span>
               {drag.overRoleKey ? (
-                <span className="text-cyan-100/55">&rarr; {drag.overRoleKey}</span>
+                <span className="text-cyan-100/55">&rarr; {slotLabel(drag.overRoleKey)}</span>
               ) : null}
             </div>
           ))}
@@ -110,17 +88,17 @@ export function BalanceEditorTeamCard({
       <Table wrapperClassName="overflow-x-auto overflow-y-visible" className="min-w-90">
         <TableHeader>
           <TableRow className="border-[color:var(--aqt-border)] hover:bg-transparent">
-            <TableHead className="h-8 w-13 px-4 text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-              Role
+            <TableHead className={cn(eyebrowClass("dim"), "h-8 w-13 px-4")}>
+              {t("columns.role")}
             </TableHead>
-            <TableHead className="h-8 min-w-45 px-0 text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-              Player
+            <TableHead className={cn(eyebrowClass("dim"), "h-8 min-w-45 px-0")}>
+              {t("columns.player")}
             </TableHead>
-            <TableHead className="h-8 w-18 px-2 text-center text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-              Rank
+            <TableHead className={cn(eyebrowClass("dim"), "h-8 w-18 px-2 text-center")}>
+              {t("columns.rank")}
             </TableHead>
-            <TableHead className="h-8 w-22 px-3 text-center text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-              Prefs
+            <TableHead className={cn(eyebrowClass("dim"), "h-8 w-22 px-3 text-center")}>
+              {t("columns.prefs")}
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -132,12 +110,13 @@ export function BalanceEditorTeamCard({
             roleKey={roleKey}
             players={team.roster[roleKey]}
             divisionGrid={divisionGrid}
+            ontology={ontology}
             selectedPlayerId={selectedPlayerId}
             dropDisabled={activeDrag != null && !isRoleDropAllowed(activeDrag, roleKey)}
             onSelectPlayer={onSelectPlayer}
           />
         ))}
       </Table>
-    </div>
+    </Card>
   );
 }

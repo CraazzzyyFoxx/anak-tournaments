@@ -7,14 +7,16 @@ import { useTranslations } from "next-intl";
 
 import { SaveBar } from "@/components/kit/SaveBar";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { notify } from "@/lib/notify";
+import { tournamentOverviewQueryOptions } from "@/lib/tournament/overview-query";
 import balancerAdminService from "@/services/balancer-admin.service";
 import type {
   AdminGoogleSheetFeedSyncResponse,
   AdminGoogleSheetFeedUpsertInput,
   MappingPreviewResponseV2
 } from "@/types/balancer-admin.types";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 
 import { ColumnMappingTab } from "./_components/ColumnMappingTab";
 import { PreviewTab } from "./_components/PreviewTab";
@@ -71,6 +73,17 @@ export default function SheetsFeedPage({ tournamentId }: Readonly<{ tournamentId
     enabled: tournamentId !== null,
     refetchOnWindowFocus: false
   });
+
+  // The tournament's game names the roles the mapping targets and the value maps speak of.
+  const tournamentQuery = useQuery({
+    ...tournamentOverviewQueryOptions(tournamentId as number),
+    enabled: tournamentId !== null
+  });
+  const ontology =
+    useDisciplineMetadata(
+      tournamentQuery.data?.workspace_id ?? "all",
+      tournamentQuery.data?.discipline ?? null
+    ).data ?? null;
 
   // Hydrate once per feed id (the hook guards against clobbering unsaved edits).
   useEffect(() => {
@@ -237,10 +250,13 @@ export default function SheetsFeedPage({ tournamentId }: Readonly<{ tournamentId
   }
 
   if (catalogQuery.isLoading || feedQuery.isLoading || !catalogQuery.data || !mapping.isHydrated) {
+    // One card per section below (source, columns, values, preview).
     return (
-      <div className="flex flex-1 items-center justify-center py-16 text-sm text-muted-foreground">
-        <Spinner className="mr-2" />
-        {t("loading.mapping")}
+      <div role="status" className="flex flex-col gap-4">
+        <span className="sr-only">{t("loading.mapping")}</span>
+        {[0, 1, 2, 3].map((section) => (
+          <Skeleton key={section} aria-hidden className="h-48 w-full rounded-xl" />
+        ))}
       </div>
     );
   }
@@ -325,6 +341,7 @@ export default function SheetsFeedPage({ tournamentId }: Readonly<{ tournamentId
         headerKeys={headerKeys}
         previewByTarget={previewByTarget}
         errorsByTarget={fieldErrors}
+        ontology={ontology}
         isSuggesting={suggestMutation.isPending}
         onSuggest={() => suggestMutation.mutate()}
         onModeChange={mapping.setTargetMode}
@@ -338,6 +355,7 @@ export default function SheetsFeedPage({ tournamentId }: Readonly<{ tournamentId
         valueState={mapping.valueState}
         valueCategories={catalog.value_categories}
         subroleCatalog={catalog.subrole_catalog ?? {}}
+        ontology={ontology}
         onAdd={mapping.addValueRow}
         onUpdate={mapping.updateValueRow}
         onRemove={mapping.removeValueRow}

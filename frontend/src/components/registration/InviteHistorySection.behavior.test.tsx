@@ -24,6 +24,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import en from "@/i18n/messages/en.json";
 import ru from "@/i18n/messages/ru.json";
 
+import { OW_METADATA } from "@/test/discipline-metadata";
+
 import InviteHistorySection from "./InviteHistorySection";
 
 declare global {
@@ -68,6 +70,7 @@ async function mount(
           <InviteHistorySection
             workspaceId={1}
             teamId={7}
+            ontology={OW_METADATA}
             open={open}
             onOpenChange={() => {}}
           />

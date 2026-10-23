@@ -13,8 +13,10 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.repository import RoleRepository, UserPermissionDenyRepository, WorkspaceMemberRepository
-from src import models, schemas
+from src import schemas
+from src.services.players import describe_link
 from src.services.session_cache import SessionCache, session_cache
 
 __all__ = ["TokenPayloadBuilder", "token_payloads"]
@@ -59,15 +61,19 @@ class TokenPayloadBuilder:
         # ``None`` means "not in the cache" and must trigger a load; an empty
         # list is a real answer ("this user has no denies") and must not.
         denies: list[dict[str, Any]] | None = entry.get("denies")
-        # Same distinction: v3 entries always carry the key, so its absence
-        # means the entry predates membership caching, not "member of nothing".
+        # Same distinction for memberships: a missing key loads them, an empty
+        # list means "member of nothing".
         memberships_cached: list[list[Any]] | None = entry.get("workspaces")
 
-        loaded_from_db = False
+        # Any missing component makes this a fill. Its generation is read before
+        # the first query, so set_rbac refuses the entry if the user's RBAC was
+        # dropped meanwhile -- these reads may then predate that change. (A hit
+        # is never partial: set_rbac writes every component.)
+        fill = roles is None or denies is None or memberships_cached is None or workspace_roles_cached is None
+        generation = await self.cache.rbac_generation(user.id) if fill else None
 
         if roles is None:
             roles, permissions = await self.roles.global_rbac_for_user(session, user.id)
-            loaded_from_db = True
         if permissions is None:
             permissions = []
 
@@ -75,11 +81,9 @@ class TokenPayloadBuilder:
             # Loaded on the DB path too, so the deny overlay still applies when
             # Redis is unavailable — a negative grant must never fail open.
             denies = await self.load_denies(session, user.id)
-            loaded_from_db = True
 
         if memberships_cached is None:
             memberships = await self.members.list_memberships_for_auth_user(session, user.id)
-            loaded_from_db = True
         else:
             memberships = [(int(workspace_id), slug) for workspace_id, slug in memberships_cached]
 
@@ -90,14 +94,14 @@ class TokenPayloadBuilder:
             ws_rbac = {int(k): (v["roles"], v["permissions"]) for k, v in workspace_roles_cached.items()}
         else:
             ws_rbac = await self.roles.workspace_rbac_for_user(session, user.id, workspace_ids)
-            loaded_from_db = True
 
-        if loaded_from_db:
+        if fill:
             # Nothing changed on a full hit, so rewriting the entry would only
             # extend its TTL — which is exactly what the 60s window is meant to
             # bound — at the cost of a round trip on every gateway request.
             await self.cache.set_rbac(
                 user.id,
+                generation=generation,
                 roles=roles,
                 permissions=permissions,
                 workspaces=[[workspace_id, slug] for workspace_id, slug in memberships],
@@ -143,24 +147,8 @@ class TokenPayloadBuilder:
 
     @staticmethod
     def linked_players(user: models.AuthUser) -> list[schemas.AuthLinkedPlayer]:
-        """The 0-or-1 player linked to ``user`` via ``players.user.auth_user_id``.
-
-        Kept as a list (rather than an optional single value) for wire-shape
-        compatibility with the historical many-to-many ``auth.user_player``
-        model; every returned player is, by construction, the single link, so
-        ``is_primary`` is always ``True``.
-        """
-        player = user.player
-        if player is None:
-            return []
-        return [
-            schemas.AuthLinkedPlayer(
-                player_id=player.id,
-                player_name=player.name,
-                is_primary=True,
-                linked_at=player.created_at.isoformat(),
-            )
-        ]
+        """The 0-or-1 player linked to ``user``, as a list for wire-shape compatibility."""
+        return [] if user.player is None else [schemas.AuthLinkedPlayer(**describe_link(user.player))]
 
 
 token_payloads = TokenPayloadBuilder()

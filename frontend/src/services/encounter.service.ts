@@ -1,11 +1,13 @@
 import {
   Encounter,
   EncounterFilters,
+  EncounterInsights,
   EncounterOverview,
+  EncounterSavedFilters,
   EncounterSavedView,
   MatchWithStats
 } from "@/types/encounter.types";
-import { MatchKillFeed } from "@/types/killfeed.types";
+import { MatchEvents } from "@/types/killfeed.types";
 import { PaginatedResponse } from "@/types/pagination.types";
 import { apiFetch } from "@/lib/api/fetch";
 
@@ -17,9 +19,9 @@ export default class encounterService {
         entities: [
           "matches",
           "matches.map",
-          // The detail page names each map's gamemode; without this the nested
-          // `map.gamemode` comes back null.
-          "matches.map.gamemode",
+          // The detail page names each map's mode; without this the nested
+          // `map.parent` comes back null.
+          "matches.map.parent",
           "teams",
           "teams.players",
           "teams.placement",
@@ -41,12 +43,13 @@ export default class encounterService {
       skipWorkspace: true,
       query: {
         entities: [
-          "teams",
-          "teams.players",
-          "teams.players.user",
           "map",
-          "map.gamemode",
+          "map.parent",
+          // The seats' source teams carry the logos the header draws; their rosters resolve a registration
+          // (a pick/ban target) to the global player an observed member is.
           "encounter",
+          "encounter.teams",
+          "encounter.teams.players",
           "encounter.tournament",
           "encounter.stage",
           "encounter.stage_item"
@@ -54,7 +57,7 @@ export default class encounterService {
       }
     }).then((res) => res.json());
   }
-  static async getMatchKillFeed(match_id: number): Promise<MatchKillFeed> {
+  static async getMatchKillFeed(match_id: number): Promise<MatchEvents> {
     return apiFetch(`/api/v1/matches/${match_id}/kill-feed`, { skipWorkspace: true }).then((res) => res.json());
   }
   static async getAll(
@@ -65,10 +68,12 @@ export default class encounterService {
     sort: string | null = null,
     order: "asc" | "desc" = "desc",
     workspaceId?: number | "all" | null,
-    filters: EncounterFilters & { entities?: string[] } = {}
+    filters: EncounterFilters & { entities?: string[] } = {},
+    opts: { signal?: AbortSignal } = {}
   ): Promise<PaginatedResponse<Encounter>> {
     const { entities, ...restFilters } = filters;
     return apiFetch(`/api/v1/encounters`, {
+      signal: opts.signal,
       query: {
         workspace_id: workspaceId,
         per_page: perPage,
@@ -76,7 +81,7 @@ export default class encounterService {
         query: query,
         sort: sort ?? "id",
         order: order,
-        entities: entities ?? ["tournament", "stage", "stage_item", "home_team", "away_team"],
+        entities: entities ?? ["tournament", "stage", "stage_item", "teams"],
         fields: ["name"],
         tournament_id: tournamentId,
         ...restFilters
@@ -84,22 +89,42 @@ export default class encounterService {
     }).then((res) => res.json());
   }
 
+  /** The aggregate reads (overview, insights) take the list's filter params; paging and order mean nothing there. */
+  private static aggregateQuery(query: string, filters: EncounterFilters, workspaceId?: number | "all" | null) {
+    return {
+      workspace_id: workspaceId,
+      per_page: -1,
+      page: 1,
+      query,
+      fields: ["name"],
+      sort: filters.sort ?? "id",
+      order: "desc",
+      ...filters
+    };
+  }
+
   static async getOverview(
     query: string,
     filters: EncounterFilters = {},
-    workspaceId?: number | "all" | null
+    workspaceId?: number | "all" | null,
+    opts: { signal?: AbortSignal } = {}
   ): Promise<EncounterOverview> {
     return apiFetch(`/api/v1/encounters/overview`, {
-      query: {
-        workspace_id: workspaceId,
-        per_page: -1,
-        page: 1,
-        query,
-        fields: ["name"],
-        sort: filters.sort ?? "id",
-        order: "desc",
-        ...filters
-      }
+      signal: opts.signal,
+      query: encounterService.aggregateQuery(query, filters, workspaceId)
+    }).then((res) => res.json());
+  }
+
+  /** Completed encounters only (the server forces the status), so the heavy read is made only while it is shown. */
+  static async getInsights(
+    query: string,
+    filters: EncounterFilters = {},
+    workspaceId?: number | "all" | null,
+    opts: { signal?: AbortSignal } = {}
+  ): Promise<EncounterInsights> {
+    return apiFetch(`/api/v1/encounters/insights`, {
+      signal: opts.signal,
+      query: encounterService.aggregateQuery(query, filters, workspaceId)
     }).then((res) => res.json());
   }
 
@@ -113,7 +138,7 @@ export default class encounterService {
 
   static async saveView(
     name: string,
-    filters: EncounterFilters & { query?: string },
+    filters: EncounterSavedFilters,
     workspaceId?: number | null
   ): Promise<EncounterSavedView> {
     return apiFetch(`/api/v1/encounters/views`, {

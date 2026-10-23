@@ -55,7 +55,7 @@ export function RoomBanner({ board, gating, autopickPreview }: Readonly<RoomBann
     if (isMyTurn) {
       const player =
         autopickPreview != null ? board.players.find((entry) => entry.id === autopickPreview.player_id) : undefined;
-      const tag = player ? (player.battle_tag ?? `#${player.id}`) : null;
+      const tag = player ? (player.identity?.handle ?? `#${player.id}`) : null;
       text =
         tag == null
           ? t("shell.banner.overtimeMine", { time })
@@ -98,7 +98,7 @@ export function RoomBanner({ board, gating, autopickPreview }: Readonly<RoomBann
           style={{ color: textColor }}
         >
           <span>{text}</span>
-          {adminLink && (
+          {adminLink && session.tournament_id != null && (
             <Link
               href={`/admin/tournaments/${session.tournament_id}/teams/draft`}
               className="inline-flex min-h-11 items-center rounded-sm underline underline-offset-2 outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] sm:min-h-0"

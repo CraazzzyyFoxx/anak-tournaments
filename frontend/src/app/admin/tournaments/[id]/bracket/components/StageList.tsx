@@ -13,10 +13,12 @@ import {
   useSortableRow
 } from "@/components/kit/SortableRows";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import { Progress } from "@/components/ui/progress";
+import { RowButton } from "@/components/ui/row-button";
 import {
   Select,
   SelectContent,
@@ -26,16 +28,13 @@ import {
 } from "@/components/ui/select";
 import { notify } from "@/lib/notify";
 import { nextStageOrder, phaseOrderForArrangement } from "@/lib/tournament/stages";
-import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import type { Stage, StageType } from "@/types/tournament.types";
 
 import {
   getProgressPercent,
-  getStageAssignedTeams,
   getStageStatus,
   getStageStatusTone,
-  getStageTeamSlots,
   normalizeMaxRounds,
   STAGE_TYPE_LABELS,
   type StageProgress
@@ -45,7 +44,6 @@ interface StageListProps {
   tournamentId: number;
   /** Already ordered by `order`. */
   stages: Stage[];
-  teamsCount: number;
   progressByStageId: Map<number, StageProgress>;
   selectedStageId: number | null;
   onSelect: (stageId: number) => void;
@@ -63,7 +61,6 @@ interface StageListProps {
 export function StageList({
   tournamentId,
   stages,
-  teamsCount,
   progressByStageId,
   selectedStageId,
   onSelect,
@@ -143,25 +140,16 @@ export function StageList({
     grandFinalType !== "no_reset";
 
   return (
-    <div className="rounded-xl border border-border bg-card">
+    <Card variant="flat">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-        <div>
-          <p className="text-sm font-semibold text-foreground">{t("flow")}</p>
-          <p className="text-xs tabular-nums text-muted-foreground">
-            {t("stageCount", { count: stages.length, teams: teamsCount })}
-          </p>
-        </div>
+        <p className="text-sm font-semibold text-foreground">{t("flow")}</p>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
           <Plus className="size-4" aria-hidden />
           {t("add")}
         </Button>
       </div>
 
-      {stages.length === 0 ? (
-        <p className="p-4 text-sm text-muted-foreground">
-          {t("empty")}
-        </p>
-      ) : (
+      {stages.length > 0 ? (
         <>
           <SortableRows
             className="flex flex-col gap-1 p-2"
@@ -182,11 +170,13 @@ export function StageList({
               />
             )}
           </SortableRows>
-          <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
-            {t("drag")}
-          </p>
+          {stages.length > 1 ? (
+            <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
+              {t("drag")}
+            </p>
+          ) : null}
         </>
-      )}
+      ) : null}
 
       <EntityFormDialog
         open={createOpen}
@@ -198,7 +188,6 @@ export function StageList({
           }
         }}
         title={t("dialogTitle")}
-        description={t("dialogDescription")}
         submitLabel={t("submit")}
         submittingLabel={t("submitting")}
         onSubmit={(event: FormEvent) => {
@@ -275,7 +264,7 @@ export function StageList({
           ) : null}
         </div>
       </EntityFormDialog>
-    </div>
+    </Card>
   );
 }
 
@@ -295,70 +284,55 @@ function StageCard({
   const tr = (key: string) => tRoot(key as never);
   const { ref, style, handleProps } = useSortableRow(String(stage.id));
   const hasEncounters = (progress?.total ?? 0) > 0;
-  const slots = getStageTeamSlots(stage);
-  const assigned = getStageAssignedTeams(stage);
+  const status = getStageStatus(stage, hasEncounters);
+  // Completed is where every stage ends up and draft is where it starts: only
+  // a stage captains are playing (or about to) earns a pill.
+  const showStatus = status === "Active" || status === "Preview";
 
-  // The whole card selects. The name stays a <button> so keyboard users have a
-  // focus stop; its Enter/Space click bubbles to the card's handler, so it
-  // carries none of its own. A click on the grip bubbles too, which is harmless.
+  // The select button covers the row (it owns the hover, the selected fill and
+  // the focus ring), the grip sits above it, and the content beneath is
+  // decoration: the button carries the stage name for assistive tech.
   return (
-    <div
-      ref={ref}
-      style={style}
-      onClick={onSelect}
-      className={cn(
-        "flex cursor-pointer items-start gap-2 rounded-lg border border-transparent p-2 transition-colors hover:border-border",
-        selected && "border-border bg-accent/30"
-      )}
-    >
-      <div className="flex flex-col items-center gap-1 pt-0.5">
-        <SortableGrip handleProps={handleProps} label={t("reorder", { name: stage.name })} />
-        <span
-          title={t("phase", { number: stage.order })}
-          className="font-mono text-xs tabular-nums text-muted-foreground"
-        >
-          <span className="sr-only">{tRoot("extra.phaseLabel")}</span>
-          {stage.order}
-        </span>
-      </div>
+    <div ref={ref} style={style} className="relative flex items-start gap-2 p-2">
+      <SortableGrip
+        className="relative z-10"
+        handleProps={handleProps}
+        label={t("reorder", { name: stage.name })}
+      />
+      <RowButton
+        onClick={onSelect}
+        aria-current={selected ? "true" : undefined}
+        className="absolute inset-0 rounded-lg"
+      >
+        <span className="sr-only">{stage.name}</span>
+      </RowButton>
 
-      <div className="min-w-0 flex-1">
+      <div className="pointer-events-none min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
-          <button
-            type="button"
-            aria-current={selected ? "true" : undefined}
-            className="min-w-0 truncate text-left text-sm font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
+          <p aria-hidden className="min-w-0 truncate text-sm font-semibold text-foreground">
             {stage.name}
-          </button>
-          <StatusPill tone={getStageStatusTone(stage, hasEncounters)} className="shrink-0">
-            {tr(`extra.statuses.${getStageStatus(stage, hasEncounters).toLowerCase()}`)}
-          </StatusPill>
+          </p>
+          {showStatus ? (
+            <StatusPill tone={getStageStatusTone(stage, hasEncounters)} className="shrink-0">
+              {tr(`extra.statuses.${status.toLowerCase()}`)}
+            </StatusPill>
+          ) : null}
         </div>
 
-        <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-          <span>{tr(`labels.types.${stage.stage_type}`)}</span>
-          <span aria-hidden>·</span>
-          <span className="tabular-nums">{t("items", { count: stage.items.length })}</span>
-          <span aria-hidden>·</span>
-          <span className="tabular-nums">
-            {t("slots", { assigned, total: slots })}
-          </span>
+        <p className="mt-1 text-xs tabular-nums text-muted-foreground">
+          {t("phase", { number: stage.order })}
         </p>
 
         {progress && progress.total > 0 ? (
-          <div className="mt-2">
-            <p className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-              <span>{t("matches")}</span>
-              <span className="tabular-nums">
-                {progress.completed}/{progress.total}
-              </span>
-            </p>
+          <div className="mt-2 flex items-center gap-2">
             <Progress
               value={getProgressPercent(progress.completed, progress.total)}
-              className="h-1.5"
+              className="h-1.5 flex-1"
               aria-label={t("progress", { completed: progress.completed, total: progress.total })}
             />
+            <span aria-hidden className="shrink-0 text-xs tabular-nums text-muted-foreground">
+              {progress.completed}/{progress.total}
+            </span>
           </div>
         ) : null}
       </div>

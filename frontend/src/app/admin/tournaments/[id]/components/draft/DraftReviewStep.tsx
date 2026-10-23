@@ -1,16 +1,14 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, EyeOff, ShieldCheck, XCircle } from "lucide-react";
+import { CheckCircle2, XCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
-import { TONE_CLASS } from "@/components/kit/tone";
-import { Badge } from "@/components/ui/badge";
-import { Spinner } from "@/components/ui/spinner";
-import { cn } from "@/lib/utils";
+import { FactList } from "@/components/kit/FactList";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { DraftFormatSettings, DraftSeedResponse } from "@/types/draft.types";
 
+import { DraftReseedDiff } from "./DraftReseedDiff";
 import type { DraftPoolReadiness } from "./setup-model";
 import { DraftSetupPreview } from "./DraftSetupPreview";
 import type { DraftCaptainSetup, DraftSetupConfig } from "./setup-types";
@@ -57,95 +55,64 @@ export function DraftReviewStep({
       ok: captains.ids.every((id) => pool.find((entry) => entry.id === id)?.user_id != null)
     },
     { label: t("reviewChecks.order"), ok: orderedCaptainIds.length === teamCount },
-    { label: t("reviewChecks.timer"), ok: config.pickTimeSeconds >= 10 },
-    { label: t("reviewChecks.privacy"), ok: true }
+    { label: t("reviewChecks.timer"), ok: config.pickTimeSeconds >= 10 }
   ];
 
   return (
     <div className="space-y-6">
       {previewPending && (
-        <output className="flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
-          <Spinner className="text-primary" />
+        <p role="status" className="text-sm text-muted-foreground">
           {t("validatingDraft")}
-        </output>
+        </p>
       )}
       {previewError && (
-        <div
-          role="alert"
-          className={cn(
-            "flex items-start gap-3 rounded-xl border px-4 py-3 text-sm",
-            TONE_CLASS.danger
-          )}
-        >
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-          <span>
-            <strong className="font-semibold">{t("previewFailed")}</strong> {t("previewFailedHint")}
-          </span>
-        </div>
+        <Alert variant="destructive" className="rounded-xl">
+          <AlertTitle>{t("previewFailed")}</AlertTitle>
+          <AlertDescription>{t("previewFailedHint")}</AlertDescription>
+        </Alert>
       )}
 
-      <div className="grid gap-2 sm:grid-cols-2">
+      <ul className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
         {checks.map((check) => (
-          <div
-            key={check.label}
-            className="flex items-center gap-3 rounded-xl border border-border/70 bg-card px-4 py-3"
-          >
+          <li key={check.label} className="flex items-center gap-3 text-sm">
             {check.ok ? (
               <CheckCircle2
-                className="h-5 w-5 shrink-0 text-success"
+                className="h-4 w-4 shrink-0 text-success"
                 role="img"
                 aria-label={t("ready")}
               />
             ) : (
               <XCircle
-                className="h-5 w-5 shrink-0 text-danger"
+                className="h-4 w-4 shrink-0 text-danger"
                 role="img"
                 aria-label={t("blocker")}
               />
             )}
-            <span className="text-sm">{check.label}</span>
-          </div>
+            {check.label}
+          </li>
         ))}
-      </div>
+      </ul>
 
-      <StatTileGrid className="sm:grid-cols-3 md:grid-cols-3 xl:grid-cols-3">
-        <StatTile label={t("teamCount")} value={teamCount} />
-        <StatTile label={t("poolPlayers")} value={readiness.actualPlayers} />
-        <StatTile label={t("totalPicks")} value={teamCount * rounds} />
-        <StatTile label={t("pickTime")} value={`${config.pickTimeSeconds}s`} />
-        <StatTile
-          label={t("overtime")}
-          value={config.overtimeSeconds > 0 ? `${config.overtimeSeconds}s` : t("overtimeOff")}
-        />
-      </StatTileGrid>
+      <FactList
+        size="sm"
+        facts={[
+          { label: t("teamCount"), value: teamCount },
+          { label: t("poolPlayers"), value: readiness.actualPlayers },
+          { label: t("totalPicks"), value: teamCount * rounds },
+          { label: t("pickTime"), value: `${config.pickTimeSeconds}s` },
+          {
+            label: t("overtime"),
+            value: config.overtimeSeconds > 0 ? `${config.overtimeSeconds}s` : t("overtimeOff")
+          }
+        ]}
+      />
 
       {isReseed && preview && (
-        <div className={cn("rounded-2xl border p-4", TONE_CLASS.warning)}>
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h3 className="font-medium">{t("reseedDiff")}</h3>
-              <p className="mt-1 text-sm text-muted-foreground">{t("reseedDiffHint")}</p>
-            </div>
-            <Badge variant="outline">{t("dryRun")}</Badge>
-          </div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
-            <Diff
-              label={t("teams")}
-              before={preview.diff.teams_before}
-              after={preview.diff.teams_after}
-            />
-            <Diff
-              label={t("players")}
-              before={preview.diff.players_before}
-              after={preview.diff.players_after}
-            />
-            <Diff
-              label={t("picks")}
-              before={preview.diff.picks_before}
-              after={preview.diff.picks_after}
-            />
-          </div>
-        </div>
+        <section>
+          <h3 className="text-sm font-semibold">{t("reseedDiff")}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{t("reseedDiffHint")}</p>
+          <DraftReseedDiff diff={preview.diff} />
+        </section>
       )}
 
       <DraftSetupPreview
@@ -155,34 +122,6 @@ export function DraftReviewStep({
         format={format.format}
         roundRules={format.round_rules}
       />
-
-      <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
-        <div className="flex gap-3">
-          <EyeOff className="mt-0.5 h-5 w-5 text-muted-foreground" aria-hidden />
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold">{t("privacyCheck")}</h3>
-              <ShieldCheck className="h-4 w-4 text-success" aria-hidden />
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">{t("privacyCheckHint")}</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Diff({
-  label,
-  before,
-  after
-}: Readonly<{ label: string; before: number; after: number }>) {
-  return (
-    <div className="rounded-xl bg-background/70 px-3 py-2">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 font-mono text-sm tabular-nums">
-        {before} → <strong>{after}</strong>
-      </p>
     </div>
   );
 }

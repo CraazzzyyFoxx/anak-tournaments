@@ -13,6 +13,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 from shared.core import enums  # noqa: E402
+from shared.schemas.role import RoleRef  # noqa: E402
 
 
 def _schemas():
@@ -61,15 +62,13 @@ def test_bulk_participation_requires_unique_members() -> None:
 
 def test_record_outcome_takes_the_outcome_the_client_sends() -> None:
     """The wire field is ``outcome``, and only 1/2/null are decided outcomes."""
-    body = _schemas().CustomGameRecordOutcome.model_validate(
-        {"outcome": {"winner": 2}, "variant_index": 0, "map_id": None}
-    )
+    body = _schemas().CustomGameRecordOutcome.model_validate({"outcome": {"winner": 2}})
     assert body.outcome.winner == 2
 
 
 def test_record_outcome_rejects_an_impossible_winner() -> None:
     with pytest.raises(ValidationError):
-        _schemas().CustomGameRecordOutcome.model_validate({"outcome": {"winner": 3}, "variant_index": 0})
+        _schemas().CustomGameRecordOutcome.model_validate({"outcome": {"winner": 3}})
 
 
 def test_self_update_distinguishes_an_unset_roles_field_from_a_null_one() -> None:
@@ -88,13 +87,15 @@ def test_self_update_refuses_the_hosts_own_fields() -> None:
         _schemas().CustomGameSelfUpdate.model_validate({"participation": "must_play"})
 
 
-def test_self_update_validates_role_codes() -> None:
-    assert _schemas().CustomGameSelfUpdate.model_validate({"roles": ["support", "tank"]}).roles == [
-        "support",
-        "tank",
-    ]
+@pytest.mark.parametrize("schema", ["CustomGamePlayerPatch", "CustomGameSelfUpdate"])
+def test_mix_patch_validates_role_refs_and_deduplicates_by_dimension_and_role(schema) -> None:
+    roles = [RoleRef(dimension="player_role", role=code) for code in ("support", "tank")]
+    model = getattr(_schemas(), schema)
+    assert model.model_validate({"roles": [*roles, roles[0]]}).roles == roles
+    other_dimension = RoleRef(dimension="position", role="support")
+    assert model.model_validate({"roles": [roles[0], other_dimension]}).roles == [roles[0], other_dimension]
     with pytest.raises(ValidationError):
-        _schemas().CustomGameSelfUpdate.model_validate({"roles": ["healer"]})
+        model.model_validate({"roles": ["support"]})
 
 
 def test_self_service_patch_takes_the_three_signup_modes_and_nothing_else() -> None:

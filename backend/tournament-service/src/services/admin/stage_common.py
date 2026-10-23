@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 
+from shared import models
 from shared.core import enums
 from shared.models.tournament.pick_ban import PickBanConfig
-from src import models
 from src.domain.stage.seeds import bracket_seeds, collect_item_team_ids
 
 __all__ = (
@@ -97,10 +97,9 @@ def _apply_seeding(session, seeding: list[tuple[int, int]], target_item) -> None
                 source_position=source_position,
                 team_id=None,
             )
-            # ``session.add`` rather than a repository create: this helper is
-            # deliberately synchronous (see the delete half below, which is a
-            # collection ``remove``), and making it async to move one line
-            # would push the whole seeding path async for nothing.
+            # ``session.add`` rather than a repository create: repository creates
+            # are async and this helper is deliberately synchronous, so its
+            # callers in the seeding path need not await it.
             session.add(new_input)
             target_item.inputs.append(new_input)
 

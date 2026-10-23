@@ -11,13 +11,17 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 
-from shared.core.enums import DraftAutopickStrategy, HeroClass  # noqa: E402
-from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
+from shared.core.enums import DraftAutopickStrategy  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
+from src.domain.balancer.config.defaults import default_role_settings  # noqa: E402
 from src.domain.draft import fit as sug  # noqa: E402
 from src.domain.draft import rules  # noqa: E402
-from src.services.balancer.config.defaults import DEFAULT_ROLE_SETTINGS  # noqa: E402
 
-T, D, SUP = HeroClass.tank, HeroClass.damage, HeroClass.support
+T, D, SUP = "tank", "damage", "support"
+#: The Overwatch module's declared impacts: what a draft of that game scores fit with.
+OW_FIT = sug.FitConfig(
+    role_impact={code: weights.impact for code, weights in default_role_settings("overwatch").items()}
+)
 
 
 def fp(pid, rank, playable, prefs=(), is_flex=False, rank_by_role=None):
@@ -58,9 +62,9 @@ def test_discomfort_unplayable_is_5000() -> None:
 # ---- role impact weights ----
 
 
-def test_role_impact_defaults_come_from_the_balancer_config() -> None:
-    cfg = sug.FitConfig()
-    assert cfg.role_impact == {role: DEFAULT_ROLE_SETTINGS[role.slot_code].impact for role in (T, D, SUP)}
+def test_role_impact_comes_from_the_game_and_defaults_to_neutral() -> None:
+    assert sug.FitConfig().role_impact == {}
+    assert OW_FIT.role_impact == {role: default_role_settings("overwatch")[role].impact for role in (T, D, SUP)}
 
 
 # ---- BEST_FIT ----
@@ -70,7 +74,7 @@ def test_best_fit_weighs_rank_against_discomfort() -> None:
     # P1 comfortable but lower rank; P2 higher rank but uncomfortable.
     p1 = fp(1, 3000, {T}, prefs=(T,))  # disc 0  -> 3000*1.4        = 4200
     p2 = fp(2, 4000, {T}, prefs=())  # disc 1000 -> 4000*1.4-1000 = 4600
-    res = sug.best_fit([p1, p2], {T: 1}, DraftAutopickStrategy.BEST_FIT, sug.FitConfig())
+    res = sug.best_fit([p1, p2], {T: 1}, DraftAutopickStrategy.BEST_FIT, OW_FIT)
     assert res is not None
     assert res.player_id == 2
     assert res.role == T
@@ -79,7 +83,7 @@ def test_best_fit_weighs_rank_against_discomfort() -> None:
 def test_best_fit_vs_best_available_differ() -> None:
     p1 = fp(1, 5000, {T}, prefs=())  # disc 1000
     p2 = fp(2, 4900, {T}, prefs=(T,))  # disc 0
-    cfg = sug.FitConfig()
+    cfg = OW_FIT
     best_fit = sug.best_fit([p1, p2], {T: 1}, DraftAutopickStrategy.BEST_FIT, cfg)
     best_avail = sug.best_fit([p1, p2], {T: 1}, DraftAutopickStrategy.BEST_AVAILABLE, cfg)
     assert best_fit.player_id == 2  # comfort wins on fit
@@ -93,19 +97,19 @@ def test_role_need_fills_most_needed_role_first() -> None:
     tank = fp(1, 5000, {T}, prefs=(T,))
     supp = fp(2, 3000, {SUP}, prefs=(SUP,))
     # SUPPORT has 2 open slots, TANK only 1 -> role-need favours support.
-    res = sug.best_fit([tank, supp], {T: 1, SUP: 2}, DraftAutopickStrategy.ROLE_NEED, sug.FitConfig())
+    res = sug.best_fit([tank, supp], {T: 1, SUP: 2}, DraftAutopickStrategy.ROLE_NEED, OW_FIT)
     assert res.role == SUP
     assert res.player_id == 2
 
 
 def test_best_fit_prefers_the_role_a_support_captain_team_still_lacks() -> None:
-    shape = parse_roster_slots({"tank": 1, "damage": 2, "support": 2})
+    shape = RosterShape(entries=tuple({"tank": 1, "damage": 2, "support": 2}.items()))
     supp = fp(1, 3600, {SUP}, prefs=(SUP,))  # 3600*1.1*0.75 = 2970 (support half-filled)
     dps = fp(2, 3200, {D}, prefs=(D,))  # 3200*1.0*1.0 = 3200
     counts = {"tank": 0, "damage": 0, "support": 1}  # only the support captain seated
-    base_impact = sug.FitConfig().role_impact
+    base_impact = OW_FIT.role_impact
     captain_support = rules.team_fit_config(shape, counts, base_impact)
-    capacity = rules.role_openings(shape, counts)
+    capacity = rules.role_openings(shape, counts, ("tank", "damage", "support"))
 
     res = sug.best_fit([supp, dps], capacity, DraftAutopickStrategy.BEST_FIT, captain_support)
     assert res is not None
@@ -120,16 +124,16 @@ def test_best_fit_prefers_the_role_a_support_captain_team_still_lacks() -> None:
 
 def test_returns_none_when_no_open_capacity() -> None:
     p = fp(1, 3000, {T}, prefs=(T,))
-    assert sug.best_fit([p], {T: 0}, DraftAutopickStrategy.BEST_FIT, sug.FitConfig()) is None
+    assert sug.best_fit([p], {T: 0}, DraftAutopickStrategy.BEST_FIT, OW_FIT) is None
 
 
 def test_returns_none_when_player_cannot_play_open_role() -> None:
     p = fp(1, 3000, {T}, prefs=(T,))
-    assert sug.best_fit([p], {SUP: 1}, DraftAutopickStrategy.BEST_FIT, sug.FitConfig()) is None
+    assert sug.best_fit([p], {SUP: 1}, DraftAutopickStrategy.BEST_FIT, OW_FIT) is None
 
 
 def test_returns_none_when_no_players() -> None:
-    assert sug.best_fit([], {T: 1}, DraftAutopickStrategy.BEST_FIT, sug.FitConfig()) is None
+    assert sug.best_fit([], {T: 1}, DraftAutopickStrategy.BEST_FIT, OW_FIT) is None
 
 
 def test_best_fit_considers_only_globally_safe_player_role_pairs() -> None:
@@ -140,7 +144,7 @@ def test_best_fit_considers_only_globally_safe_player_role_pairs() -> None:
         [unsafe_star, safe_native],
         {D: 1, SUP: 1},
         DraftAutopickStrategy.BEST_AVAILABLE,
-        sug.FitConfig(),
+        OW_FIT,
         allowed_options={(1, SUP), (2, SUP)},
     )
 
@@ -155,7 +159,7 @@ def test_deterministic_tiebreak_prefers_lower_player_id() -> None:
     # identical rank/role/discomfort -> lower player_id wins
     a = fp(7, 3000, {T}, prefs=(T,))
     b = fp(3, 3000, {T}, prefs=(T,))
-    res = sug.best_fit([a, b], {T: 1}, DraftAutopickStrategy.BEST_FIT, sug.FitConfig())
+    res = sug.best_fit([a, b], {T: 1}, DraftAutopickStrategy.BEST_FIT, OW_FIT)
     assert res.player_id == 3
 
 
@@ -168,7 +172,7 @@ def test_deterministic_tiebreak_prefers_lower_player_id() -> None:
 def test_player_fit_uses_off_role_rank_not_primary() -> None:
     # 4000 DPS who flexes support at 2800: BEST_AVAILABLE score for SUPPORT is 2800.
     p = fp(1, 4000, {D, SUP}, prefs=(D,), rank_by_role={D: 4000, SUP: 2800})
-    res = sug.player_fit(p, SUP, sug.FitConfig(), strategy=DraftAutopickStrategy.BEST_AVAILABLE)
+    res = sug.player_fit(p, SUP, OW_FIT, strategy=DraftAutopickStrategy.BEST_AVAILABLE)
     assert res.fit_score == 2800.0
 
 
@@ -181,7 +185,7 @@ def test_off_role_candidate_loses_to_native_when_scored_correctly() -> None:
     # Native support@3000 vs a 4000-DPS flexing support@2800.
     native = fp(1, 3000, {SUP}, prefs=(SUP,))
     flex = fp(2, 4000, {D, SUP}, prefs=(D,), rank_by_role={D: 4000, SUP: 2800})
-    res = sug.best_fit([native, flex], {SUP: 1}, DraftAutopickStrategy.BEST_AVAILABLE, sug.FitConfig())
+    res = sug.best_fit([native, flex], {SUP: 1}, DraftAutopickStrategy.BEST_AVAILABLE, OW_FIT)
     # If scored at primary (the bug) flex's 4000 would win; scored at off-role 2800, native wins.
     assert res.player_id == 1
 
@@ -192,7 +196,7 @@ def test_rank_suggestions_returns_sorted_topn() -> None:
         fp(2, 4000, {T}, prefs=(T,)),
         fp(3, 3000, {T}, prefs=(T,)),
     ]
-    out = sug.rank_suggestions(players, {T: 1}, sug.FitConfig(), limit=2)
+    out = sug.rank_suggestions(players, {T: 1}, OW_FIT, limit=2)
     assert len(out) == 2
     assert [s.player_id for s in out] == [2, 3]  # highest fit first
     assert out[0].fit_score >= out[1].fit_score

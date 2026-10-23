@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ShieldCheck } from "lucide-react";
+import { FileDown, ShieldCheck } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useMutation } from "@tanstack/react-query";
 
@@ -10,12 +10,14 @@ import { Spinner } from "@/components/ui/spinner";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import type { PickBanKind, PickBanState } from "@/types/tournament.types";
-import type { PickBanSide } from "@/components/pick-ban/pick-ban-model";
+import { MatchImport } from "@/components/pick-ban/MatchImport";
+import type { PickBanSeat } from "@/components/pick-ban/pick-ban-model";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
+import { PregameAdminBox } from "@/components/pick-ban/PregameAdminBox";
+import { PregameAdminControls } from "@/components/pick-ban/PregameAdminControls";
+import type { PickBanAdminSlot } from "@/components/pick-ban/usePickBanController";
 
-import { PregameAdminControls } from "./PregameAdminControls";
 import { PregameRoomHistory } from "./PregameRoomHistory";
-import type { PickBanAdminSlot } from "./PickBanPanel";
 
 const KINDS: readonly PickBanKind[] = ["map", "hero"];
 
@@ -38,27 +40,38 @@ export function PregameAdminPanel({
   encounterId,
   statesByKind,
   activeKind,
-  sideNameOf,
+  seats,
   itemsByKind,
+  sideLabels,
   bestOf,
   seriesWins,
   onMutated,
-  grid = null
+  grid = null,
+  matchImportGames = []
 }: Readonly<{
   encounterId: number;
   statesByKind: Record<PickBanKind, PickBanState>;
   /** The kind the room itself is on, i.e. the tab to open by default. */
   activeKind: PickBanKind;
-  sideNameOf: (side: PickBanSide) => string;
+  /** The room's participations in slot order. */
+  seats: PickBanSeat[];
   /** Map and hero catalogs, so the history can name what was banned. */
   itemsByKind: Record<PickBanKind, Record<number, PickBanItemLike | undefined>>;
+  /** The game's side labels in `state.sides` order: a side pick names a side by its index. */
+  sideLabels: string[];
   /** Series length and the wins already confirmed — the technical loss's
    * default score is read off them, and neither is in a pick-ban state. */
   bestOf: number;
-  seriesWins: { home: number; away: number } | null;
+  /** `EncounterTeam.id` (as a string) -> confirmed wins. */
+  seriesWins: Record<string, number> | null;
   onMutated: () => void;
   /** The board on screen, when one is: its selection and its own reset. */
   grid?: PickBanAdminSlot | null;
+  /**
+   * The live positions (`encounter.games`, cancelled ones dropped) whose match an organizer may file by its id; empty
+   * unless the encounter is a tournament game of a discipline with a match fetcher.
+   */
+  matchImportGames?: ReadonlyArray<{ id: number; position: number }>;
 }>) {
   const t = useTranslations("pickBan.room");
   const withSession = KINDS.filter((kind) => statesByKind[kind].session != null);
@@ -75,7 +88,7 @@ export function PregameAdminPanel({
   // the honest undo is a reset, which the tabs below already offer.
   const readiness = statesByKind.map.readiness;
   const readinessMutation = useMutation({
-    mutationFn: (input: { side: PickBanSide; ready: boolean }) =>
+    mutationFn: (input: { encounter_team_id: number; ready: boolean }) =>
       adminService.setEncounterReadiness(encounterId, input),
     onSuccess: onMutated,
     onError: (error) => notify.apiError(error, { title: t("admin.readinessFailed") })
@@ -84,10 +97,18 @@ export function PregameAdminPanel({
   const history = (
     <PregameRoomHistory
       encounterId={encounterId}
-      sideNameOf={sideNameOf}
+      seats={seats}
       itemsByKind={itemsByKind}
+      sideLabels={sideLabels}
     />
   );
+  // Filing a match needs no pick-ban session, so it is offered on every branch below.
+  const matchImport =
+    matchImportGames.length > 0 ? (
+      <PregameAdminBox icon={FileDown} title={t("matchImport.title")}>
+        <MatchImport encounterId={encounterId} games={matchImportGames} admin />
+      </PregameAdminBox>
+    ) : null;
 
   if (kind == null) {
     // Only `not_ready` is a gate an organizer can lift from here: unknown
@@ -96,36 +117,46 @@ export function PregameAdminPanel({
     // would be a button that changes nothing.
     // The journal stays on screen even with nothing to override: "why is this
     // room not open yet" is one of the questions it answers.
-    if (!KINDS.some((value) => statesByKind[value].reason === "not_ready")) return history;
+    if (!KINDS.some((value) => statesByKind[value].reason === "not_ready")) {
+      return (
+        <div className="flex flex-col gap-3">
+          {matchImport}
+          {history}
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col gap-3">
-        <section className="rounded-xl border border-dashed border-[color:var(--aqt-amber)]/45 bg-[color:var(--aqt-card-2)]/40 p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-[color:var(--aqt-amber)]" aria-hidden />
-            <h2 className="text-sm font-semibold">{t("admin.readinessTitle")}</h2>
-          </div>
+        <PregameAdminBox icon={ShieldCheck} title={t("admin.readinessTitle")}>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-            {(["home", "away"] as const).map((side) => (
-              <div key={side} className="flex items-center gap-2">
-                <span className="text-sm font-medium">{sideNameOf(side)}</span>
-                <span className="text-xs text-[color:var(--aqt-fg-muted)]">
-                  {t(readiness[side] ? "ready.stateReady" : "ready.statePending")}
-                </span>
-                <Button
-                  size="sm"
-                  variant={readiness[side] ? "outline" : "default"}
-                  disabled={readinessMutation.isPending}
-                  onClick={() => readinessMutation.mutate({ side, ready: !readiness[side] })}
-                >
-                  {readinessMutation.isPending && readinessMutation.variables?.side === side ? (
-                    <Spinner className="mr-2" />
-                  ) : null}
-                  {t(readiness[side] ? "admin.readinessClear" : "admin.readinessSet")}
-                </Button>
-              </div>
-            ))}
+            {seats.map((seat) => {
+              const ready = readiness[String(seat.id)] === true;
+              return (
+                <div key={seat.id} className="flex items-center gap-2">
+                  <span className="text-sm font-medium">{seat.name}</span>
+                  <span className="text-xs text-[color:var(--aqt-fg-muted)]">
+                    {t(ready ? "ready.stateReady" : "ready.statePending")}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant={ready ? "outline" : "default"}
+                    disabled={readinessMutation.isPending}
+                    onClick={() =>
+                      readinessMutation.mutate({ encounter_team_id: seat.id, ready: !ready })
+                    }
+                  >
+                    {readinessMutation.isPending &&
+                    readinessMutation.variables?.encounter_team_id === seat.id ? (
+                      <Spinner className="mr-2" />
+                    ) : null}
+                    {t(ready ? "admin.readinessClear" : "admin.readinessSet")}
+                  </Button>
+                </div>
+              );
+            })}
           </div>
-        </section>
+        </PregameAdminBox>
+        {matchImport}
         {history}
       </div>
     );
@@ -141,8 +172,11 @@ export function PregameAdminPanel({
         selectedItemId={onThisKind ? grid.selectedItemId : null}
         selectedItemName={onThisKind ? grid.selectedItemName : null}
         itemsById={itemsByKind[kind]}
+        sideLabels={sideLabels}
+        // Games live on the map state only; a hero-only room's hero state has none to correct.
+        games={statesByKind.map.games}
         blind={onThisKind ? grid.blind : null}
-        sideNameOf={sideNameOf}
+        seats={seats}
         bestOf={bestOf}
         seriesWins={seriesWins}
         onMutated={() => {
@@ -162,7 +196,7 @@ export function PregameAdminPanel({
                   role="tab"
                   aria-selected={value === kind}
                   size="sm"
-                  variant={value === kind ? "secondary" : "ghost"}
+                  variant={value === kind ? "accent" : "ghost"}
                   onClick={() => setPicked(value)}
                 >
                   {t(`phase.${value}`)}
@@ -172,6 +206,7 @@ export function PregameAdminPanel({
           ) : null
         }
       />
+      {matchImport}
       {history}
     </div>
   );

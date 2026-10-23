@@ -1,9 +1,6 @@
-"""ML model implementations.
+"""Artifact storage for v2 models.
 
-- :class:`base.MLModel` — Protocol common to every model kind.
-- :mod:`performance_v2` — Performance Rating v2 (per-role LGBMRegressor).
-- :mod:`shift_v2` — Player Shift v2 (OpenSkill + LGBM residual).
-- :mod:`standings_v2` — Standings v2 (XGB pairwise + Monte Carlo).
-- :mod:`match_quality` — post-hoc encounter quality + anomaly flags.
-- :mod:`anomalies` — IsolationForest smurf / ruptures throw detectors.
+The model implementations (Performance v2, Shift v2, Standings v2, match quality, anomaly detectors) belong to the
+discipline's analytics module; the neutral ``MLModel`` contract is ``shared.domain.analytics``. :mod:`base` stores and
+loads artifacts; :mod:`anomaly_tuning` is the generic threshold tuner.
 """

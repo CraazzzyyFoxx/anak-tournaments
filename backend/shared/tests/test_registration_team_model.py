@@ -3,7 +3,7 @@
 These are the invariants the design leans on, asserted against the mappers and
 against a real SQL engine (SQLite standing in for Postgres) rather than trusted:
 
-* the roster lives on ``balancer.registration`` — no slot table — so every
+* the roster lives on ``registration.registration`` — no slot table — so every
   existing registration reader keeps working unchanged;
 * the two partial unique indexes exist and carry their ``WHERE`` clauses, because
   the name index is what makes a silent two-teams-become-one export merge
@@ -26,9 +26,9 @@ from sqlalchemy.orm import configure_mappers  # noqa: E402
 
 import shared.models  # noqa: E402, F401  (registers every mapper)
 from shared.models.registration.registration import (  # noqa: E402
-    BalancerRegistration,
-    BalancerRegistrationTeam,
-    BalancerRegistrationTeamInvite,
+    Registration,
+    RegistrationTeam,
+    RegistrationTeamInvite,
 )
 
 
@@ -39,14 +39,14 @@ class MapperContractTests(TestCase):
 
     def test_roster_lives_on_the_registration_row(self) -> None:
         """No slot table: a team's roster is a set of ordinary registrations."""
-        columns = BalancerRegistration.__table__.columns
+        columns = Registration.__table__.columns
         self.assertIn("registration_team_id", columns)
         self.assertIn("team_slot_code", columns)
         self.assertIn("is_substitute", columns)
 
     def test_the_new_registration_columns_need_no_backfill(self) -> None:
         """Existing rows must mean "not on a team" without being touched."""
-        columns = BalancerRegistration.__table__.columns
+        columns = Registration.__table__.columns
         self.assertTrue(columns["registration_team_id"].nullable)
         self.assertTrue(columns["team_slot_code"].nullable)
         # Not nullable, but server-defaulted — which is equally backfill-free.
@@ -54,11 +54,7 @@ class MapperContractTests(TestCase):
         self.assertIsNotNone(columns["is_substitute"].server_default)
 
     def test_team_name_uniqueness_is_partial_on_soft_delete(self) -> None:
-        index = next(
-            i
-            for i in BalancerRegistrationTeam.__table__.indexes
-            if i.name == "uq_balancer_registration_team_name_active"
-        )
+        index = next(i for i in RegistrationTeam.__table__.indexes if i.name == "uq_registration_team_name_active")
         self.assertTrue(index.unique)
         self.assertEqual(
             ["tournament_id", "name_normalized"],
@@ -73,9 +69,7 @@ class MapperContractTests(TestCase):
 
     def test_invite_token_index_is_partial_and_unique(self) -> None:
         index = next(
-            i
-            for i in BalancerRegistrationTeamInvite.__table__.indexes
-            if i.name == "uq_balancer_registration_team_invite_token"
+            i for i in RegistrationTeamInvite.__table__.indexes if i.name == "uq_registration_team_invite_token"
         )
         self.assertTrue(index.unique)
         self.assertEqual(["token_sha256"], [c.name for c in index.columns])
@@ -87,14 +81,14 @@ class MapperContractTests(TestCase):
         )
 
     def test_only_the_token_hash_is_stored(self) -> None:
-        columns = BalancerRegistrationTeamInvite.__table__.columns
+        columns = RegistrationTeamInvite.__table__.columns
         self.assertIn("token_sha256", columns)
         self.assertNotIn("token", columns)
         self.assertEqual(64, columns["token_sha256"].type.length)
 
     def test_the_circular_captain_fk_uses_alter(self) -> None:
-        """``registration_team.captain_registration_id`` <-> ``registration.registration_team_id``."""
-        fk = next(fk for fk in BalancerRegistrationTeam.__table__.columns["captain_registration_id"].foreign_keys)
+        """``registration.team.captain_registration_id`` <-> ``registration.registration.registration_team_id``."""
+        fk = next(fk for fk in RegistrationTeam.__table__.columns["captain_registration_id"].foreign_keys)
         self.assertTrue(fk.use_alter)
         self.assertEqual("fk_registration_team_captain_registration", fk.name)
         self.assertEqual("SET NULL", fk.ondelete)
@@ -103,17 +97,17 @@ class MapperContractTests(TestCase):
         """A member's registration outlives the team: the FK is SET NULL, and the
         relationship carries no delete cascade. Cascading would silently destroy
         real people's registrations when a captain disbands."""
-        fk = next(iter(BalancerRegistration.__table__.columns["registration_team_id"].foreign_keys))
+        fk = next(iter(Registration.__table__.columns["registration_team_id"].foreign_keys))
         self.assertEqual("SET NULL", fk.ondelete)
-        self.assertNotIn("delete", BalancerRegistrationTeam.members.property.cascade)
+        self.assertNotIn("delete", RegistrationTeam.members.property.cascade)
 
     def test_invites_are_owned_by_their_team(self) -> None:
-        fk = next(iter(BalancerRegistrationTeamInvite.__table__.columns["team_id"].foreign_keys))
+        fk = next(iter(RegistrationTeamInvite.__table__.columns["team_id"].foreign_keys))
         self.assertEqual("CASCADE", fk.ondelete)
-        self.assertIn("delete", BalancerRegistrationTeam.invites.property.cascade)
+        self.assertIn("delete", RegistrationTeam.invites.property.cascade)
 
     def test_export_link_mirrors_the_draft_team_contract(self) -> None:
-        fk = next(iter(BalancerRegistrationTeam.__table__.columns["exported_team_id"].foreign_keys))
+        fk = next(iter(RegistrationTeam.__table__.columns["exported_team_id"].foreign_keys))
         self.assertEqual("tournament.team.id", f"{fk.column.table.fullname}.{fk.column.name}")
         self.assertEqual("SET NULL", fk.ondelete)
 
@@ -138,21 +132,21 @@ class DDLTests(TestCase):
 
         cycle_messages = [str(w.message) for w in caught if "cycles" in str(w.message)]
         for message in cycle_messages:
-            self.assertNotIn("registration_team", message, message)
-            self.assertNotIn("registration_team_invite", message, message)
+            self.assertNotIn("registration.team", message, message)
+            self.assertNotIn("registration.team_invite", message, message)
 
         names = {t.fullname for t in tables}
-        self.assertIn("balancer.registration_team", names)
-        self.assertIn("balancer.registration_team_invite", names)
+        self.assertIn("registration.team", names)
+        self.assertIn("registration.team_invite", names)
 
     def test_captain_fk_is_not_emitted_inline(self) -> None:
         """``use_alter`` moves it to a separate ``ALTER TABLE``; emitting it inside
-        ``CREATE TABLE registration_team`` would reference a table that does not
+        ``CREATE TABLE registration.team`` would reference a table that does not
         exist yet."""
         from sqlalchemy.dialects import postgresql
         from sqlalchemy.schema import CreateTable
 
-        ddl = str(CreateTable(BalancerRegistrationTeam.__table__).compile(dialect=postgresql.dialect()))
+        ddl = str(CreateTable(RegistrationTeam.__table__).compile(dialect=postgresql.dialect()))
         self.assertNotIn("fk_registration_team_captain_registration", ddl)
         self.assertIn("captain_registration_id", ddl)
         # The non-circular FKs stay inline.

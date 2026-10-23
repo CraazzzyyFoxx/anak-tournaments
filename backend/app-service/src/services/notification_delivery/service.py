@@ -7,6 +7,9 @@ and the outbox command commit together, so there is no state where the platform
 believes it sent something it did not, and a redelivered event (the outbox is
 at-least-once) finds the ``dedupe_key`` taken and sends nothing.
 
+Nothing here renders: the row carries the notification payload, and
+discord-service draws the card from ``(kind, payload_json)`` when it sends.
+
 Both methods answer with a status string rather than a bool or an exception.
 Skips are normal -- no Discord linked, the group switched off, no channel
 configured -- and the consumer turns the answer into the metric label that
@@ -16,7 +19,6 @@ raises, and the existing consumer semantics send that to the DLQ.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
@@ -32,16 +34,8 @@ from shared.schemas.events import NotificationBroadcastEvent, NotificationCreate
 from shared.services import discord_messages
 from shared.services.notifications import NOTIFICATION_KIND_GROUPS, wants_discord_dm
 from shared.services.subscriptions.strategies import load_provider_user_ids
-from src.core import config
-from src.domain.notification_render import render_discord
 
 __all__ = ("NotificationDeliveryService", "notification_delivery_service")
-
-#: ``ponytail:`` D11 -- DMs are rendered in Russian for everyone. The server
-#: does not know a user's language (only the browser's ``NEXT_LOCALE`` cookie
-#: does), and storing it belongs to the email issue, where a locale is
-#: mandatory rather than a nicety.
-_DM_LOCALE = "ru"
 
 
 class NotificationDeliveryService:
@@ -91,31 +85,18 @@ class NotificationDeliveryService:
             return "skipped_no_discord"
         target = targets[0]
 
-        workspace_name, image_url = await _branding(session, row.source_workspace_id, payload)
-        card = render_discord(
-            row.kind,
-            payload,
-            locale=_DM_LOCALE,
-            site_url=config.settings.public_site_url,
-            workspace_name=workspace_name,
-            image_url=image_url,
-            personal=True,
-        )
-        # No allow_mentions: it defaults to False, and a notification card
-        # carries user-written names -- an ``@everyone`` in one pings nobody.
         command = await discord_messages.send_command(
             session,
-            subject=f"notification:{row.id}",
+            subject=discord_messages.notification_subject(row.id),
             slot="dm",
             kind=row.kind,
-            card=card,
             workspace_id=row.source_workspace_id,
             discord_user_id=int(target),
-            # Unchanged from the ledger this table took over: rows written
-            # before the rename still guard their notification against a
-            # redelivery.
+            # Keep this key format: stored rows already claimed under it guard
+            # their notification against a redelivery.
             dedupe_key=f"notification:{row.id}",
             notification_id=row.id,
+            payload=payload,
         )
         if command is None:
             return "duplicate"
@@ -137,28 +118,19 @@ class NotificationDeliveryService:
             return "skipped_no_config"
 
         channel_id = int(stored.discord_channel_id)
-        # Unchanged from the ledger this table took over, so a broadcast
-        # already claimed before the rename is not posted a second time.
+        # Keep this key format: a broadcast already claimed under it is not
+        # posted a second time.
         dedupe_key = f"{event.kind}:{event.dedupe_key}"
 
-        workspace_name, image_url = await _branding(session, event.workspace_id, event.payload)
-        card = render_discord(
-            event.kind,
-            event.payload,
-            locale=stored.locale,
-            site_url=config.settings.public_site_url,
-            workspace_name=workspace_name,
-            image_url=image_url,
-        )
         command = await discord_messages.send_command(
             session,
             subject=f"broadcast:{dedupe_key}",
             slot="channel",
             kind=event.kind,
-            card=card,
             workspace_id=event.workspace_id,
             channel_id=channel_id,
             dedupe_key=dedupe_key,
+            payload=event.payload,
         )
         if command is None:
             return "duplicate"
@@ -166,31 +138,6 @@ class NotificationDeliveryService:
         await discord_messages.enqueue(session, [command])
         await session.commit()
         return "sent"
-
-
-async def _branding(
-    session: Any, workspace_id: int | None, payload: Mapping[str, Any]
-) -> tuple[str | None, str | None]:
-    """The organizer's name, and the card's picture: tournament logo, else workspace icon.
-
-    Read at delivery rather than snapshotted into the payload, so the card shows
-    the organizer's current branding; a row deleted since just leaves it plain.
-    """
-    name = icon = logo = None
-    if workspace_id is not None:
-        row = (
-            await session.execute(
-                sa.select(models.Workspace.name, models.Workspace.icon_url).where(models.Workspace.id == workspace_id)
-            )
-        ).first()
-        if row is not None:
-            name, icon = row
-    tournament_id = payload.get("tournament_id")
-    if isinstance(tournament_id, int):
-        logo = (
-            await session.execute(sa.select(models.Tournament.logo_url).where(models.Tournament.id == tournament_id))
-        ).scalar_one_or_none()
-    return name, logo or icon
 
 
 def _expired(expires_at: datetime | None) -> bool:

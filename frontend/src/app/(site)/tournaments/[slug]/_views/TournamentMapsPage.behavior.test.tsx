@@ -18,7 +18,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
-import type { MapRead } from "@/types/map.types";
+import { catalogMap, catalogMode } from "@/test/catalog";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { PickBanConfig, Stage } from "@/types/tournament.types";
 
 import TournamentMapsPage from "./TournamentMapsPage";
@@ -38,8 +39,8 @@ const getStages = vi.fn();
 vi.mock("@/services/pickBan.service", () => ({
   default: { listPublicConfigs: (...args: unknown[]) => listPublicConfigs(...args) }
 }));
-vi.mock("@/services/map.service", () => ({
-  default: { getAll: (...args: unknown[]) => getAllMaps(...args) }
+vi.mock("@/services/catalog.service", () => ({
+  default: { list: (...args: unknown[]) => getAllMaps(...args) }
 }));
 vi.mock("@/services/tournament.service", () => ({
   default: { getStages: (...args: unknown[]) => getStages(...args) }
@@ -87,32 +88,11 @@ vi.mock("next/image", () => ({
   )
 }));
 
-/**
- * Every field spelled out rather than cast into place: `tsconfig.json` excludes
- * test files, so a fixture that lies about its shape type-checks green and
- * feeds the component a hole.
- */
-function map(id: number, name: string, gamemode: string, gamemodeId: number): MapRead {
-  return {
-    id,
-    created_at: new Date("2025-01-01T00:00:00Z"),
-    updated_at: null,
+function map(id: number, name: string, gamemode: string, gamemodeId: number): CatalogEntityRead {
+  return catalogMap(id, { ...catalogMode(gamemodeId, gamemode), image_path: `/gamemodes/${gamemodeId}.jpg` }, {
     name,
-    image_path: `/maps/${id}.jpg`,
-    gamemode_id: gamemodeId,
-    in_competitive: true,
-    aliases: [],
-    gamemode: {
-      id: gamemodeId,
-      created_at: new Date("2025-01-01T00:00:00Z"),
-      updated_at: null,
-      name: gamemode,
-      image_path: `/gamemodes/${gamemodeId}.jpg`,
-      slug: gamemode.toLowerCase(),
-      description: "",
-      aliases: []
-    }
-  };
+    image_path: `/maps/${id}.jpg`
+  });
 }
 
 /**
@@ -122,7 +102,7 @@ function map(id: number, name: string, gamemode: string, gamemodeId: number): Ma
 const KINGS_ROW = map(45, "King's Row", "Hybrid", 2);
 const ILIOS = map(37, "Ilios", "Control", 1);
 const SURAVASA = map(91, "Suravasa", "Flashpoint", 4);
-const MAPS: MapRead[] = [KINGS_ROW, ILIOS, SURAVASA];
+const MAPS: CatalogEntityRead[] = [KINGS_ROW, ILIOS, SURAVASA];
 
 const GROUP_ID = 177;
 const PLAYOFF_ID = 188;
@@ -222,7 +202,7 @@ async function render(query?: string) {
     root.render(
       <QueryClientProvider client={client}>
         <NextIntlClientProvider locale="en" messages={en}>
-          <TournamentMapsPage tournamentId={TOURNAMENT_ID} slug={SLUG} />
+          <TournamentMapsPage tournamentId={TOURNAMENT_ID} slug={SLUG} discipline="overwatch" />
         </NextIntlClientProvider>
       </QueryClientProvider>
     );

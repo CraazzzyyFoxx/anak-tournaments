@@ -1,11 +1,13 @@
 // @vitest-environment happy-dom
 import { act, useEffect, useState, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ParsedMatchesBrowser } from "@/components/admin/ParsedMatchesBrowser";
 import type { AdminMatchRow, AdminMatchesQuery, LogRecordRef } from "@/types/admin.types";
+import messages from "@/i18n/messages/en.json";
+import { LOL_GAME, OW_GAME } from "@/test/game-scope";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -23,26 +25,47 @@ vi.mock("@/services/admin.service", () => ({
   }
 }));
 
-// The map chip's options come from the global map catalogue.
-vi.mock("@/services/map.service", () => ({
-  default: { lookup: (...args: unknown[]) => mapsLookup(...args) }
+// The map chip's options come from the browsing game's native map catalogue.
+vi.mock("@/services/catalog.service", () => ({
+  default: { list: (...args: unknown[]) => mapsLookup(...args) }
 }));
 
+// One tournament per game: the chip offers both under every game, and its game is the map catalogue's.
 vi.mock("@/services/tournament.service", () => ({
-  default: { getAll: vi.fn().mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 }) }
+  default: {
+    getAll: vi.fn().mockResolvedValue({
+      results: [
+        { id: 3, name: "Spring Cup", discipline: "overwatch" },
+        { id: 4, name: "Rift Cup", discipline: "lol" }
+      ],
+      total: 2,
+      page: 1,
+      per_page: -1
+    })
+  }
 }));
 
-/**
- * `router.replace` in the app writes the URL and re-renders the tree from the
- * new `useSearchParams`. Here it writes `window.history` and pokes the harness,
- * so a chip written to the URL is read back exactly as it is in the browser.
- */
-const replace = vi.fn((url: string) => {
-  window.history.replaceState(null, "", url);
-  rerender?.();
+vi.mock("@/hooks/useGameDescriptors", async () => {
+  const { GAME_DESCRIPTORS } = await import("@/test/game-scope");
+  return { useGameDescriptors: () => GAME_DESCRIPTORS };
 });
 
+/**
+ * In the app every URL write re-renders the tree from the new
+ * `useSearchParams`: `router.replace` through the router, a native
+ * `history.replaceState` (the inspector's `shallow` write) through Next's
+ * History patch. Both land here as "write `window.history`, poke the harness",
+ * so a chip or an open row is read back exactly as it is in the browser.
+ */
+const replace = vi.fn((url: string) => window.history.replaceState(null, "", url));
+
 let rerender: (() => void) | null = null;
+
+const nativeReplaceState = window.history.replaceState.bind(window.history);
+window.history.replaceState = (data, unused, url) => {
+  nativeReplaceState(data, unused, url);
+  rerender?.();
+};
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin/matches",
@@ -51,10 +74,12 @@ vi.mock("next/navigation", () => ({
 }));
 
 // The detail body has its own behaviour suite; here it only has to report
-// whether the browser handed it a row.
-vi.mock("@/components/admin/ParsedMatchDetail", () => ({
+// whether the browser handed it a row. Its status pill stays real: the table
+// cell renders it.
+vi.mock("@/components/admin/ParsedMatchDetail", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   ParsedMatchDetail: ({ row }: { row: AdminMatchRow }) => (
-    <div data-testid="detail">{row.map_name}</div>
+    <div data-testid="detail">{row.map.name}</div>
   )
 }));
 
@@ -95,11 +120,18 @@ function Harness({ render }: Readonly<{ render: () => ReactNode }>) {
   return <>{render()}</>;
 }
 
+// A popover left open closes on the next test's outside pointerdown, after its portal is gone: unmount every root.
+const roots: Root[] = [];
+afterEach(async () => {
+  await act(async () => roots.splice(0).forEach((root) => root.unmount()));
+});
+
 async function mount(render: () => ReactNode) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const root = createRoot(container);
+  roots.push(root);
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
@@ -124,10 +156,10 @@ function chipTrigger(scope: ParentNode) {
   return scope.querySelector<HTMLButtonElement>('button[aria-label="Add filter"]');
 }
 
-/** The chip popover portals out of the table, so options are document-wide. */
+/** The chip popover portals out of the table, so options are document-wide; an option's label sits beside its game mark. */
 function commandItem(label: string) {
-  return Array.from(document.querySelectorAll('[cmdk-item=""]')).find(
-    (item) => item.textContent?.trim().startsWith(label)
+  return Array.from(document.querySelectorAll('[cmdk-item=""]')).find((item) =>
+    (item.querySelector(".truncate") ?? item).textContent?.trim().startsWith(label)
   );
 }
 
@@ -181,14 +213,21 @@ function row(overrides: Partial<AdminMatchRow> = {}): AdminMatchRow {
     tournament_id: 3,
     tournament_name: "Spring Cup",
     map_id: 5,
-    map_name: "Ilios",
-    home_team: { id: 1, name: "Alpha" },
-    away_team: { id: 2, name: "Beta" },
-    home_score: 2,
-    away_score: 1,
-    time: 600,
+    map: { id: 8, name: "Ilios", discipline: "overwatch", kind: "map", slug: "ilios", image_path: null, parent_id: null, parent: null, attrs: {}, active: true, aliases: [], created_at: "2026-01-01T00:00:00Z", updated_at: null },
+    participants: [
+      { encounter_team_id: 1, slot: 1, source_position: 0, tournament_team_id: 1, name: "Alpha", result: null, team_facts: { score: 2 } },
+      { encounter_team_id: 2, slot: 2, source_position: 1, tournament_team_id: 2, name: "Beta", result: null, team_facts: { score: 1 } }
+    ],
+    workspace_id: 1,
+    discipline: "overwatch",
+    encounter_game_id: null,
+    map_index: 1,
+    played_at: null,
+    updated_at: null,
+    raw_status: null,
+    raw_available: false,
+    duration_s: 600,
     log_name: "alpha-beta-ilios.txt",
-    code: "ABC123",
     created_at: "2026-01-01T00:00:00Z",
     log_record: record(),
     ...overrides
@@ -204,17 +243,21 @@ describe("ParsedMatchesBrowser", () => {
     listAdminMatches.mockReset();
     listAdminMatches.mockResolvedValue(pageOf([row()]));
     mapsLookup.mockReset();
-    mapsLookup.mockResolvedValue([
-      { id: 5, name: "Ilios" },
-      { id: 6, name: "Nepal" }
-    ]);
+    mapsLookup.mockResolvedValue({
+      results: [
+        { id: 5, name: "Ilios" },
+        { id: 6, name: "Nepal" }
+      ]
+    });
     replace.mockClear();
     window.history.replaceState(null, "", "/admin/matches");
+    // Desktop unless a case narrows it: below `md` the table renders cards.
+    Object.defineProperty(window, "innerWidth", { value: 1280, configurable: true });
     document.body.innerHTML = "";
   });
 
   it("renders each parsed map through the shared admin table", async () => {
-    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
     await waitFor(() => bodyText(container).includes("Ilios"), "the parsed map row");
 
     // The house browser, not a hand-rolled list: a real table with a toolbar.
@@ -225,90 +268,90 @@ describe("ParsedMatchesBrowser", () => {
     expect(text).toContain("2 – 1");
   });
 
-  it("scopes the request to the workspace and pins the tournament when given", async () => {
+  it("scopes the request to the workspace and offers no tournament chip when the hub owns it", async () => {
     await mount(() => (
-      <ParsedMatchesBrowser tournamentId={9} workspaceId={4} tournamentName="Spring Cup" />
+      <ParsedMatchesBrowser tournamentId={9} discipline="overwatch" workspaceId={4} />
     ));
     await waitFor(() => listAdminMatches.mock.calls.length > 0, "the list request");
 
     expect(lastQuery().workspace_id).toBe(4);
     expect(lastQuery().tournament_id).toBe(9);
-    // Pinned: the hub owns the scope, so the chip carries no remove control.
-    const pinned = document.querySelector('[data-pinned-filter="tournament"]');
-    expect(pinned?.textContent).toContain("Spring Cup");
-    expect(activeChip("Tournament: Spring Cup")).toBeNull();
+    // The hub owns the scope: there is no tournament chip to show or remove.
+    expect(document.querySelector('button[aria-label^="Remove filter Tournament"]')).toBeNull();
   });
 
-  it("maps the unresolved chip to the one filter a status cannot express", async () => {
-    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
+  it("maps the no-raw-log chip to the one filter a status cannot express", async () => {
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
     await waitFor(() => listAdminMatches.mock.calls.length > 0, "the list request");
 
     // `unlinked_only` is a second query param, so `log_status` cannot carry it.
-    await pickChip(container, "Provenance unresolved");
+    await pickChip(container, messages.adminMatches.parsed.noRawLog);
     expect(lastQuery().unlinked_only).toBe(true);
     expect(lastQuery().log_status).toBeUndefined();
     // It is in the URL, so the narrowed list is linkable.
     expect(new URLSearchParams(window.location.search).get("unlinked_only")).toBe("1");
 
-    await click(activeChip("Provenance unresolved"));
+    await click(activeChip(messages.adminMatches.parsed.noRawLog));
     expect(lastQuery().unlinked_only).toBeUndefined();
     expect(lastQuery().log_status).toBeUndefined();
   });
 
-  it("sends a picked provenance status as the endpoint's log_status", async () => {
-    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
+  it.each([
+    { status: "failed", label: "Failed" },
+    { status: "awaiting_link", label: "Awaiting link" }
+  ] as const)("renders and filters the $status provenance status", async ({ status, label }) => {
+    listAdminMatches.mockResolvedValue(pageOf([row({ log_record: record({ status }) })]));
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
     await waitFor(() => listAdminMatches.mock.calls.length > 0, "the list request");
 
-    await pickChip(container, "Ingestion status", "Failed");
+    await waitFor(() => container.textContent?.includes(label), "the provenance status");
+    await pickChip(container, "Ingestion status", label);
 
-    // All four statuses are reachable, and the one the endpoint repeats per
-    // value stays a list.
-    expect(lastQuery().log_status).toEqual(["failed"]);
+    expect(lastQuery().log_status).toEqual([status]);
     expect(lastQuery().unlinked_only).toBeUndefined();
-    expect(new URLSearchParams(window.location.search).get("log_status")).toBe("failed");
+    expect(new URLSearchParams(window.location.search).get("log_status")).toBe(status);
   });
 
   it("sends a map picked from the catalogue as map_id", async () => {
-    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
     await waitFor(() => listAdminMatches.mock.calls.length > 0, "the list request");
 
     await pickChip(container, "Map", "Nepal");
 
-    // The endpoint's free-text search covers log name, match code and team
-    // names — never the map — so this filter is the only way to one map.
+    // Map selection is a distinct filter, not part of free-text search.
     expect(lastQuery().map_id).toBe(6);
   });
 
   it("returns to the first page when a chip narrows the result set", async () => {
     // Two pages' worth, so the pager renders and page 2 is reachable.
     listAdminMatches.mockResolvedValue(pageOf([row()], 60));
-    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
     const second = await waitFor(
-      () => container.querySelector('[aria-label="Page 2"]'),
+      () => container.querySelector('[aria-label="Go to page 2"]'),
       "the second page button"
     );
 
     await click(second);
     expect(lastQuery().page).toBe(2);
 
-    await pickChip(container, "Provenance unresolved");
+    await pickChip(container, messages.adminMatches.parsed.noRawLog);
 
     // Without the reset, a narrower filter lands on a page that no longer exists.
     expect(new URLSearchParams(window.location.search).get("page")).toBeNull();
   });
 
-  it("calls an unlinked map unresolved, never failed", async () => {
-    listAdminMatches.mockResolvedValue(pageOf([row({ log_record: null })]));
-    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
-    await waitFor(() => bodyText(container).includes("Ilios"), "the parsed map row");
-
-    // Scoped to the rows: "Failed" is also a chip option label.
-    expect(bodyText(container)).toContain("unresolved");
-    expect(bodyText(container)).not.toContain("failed");
+  it("keeps maps without raw logs available for inspection", async () => {
+    listAdminMatches.mockResolvedValue(pageOf([row({ duration_s: null, log_name: null, log_record: null })]));
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
+    const first = await waitFor(() => dataRows(container)[0], "the parsed map row");
+    expect(first.textContent).toContain("Ilios");
+    expect(first.textContent).toContain("2 – 1");
+    await click(first);
+    expect(new URLSearchParams(window.location.search).get("id")).toBe("1");
   });
 
   it("opens the inspector for the clicked row and records it in the URL", async () => {
-    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
     const first = await waitFor(() => dataRows(container)[0], "the first data row");
     expect(container.querySelector('[data-testid="detail"]')).toBeNull();
 
@@ -320,7 +363,7 @@ describe("ParsedMatchesBrowser", () => {
 
   it("restores the open row from ?id= on load", async () => {
     window.history.replaceState(null, "", "/admin/matches?id=1");
-    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
 
     // The inspector is the row detail surface, so a deep link opens it.
     const detail = await waitFor(
@@ -331,9 +374,89 @@ describe("ParsedMatchesBrowser", () => {
   });
 
   it("asks for nothing until a workspace is chosen", async () => {
-    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={null} />);
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={null} />);
 
     expect(listAdminMatches).not.toHaveBeenCalled();
     expect(container.textContent).toContain("scoped to a workspace");
+  });
+
+  it("lists every game's maps with a Game column and applies the tournament chip when no game is chosen", async () => {
+    window.history.replaceState(null, "", "/admin/matches?tournament=3&map_id=5");
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline={null} workspaceId={4} />);
+    await waitFor(() => bodyText(container).includes("Ilios"), "the parsed map row");
+
+    // Spring Cup is Overwatch's: its catalogue backs the map chip, so the URL's map is read too.
+    await waitFor(() => lastQuery().map_id === 5, "the map-scoped request");
+    expect(lastQuery().discipline).toBeUndefined();
+    expect(lastQuery().tournament_id).toBe(3);
+    expect(mapsLookup).toHaveBeenLastCalledWith("overwatch", "map", expect.anything(), expect.anything());
+    expect(bodyText(container)).toContain("Overwatch");
+    expect(activeChip("Tournament: Spring Cup")).not.toBeNull();
+  });
+
+  it("offers every game's tournaments and no map without a game or a tournament", async () => {
+    window.history.replaceState(null, "", "/admin/matches?map_id=5");
+    const container = await mount(() => (
+      <ParsedMatchesBrowser tournamentId={null} discipline={null} workspaceId={4} games={[OW_GAME, LOL_GAME]} />
+    ));
+    await waitFor(() => bodyText(container).includes("Ilios"), "the parsed map row");
+
+    // No game to take a catalogue from: the URL's map is not applied.
+    expect(lastQuery().map_id).toBeUndefined();
+    await click(chipTrigger(container));
+    await waitFor(() => commandItem("Tournament"), "the filter list");
+    expect(commandItem("Game")).toBe(document.querySelector('[cmdk-item=""]'));
+    expect(commandItem("Map")).toBeUndefined();
+    await click(commandItem("Tournament"));
+    await waitFor(() => commandItem("Rift Cup"), "the tournament options");
+    expect(commandItem("Spring Cup")).toBeDefined();
+  });
+
+  it("drops the map when another tournament is picked without a game", async () => {
+    window.history.replaceState(null, "", "/admin/matches?tournament=3&map_id=5");
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline={null} workspaceId={4} />);
+    await waitFor(() => lastQuery().map_id === 5, "the map-scoped request");
+
+    await pickChip(container, "Tournament", "Rift Cup");
+
+    const url = new URLSearchParams(window.location.search);
+    expect(url.get("tournament")).toBe("4");
+    expect(url.has("map_id")).toBe(false);
+  });
+
+  it("a game pick drops the map always and the tournament only when it is another game's", async () => {
+    window.history.replaceState(null, "", "/admin/matches?tournament=3&map_id=5&unlinked_only=1");
+    const container = await mount(() => (
+      <ParsedMatchesBrowser tournamentId={null} discipline={null} workspaceId={4} games={[OW_GAME, LOL_GAME]} />
+    ));
+    await waitFor(() => lastQuery().map_id === 5, "the map-scoped request");
+
+    await pickChip(container, "Game", "Overwatch");
+    let url = new URLSearchParams(window.location.search);
+    expect(url.get("discipline")).toBe("overwatch");
+    expect(url.get("tournament")).toBe("3");
+    expect(url.has("map_id")).toBe(false);
+
+    await pickChip(container, "Game", "League of Legends");
+    url = new URLSearchParams(window.location.search);
+    expect(url.get("discipline")).toBe("lol");
+    expect(url.has("tournament")).toBe(false);
+    expect(url.get("unlinked_only")).toBe("1");
+  });
+
+  it("narrows the list to the chosen game on the server", async () => {
+    await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
+    await waitFor(() => listAdminMatches.mock.calls.length > 0, "the list request");
+
+    expect(lastQuery().discipline).toBe("lol");
+  });
+
+  it("names each card's game below md under all games, where the Game column is not shown", async () => {
+    Object.defineProperty(window, "innerWidth", { value: 375, configurable: true });
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline={null} workspaceId={4} />);
+    const card = await waitFor(() => container.querySelector("ul[aria-label='Rows'] > li"), "the mobile card");
+
+    expect(card.textContent).toContain("Ilios");
+    expect(card.textContent).toContain("Overwatch");
   });
 });

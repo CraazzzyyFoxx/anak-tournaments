@@ -6,10 +6,13 @@ import { ArrowUpRight, ChevronDown } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import TeamName from "@/components/TeamName";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { withReturnTo } from "@/lib/auth/return-to";
-import { isEncounterCompleted } from "@/lib/encounter/status";
+import { encounterSeatScore } from "@/lib/encounter/detail";
+import { getEncounterWinner, isEncounterCompleted } from "@/lib/encounter/status";
+import { seatAt, seatTeam, type DuelSlot } from "@/lib/encounter/seats";
 import { cn } from "@/lib/utils";
-import type { Encounter } from "@/types/encounter.types";
+import type { Encounter, Match } from "@/types/encounter.types";
 
 import styles from "../TournamentDetail.module.css";
 
@@ -42,20 +45,24 @@ export function MatchRow({
 }: Readonly<MatchRowProps>) {
   const t = useTranslations();
   const completed = isEncounterCompleted(encounter);
-  const home = encounter.score?.home ?? 0;
-  const away = encounter.score?.away ?? 0;
-  const hasScore = completed || home !== 0 || away !== 0;
-  const winner: "home" | "away" | null = completed ? (home > away ? "home" : away > home ? "away" : null) : null;
+  const seatScoreLabel = (map: Match) => {
+    const score = encounterSeatScore(map, encounter);
+    return score ? `${score.one} : ${score.two}` : "—";
+  };
+  const scoreOne = seatAt(encounter.teams, 1)?.score ?? 0;
+  const scoreTwo = seatAt(encounter.teams, 2)?.score ?? 0;
+  const hasScore = completed || scoreOne !== 0 || scoreTwo !== 0;
+  const winner = getEncounterWinner(encounter);
   const maps = encounter.matches ?? [];
   const expandable = maps.length > 0;
 
-  const side = (which: "home" | "away") => {
-    const won = winner === which;
+  const side = (slot: DuelSlot) => {
+    const won = winner === slot;
     const lost = winner !== null && !won;
-    const team = which === "home" ? encounter.home_team : encounter.away_team;
+    const team = seatTeam(seatAt(encounter.teams, slot));
     return (
       <span
-        data-cell={which}
+        data-cell={`t${slot}`}
         className={cn(
           "flex min-w-0",
           won && "font-semibold text-[color:var(--aqt-fg)]",
@@ -66,24 +73,24 @@ export function MatchRow({
           team={team}
           fallback={t("common.tbd")}
           size="sm"
-          // The home name leans on the score from the left on the scoreboard
+          // Slot 1's name leans on the score from the left on the scoreboard
           // line; stacked under 640px both names read from the left edge.
-          className={which === "home" ? "sm:flex-row-reverse" : undefined}
+          className={slot === 1 ? "sm:flex-row-reverse" : undefined}
         />
       </span>
     );
   };
 
-  const score = (which: "home" | "away") => (
+  const score = (slot: DuelSlot) => (
     <span
-      data-cell={which === "home" ? "hs" : "as"}
+      data-cell={`s${slot}`}
       className={cn(
         styles.score,
-        winner === which ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg-muted)]",
+        winner === slot ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg-muted)]",
         !hasScore && "text-[color:var(--aqt-fg-faint)] sm:invisible"
       )}
     >
-      {hasScore ? (which === "home" ? home : away) : "–"}
+      {hasScore ? (slot === 1 ? scoreOne : scoreTwo) : "–"}
     </span>
   );
 
@@ -101,13 +108,13 @@ export function MatchRow({
       <span data-cell="lead" className="min-w-0 text-label text-[color:var(--aqt-fg-faint)]">
         {leading}
       </span>
-      {side("home")}
-      {score("home")}
+      {side(1)}
+      {score(1)}
       <span data-cell="dash" className={cn(styles.score, "text-center font-normal text-[color:var(--aqt-fg-faint)]")}>
         {hasScore ? "–" : <span className="text-label uppercase">vs</span>}
       </span>
-      {score("away")}
-      {side("away")}
+      {score(2)}
+      {side(2)}
       <span data-cell="act" className="flex items-center justify-end gap-2 text-label text-[color:var(--aqt-fg-faint)]">
         {trailing ? <span className="hidden whitespace-nowrap sm:inline">{trailing}</span> : null}
         {bracketHref ? (
@@ -148,26 +155,26 @@ export function MatchRow({
         {summary}
       </summary>
       <div className="mx-3.5 mb-2 border-l-2 border-[color:var(--aqt-border)] py-1 pl-3 text-caption sm:ml-[6rem]">
-        <div className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)_4rem_4rem_auto] gap-2 py-0.5 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+        <Eyebrow as="div" className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)_4rem_4rem_auto] gap-2 py-0.5">
           <span>{t("tournamentDetail.matchRow.map")}</span>
           <span>{t("tournamentDetail.matchRow.mode")}</span>
           <span className="text-right">{t("tournamentDetail.matchRow.score")}</span>
           <span className="text-right">{t("tournamentDetail.matchRow.duration")}</span>
           <span />
-        </div>
+        </Eyebrow>
         {maps.map((map) => (
           <div
             key={map.id}
             className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)_4rem_4rem_auto] items-center gap-2 py-1"
           >
             <span className="truncate font-semibold">{map.map?.name ?? "—"}</span>
-            <span className="truncate text-[color:var(--aqt-fg-muted)]">{map.map?.gamemode?.name ?? "—"}</span>
+            <span className="truncate text-[color:var(--aqt-fg-muted)]">{(map.mode ?? map.map?.parent)?.name ?? "—"}</span>
             <span className="text-right tabular-nums">
-              {map.score ? `${map.score.home} : ${map.score.away}` : "—"}
+              {seatScoreLabel(map)}
             </span>
             <span className="text-right tabular-nums">
-              {map.time != null
-                ? `${Math.floor(map.time / 60)}:${String(Math.round(map.time % 60)).padStart(2, "0")}`
+              {map.duration_s != null
+                ? `${Math.floor(map.duration_s / 60)}:${String(Math.round(map.duration_s % 60)).padStart(2, "0")}`
                 : "—"}
             </span>
             <span className="flex justify-end gap-2 text-label">

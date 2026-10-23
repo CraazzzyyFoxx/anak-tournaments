@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import os
+import asyncio
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest import IsolatedAsyncioTestCase, TestCase
+from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
+
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 BALANCER_SERVICE_ROOT = REPO_BACKEND_ROOT / "balancer-service"
@@ -14,22 +16,27 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
+from shared import models  # noqa: E402
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
-from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
+from shared.domain.team_format import FormatDimension, TeamFormat  # noqa: E402
 from shared.quota import QuotaLease  # noqa: E402
+from shared.services import team_format as formats  # noqa: E402
+from shared.services.ontology import project_disciplines  # noqa: E402
+from shared.testing import create_test_async_engine  # noqa: E402
+from shared.testing.db import ensure_test_postgres  # noqa: E402
+from src.schemas.balancer import TeamData  # noqa: E402
 from src.services.balancer import jobs  # noqa: E402
 from src.services.balancer import solver as solver_module  # noqa: E402
-from src.services.balancer.config.provider import get_balancer_config_payload  # noqa: E402
 
 JOBS = "src.services.balancer.jobs"
-FLEX_SHAPE = parse_roster_slots({"tank": 1, "flex": 4})
+FLEX_SHAPE = RosterShape(entries=tuple({"tank": 1, "flex": 4}.items()))
 
 
 def _shape_resolver(shape=FLEX_SHAPE) -> AsyncMock:
     """Stand in for the DB-backed roster-shape lookup ``create_job`` performs."""
-    return AsyncMock(return_value=shape)
+    return AsyncMock(return_value={"role_mask": shape.slots})
 
 
 def _noop_quota(**overrides) -> SimpleNamespace:
@@ -72,11 +79,6 @@ def _api_key_user(*, scopes: list[str], workspace_id: int = 77) -> SimpleNamespa
         and resource == "team"
         and action == "create",
     )
-
-
-class GetConfigTests(TestCase):
-    def test_returns_same_payload_as_provider(self) -> None:
-        self.assertEqual(jobs.get_config(), get_balancer_config_payload())
 
 
 class CreateJobTests(IsolatedAsyncioTestCase):
@@ -135,7 +137,7 @@ class CreateJobTests(IsolatedAsyncioTestCase):
             patch(f"{JOBS}._access_policy", access_policy),
             patch(f"{JOBS}._payload_parser", FakeParser()),
             patch(f"{JOBS}.BalancerJobPublisher", FakePublisher),
-            patch(f"{JOBS}.get_effective_roster_shape", _shape_resolver()),
+            patch(f"{JOBS}._owner_format_context", _shape_resolver()),
         ):
             response = await jobs.create_job(
                 session=SimpleNamespace(),
@@ -148,6 +150,16 @@ class CreateJobTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(response.job_id, "job-123")
         self.assertEqual(response.status, "queued")
+        # Only routes the gateway serves, under its canonical prefix.
+        self.assertEqual(
+            response.model_dump(),
+            {
+                "job_id": "job-123",
+                "status": "queued",
+                "status_url": "/api/v1/balancer/jobs/job-123",
+                "result_url": "/api/v1/balancer/jobs/job-123/result",
+            },
+        )
         self.assertEqual(created["workspace_id"], 77)
         self.assertEqual(created["created_by"], 9)
         self.assertEqual(created["published_job_id"], "job-123")
@@ -190,7 +202,7 @@ class CreateJobTests(IsolatedAsyncioTestCase):
             patch(f"{JOBS}._payload_parser", FakeParser()),
             patch(f"{JOBS}.BalancerJobPublisher", FakePublisher),
             patch(f"{JOBS}._emit_job", emit),
-            patch(f"{JOBS}.get_effective_roster_shape", _shape_resolver()),
+            patch(f"{JOBS}._owner_format_context", _shape_resolver()),
         ):
             await jobs.create_job(
                 session=SimpleNamespace(),
@@ -255,7 +267,7 @@ class CreateJobTests(IsolatedAsyncioTestCase):
             patch(f"{JOBS}.quota", gate),
             patch(f"{JOBS}._payload_parser", FakeParser()),
             patch(f"{JOBS}.BalancerJobPublisher", FakePublisher),
-            patch(f"{JOBS}.get_effective_roster_shape", _shape_resolver()),
+            patch(f"{JOBS}._owner_format_context", _shape_resolver()),
         ):
             response = await jobs.create_job(
                 session=SimpleNamespace(),
@@ -305,6 +317,112 @@ class CreateJobTests(IsolatedAsyncioTestCase):
         self.assertEqual(exc_info.exception.status_code, 403)
         self.assertEqual(exc_info.exception.detail, "API key scope required: team.create")
         gate.lease.assert_not_awaited()
+
+    async def test_upload_rejects_tournament_from_another_workspace(self) -> None:
+        gate = _noop_quota()
+        store = SimpleNamespace(create_job=AsyncMock())
+        with (
+            patch(f"{JOBS}.get_job_store", return_value=store),
+            patch(f"{JOBS}.quota", gate),
+            patch(
+                f"{JOBS}._payload_parser",
+                SimpleNamespace(
+                    parse_player_data=AsyncMock(return_value={"players": {}}),
+                    parse_config_overrides=lambda value: None,
+                ),
+            ),
+            patch(
+                f"{JOBS}.TournamentRepository",
+                return_value=SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(id=10, workspace_id=88))),
+            ),
+            patch(f"{JOBS}.tournament_format", AsyncMock()) as load_format,
+            self.assertRaises(HTTPException) as exc_info,
+        ):
+            await jobs.create_job(
+                session=SimpleNamespace(),
+                uploaded_file=SimpleNamespace(filename="players.json", size=10),
+                raw_config=None,
+                workspace_id=77,
+                user=_api_key_user(scopes=["team.create"]),
+                broker=SimpleNamespace(),
+                tournament_id=10,
+            )
+        self.assertEqual(exc_info.exception.status_code, 404)
+        self.assertEqual(exc_info.exception.detail, "Tournament not found")
+        load_format.assert_not_awaited()
+        gate.lease.assert_not_awaited()
+        store.create_job.assert_not_awaited()
+
+
+class CreateJobFormatIntegrationTests(IsolatedAsyncioTestCase):
+    if sys.platform == "win32":
+        loop_factory = asyncio.SelectorEventLoop
+
+    async def test_job_uses_workspace_default_or_preset_without_a_tournament(self) -> None:
+        ensure_test_postgres()
+        engine = create_test_async_engine()
+        try:
+            async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+                await project_disciplines(session)
+                workspace = models.Workspace(slug="job-format-test", name="Job format test")
+                session.add(workspace)
+                await session.flush()
+                store = SimpleNamespace(create_job=AsyncMock(return_value="format-job"))
+                parser = SimpleNamespace(
+                    parse_player_data=AsyncMock(return_value={"players": {}}),
+                    parse_config_overrides=lambda value: None,
+                )
+                with (
+                    patch(f"{JOBS}.get_job_store", return_value=store),
+                    patch(f"{JOBS}.quota", _noop_quota()),
+                    patch(f"{JOBS}._payload_parser", parser),
+                    patch(
+                        f"{JOBS}.BalancerJobPublisher", return_value=SimpleNamespace(publish_job_requested=AsyncMock())
+                    ),
+                ):
+                    for expected in ({"tank": 1, "damage": 2, "support": 2}, {"flex": 6}):
+                        response = await jobs.create_job(
+                            session=session,
+                            uploaded_file=SimpleNamespace(filename="players.json", size=10),
+                            raw_config=None,
+                            workspace_id=workspace.id,
+                            user=_api_key_user(scopes=["team.create"], workspace_id=workspace.id),
+                            broker=SimpleNamespace(),
+                            discipline="overwatch",
+                        )
+                        assert response.job_id == "format-job"
+                        assert store.create_job.await_args.kwargs["role_mask"] == expected
+                        assert store.create_job.await_args.kwargs["tournament_id"] is None
+                        snapshot = store.create_job.await_args.args[0]["format_context"]
+                        decoded = solver_module._format_kwargs({"format_context": snapshot})
+                        assert decoded["team_format"].discipline == "overwatch"
+                        assert decoded["ontology"].rated.code == "player_role"
+                        await formats.save_workspace_format(
+                            session,
+                            workspace_id=workspace.id,
+                            discipline="overwatch",
+                            team_format=TeamFormat(
+                                "overwatch", "Open six", 6, 6, dimensions=(FormatDimension("player_role", "off"),)
+                            ),
+                        )
+                    # An upload names its game: none, or one the workspace has not enabled, is refused before any job.
+                    for discipline in (None, "lol"):
+                        store.create_job.reset_mock()
+                        with self.assertRaises(HTTPException) as refused:
+                            await jobs.create_job(
+                                session=session,
+                                uploaded_file=SimpleNamespace(filename="players.json", size=10),
+                                raw_config=None,
+                                workspace_id=workspace.id,
+                                user=_api_key_user(scopes=["team.create"], workspace_id=workspace.id),
+                                broker=SimpleNamespace(),
+                                discipline=discipline,
+                            )
+                        assert refused.exception.status_code == 422
+                        store.create_job.assert_not_awaited()
+                await session.rollback()
+        finally:
+            await engine.dispose()
 
 
 def _make_fake_store(payload: dict, *, fail_marks: bool = False, optimizing_messages: list | None = None):
@@ -374,7 +492,7 @@ class ExecuteJobTests(IsolatedAsyncioTestCase):
         )
         seen: dict = {}
 
-        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None):
+        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None, *, discipline=None):
             seen["role_mask"] = role_mask
             progress_callback({"status": "running", "stage": "optimizing", "message": "Working"})
             return {"variants": [dict(_VARIANT)]}
@@ -399,7 +517,7 @@ class ExecuteJobTests(IsolatedAsyncioTestCase):
             optimizing_messages=messages,
         )
 
-        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None):
+        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None, *, discipline=None):
             progress_callback(
                 {"status": "running", "stage": "optimizing", "message": "Phase 1", "progress": {"percent": 0.0}}
             )
@@ -424,7 +542,7 @@ class ExecuteJobTests(IsolatedAsyncioTestCase):
         )
         seen: dict = {}
 
-        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None):
+        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None, *, discipline=None):
             seen["config_overrides"] = config_overrides
             seen["role_mask"] = role_mask
             return {"variants": [dict(_VARIANT)]}
@@ -451,6 +569,7 @@ class BalanceInlineTests(IsolatedAsyncioTestCase):
             "role_mask": {"tank": 1, "flex": 4},
             "config_overrides": None,
             "workspace_id": 77,
+            "discipline": "overwatch",
             "user": _api_key_user(scopes=["team.create"]),
         }
         kwargs.update(overrides)
@@ -467,7 +586,7 @@ class BalanceInlineTests(IsolatedAsyncioTestCase):
     async def test_caller_cannot_exceed_the_synchronous_solver_budget(self) -> None:
         seen: dict = {}
 
-        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None):
+        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None, *, discipline=None):
             seen.update(config=config_overrides, role_mask=role_mask, callback=progress_callback)
             return {"variants": [dict(_VARIANT)]}
 
@@ -494,7 +613,7 @@ class BalanceInlineTests(IsolatedAsyncioTestCase):
         """The caller never sent ``time_limit_ms``; the inline path sets its own."""
         seen: dict = {}
 
-        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None):
+        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None, *, discipline=None):
             seen.update(config=config_overrides)
             return {"variants": [dict(_VARIANT)]}
 
@@ -537,3 +656,22 @@ class SolverTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(result, {"variants": variants})
         to_thread.assert_awaited_once()
+
+
+def test_format_findings_survive_result_normalization() -> None:
+    team = {
+        "id": 1,
+        "name": "A",
+        "average_mmr": 0.0,
+        "rating_variance": 0.0,
+        "total_discomfort": 0,
+        "max_discomfort": 0,
+        "roster": {},
+        "format_violations": ["role_below_hard_min"],
+        "format_advisories": ["role_below_recommended_min"],
+    }
+    dumped = TeamData.model_validate(team).model_dump()
+    assert (dumped["format_violations"], dumped["format_advisories"]) == (
+        ["role_below_hard_min"],
+        ["role_below_recommended_min"],
+    )

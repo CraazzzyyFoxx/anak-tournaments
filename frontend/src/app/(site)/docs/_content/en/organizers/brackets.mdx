@@ -1,6 +1,6 @@
 A stage is one part of a tournament: a group phase, a Swiss round, or a playoff bracket. This page covers building stages, generating the bracket, and setting seeding, points and tiebreakers.
 
-It all lives in the admin: open **Tournaments**, pick the tournament and go to the **Bracket** tab. The stage list is on the left; the editor for the selected stage is on the right, with the sections **General**, **Seeding**, **Tiebreakers**, **Best-of**, **Round schedule**, **Bracket layout** and **Items**.
+It all lives in the admin: open **Tournaments**, pick the tournament and go to the **Bracket** tab. The stage list is on the left, each stage with its phase number and how many of its matches are played; the editor for the selected stage is on the right, with the tabs **Settings**, **Bracket layout**, **Standings** and **Items**. **Settings** is one page of cards: **General**, the **Bracket preview** under it, then **Seeding**, **Qualification & elimination** (Swiss only), **Points**, **Tiebreakers**, **Best-of** and **Round schedule**. One **Save changes** at the bottom saves all of it, the round times included; a card marked **Applies immediately** saves on its own.
 
 ## Stage formats
 
@@ -34,7 +34,7 @@ The stage header shows its status.
 
 The usual order is:
 
-1. Create the stage and wire teams into it (the **Items** section).
+1. Create the stage and wire teams into it (the **Items** tab).
 2. Press **Generate bracket** and check the result in **Bracket preview**.
 3. When it looks right, choose **Activate stage** — or **Activate & generate** to do both at once for a playoff bracket.
 
@@ -54,7 +54,7 @@ If you activate a stage while an earlier one still has open encounters, the plat
 
 ## Seeding
 
-The **Seeding** section.
+The **Seeding** block of **Settings**.
 
 - **Bracket seeds** decides who is seed 1 in the generated bracket: **Slot order (manual / standings)**, **Highest team avg SR first**, **Highest team total SR first** or **Random (stable per stage)**.
 - **Teams advancing to playoff (per group)** is how many teams leave each group. Leave it empty to derive the number from the bracket wiring. **Advance count per group** below overrides it for a single group.
@@ -75,11 +75,24 @@ The **Grand final** field in **General**:
 - **No reset** — the tournament ends at the grand final.
 - **With reset** — if the lower-bracket team wins the grand final, an extra **Grand Final Reset** match is created. It appears only in that case: if the upper-bracket team wins, the grand final is the last match.
 
+## Qualification and elimination
+
+On a Swiss stage the **Qualification & elimination** card ends a team's Swiss early, the way a CS Major does with "three wins through, three losses out":
+
+- **Auto-qualify after N wins** — a team with that many wins is qualified and is not paired again. A bye counts as a win.
+- **Auto-eliminate after N losses** — a team with that many losses is eliminated and is not paired again. A draw counts as neither.
+
+Each switch works on its own. Once fewer than two teams are left undecided, no further round is generated and the stage completes, even before **Swiss max rounds**. That field stays the cap: for every team to reach a verdict it has to be at least wins + losses − 1 (5 for 3 and 3), and the card warns when it is lower. A stage with a threshold is always played round by round, never generated as one round robin. Changing a threshold mid-stage takes effect from the next round.
+
+Under a switched-on threshold, **Best-of of a qualification match** and **Best-of of an elimination match** set the series length of a match in which a team is one win from qualifying or one loss from elimination. It overrides the round's best-of; a match that is both plays the longer series. **Regular** keeps the usual rule.
+
+Qualified and eliminated teams keep their places in the **Standings**, marked **Qualified** or **Eliminated**. Who goes on to the playoff is still decided by place, through **Teams advancing to playoff (per group)**. With equal thresholds exactly half of an even group qualifies, and the card warns when the advance count says otherwise.
+
 ## Points and tiebreakers
 
-Points for a result are set on the tournament: **Settings → Scoring**, fields **Win**, **Draw**, **Loss**. A single stage can override them in **Tiebreakers** — **Win points override**, **Draw points override**, **Loss points override**. An empty field means "same as the tournament".
+Points for a result are set on the tournament: **Settings → Scoring**, fields **Win**, **Draw**, **Loss**. A single stage can override them in **Points** — **Win points override**, **Draw points override**, **Loss points override**. An empty field means "same as the tournament".
 
-For Swiss, the same section has **Swiss bye points**: what a team scores for a round it sits out. It defaults to the win points.
+For Swiss, the same block has **Swiss bye points**: what a team scores for a round it sits out. It defaults to the win points.
 
 **Standings preset** picks a ready-made set of tiebreakers (**System default (based on type)**, **Challonge Swiss (Buchholz first)**, **Challonge Round Robin**, **Default bracket**), and the **Tiebreaker evaluation order** list below lets you reorder the steps with the arrows or switch off the ones you do not want — a metric that is switched off is simply not evaluated.
 

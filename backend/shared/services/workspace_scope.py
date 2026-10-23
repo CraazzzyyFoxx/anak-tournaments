@@ -1,17 +1,7 @@
 """Canonical workspace-scoping utilities for SQLAlchemy queries.
 
-``core/workspace.py`` was copy-pasted into four services with growing
-divergence: app-service and tournament-service carried a byte-identical
-~190-line copy (``resolve_workspace_context``, ``_JOIN_PATHS``,
-``apply_workspace_filter``, ...); parser-service kept a trimmed subset; and
-analytics-service's own module said outright "Mirrors
-parser-service/src/core/workspace.py — kept locally so v1 analytics code
-... keeps working". Every service's ``src.models.Tournament`` (etc.) is the
-same class object as ``shared.models.tournament.tournament.Tournament`` (each
-service's ``src/models/__init__.py`` only re-exports ``shared.models.*``), so
-the join-path logic keyed by these types works identically everywhere — this
-module is the single source of truth; each service's ``core/workspace.py``
-now re-exports the subset it uses.
+The join paths are keyed by model class (``shared.models``), so this one module
+serves every service.
 """
 
 from __future__ import annotations
@@ -106,12 +96,12 @@ class WorkspaceContext:
     Bundles the request-scoped `workspace_id`, the effective `DivisionGrid`
     (workspace-specific override or global fallback), and an optional
     `DivisionGridNormalizer` for mapping cross-version ranks. Built once per
-    request via `resolve_workspace_context(...)` so individual handlers stop
-    repeating the same 5-line resolution block.
+    request via `resolve_workspace_context(...)`.
     """
 
     id: int | None
-    grid: DivisionGrid
+    #: ``None`` for a no-game (cross-game) read: divisions live on one game's grid, and there is no game (R13).
+    grid: DivisionGrid | None
     normalizer: DivisionGridNormalizer | None = None
 
 
@@ -120,6 +110,7 @@ async def resolve_workspace_context(
     workspace_id: int | _AllWorkspaces | None,
     *,
     tournament_id: int | None = None,
+    discipline: str | None = None,
 ) -> WorkspaceContext:
     """Build a `WorkspaceContext` from a plain `workspace_id` (no FastAPI DI).
 
@@ -129,7 +120,10 @@ async def resolve_workspace_context(
     scope (``None``) raises ``400`` instead of silently spanning every workspace.
     """
     resolved_id = require_workspace_scope(workspace_id)
-    grid = await get_effective_division_grid(session, resolved_id, tournament_id=tournament_id)
+    if discipline is None:
+        # A no-game read reads no division (R13): never the first game's grid, never `division_grid_required`.
+        return WorkspaceContext(id=resolved_id, grid=None)
+    grid = await get_effective_division_grid(session, resolved_id, tournament_id=tournament_id, discipline=discipline)
     normalizer: DivisionGridNormalizer | None = None
     if resolved_id is not None:
         try:
@@ -137,6 +131,7 @@ async def resolve_workspace_context(
                 session,
                 resolved_id,
                 require_complete=False,
+                discipline=discipline,
             )
         except DivisionGridNormalizationError:
             normalizer = None
@@ -197,14 +192,10 @@ _JOIN_PATHS: dict[type, list[tuple]] = {
     models.Standing: [
         (models.Tournament, models.Standing.tournament_id == models.Tournament.id),
     ],
-    models.Match: [
-        (models.Encounter, models.Match.encounter_id == models.Encounter.id),
-        (models.Tournament, models.Encounter.tournament_id == models.Tournament.id),
-    ],
-    models.MatchStatistics: [
-        (models.Match, models.MatchStatistics.match_id == models.Match.id),
-        (models.Encounter, models.Match.encounter_id == models.Encounter.id),
-        (models.Tournament, models.Encounter.tournament_id == models.Tournament.id),
+    models.StatsMatch: [],
+    models.IngestJob: [],
+    models.StatsFact: [
+        (models.StatsMatch, models.StatsFact.match_id == models.StatsMatch.id),
     ],
 }
 
@@ -235,6 +226,11 @@ def apply_workspace_filter(
         for target_model, condition in _JOIN_PATHS[root]:
             query = query.join(target_model, condition, isouter=False)
 
+    if root in (models.StatsMatch, models.StatsFact):
+        return query.where(models.StatsMatch.workspace_id == workspace_id)
+    if root is models.IngestJob:
+        return query.where(models.IngestJob.workspace_id == workspace_id)
+
     return query.where(models.Tournament.workspace_id == workspace_id)
 
 
@@ -250,12 +246,12 @@ async def get_tournament_workspace_id(
     built globally when ``workspace_id`` is ``None``, silently diverging from
     the RPC recalculate job (which always passes ``job.workspace_id``). A
     tournament belongs to exactly one workspace, so resolving from it makes
-    every entry point — CLI, backfill, RPC — agree. Returns ``None`` if the
-    tournament does not exist (callers fall back to the prior global behaviour).
+    every entry point — CLI, backfill, RPC — agree.
 
-    Note: this returns ``None`` on a missing tournament — unlike the
-    RBAC-facing ``get_tournament_workspace_id`` in ``shared.rbac.workspace_lookup``,
-    which raises ``404`` because it gates access rather than scoping a read.
+    Returns ``None`` for a missing tournament (callers fall back to a global
+    computation) — unlike the RBAC-facing ``get_tournament_workspace_id`` in
+    ``shared.rbac.workspace_lookup``, which raises ``404`` because it gates
+    access rather than scoping a read.
     """
     return await _tournaments.get_workspace_id(session, tournament_id)
 
@@ -264,11 +260,14 @@ async def get_division_grid(
     session: AsyncSession,
     workspace_id: int | None,
     tournament_id: int | None = None,
+    *,
+    discipline: str | None = None,
 ) -> DivisionGrid:
     return await get_effective_division_grid(
         session,
         workspace_id,
         tournament_id=tournament_id,
+        discipline=discipline,
     )
 
 
@@ -276,9 +275,12 @@ async def get_division_grid_version(
     session: AsyncSession,
     workspace_id: int | None,
     tournament_id: int | None = None,
+    *,
+    discipline: str | None = None,
 ) -> DivisionGridVersion | None:
     return await get_effective_division_grid_version(
         session,
         workspace_id,
         tournament_id=tournament_id,
+        discipline=discipline,
     )

@@ -3,10 +3,10 @@
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 
-import { Combobox, ComboboxCheck } from "@/components/kit/Combobox";
+import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
 import { TeamCombobox } from "@/components/admin/TeamCombobox";
 import DivisionIcon from "@/components/DivisionIcon";
-import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CommandGroup, CommandItem } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
@@ -20,20 +20,15 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { resolveDivisionFromRank } from "@/lib/divisions/grid";
-import {
-  PLAYER_ROLE_OPTIONS,
-  filterSubRoleOptions,
-  normalizePlayerRole,
-  subRoleCatalogRole,
-  type PlayerRoleOption
-} from "@/lib/roster/player-role";
+import { ratedDimension, roleChoices, subRoleOptions, type RoleOntology } from "@/lib/roster/ontology";
+import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
 import type { PlayerCreateInput, PlayerSubRole, PlayerUpdateInput } from "@/types/admin.types";
 import type { Team } from "@/types/team.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 import { formatSubRoleLabel } from "@/lib/player";
-
-/** Shown on the sub-role field for a role the sub-role catalog has no rows for. */
+import { roleOf, subRoleOf, toRoleRef, type RoleRef } from "@/lib/roster/role-ref";
 
 export type PlayerFormMode = "create" | "edit";
 
@@ -42,9 +37,11 @@ export interface PlayerFormState {
   user_id: number;
   team_id: number;
   tournament_id: number;
+  /** A role code of the owner game's rated dimension, or `OPEN_SLOT_CODE` for none assigned. */
   role: string;
   sub_role: string;
-  rank: number;
+  /** `null` = no rank (cleared field); otherwise >= 1. */
+  rank: number | null;
   is_newcomer: boolean;
   is_substitution: boolean;
 }
@@ -52,9 +49,8 @@ export interface PlayerFormState {
 /** A participation the form can be opened on — the subset the fields read. */
 export interface PlayerFormSubject {
   name: string;
-  role: string | null;
-  sub_role: string | null;
-  rank: number;
+  role: RoleRef | null;
+  rank: number | null;
   is_newcomer: boolean;
   is_substitution: boolean;
 }
@@ -65,9 +61,9 @@ export function emptyPlayerForm(userId: number, tournamentId: number | null): Pl
     user_id: userId,
     team_id: 0,
     tournament_id: tournamentId ?? 0,
-    role: "Damage",
+    role: OPEN_SLOT_CODE,
     sub_role: "",
-    rank: 0,
+    rank: null,
     is_newcomer: false,
     is_substitution: false
   };
@@ -77,51 +73,39 @@ export function playerFormOf(subject: PlayerFormSubject, userId: number): Player
   return {
     ...emptyPlayerForm(userId, null),
     name: subject.name,
-    role: normalizePlayerRole(subject.role),
-    sub_role: subject.sub_role ?? "",
+    role: subject.role ? roleOf(subject.role) : OPEN_SLOT_CODE,
+    sub_role: subRoleOf(subject.role) ?? "",
     rank: subject.rank,
     is_newcomer: subject.is_newcomer,
     is_substitution: subject.is_substitution
   };
 }
 
-/**
- * Sub-role fragment of a player payload. A role with no sub-role catalog (Flex)
- * sends an explicit `null`, because omitting the key would leave an already
- * stored sub-role in place on a role that cannot have one.
- */
-function buildSubRolePayload(
-  role: PlayerRoleOption,
-  subRole: string
-): { sub_role?: string | null } {
-  if (subRoleCatalogRole(role) == null) return { sub_role: null };
-  return subRole ? { sub_role: subRole } : {};
+/** What the form writes as the role: nothing for the open slot, else the role (or its sub-role leaf) of the owner's rated dimension. */
+function roleRefOf(state: PlayerFormState, dimension: string): RoleRef | null {
+  return toRoleRef(state.role === OPEN_SLOT_CODE ? null : state.role, state.sub_role, dimension);
 }
 
-export function playerCreatePayload(state: PlayerFormState): PlayerCreateInput {
-  const role = normalizePlayerRole(state.role);
+export function playerCreatePayload(state: PlayerFormState, dimension: string): PlayerCreateInput {
   return {
     name: state.name.trim(),
     user_id: state.user_id,
     team_id: state.team_id,
     tournament_id: state.tournament_id,
-    role,
+    role: roleRefOf(state, dimension),
     rank: state.rank,
     is_newcomer: state.is_newcomer,
-    is_substitution: state.is_substitution,
-    ...buildSubRolePayload(role, state.sub_role)
+    is_substitution: state.is_substitution
   };
 }
 
-export function playerUpdatePayload(state: PlayerFormState): PlayerUpdateInput {
-  const role = normalizePlayerRole(state.role);
+export function playerUpdatePayload(state: PlayerFormState, dimension: string): PlayerUpdateInput {
   return {
     name: state.name.trim(),
-    role,
+    role: roleRefOf(state, dimension),
     rank: state.rank,
     is_newcomer: state.is_newcomer,
-    is_substitution: state.is_substitution,
-    ...buildSubRolePayload(role, state.sub_role)
+    is_substitution: state.is_substitution
   };
 }
 
@@ -142,11 +126,15 @@ interface PlayerOption {
   meta?: string;
 }
 
-function RoleOptionContent({ role }: Readonly<{ role: PlayerRoleOption }>) {
+function RoleOptionContent({
+  code,
+  label,
+  ontology
+}: Readonly<{ code: string; label: string; ontology: RoleOntology | null }>) {
   return (
     <div className="flex items-center gap-2">
-      <PlayerRoleIcon role={role} size={18} decorative />
-      <span>{role}</span>
+      <RosterSlotGlyph code={code} ontology={ontology} size={18} decorative />
+      <span>{label}</span>
     </div>
   );
 }
@@ -218,7 +206,7 @@ function SearchableSelect({
 function DivisionField({
   rank,
   grid
-}: Readonly<{ rank: number; grid: DivisionGridVersion | null }>) {
+}: Readonly<{ rank: number | null; grid: DivisionGridVersion | null }>) {
   const t = useTranslations("adminPeople.form");
   const workspaceGrid = useDivisionGrid();
   const division = resolveDivisionFromRank(grid ?? workspaceGrid, rank);
@@ -227,9 +215,7 @@ function DivisionField({
     <div>
       <Label>{t("division")}</Label>
       <div className="flex h-9 items-center">
-        {division == null ? (
-          <span className="text-sm text-muted-foreground">—</span>
-        ) : (
+        {division == null ? null : (
           <DivisionIcon division={division} tournamentGrid={grid} width={28} height={28} />
         )}
       </div>
@@ -243,6 +229,8 @@ export interface PlayerFormProps {
   onChange: (next: PlayerFormState) => void;
   /** Sub-role catalog of the workspace owning the participation's tournament. */
   subRoles: PlayerSubRole[] | undefined;
+  /** The participation's tournament's own game: its roles are the only ones offered. `null` while it loads. */
+  ontology: RoleOntology | null;
   /** Grid the division icon resolves against; `null` falls back to the workspace's. */
   divisionGrid: DivisionGridVersion | null;
   /** Create mode only: the tournaments a participation can be added to. */
@@ -263,34 +251,30 @@ export function PlayerForm({
   value,
   onChange,
   subRoles,
+  ontology,
   divisionGrid,
   tournaments = [],
   teams = []
 }: Readonly<PlayerFormProps>) {
   const t = useTranslations("adminPeople.form");
   const prefix = mode === "edit" ? "player-edit" : "player-create";
-  const role = normalizePlayerRole(value.role);
-  // Flex has no sub-role catalog, so its sub-role field is inert rather than a
+  const slotLabel = useSlotLabel(ontology);
+  const dimension = (ontology ? ratedDimension(ontology) : null)?.code;
+  const role = value.role;
+  // The open slot has no sub-role catalog, so its sub-role field is inert rather than a
   // dropdown holding a single unusable "No sub-role" row.
-  const hasSubRoleCatalog = subRoleCatalogRole(role) != null;
-  const subRoleOptions = filterSubRoleOptions(subRoles, role);
-  const hasCurrentSubRoleOption = subRoleOptions.some(
-    (subRole) => subRole.slug === value.sub_role
-  );
+  const hasSubRoleCatalog = role !== OPEN_SLOT_CODE;
 
   const subRoleSelectOptions = useMemo(() => {
-    if (!hasSubRoleCatalog) return [];
+    if (role === OPEN_SLOT_CODE) return [];
 
+    const choices = subRoleOptions(subRoles, dimension, role);
     const options: PlayerOption[] = [
       { value: "none", label: t("noSubRole") },
-      ...subRoleOptions.map((subRole) => ({
-        value: subRole.slug,
-        label: subRole.label,
-        meta: subRole.slug
-      }))
+      ...choices.map((choice) => ({ value: choice.slug, label: choice.label, meta: choice.slug.slice(role.length + 1) }))
     ];
 
-    if (value.sub_role && !hasCurrentSubRoleOption) {
+    if (value.sub_role && !choices.some((choice) => choice.slug === value.sub_role)) {
       options.push({
         value: value.sub_role,
         label: formatSubRoleLabel(value.sub_role) ?? value.sub_role,
@@ -299,7 +283,7 @@ export function PlayerForm({
     }
 
     return options;
-  }, [t, value.sub_role, hasCurrentSubRoleOption, hasSubRoleCatalog, subRoleOptions]);
+  }, [t, value.sub_role, subRoles, dimension, role]);
 
   return (
     <div className="space-y-4">
@@ -356,15 +340,16 @@ export function PlayerForm({
         {/* Picking a role clears sub_role: a sub-role only exists for its own role. */}
         <Select
           value={role}
+          disabled={!dimension}
           onValueChange={(next) => onChange({ ...value, role: next, sub_role: "" })}
         >
           <SelectTrigger id={`${prefix}-role`}>
-            <RoleOptionContent role={role} />
+            <RoleOptionContent code={role} label={slotLabel(role)} ontology={ontology} />
           </SelectTrigger>
           <SelectContent>
-            {PLAYER_ROLE_OPTIONS.map((option) => (
+            {roleChoices(ontology, role).map((option) => (
               <SelectItem key={option} value={option}>
-                <RoleOptionContent role={option} />
+                <RoleOptionContent code={option} label={slotLabel(option)} ontology={ontology} />
               </SelectItem>
             ))}
           </SelectContent>
@@ -391,9 +376,9 @@ export function PlayerForm({
           <NumberInput
             id={`${prefix}-rank`}
             integer
-            min={0}
+            min={1}
             value={value.rank}
-            onValueChange={(rank) => onChange({ ...value, rank: rank ?? 0 })}
+            onValueChange={(rank) => onChange({ ...value, rank })}
           />
         </div>
 

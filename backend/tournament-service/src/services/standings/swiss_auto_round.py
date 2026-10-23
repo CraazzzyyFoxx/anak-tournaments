@@ -17,30 +17,32 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.core import enums
 from shared.domain.tournament_utils import (
     completed_encounters_in_finished_rounds,
     has_incomplete_playable_rounds,
 )
 from shared.repository import EncounterRepository, StageRepository
-from src import models
 from src.services.admin.stage import _collect_item_team_ids, stage_service
 from src.services.notifications.lifecycle import lifecycle_notifier
+from src.services.standings.service import StageEncounter, standings_service
 
 DEFAULT_STAGE_MAX_ROUNDS = 5
 
 
 def stage_item_ready_for_next_round(
-    encounters: list[models.Encounter],
+    encounters: list[StageEncounter],
 ) -> bool:
+    rounds = {encounter.id: encounter.round for encounter in encounters}
     if not encounters:
         return False
-    if has_incomplete_playable_rounds(encounters):
+    if has_incomplete_playable_rounds(encounters, rounds):
         return False
-    return bool(completed_encounters_in_finished_rounds(encounters))
+    return bool(completed_encounters_in_finished_rounds(encounters, rounds))
 
 
-def next_round_number(encounters: list[models.Encounter]) -> int | None:
+def next_round_number(encounters: list[StageEncounter]) -> int | None:
     rounds = [encounter.round for encounter in encounters if encounter.round is not None]
     if not rounds:
         return None
@@ -89,18 +91,15 @@ class SwissRoundsService:
         if not swiss_stages:
             return []
 
-        stage_ids = [stage.id for stage in swiss_stages]
-        encounters_result = await session.execute(
-            self.encounter_repo.select().where(models.Encounter.stage_id.in_(stage_ids))
-        )
-        encounters_by_key: dict[tuple[int, int | None], list[models.Encounter]] = defaultdict(list)
-        for encounter in encounters_result.scalars().all():
-            encounters_by_key[(encounter.stage_id, encounter.stage_item_id)].append(encounter)
+        encounters_by_key: dict[tuple[int, int | None], list[StageEncounter]] = defaultdict(list)
+        for stage in swiss_stages:
+            for encounter in await standings_service.load_stage_encounters(session, stage.id):
+                encounters_by_key[(stage.id, encounter.stage_item_id)].append(encounter)
 
         generated: list[models.Encounter] = []
         for stage in swiss_stages:
             items = stage.items or []
-            scopes: list[tuple[int | None, list[models.Encounter]]] = (
+            scopes: list[tuple[int | None, list[StageEncounter]]] = (
                 [(item.id, encounters_by_key.get((stage.id, item.id), [])) for item in items]
                 if items
                 else [(None, encounters_by_key.get((stage.id, None), []))]
@@ -109,7 +108,7 @@ class SwissRoundsService:
                 # No stopped-scope shortcut: a scope that once had no
                 # rematch-free pairing may have one again after a round is
                 # re-generated, and generation re-marks it when it truly does
-                # not. Skipping on the flag made the stop permanent.
+                # not. Skipping on the flag would make the stop permanent.
                 if not stage_item_ready_for_next_round(item_encounters):
                     continue
                 next_round = next_round_number(item_encounters)
@@ -133,14 +132,6 @@ class SwissRoundsService:
                     )
                 )
         return generated
-
-    async def enqueue_swiss_next_rounds(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-    ) -> list[models.Encounter]:
-        """Backward-compatible name: generate ready rounds in-process."""
-        return await self.generate_ready_rounds(session, tournament_id)
 
     async def generate_next_swiss_round(
         self,
@@ -225,19 +216,18 @@ class SwissRoundsService:
         if not skeleton.pairings:
             await session.flush()
             logger.info(
-                "Swiss auto-round: scope completed because no non-rematch pairing exists",
+                "Swiss auto-round: scope completed, no round left to pair",
                 stage_id=stage_id,
                 stage_item_id=stage_item_id,
             )
             return []
 
-        team_names_by_id = await stage_service._load_team_names(session, team_ids)
         encounters = await stage_service._create_encounters_from_skeleton(
             session,
             stage,
             skeleton,
             stage_item_id,
-            team_names_by_id=team_names_by_id,
+            teams_by_id=await stage_service._seat_teams(session, team_ids),
         )
         await session.flush()
 
@@ -262,10 +252,12 @@ class SwissRoundsService:
         session: AsyncSession,
         stage_id: int,
         stage_item_id: int | None,
-    ) -> list[models.Encounter]:
-        return list(
-            await self.encounter_repo.list_for_stage_scope(session, stage_id=stage_id, stage_item_id=stage_item_id)
-        )
+    ) -> list[StageEncounter]:
+        return [
+            encounter
+            for encounter in await standings_service.load_stage_encounters(session, stage_id)
+            if encounter.stage_item_id == stage_item_id
+        ]
 
 
 swiss_rounds_service = SwissRoundsService()

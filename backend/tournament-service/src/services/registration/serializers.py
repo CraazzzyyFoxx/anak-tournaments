@@ -5,14 +5,15 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.orm.attributes import NO_VALUE
 
-from shared.balancer_registration_statuses import (
+from shared import models
+from shared.domain.forms import FormSchema, schema_from_form
+from shared.domain.roster import PlayerRoster, RosterRole
+from shared.registration_statuses import (
     StatusMeta,
     build_status_meta_from_model,
     build_unknown_status_meta,
 )
-from shared.domain.forms import FormSchema, schema_from_form
-from shared.domain.roster import PlayerRoster, RosterRole
-from src import models, schemas
+from src import schemas
 from src.schemas.admission import AdmissionRead
 from src.schemas.registration_form import RegistrationFormRead, RegistrationFormTemplateRead
 from src.services.registration.answers import answer_service
@@ -27,20 +28,20 @@ def loaded_relationship_or_none(instance: object, attribute: str):
     return loaded_value
 
 
-def _role_top_heroes(role: models.BalancerRegistrationRole) -> list[str]:
-    """Ordered hero slugs for a role, without triggering a lazy load.
+def _role_top_characters(role: models.RegistrationRole) -> list[str]:
+    """Ordered character slugs for a role, without triggering a lazy load.
 
     Returns ``[]`` when ``hero_entries`` was not eagerly loaded, so callers that
-    don't need heroes need not eager-load them.
+    don't need characters need not eager-load them.
     """
     hero_entries = loaded_relationship_or_none(role, "hero_entries")
     if not hero_entries:
         return []
-    return [entry.hero.slug for entry in sorted(hero_entries, key=lambda entry: entry.priority)]
+    return [entry.entity.slug for entry in sorted(hero_entries, key=lambda entry: entry.priority)]
 
 
 def serialize_registration_role(
-    role: models.BalancerRegistrationRole,
+    role: models.RegistrationRole,
     ow_rank_value: int | None = None,
     entry: RosterRole | None = None,
 ) -> schemas.BalancerRegistrationRoleRead:
@@ -54,23 +55,23 @@ def serialize_registration_role(
     toggles.
     """
     return schemas.BalancerRegistrationRoleRead(
-        role=role.role,
-        subrole=role.subrole,
+        role=role.role_ref,
         priority=role.priority,
         is_primary=role.is_primary,
         rank_value=entry.rank if entry is not None else None,
         rank_source=entry.source if entry is not None else "none",
         is_active=entry is not None and entry.is_playable,
         is_declared_active=bool(role.is_active),
-        top_heroes=_role_top_heroes(role),
+        top_characters=_role_top_characters(role),
         ow_rank_value=ow_rank_value,
     )
 
 
 def serialize_registration(
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
     *,
     workspace_id: int,
+    provider: str,
     status_meta_map: dict[str, dict[str, StatusMeta]] | None = None,
     ow_ranks_for_user: dict[str, int] | None = None,
     admission: AdmissionRead | None = None,
@@ -82,15 +83,15 @@ def serialize_registration(
     roles = loaded_relationship_or_none(registration, "roles") or []
     reviewer = loaded_relationship_or_none(registration, "reviewer")
     checked_in_by_user = loaded_relationship_or_none(registration, "checked_in_by_user")
-    # API shape: user_id stays in the payload (frontend depends on it) but is
-    # now derived from the member anchor — callers must eager-load
-    # workspace_member (loaded_relationship_or_none never lazy-loads).
+    # API shape: ``user_id`` (the frontend depends on it) is derived from the
+    # member anchor — callers must eager-load workspace_member
+    # (loaded_relationship_or_none never lazy-loads).
     workspace_member = loaded_relationship_or_none(registration, "workspace_member")
     tournament = loaded_relationship_or_none(registration, "tournament")
     sorted_roles = sorted(roles, key=lambda item: (item.priority, item.role))
-    # Every role row is still reported (the editor toggles the ones the engine
-    # left out of the roster); the roster is what rates them.
-    entry_by_role = {entry.role.slot_code: entry for entry in roster.roles} if roster is not None else {}
+    # Every role row is reported (the editor toggles the ones the engine left
+    # out of the roster); the roster is what rates them.
+    entry_by_role = {entry.role: entry for entry in roster.roles} if roster is not None else {}
     resolved_status_meta = (
         status_meta_map["registration"].get(registration.status) if status_meta_map is not None else None
     ) or build_unknown_status_meta("registration", registration.status)
@@ -103,7 +104,9 @@ def serialize_registration(
         workspace_id=workspace_id,
         user_id=workspace_member.player_id if workspace_member is not None else None,
         display_name=registration.display_name,
-        primary_handle=(identity.handle if (identity := registration.primary_game_identity()) else None),
+        primary_handle=(
+            identity.handle if (identity := registration.primary_game_identity(provider=provider)) else None
+        ),
         source="google_sheets" if binding is not None else "manual",
         source_record_key=binding.source_record_key if binding is not None else None,
         answers=answer_service.answers_of(registration),
@@ -111,7 +114,7 @@ def serialize_registration(
         # The roster is the one flex predicate (``PlayerRoster.is_full_flex``,
         # computed over playable declared roles). Without a roster there is no
         # rank information here, so fall back to the write-path predicate over
-        # the declared-active rows -- never a third inline copy.
+        # the declared-active rows.
         is_flex=(
             roster.is_full_flex
             if roster is not None
@@ -147,23 +150,24 @@ def serialize_registration(
 
 
 def serialize_registration_form(
-    form: models.BalancerRegistrationForm,
+    form: models.RegistrationForm,
     *,
+    discipline: str,
     is_open: bool,
     registration_late: bool = False,
     subscription_requirement: dict[str, Any] | None = None,
     subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
     stale_registrations: int | None = None,
 ) -> RegistrationFormRead:
-    """``subscription_requirement`` is the WORKSPACE's rule, passed in by the caller.
+    """Project a registration form for the client.
 
-    An argument rather than a lookup because this stays sync and must not issue a
-    second round trip per call; the async RPC handler already has the session and
-    fetches it once via ``subscription_config.load_workspace_requirement_blob``.
+    ``subscription_requirement`` is the WORKSPACE's rule, passed in rather than
+    looked up because this stays sync and must not issue a second round trip per
+    call; the async RPC handler fetches it once via
+    ``subscription_config.load_workspace_requirement_blob``.
 
-    ``is_open`` is passed in for the same reason, and is now DERIVED from the
-    tournament's REGISTRATION schedule window rather than read off the form — the
-    form no longer has a say in whether registration is open.
+    ``is_open`` is passed in for the same reason; it is derived from the
+    tournament's REGISTRATION schedule window, not from the form.
 
     ``registration_late`` says the window's ``ends_at`` has passed and only
     ``allow_late_registration`` keeps the form open: everyone signing up now is
@@ -180,6 +184,7 @@ def serialize_registration_form(
         id=form.id,
         tournament_id=form.tournament_id,
         workspace_id=form.workspace_id,
+        discipline=discipline,
         is_open=is_open,
         registration_late=registration_late,
         auto_approve=form.auto_approve,
@@ -207,7 +212,7 @@ def serialize_registration_form(
 
 
 def serialize_registration_form_template(
-    template: models.BalancerRegistrationFormTemplate,
+    template: models.RegistrationFormTemplate,
 ) -> RegistrationFormTemplateRead:
     """A template is its questions and its name -- no toggles, no tournament.
 
@@ -218,6 +223,7 @@ def serialize_registration_form_template(
     return RegistrationFormTemplateRead(
         id=template.id,
         workspace_id=template.workspace_id,
+        discipline=template.discipline,
         name=template.name,
         form_schema=FormSchema.model_validate(template.schema_json),
         # ``updated_at`` is only set by ``onupdate`` -- NULL until the first edit.
@@ -226,7 +232,7 @@ def serialize_registration_form_template(
 
 
 def serialize_status(
-    status_row: models.BalancerRegistrationStatus,
+    status_row: models.RegistrationStatus,
 ) -> schemas.BalancerRegistrationStatusRead:
     is_override = status_row.kind == "builtin" and status_row.workspace_id is not None
     return schemas.BalancerRegistrationStatusRead(
@@ -254,7 +260,7 @@ def serialize_status(
 
 
 def serialize_feed(
-    feed: models.BalancerRegistrationGoogleSheetFeed,
+    feed: models.RegistrationGoogleSheetFeed,
 ) -> schemas.BalancerGoogleSheetFeedRead:
     return schemas.BalancerGoogleSheetFeedRead(
         id=feed.id,

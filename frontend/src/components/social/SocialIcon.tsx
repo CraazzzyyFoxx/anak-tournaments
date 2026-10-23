@@ -1,4 +1,4 @@
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { Link2 } from "lucide-react";
 
 import { getSocialProviderConfig } from "@/lib/social/providers";

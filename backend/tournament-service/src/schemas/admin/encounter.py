@@ -1,36 +1,50 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from shared.core.enums import EncounterResultAuditAction, EncounterResultStatus, EncounterStatus
 
 __all__ = (
     "EncounterCreate",
+    "EncounterSeatInput",
     "EncounterUpdate",
+    "MatchTeamFactIn",
     "MatchUpdate",
-    "EncounterSetResultInput",
+    "SetResultIn",
+    "SetResultLineIn",
+    "ReopenResultIn",
     "EncounterResultRead",
     "EncounterResultAuditRead",
+    "EncounterResultSnapshotLine",
     "EncounterSwapSlotInput",
     "EncounterSlotRead",
     "EncounterSlotSwapRead",
+    "EncounterSeatRead",
 )
 
 
-class EncounterCreate(BaseModel):
-    """Schema for creating an encounter"""
+class EncounterSeatInput(BaseModel):
+    """One seat of a new encounter: which slot, and the team that takes it."""
 
+    slot: int = Field(ge=1)
+    #: ``None`` seats nobody -- the slot stays empty until a team is placed or
+    #: an advancement edge fills it.
+    team_id: int | None = None
+
+
+class EncounterCreate(BaseModel):
     name: str
     tournament_id: int
     stage_id: int | None = None
     stage_item_id: int | None = None
-    home_team_id: int | None = None
-    away_team_id: int | None = None
+    #: How many seats the card has; a duel is 2.
+    slot_count: int = Field(default=2, ge=2)
+    #: The seats to fill right away; every ``slot`` must be within the card and
+    #: no two may name the same one.
+    teams: list[EncounterSeatInput] = Field(default_factory=list)
     round: int
     best_of: int = Field(default=3, ge=1)
-    home_score: int = 0
-    away_score: int = 0
     status: str = "open"  # open, pending, completed
     scheduled_at: datetime | None = None
     started_at: datetime | None = None
@@ -39,15 +53,15 @@ class EncounterCreate(BaseModel):
 
 
 class EncounterUpdate(BaseModel):
-    """Schema for updating an encounter"""
+    """Edit an encounter's own fields; seats change only through the slot swap.
+
+    The swap retires the outgoing participation instead of rewriting it, so the
+    games it played stay attached to the row that played them.
+    """
 
     name: str | None = None
     stage_id: int | None = None
     stage_item_id: int | None = None
-    home_team_id: int | None = None
-    away_team_id: int | None = None
-    home_score: int | None = None
-    away_score: int | None = None
     status: str | None = None
     round: int | None = None
     best_of: int | None = Field(default=None, ge=1)
@@ -58,61 +72,114 @@ class EncounterUpdate(BaseModel):
     current_map_index: int | None = None
 
 
+class MatchTeamFactIn(BaseModel):
+    """One observed whole-match value of one participant. Only the observed score is editable."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    encounter_team_id: int
+    stat_code: Literal["score"]
+    value: float = Field(allow_inf_nan=False)
+
+
 class MatchUpdate(BaseModel):
-    """Partial update for a single match (map) within an encounter."""
+    """Edit observations without rebinding their game, participants or provenance."""
 
-    home_team_id: int | None = None
-    away_team_id: int | None = None
-    home_score: int | None = None
-    away_score: int | None = None
+    model_config = ConfigDict(extra="forbid")
+
     map_id: int | None = None
-    code: str | None = None
-    time: float | None = None
+    duration_s: float | None = Field(default=None, allow_inf_nan=False)
+    team_facts: list[MatchTeamFactIn] | None = None
+
+    @model_validator(mode="after")
+    def _required_observations(self):
+        for field in ("map_id", "team_facts"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        if self.team_facts is not None:
+            seats = [fact.encounter_team_id for fact in self.team_facts]
+            if len(seats) != len(set(seats)):
+                raise ValueError("team_facts names a participant twice")
+        return self
 
 
-class EncounterSetResultInput(BaseModel):
+class SetResultLineIn(BaseModel):
+    """One participation's line of an admin result."""
+
+    encounter_team_id: int
+    score: float
+    placement: int | None = Field(default=None, ge=1)
+
+
+class SetResultIn(BaseModel):
     """Body of the single admin result write.
 
-    Every field is optional: an empty body means "confirm what is already
-    there", which covers the common case of two agreeing reports. Supplying
-    ``adopt_report_team_id`` is how a dispute is resolved in one call — "this
-    side was right" — instead of editing the score and confirming separately.
+    ``reason`` is required: an admin result overrides what the participants
+    said and the journal has to say why. ``results`` may be empty only when
+    ``adopt_report_team_id`` names the participation whose report is taken as
+    truth instead -- which is how a dispute is resolved in one call.
     """
 
-    home_score: int | None = Field(default=None, ge=0)
-    away_score: int | None = Field(default=None, ge=0)
+    reason: str = Field(min_length=1, max_length=500)
+    results: list[SetResultLineIn] = Field(default_factory=list)
     closeness: int | None = Field(default=None, ge=1, le=10)
     adopt_report_team_id: int | None = None
 
 
-class EncounterSwapSlotInput(BaseModel):
-    """Body of the bracket slot swap: which slot here, which slot there.
+class ReopenResultIn(BaseModel):
+    """Body of the result reopen: the organizer's stated reason.
 
-    Both sides are named explicitly so one endpoint covers the two moves the
-    bracket offers -- dragging a team onto another encounter's slot, and
-    flipping home/away inside one encounter (same ``target_encounter_id``,
+    Reopening unmakes a human decision, so a human signs it -- the journal row
+    ``reopen`` writes carries this verbatim.
+    """
+
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class EncounterSwapSlotInput(BaseModel):
+    """Body of the bracket slot swap: which seat here, which seat there.
+
+    Both ends are named explicitly so one endpoint covers the two moves the
+    bracket offers -- dragging a team onto another encounter's seat, and
+    exchanging two seats inside one encounter (same ``target_encounter_id``,
     the other ``target_slot``).
     """
 
-    slot: Literal["home", "away"]
+    slot: int = Field(ge=1)
     target_encounter_id: int
-    target_slot: Literal["home", "away"]
+    target_slot: int = Field(ge=1)
+
+
+class EncounterSeatRead(BaseModel):
+    """One live seat as the bracket re-renders it after a swap."""
+
+    id: int
+    slot: int
+    team_id: int | None
+    name: str
 
 
 class EncounterSlotRead(BaseModel):
-    """One side of a swap: the slots it now holds, and the rebuilt name."""
+    """One side of a swap: the seats it now holds, and the rebuilt name."""
 
     id: int
-    home_team_id: int | None
-    away_team_id: int | None
+    teams: list[EncounterSeatRead]
     name: str
 
 
 class EncounterSlotSwapRead(BaseModel):
-    """Both encounters the swap touched (the same one twice on a home/away flip)."""
+    """Both encounters the swap touched (the same one twice on an internal swap)."""
 
     source: EncounterSlotRead
     target: EncounterSlotRead
+
+
+class EncounterResultSnapshotLine(BaseModel):
+    """One participation's numbers inside an audit snapshot."""
+
+    encounter_team_id: int
+    score: float
+    placement: int | None = None
 
 
 class EncounterResultRead(BaseModel):
@@ -121,8 +188,11 @@ class EncounterResultRead(BaseModel):
     id: int
     status: EncounterStatus
     result_status: EncounterResultStatus
-    home_score: int
-    away_score: int
+    #: Which writer decided it; ``None`` while no official result exists.
+    result_source: str | None
+    result_version: int
+    #: The standing, one line per live participation, in slot order.
+    teams: list[EncounterResultSnapshotLine]
     closeness: float | None
     confirmed_at: datetime | None
 
@@ -132,15 +202,20 @@ class EncounterResultAuditRead(BaseModel):
 
     id: int
     encounter_id: int
+    #: The ``encounter.result_version`` this operation left behind.
+    result_version: int
     actor_user_id: int | None
     actor_name: str | None
     action: EncounterResultAuditAction
     from_result_status: EncounterResultStatus | None
     to_result_status: EncounterResultStatus
-    home_score_before: int | None
-    away_score_before: int | None
-    home_score_after: int
-    away_score_after: int
+    #: ``encounter`` for the standing, ``game`` for one position's numbers.
+    snapshot_scope: str
+    game_id: int | None = None
+    #: ``None`` when nothing preceded this row.
+    before: list[EncounterResultSnapshotLine] | None = None
+    after: list[EncounterResultSnapshotLine]
     adopted_team_id: int | None
+    reason: str | None = None
     source: str
     created_at: datetime

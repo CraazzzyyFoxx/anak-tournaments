@@ -6,32 +6,37 @@ import type { Team } from "@/types/team.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
 /**
- * One side's roster for an encounter (encounter page, pre-game room, bracket
+ * One seat's roster for an encounter (encounter page, pre-game room, bracket
  * rosters modal): the Teams-page card without group and placement, with the
- * side's colour on top. `team` is null while the slot is still TBD.
+ * seat's colour on top. `team` is null while the slot is still TBD.
  */
 export default function EncounterRosterPanel({
   team,
-  side,
+  slot,
+  discipline,
   tournamentGrid
 }: Readonly<{
   team: Team | null;
-  side: "home" | "away";
+  slot: 1 | 2;
+  discipline: string;
   tournamentGrid?: DivisionGridVersion | null;
 }>) {
   const t = useTranslations();
 
   return (
     <TournamentTeamCardFrame
-      side={side}
+      slot={slot}
       name={<TeamName team={team} fallback={t("common.tbd")} size="md" />}
       metricLabel={team ? t("teams.roster.avgSr") : undefined}
-      metricValue={team ? <span className="tabular-nums">{team.avg_sr.toFixed(0)}</span> : undefined}
+      metricValue={
+        team ? <span className="tabular-nums">{team.avg_sr.toFixed(0)}</span> : undefined
+      }
     >
       {team && team.players.length > 0 ? (
         <TournamentTeamTable
           players={team.players}
           tournamentGrid={tournamentGrid}
+          discipline={discipline}
           captainUserId={team.captain_id}
         />
       ) : (

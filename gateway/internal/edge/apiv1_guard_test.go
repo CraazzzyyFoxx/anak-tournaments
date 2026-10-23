@@ -10,9 +10,10 @@ import (
 
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/app"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/balancer"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/discord"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/identity"
-	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/parser"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/stats"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/stream"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/tournament"
 )
@@ -60,34 +61,38 @@ func buildGuardedMux(t *testing.T) *http.ServeMux {
 	d.Register(mux, tournament.PublicReadRoutes)
 	d.Register(mux, tournament.AdminCrudRoutes)
 	d.Register(mux, tournament.AdminMiscRoutes)
+	d.Register(mux, tournament.DashboardRoutes)
 	d.Register(mux, tournament.RegistrationAdminRoutes)
 	d.Register(mux, tournament.IntegrationsRoutes)
 	d.Register(mux, tournament.PublicWriteRoutes)
 	d.Register(mux, tournament.ScrimRoutes)
 	mux.Handle("/api/v1/division-grids/", d.Subtree(tournament.DivisionGridRoutes))
 	mux.Handle("/api/v1/admin/stages/", d.Subtree(tournament.StageSubtreeRoutes))
-	// app-service typed routes (reads + workspace/metadata/users admin) + the
-	// achievements get subtree. Registering these must NOT panic — /users/{name}
-	// vs /users/{id}/... and the achievements /{id}/users vs /user/{user_id}
-	// ambiguity are the cases that would conflict.
+	// app-service typed routes (reads + workspace/metadata/users admin).
+	// Registering these must NOT panic — /users/{name} vs stats' /users/{id}/...
+	// is the case that would conflict.
 	d.Register(mux, app.ReadRoutes)
 	d.Register(mux, app.WorkspaceWriteRoutes)
 	d.Register(mux, app.MetadataAdminRoutes)
 	d.Register(mux, app.UsersAdminRoutes)
-	d.Register(mux, app.TournamentAdminRoutes)
 	d.Register(mux, app.NotificationRoutes)
 	d.Register(mux, app.AnnouncementPublicRoutes)
 	d.Register(mux, app.AnnouncementAdminRoutes)
 	d.Register(mux, app.NotificationAdminRoutes)
 	d.Register(mux, app.NotificationUserAdminRoutes)
-	mux.Handle("/api/v1/achievements/", d.Subtree(app.AchievementsSubtreeRoutes))
-	// parser domains folded into /api/v1. The achievement-rule admin subtree mounts
-	// at the shared /api/v1/admin/ws/ prefix; tournament's balancer-statuses routes
-	// there are more specific and win, so registering both must not panic. The
-	// discord-channel routes share /api/v1/admin/tournaments/{id}/... with the
-	// tournament admin routes (distinct leaves).
-	d.Register(mux, parser.Routes)
-	mux.Handle("/api/v1/admin/ws/", d.Subtree(parser.AchievementAdminRoutes))
+	// stats domains folded into /api/v1, plus the public player statistics/profile
+	// reads and the achievements get subtree (/{id}/users vs /user/{user_id}
+	// ambiguity). The achievement-rule admin subtree mounts at the shared
+	// /api/v1/admin/ws/ prefix; tournament's balancer-statuses routes there are
+	// more specific and win, so registering both must not panic.
+	d.Register(mux, stats.Routes)
+	d.Register(mux, stats.PublicReadRoutes)
+	mux.Handle("/api/v1/achievements/", d.Subtree(stats.AchievementsSubtreeRoutes))
+	mux.Handle("/api/v1/admin/ws/", d.Subtree(stats.AchievementAdminRoutes))
+	// discord-svc: the discord-channel routes share /api/v1/admin/tournaments/{id}/...
+	// with the tournament admin routes, and the pickers share
+	// /api/v1/workspaces/{workspace_id}/... with app's workspace routes (distinct leaves).
+	d.Register(mux, discord.Routes)
 	// Binary/multipart handlers (registering them must not conflict with the
 	// workspace member routes or the get-by-id routes).
 	anonymous := func(*http.Request) (map[string]any, bool, error) { return nil, false, nil }
@@ -98,7 +103,7 @@ func buildGuardedMux(t *testing.T) *http.ServeMux {
 	mux.HandleFunc("DELETE /api/v1/assets/{asset_type}/{slug}", bin.AssetDelete)
 	mux.HandleFunc("GET /api/v1/matches/{match_id}/log", bin.MatchLog)
 	mux.HandleFunc("POST /api/v1/admin/users/{id}/avatar", bin.UserAvatarUpload)
-	pbin := parser.NewBinary(errCaller{}, func(*http.Request) (map[string]any, bool, error) { return nil, false, nil },
+	pbin := stats.NewBinary(errCaller{}, func(*http.Request) (map[string]any, bool, error) { return nil, false, nil },
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	mux.HandleFunc("POST /api/v1/admin/logs/upload", pbin.AdminLogsUpload)
 	// balancer-worker: public config + admin balance/config + draft + jobs.
@@ -116,8 +121,8 @@ func buildGuardedMux(t *testing.T) *http.ServeMux {
 	// stream-svc: the repoll route nests under the read route's {tournament_id}.
 	d.Register(mux, stream.PublicRoutes)
 	d.Register(mux, stream.AdminRoutes)
-	// identity-svc: the rbac users/{user_id} vs users/assign-role and the player
-	// linked/{player_id}/primary patterns are what would conflict under ServeMux.
+	// identity-svc: the rbac users/{user_id} vs users/assign-role patterns are
+	// what would conflict under ServeMux.
 	h := identity.NewHandler(errCaller{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	mux.HandleFunc("POST /api/v1/auth/validate", h.Validate)
 	mux.HandleFunc("POST /api/v1/auth/login", h.Login)
@@ -153,7 +158,6 @@ func buildGuardedMux(t *testing.T) *http.ServeMux {
 	mux.HandleFunc("POST /api/v1/auth/player/link", h.PlayerLink)
 	mux.HandleFunc("DELETE /api/v1/auth/player/unlink/{player_id}", h.PlayerUnlink)
 	mux.HandleFunc("GET /api/v1/auth/player/linked", h.PlayerLinked)
-	mux.HandleFunc("PATCH /api/v1/auth/player/linked/{player_id}/primary", h.PlayerSetPrimary)
 	// Avatar (multipart). `identityBin`, not `bin`: app.NewBinary already owns
 	// that name above, and both now register on the same mux.
 	identityBin := identity.NewBinary(h, nil)
@@ -370,7 +374,7 @@ func TestApiBalancer_MigratedRoutesHitDispatcher(t *testing.T) {
 	}
 }
 
-// TestApiV1_MigratedReadsHitDispatcher asserts the migrated app + parser read
+// TestApiV1_MigratedReadsHitDispatcher asserts the migrated app + stats + discord read
 // patterns win over the 404 guard (ServeMux specificity) and reach the typed
 // dispatcher. With the stub RPC caller the dispatcher returns 504 (or 401 for
 // auth'd routes), so a migrated path yields an empty X-Route (typed handler) —
@@ -382,36 +386,42 @@ func TestApiV1_MigratedReadsHitDispatcher(t *testing.T) {
 
 	paths := []string{
 		// app-service (was /api/v1/core)
-		"/api/v1/heroes",
-		"/api/v1/heroes/5",
-		"/api/v1/heroes/lookup",
-		"/api/v1/heroes/5/leaderboard",
-		"/api/v1/heroes/statistics/playtime",
-		"/api/v1/maps",
-		"/api/v1/maps/5",
-		"/api/v1/maps/lookup",
-		"/api/v1/gamemodes/5",
+		"/api/v1/catalog/overwatch/character",
+		"/api/v1/catalog/lol/character/5",
+		"/api/v1/users",
+		"/api/v1/users/search",
+		"/api/v1/users/someblizzname",
+		"/api/v1/admin/dashboard",
+		"/api/v1/admin/dashboard/trends",
+		"/api/v1/workspaces",
+		"/api/v1/workspaces/5",
+		"/api/v1/matches/9/log",
+		// stats-service: player statistics, profile and achievement reads (moved from app; paths unchanged)
+		"/api/v1/statistics/overwatch/characters/5/leaderboard",
+		"/api/v1/statistics/overwatch/characters/playtime",
+		"/api/v1/users/5/characters",
+		"/api/v1/users/5/compare/characters",
 		"/api/v1/achievements",
 		"/api/v1/achievements/5",
 		"/api/v1/achievements/5/users",
 		"/api/v1/achievements/user/7",
-		"/api/v1/users",
-		"/api/v1/users/search",
 		"/api/v1/users/overview",
 		"/api/v1/users/overview/stats",
 		"/api/v1/users/5/profile",
 		"/api/v1/users/5/tournaments/9",
 		"/api/v1/users/5/maps/summary",
-		"/api/v1/users/someblizzname",
-		"/api/v1/statistics/dashboard",
-		"/api/v1/statistics/won-maps",
-		"/api/v1/workspaces",
-		"/api/v1/workspaces/5",
-		"/api/v1/matches/9/log",
-		// parser-service (was /api/parser), folded into /api/v1
+		"/api/v1/statistics/players",
+		"/api/v1/statistics/records",
+		"/api/v1/statistics/overwatch/maps",
+		// stats-service (was /api/parser), folded into /api/v1
 		"/api/v1/users/5/rank-history",
 		"/api/v1/users/5/current-ranks",
-		"/api/v1/battle-tags/5/rank-history",
+		"/api/v1/game-accounts/5/rank-history",
+		// discord-service (moved from app + stats; paths unchanged)
+		"/api/v1/workspaces/5/discord/roles",
+		"/api/v1/workspaces/5/discord/channels",
+		"/api/v1/workspaces/5/discord/guild",
+		"/api/v1/admin/tournaments/9/discord-channel",
 	}
 	for _, p := range paths {
 		t.Run(p, func(t *testing.T) {
@@ -432,9 +442,8 @@ func TestApiV1_MigratedReadsHitDispatcher(t *testing.T) {
 // The /api/v1/auth wiring: the HTTP-over-RPC tunnel + auth-service proxy are
 // decommissioned, every /api/v1/auth/* path is a typed RPC route, and
 // unmatched paths must hit the 404 guard. Building it must NOT panic — the
-// rbac users/{user_id} vs users/assign-role and the player
-// linked/{player_id}/primary patterns are the cases that would conflict
-// under ServeMux.
+// rbac users/{user_id} vs users/assign-role patterns are the case that would
+// conflict under ServeMux.
 func TestApiAuthGuard_NoConflictAndUnmatched404(t *testing.T) {
 	mux := buildGuardedMux(t) // panics here on any ServeMux pattern conflict
 	srv := httptest.NewServer(mux)
@@ -478,7 +487,6 @@ func TestApiAuth_TypedRoutesHitHandler(t *testing.T) {
 		{"POST", "/api/v1/auth/player/link"},
 		{"DELETE", "/api/v1/auth/player/unlink/5"},
 		{"GET", "/api/v1/auth/player/linked"},
-		{"PATCH", "/api/v1/auth/player/linked/5/primary"},
 		{"POST", "/api/v1/auth/me/avatar"},
 		{"DELETE", "/api/v1/auth/me/avatar"},
 	}

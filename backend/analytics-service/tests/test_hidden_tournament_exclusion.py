@@ -29,12 +29,16 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from shared.models.catalog.role import CatalogRole, RoleDimension
+from shared.models.tournament.player_role import PlayerRole
+from shared.testing import create_sqlite_tables
+
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "analytics-service"))
 
 
-models = importlib.import_module("src.models")
+models = importlib.import_module("shared.models")
 analytics_service = importlib.import_module("src.services.analytics.service").analytics_service
 splits = importlib.import_module("src.services.ml.training.splits")
 backtest = importlib.import_module("src.services.ml.training.backtest")
@@ -56,7 +60,7 @@ def _compile_array_sqlite(type_, compiler, **kw):  # noqa: ANN001, ANN003, ANN20
 
 
 # The tables reachable from the queries under test. Their foreign keys into
-# tables outside this set (``players.user``, ``overwatch.map``, ``workspace``)
+# tables outside this set (``players.user``, ``catalog.entity``, ``workspace``)
 # are unenforced under SQLite, so those tables are deliberately not created.
 TABLES = (
     models.Tournament.__table__,
@@ -65,15 +69,20 @@ TABLES = (
     models.TournamentPhaseSchedule.__table__,
     models.Team.__table__,
     models.Player.__table__,
+    PlayerRole.__table__,
+    CatalogRole.__table__,
+    RoleDimension.__table__,
     models.WorkspaceMember.__table__,
     models.Encounter.__table__,
-    models.Match.__table__,
-    models.MatchStatistics.__table__,
+    models.EncounterTeam.__table__,
+    models.StatsMatch.__table__,
+    models.StatsMatchTeam.__table__,
+    models.StatsFact.__table__,
+    models.StatDef.__table__,
     models.Standing.__table__,
 )
 
 WORKSPACE_ID = 1
-ROLE = enums.HeroClass.damage
 PERFORMANCE_POINTS = enums.LogStatsName.PerformancePoints
 
 # ``get_analytics``'s ``team_standings`` CTE uses ``DISTINCT ON``, which SQLite
@@ -121,11 +130,41 @@ class _Fixture:
         with self.engine.begin() as conn:
             for schema in sorted({table.schema for table in TABLES if table.schema}):
                 conn.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
-            for table in TABLES:
-                table.create(conn)
+            create_sqlite_tables(conn, TABLES)
+            # Only the columns the map reads touch: the models' Postgres server defaults do not compile on SQLite.
+            conn.exec_driver_sql(
+                "CREATE TABLE encounter.scoring_rule (id INTEGER PRIMARY KEY, workspace_id INTEGER, preset TEXT)"
+            )
+            conn.exec_driver_sql(
+                "CREATE TABLE encounter.game (id INTEGER PRIMARY KEY, encounter_id INTEGER, state TEXT)"
+            )
+            conn.exec_driver_sql(
+                "CREATE TABLE encounter.game_team (game_id INTEGER, encounter_team_id INTEGER, placement INTEGER)"
+            )
+            # The encounters' result is a ``wins`` series score, so ``score`` counts maps.
+            conn.exec_driver_sql("INSERT INTO encounter.scoring_rule (id, workspace_id, preset) VALUES (1, 1, 'wins')")
         self.session = Session(self.engine)
         self.shim = _AsyncSessionShim(self.session)
         self._next_id = 1
+        self.insert(
+            RoleDimension.__table__,
+            id=1,
+            discipline="overwatch",
+            code="player_role",
+            name="Role",
+            selection_mode="single",
+            rated=True,
+        )
+        self.insert(CatalogRole.__table__, id=1, dimension_id=1, code="damage", name="Damage", attrs={})
+        self.insert(
+            models.StatDef.__table__,
+            id=1,
+            discipline="overwatch",
+            code=PERFORMANCE_POINTS.value,
+            name="Performance points",
+            value_format="decimal",
+            aggregation="avg",
+        )
 
     def close(self) -> None:
         self.session.close()
@@ -184,12 +223,12 @@ class _Fixture:
             team_id=team_id,
             workspace_member_id=member_id,
             name=name,
-            role=ROLE,
             rank=rank,
             is_substitution=False,
             is_newcomer=False,
             is_newcomer_role=False,
         )
+        self.insert(PlayerRole.__table__, player_id=player_id, dimension_id=1, role_id=1)
         return player_id
 
     def encounter(self, tournament_id: int, home_team_id: int, away_team_id: int) -> int:
@@ -198,39 +237,86 @@ class _Fixture:
             models.Encounter.__table__,
             id=encounter_id,
             tournament_id=tournament_id,
+            workspace_id=WORKSPACE_ID,
+            discipline="overwatch",
+            scoring_rule_id=1,
             name="Encounter",
-            home_team_id=home_team_id,
-            away_team_id=away_team_id,
-            home_score=2,
-            away_score=1,
-            round=1,
+            slot_count=2,
+            status="OPEN",
+            result_status="none",
+            result_version=0,
+            best_of=3,
         )
+        # Slot 1 wins 2-1: the participations are the encounter's result.
+        for slot, (team_id, score, placement) in enumerate(((home_team_id, 2, 1), (away_team_id, 1, 2)), 1):
+            self.insert(
+                models.EncounterTeam.__table__,
+                id=self._id(),
+                encounter_id=encounter_id,
+                tournament_id=tournament_id,
+                slot=slot,
+                team_id=team_id,
+                name=f"Seat {slot}",
+                active=True,
+                score=score,
+                placement=placement,
+            )
         return encounter_id
 
     def match(self, encounter_id: int, home_team_id: int, away_team_id: int) -> int:
         match_id = self._id()
-        self.insert(
-            models.Match.__table__,
-            id=match_id,
-            encounter_id=encounter_id,
-            home_team_id=home_team_id,
-            away_team_id=away_team_id,
-            home_score=2,
-            away_score=1,
-            map_id=1,
+        self.session.execute(
+            sa.text("INSERT INTO encounter.game (id,encounter_id,state) VALUES (:id,:encounter,'scheduled')"),
+            {"id": match_id, "encounter": encounter_id},
         )
+        self.insert(
+            models.StatsMatch.__table__,
+            id=match_id,
+            workspace_id=WORKSPACE_ID,
+            discipline="overwatch",
+            encounter_id=encounter_id,
+            encounter_game_id=match_id,
+            map_entity_id=1,
+        )
+        for position, team_id in enumerate((home_team_id, away_team_id), 1):
+            seat_id = self.session.scalar(
+                sa.select(models.EncounterTeam.id).where(
+                    models.EncounterTeam.encounter_id == encounter_id,
+                    models.EncounterTeam.team_id == team_id,
+                )
+            )
+            self.insert(
+                models.StatsMatchTeam.__table__,
+                match_id=match_id,
+                encounter_id=encounter_id,
+                encounter_team_id=seat_id,
+                source_position=position,
+            )
         return match_id
 
     def performance_points(self, match_id: int, team_id: int, user_id: int, value: float) -> None:
+        member_id = self.session.scalar(
+            sa.select(models.WorkspaceMember.id).where(
+                models.WorkspaceMember.player_id == user_id,
+                models.WorkspaceMember.workspace_id == WORKSPACE_ID,
+            )
+        )
+        seat_id = self.session.scalar(
+            sa.select(models.StatsMatchTeam.encounter_team_id)
+            .join(
+                models.EncounterTeam,
+                models.EncounterTeam.id == models.StatsMatchTeam.encounter_team_id,
+            )
+            .where(models.StatsMatchTeam.match_id == match_id, models.EncounterTeam.team_id == team_id)
+        )
         self.insert(
-            models.MatchStatistics.__table__,
-            id=self._id(),
+            models.StatsFact.__table__,
             match_id=match_id,
-            team_id=team_id,
-            user_id=user_id,
-            round=0,
-            hero_id=None,
-            name=PERFORMANCE_POINTS,
+            encounter_team_id=seat_id,
+            workspace_member_id=member_id,
+            segment=0,
+            entity_id=None,
+            stat_id=1,
             value=value,
         )
 
@@ -277,7 +363,7 @@ class HiddenTournamentTimelineTests(_DatabaseTestCase):
         self.db.tournament(2, is_hidden=True, name="Scrims")
         self.db.tournament(3)
 
-        ids = await splits.tournament_ids_up_to(self.db.shim, 3)
+        ids = await splits.tournament_ids_up_to(self.db.shim, 3, discipline="overwatch")
 
         self.assertEqual([1, 3], ids)
 
@@ -286,7 +372,7 @@ class HiddenTournamentTimelineTests(_DatabaseTestCase):
         self.db.tournament(2)
         self.db.tournament(3, is_hidden=True, name="Scrims")
 
-        ids = await splits.tournament_ids_up_to(self.db.shim, 3)
+        ids = await splits.tournament_ids_up_to(self.db.shim, 3, discipline="overwatch")
 
         # A trailing hidden container must not become the cutoff fold either.
         self.assertEqual([1, 2], ids)
@@ -296,7 +382,7 @@ class HiddenTournamentTimelineTests(_DatabaseTestCase):
         self.db.tournament(2)
         self.db.tournament(3, is_hidden=True, name="Scrims")
 
-        latest = await backtest._latest_tournament_id(self.db.shim)
+        latest = await backtest._latest_tournament_id(self.db.shim, discipline="overwatch", workspace_id=None)
 
         self.assertEqual(2, latest)
 
@@ -307,7 +393,7 @@ class HiddenTournamentTimelineTests(_DatabaseTestCase):
         self.db.tournament(2)
         self.db.tournament(3, is_hidden=True, name="Scrims")
 
-        start = await analytics_service.lookback_start_tournament_id(self.db.shim, 3, 2)
+        start = await analytics_service.lookback_start_tournament_id(self.db.shim, 3, 2, discipline="overwatch")
 
         self.assertEqual(1, start)
 
@@ -327,7 +413,7 @@ class ScrimAggregateIsolationTests(_DatabaseTestCase):
         scrims = self.db.tournament(2, is_hidden=True, name="Scrims")
         scrim = self.db.scrim_room(scrims)
 
-        rows = await analytics_service.get_analytics(self.db.shim)
+        rows = await analytics_service.get_analytics(self.db.shim, discipline="overwatch")
 
         self.assertEqual({1}, {row["tournament_id"] for row in rows})
         self.assertIn(real["player"], {row["player_id"] for row in rows})
@@ -350,13 +436,19 @@ class ScrimAggregateIsolationTests(_DatabaseTestCase):
         self.db.tournament(1)
         self.db.roster(1, user_id=100, label="real")
         counters = ("wins", "losses", "match_count", "performance_points", "team_count")
-        before = [{key: row[key] for key in counters} for row in await analytics_service.get_analytics(self.db.shim)]
+        before = [
+            {key: row[key] for key in counters}
+            for row in await analytics_service.get_analytics(self.db.shim, discipline="overwatch")
+        ]
         self.assertTrue(before)
 
         scrims = self.db.tournament(2, is_hidden=True, name="Scrims")
         self.db.scrim_room(scrims)
 
-        after = [{key: row[key] for key in counters} for row in await analytics_service.get_analytics(self.db.shim)]
+        after = [
+            {key: row[key] for key in counters}
+            for row in await analytics_service.get_analytics(self.db.shim, discipline="overwatch")
+        ]
 
         self.assertEqual(before, after)
 
@@ -372,7 +464,7 @@ class ScrimAggregateIsolationTests(_DatabaseTestCase):
         member = self.db.member(200)
         self.db.player(scrims, scrim["home"], member, name="scrim captain")
 
-        rows = await analytics_service.get_analytics(self.db.shim)
+        rows = await analytics_service.get_analytics(self.db.shim, discipline="overwatch")
 
         leaked = [r for r in rows if r["tournament_id"] == scrims]
         self.assertEqual(
@@ -416,14 +508,14 @@ class OpenSkillReplayIsolationTests(_DatabaseTestCase):
     async def test_encounter_range_read_skips_the_hidden_container(self) -> None:
         scrims = self._timeline_with_a_scrim_in_the_middle()
 
-        encounters = await analytics_service.get_matches(self.db.shim, 1, 3)
+        encounters = await analytics_service.get_matches(self.db.shim, 1, 3, discipline="overwatch")
 
         self.assertEqual([1, 3], sorted({int(e.tournament_id) for e in encounters}))
         self.assertNotIn(scrims, {int(e.tournament_id) for e in encounters})
 
     async def test_openskill_replay_survives_a_scrim_container_in_the_window(self) -> None:
         self._timeline_with_a_scrim_in_the_middle()
-        encounters = await analytics_service.get_matches(self.db.shim, 1, 3)
+        encounters = await analytics_service.get_matches(self.db.shim, 1, 3, discipline="overwatch")
         teams = await analytics_service.get_teams_with_players(self.db.shim, 3)
 
         # ``prepare_openskill_data`` ignores its ``df`` argument entirely.
@@ -432,6 +524,7 @@ class OpenSkillReplayIsolationTests(_DatabaseTestCase):
             analytics_flows.get_plackett_luce(),
             teams,
             encounters,
+            await analytics_service.get_rosters(self.db.shim, encounters),
         )
 
         self.assertEqual(2, len(replayed), "both rostered encounters should be replayed")

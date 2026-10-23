@@ -1,10 +1,10 @@
 """Win/loss bookkeeping for every member who ever sat in a workspace's mixes.
 
 Pure domain algorithm: no I/O, no ORM, no async. The caller (custom game
-service) reads one row per recorded seat -- ``casual.player`` joined to its own
-team, the other team and the match -- turns each into a :class:`SeatOutcome`
-via :func:`outcome_for`, and hands the whole list to
-:func:`aggregate_mix_stats`.
+service) reads one row per recorded seat -- ``encounter.team_member`` joined
+to its own team, the other team and the round (``mix.round``) --
+turns each into a :class:`SeatOutcome` via :func:`outcome_for`, and hands the
+whole list to :func:`aggregate_mix_stats`.
 
 One seat is one counted game: a member who played five maps across three
 different mixes has five seats, and the mix they belong to never enters the
@@ -21,26 +21,40 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-__all__ = ("Outcome", "SeatOutcome", "RoleTally", "MemberMixStats", "aggregate_mix_stats", "outcome_for")
+from shared.domain.custom_game_round import winner_slot
+
+__all__ = (
+    "FORM_LENGTH",
+    "Outcome",
+    "SeatOutcome",
+    "RoleTally",
+    "MemberMixStats",
+    "aggregate_mix_stats",
+    "outcome_for",
+)
 
 Outcome = Literal["win", "loss", "draw"]
+
+#: How many of a member's newest results the scoreboard's recent-form strip carries.
+FORM_LENGTH = 10
 
 
 @dataclass(frozen=True)
 class SeatOutcome:
     """One recorded seat: who sat, in which role, in which match, and how it went.
 
-    ``match_id`` orders seats in the order they were played -- ids are
-    monotonic per recording, ``played_at`` is not guaranteed distinct between
-    two maps recorded in the same second -- and is what the streak walks back
-    from. ``role`` is the wire spelling (``tank``/``damage``/``support``) or
-    ``None`` for a seat recorded without one.
+    ``recorded_at`` (when the result landed) orders seats -- a match's id and
+    ``played_at`` are fixed when it STARTS, and two lobbies' matches are
+    recorded in any order -- and is what the streak walks back from;
+    ``match_id`` breaks a tie. ``role`` is the wire spelling
+    (``tank``/``damage``/``support``) or ``None`` for a seat recorded without one.
     """
 
     member_id: int
     role: str | None
     match_id: int
     played_at: datetime
+    recorded_at: datetime
     outcome: Outcome
 
 
@@ -63,20 +77,19 @@ class MemberMixStats:
     streak: int
     last_played_at: datetime | None
     by_role: dict[str, RoleTally]
+    #: The member's newest seats, newest first, at most :data:`FORM_LENGTH`.
+    form: tuple[SeatOutcome, ...]
 
 
-def outcome_for(own_score: int, other_score: int) -> Outcome:
+def outcome_for(own_score: float, other_score: float) -> Outcome:
     """A seat's result is its own team's score against the other side's.
 
-    Relative, never absolute: a casual match stores two scored sides and no
+    Relative, never absolute: a recorded round stores two scored sides and no
     winner flag, so "did this seat win" is only answerable next to the other
     team's number.
     """
-    if own_score > other_score:
-        return "win"
-    if own_score < other_score:
-        return "loss"
-    return "draw"
+    winner = winner_slot(1, own_score, other_score)
+    return "draw" if winner is None else "win" if winner == 1 else "loss"
 
 
 def _streak(outcomes: Sequence[Outcome]) -> int:
@@ -111,7 +124,7 @@ def aggregate_mix_stats(seats: Sequence[SeatOutcome]) -> list[MemberMixStats]:
 
     stats: list[MemberMixStats] = []
     for member_id, member_seats in by_member.items():
-        ordered = sorted(member_seats, key=lambda s: s.match_id, reverse=True)
+        ordered = sorted(member_seats, key=lambda s: (s.recorded_at, s.match_id), reverse=True)
         wins = sum(1 for s in ordered if s.outcome == "win")
         losses = sum(1 for s in ordered if s.outcome == "loss")
         draws = sum(1 for s in ordered if s.outcome == "draw")
@@ -142,6 +155,7 @@ def aggregate_mix_stats(seats: Sequence[SeatOutcome]) -> list[MemberMixStats]:
                 streak=_streak([s.outcome for s in ordered]),
                 last_played_at=ordered[0].played_at if ordered else None,
                 by_role=by_role,
+                form=tuple(ordered[:FORM_LENGTH]),
             )
         )
 

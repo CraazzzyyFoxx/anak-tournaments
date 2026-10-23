@@ -1,7 +1,7 @@
 import { Check } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { getSocialProviderConfig, socialProfileUrl } from "@/lib/social/providers";
+import { getSocialProviderConfig, socialAccountLabel, socialProfileUrl } from "@/lib/social/providers";
 import type { SocialAccount } from "@/types/user.types";
 
 import { SocialIcon } from "./SocialIcon";
@@ -38,14 +38,16 @@ export function SocialAccountBadge({ account, linkify = true }: Readonly<SocialA
         borderColor: border,
         color: labelColor
       }}
-      title={
-        account.is_verified
-          ? `${config.label} · ${t("registration.accounts.verified")}`
-          : config.label
-      }
+      title={[
+        config.label,
+        account.display_name ? account.username : null,
+        account.is_verified ? t("registration.accounts.verified") : null
+      ]
+        .filter(Boolean)
+        .join(" · ")}
     >
       <SocialIcon provider={account.provider} size={12} />
-      <span>{account.username}</span>
+      <span>{socialAccountLabel(account)}</span>
       {account.is_verified ? (
         <Check size={12} aria-label={t("registration.accounts.verified")} />
       ) : null}

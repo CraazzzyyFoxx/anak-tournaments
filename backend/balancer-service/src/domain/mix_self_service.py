@@ -1,4 +1,4 @@
-"""Who may seat themselves in a mix, leave it, and re-order their own roles.
+"""Who may seat themselves in a mix, leave it, re-order their own roles and step away.
 
 Pure and session-free by the same argument as the tournament's
 ``self_edit_policy``: the read path calls it while serializing one player's
@@ -13,6 +13,8 @@ unlinked player off to link an account for a cancelled session.
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+from shared.core.social import SocialProvider
 
 __all__ = ("MAX_ROSTER", "MixSelfPolicy", "mix_self_policy")
 
@@ -30,10 +32,14 @@ class MixSelfPolicy:
     can_join: bool
     can_leave: bool
     can_edit_roles: bool
+    #: Stepping away and back (spec §7.4): the role-edit gate without the host's switch.
+    can_set_away: bool
     #: Machine code for the client to translate; ``None`` while joining is open.
     join_blocker: str | None
     #: Same, for editing one's own roles.
     edit_blocker: str | None
+    #: Same, for stepping away.
+    away_blocker: str | None
 
 
 def mix_self_policy(
@@ -49,28 +55,28 @@ def mix_self_policy(
 ) -> MixSelfPolicy:
     """The caller's own rights over one mix.
 
-    ``missing_links`` is a subset of ``{"discord", "battlenet"}``;
+    ``missing_links`` is a subset of the mix game's required providers (Discord first);
     ``has_player`` says whether the account resolves to a ``players.user`` row;
     ``self_join_denied`` is the negative-RBAC overlay on ``custom_game.self_join``.
     """
     if status in _TERMINAL:
-        return MixSelfPolicy(False, False, False, "mix_closed", "mix_closed")
+        return MixSelfPolicy(False, False, False, False, "mix_closed", "mix_closed", "mix_closed")
 
     # Leaving is deliberately unconditional past the terminal check: somebody
     # who unlinked Battle.net after joining must not be stuck in the lineup.
     can_leave = on_roster
 
     identity_blocker: str | None = None
-    if "discord" in missing_links:
+    if SocialProvider.DISCORD in missing_links:
         identity_blocker = "discord_not_linked"
-    elif "battlenet" in missing_links:
-        identity_blocker = "battlenet_not_linked"
+    elif missing_links:
+        identity_blocker = f"{min(missing_links)}_not_linked"
     elif not has_player:
         identity_blocker = "player_not_linked"
     elif self_join_denied:
         identity_blocker = "self_join_denied"
     if identity_blocker is not None:
-        return MixSelfPolicy(False, can_leave, False, identity_blocker, identity_blocker)
+        return MixSelfPolicy(False, can_leave, False, False, identity_blocker, identity_blocker, identity_blocker)
 
     if on_roster:
         join_blocker: str | None = "already_joined"
@@ -81,11 +87,16 @@ def mix_self_policy(
     else:
         join_blocker = None
 
-    if not on_roster:
-        edit_blocker: str | None = "not_on_roster"
-    elif not self_role_edit:
-        edit_blocker = "role_edit_off"
-    else:
-        edit_blocker = None
+    # Stepping away is the player's own business: the role-edit gate minus the host's switch.
+    away_blocker: str | None = None if on_roster else "not_on_roster"
+    edit_blocker: str | None = away_blocker or (None if self_role_edit else "role_edit_off")
 
-    return MixSelfPolicy(join_blocker is None, can_leave, edit_blocker is None, join_blocker, edit_blocker)
+    return MixSelfPolicy(
+        join_blocker is None,
+        can_leave,
+        edit_blocker is None,
+        away_blocker is None,
+        join_blocker,
+        edit_blocker,
+        away_blocker,
+    )

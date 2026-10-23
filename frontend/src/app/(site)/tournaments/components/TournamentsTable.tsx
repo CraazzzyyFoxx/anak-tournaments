@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
+import { useMinuteClock } from "@/hooks/useMinuteClock";
 import { LayoutGrid } from "lucide-react";
 
 import type { TeamFormation, Tournament } from "@/types/tournament.types";
@@ -11,9 +12,19 @@ import { cn } from "@/lib/utils";
 import { getTournamentStatusMeta } from "@/lib/tournament/status";
 import { tournamentHref } from "@/lib/tournament/url";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
+import { GameLabel } from "@/components/workspace/GameLabel";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 import { stageProgress } from "./tournaments-helpers";
 
-const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
+const TournamentRow = ({
+  tournament,
+  games,
+  now
+}: {
+  tournament: Tournament;
+  games?: Map<string, DisciplineDescriptor>;
+  now: number | null;
+}) => {
   const t = useTranslations();
   const format = useFormatter();
   const { variant } = getTournamentStatusMeta(tournament.status);
@@ -50,6 +61,12 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
           </span>
           <span className="sub">
             {formatDateRange(format, tournament.start_date, tournament.end_date)}
+            {games ? (
+              <>
+                <span className="sep">·</span>
+                <GameLabel code={tournament.discipline} games={games} />
+              </>
+            ) : null}
             {tournament.is_league && (
               <>
                 <span className="sep">·</span>
@@ -96,7 +113,7 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
       </td>
       <td className="r">
         <span className="aqt-tnum text-label text-[color:var(--aqt-fg-muted)]">
-          {format.relativeTime(new Date(tournament.updated_at ?? tournament.start_date))}
+          {now !== null && format.relativeTime(new Date(tournament.updated_at ?? tournament.start_date), now)}
         </span>
       </td>
       <td className="r">
@@ -130,12 +147,16 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
  */
 const TournamentsTable = ({
   tournaments,
+  games,
   className
 }: {
   tournaments: Tournament[];
+  games?: Map<string, DisciplineDescriptor>;
   className?: string;
 }) => {
   const t = useTranslations();
+  // One clock for the whole table, not an interval per row.
+  const now = useMinuteClock();
 
   return (
     <section className={cn("tn-card", className)}>
@@ -171,7 +192,7 @@ const TournamentsTable = ({
         </thead>
         <tbody>
           {tournaments.map((tournament) => (
-            <TournamentRow key={tournament.id} tournament={tournament} />
+            <TournamentRow key={tournament.id} tournament={tournament} games={games} now={now} />
           ))}
         </tbody>
         </table>

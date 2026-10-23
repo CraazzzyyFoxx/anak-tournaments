@@ -6,9 +6,27 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
+from aiobotocore.config import AioConfig
 from aiobotocore.session import AioSession, get_session
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, HTTPClientError
+from botocore.exceptions import ConnectionError as BotoConnectionError
 from loguru import logger
+
+from shared.core.errors import ApiExc, ApiHTTPException
+
+#: An unreachable endpoint fails in seconds. botocore's defaults (60 s connect and
+#: read, five legacy-mode attempts) held an upload for ~50 s before a bare 500.
+_CONFIG = AioConfig(connect_timeout=3, read_timeout=30, retries={"total_max_attempts": 2, "mode": "standard"})
+
+
+class StorageUnavailableError(ApiHTTPException):
+    """The object store could not be reached (DNS, refused, timeout): 503 ``storage_unavailable``."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=503,
+            detail=[ApiExc(msg="File storage is unavailable. Try again in a few minutes.", code="storage_unavailable")],
+        )
 
 
 def _add_content_md5(request: Any, **_kwargs: Any) -> None:
@@ -75,13 +93,7 @@ class S3Client:
     @classmethod
     def from_settings(cls, settings: Any) -> S3Client:
         """Build an ``S3Client`` from any settings object exposing the five
-        ``s3_*`` fields ``BaseServiceSettings`` declares.
-
-        This 5-kwarg construction was copy-pasted at every S3-using call site
-        (app-service, identity-service, parser-service, tournament-service, plus
-        two of ``backend/scripts/``'s standalone migration scripts) — one line
-        replaces it everywhere.
-        """
+        ``s3_*`` fields ``BaseServiceSettings`` declares."""
         return cls(
             access_key=settings.s3_access_key,
             secret_key=settings.s3_secret_key,
@@ -100,9 +112,12 @@ class S3Client:
     async def _client(self) -> AsyncIterator:
         if self._session is None:
             raise RuntimeError("S3Client not started. Call await client.start() first.")
-        async with self._session.create_client("s3", **self._config) as client:
+        async with self._session.create_client("s3", config=_CONFIG, **self._config) as client:
             client.meta.events.register_first("before-sign.s3.DeleteObjects", _add_content_md5)
-            yield client
+            try:
+                yield client
+            except (BotoConnectionError, HTTPClientError) as exc:
+                raise StorageUnavailableError() from exc
 
     # ── Core operations ──────────────────────────────────────────────────
 
@@ -193,7 +208,7 @@ class S3Client:
                 response = await client.list_objects_v2(**kwargs)
                 # Skip legacy zero-byte "folder marker" keys ("logs/90/"): they
                 # are not objects any caller wants, and the tournament sweep
-                # (parser-service/serve.py) fans every listed key out as a log.
+                # (stats-service/serve_worker.py) fans every listed key out as a log.
                 keys.extend(obj["Key"] for obj in response.get("Contents", []) if not obj["Key"].endswith("/"))
                 if not response.get("IsTruncated"):
                     break
@@ -215,9 +230,6 @@ class S3Client:
                 return None
             logger.exception(f"Error heading object '{key}'")
             raise
-
-    async def object_exists(self, key: str) -> bool:
-        return await self.head_object(key) is not None
 
     # ── URL generation ───────────────────────────────────────────────────
 

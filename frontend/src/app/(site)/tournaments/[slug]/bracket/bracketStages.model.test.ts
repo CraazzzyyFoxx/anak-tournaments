@@ -31,7 +31,7 @@ function tabs(groups: Stage[], playoff: Stage, activeStageId: number) {
     matchCountsKnown: true,
     stageIdsWithMatches: new Set(),
     labels: { groupStage: "Group stage", playoff: "Playoff" }
-  }).map(({ label, disabled }) => [label, disabled]);
+  }).items.map(({ label, disabled }) => [label, disabled]);
 }
 
 describe("buildBracketTabs before any match", () => {

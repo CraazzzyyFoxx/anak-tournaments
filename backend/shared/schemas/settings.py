@@ -11,11 +11,11 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 __all__ = (
+    "RANK_COLLECTION_KEY_SUFFIX",
     "SETTINGS_KEY_RANK_COLLECTION",
-    "SETTINGS_KEY_RANK_MAPPING",
     "SETTINGS_KEY_SCRIM",
     "SETTINGS_KEY_STREAM_COLLECTION",
     "SETTINGS_KEY_SUBSCRIPTION_COLLECTION",
@@ -23,16 +23,14 @@ __all__ = (
     "SETTINGS_SCHEMAS",
     "RankCollectionConfig",
     "RankCollectionScope",
-    "RankMappingConfig",
-    "RankMappingEntry",
     "ScrimConfig",
     "StreamCollectionConfig",
     "SubscriptionCollectionConfig",
     "WorkspaceCreationConfig",
+    "settings_schema",
 )
 
 SETTINGS_KEY_RANK_COLLECTION = "parser.rank_collection"
-SETTINGS_KEY_RANK_MAPPING = "parser.rank_mapping"
 SETTINGS_KEY_SCRIM = "tournament.scrim"
 SETTINGS_KEY_STREAM_COLLECTION = "stream.collection"
 SETTINGS_KEY_SUBSCRIPTION_COLLECTION = "parser.subscription_collection"
@@ -57,7 +55,7 @@ class RankCollectionConfig(BaseModel):
     scope: RankCollectionScope = "registrations_only"
     # Self-pace each scheduler tick to cover the in-scope population once per
     # ``interval_seconds`` instead of claiming a fixed ``batch_size`` per tick.
-    # ``False`` restores the legacy fixed-batch behaviour (rollback switch).
+    # ``False`` is the rollback switch.
     auto_pace: bool = True
     # Fraction of the interval used as a random spread when (re)scheduling a tag,
     # so tags processed together don't recur together. 0 = exact recurrence.
@@ -99,44 +97,6 @@ class StreamCollectionConfig(BaseModel):
     batch_size: int = Field(default=100, ge=1, le=100)
 
 
-#: Identity of the built-in OverFast division+tier -> rank_value table (see
-#: ``parser-service``'s ``overwatch_rank.mapping``). Bumped whenever that table
-#: is rebased: a bare ``rank_value`` is ambiguous across versions (2500 was
-#: Platinum 5 under v1, Emerald 5 under v2), so the version stamped on each
-#: snapshot is what makes a backfill possible.
-DEFAULT_RANK_MAPPING_VERSION = "ow2-default-v2"
-
-
-class RankMappingEntry(BaseModel):
-    """One native division+tier → integer rank_value mapping row."""
-
-    division: str = Field(..., min_length=1, max_length=32)
-    tier: int = Field(..., ge=1, le=5)
-    rank_value: int = Field(..., ge=0, le=100_000)
-
-
-class RankMappingConfig(BaseModel):
-    """Override for the OverFast division+tier → rank_value mapping.
-
-    An empty ``entries`` list means "use the code default" — the parser-side
-    mapping module merges these entries over its built-in default, so editing a
-    single division+tier here only overrides that one cell.
-    """
-
-    version: str = Field(default=DEFAULT_RANK_MAPPING_VERSION, min_length=1, max_length=64)
-    entries: list[RankMappingEntry] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def _unique_division_tier(self) -> RankMappingConfig:
-        seen: set[tuple[str, int]] = set()
-        for entry in self.entries:
-            key = (entry.division.lower(), entry.tier)
-            if key in seen:
-                raise ValueError(f"duplicate mapping entry for division={entry.division!r} tier={entry.tier}")
-            seen.add(key)
-        return self
-
-
 class ScrimConfig(BaseModel):
     """Operational limits for ad-hoc scrim rooms.
 
@@ -154,7 +114,7 @@ class ScrimConfig(BaseModel):
 
 
 class WorkspaceCreationConfig(BaseModel):
-    """Self-service workspace-creation quota (workspace self-service design §4.4).
+    """Self-service workspace-creation quota.
 
     Same reasoning as ``ScrimConfig`` above: 1 is the conservative launch
     position for "how many workspaces may one account be accountable for", not
@@ -171,9 +131,27 @@ class WorkspaceCreationConfig(BaseModel):
 #: Registry consumed by the admin layer to validate writes per key.
 SETTINGS_SCHEMAS: dict[str, type[BaseModel]] = {
     SETTINGS_KEY_RANK_COLLECTION: RankCollectionConfig,
-    SETTINGS_KEY_RANK_MAPPING: RankMappingConfig,
     SETTINGS_KEY_SCRIM: ScrimConfig,
     SETTINGS_KEY_STREAM_COLLECTION: StreamCollectionConfig,
     SETTINGS_KEY_SUBSCRIPTION_COLLECTION: SubscriptionCollectionConfig,
     SETTINGS_KEY_WORKSPACE_CREATION: WorkspaceCreationConfig,
 }
+
+#: A per-game rank collector's key (``<game>.rank_collection``): stored with ``RankCollectionConfig``'s shape; each
+#: collector applies its own defaults when it reads, and may narrow the bounds (``DisciplineSpec.settings_schema``).
+RANK_COLLECTION_KEY_SUFFIX = ".rank_collection"
+
+
+def settings_schema(key: str) -> type[BaseModel] | None:
+    """The model a write to ``key`` is validated against, or ``None`` for an unknown key: a core key's own model, else
+    the model of the game module that owns the key, else ``RankCollectionConfig`` for any ``*.rank_collection``."""
+    if key in SETTINGS_SCHEMAS:
+        return SETTINGS_SCHEMAS[key]
+    # Imported on call: the registry loads the game modules, and they read these models.
+    from shared.disciplines import DISCIPLINES
+
+    for spec in DISCIPLINES.values():
+        model = spec.settings_schema(key) if spec.settings_schema is not None else None
+        if model is not None:
+            return model
+    return RankCollectionConfig if key.endswith(RANK_COLLECTION_KEY_SUFFIX) else None

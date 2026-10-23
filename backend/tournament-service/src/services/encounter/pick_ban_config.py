@@ -3,14 +3,9 @@
 The organizer-facing half of the pick-ban domain: the list/get/upsert/delete of
 the config rows that :mod:`pick_ban_session` later cascade-resolves onto an
 encounter, plus the body validation and the wire shape those rows are written
-and read through. It lived in ``rpc/pick_ban_admin.py`` and ``rpc/reads.py`` as
-raw SQL in the transport layer -- the upsert's ``session.add``/relationship
-replacement and the reads' ordered listing -- which put a domain rule (what
-"the config in scope" means, and in what order the cascade reads) in a layer
-that owns none.
+and read through.
 
-Since ruleset v2 (``docs/plans/2026-09-28-pick-ban-constructor.md``) the rules
-themselves are a document validated by the pure engine
+The rules themselves are a document validated by the pure engine
 (:mod:`shared.domain.pick_ban_rules`); what stays here is everything the engine
 cannot know -- the POOL the rules will be played out of, the cascade
 coordinates, and the DB vocabulary of item groups.
@@ -22,12 +17,13 @@ is the session's question, not this module's, and stays in
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from shared.core import http_status as status
 from shared.core.enums import (
@@ -36,11 +32,11 @@ from shared.core.enums import (
     MapVetoMode,
     PickBanKind,
 )
+from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import DISCIPLINES, DisciplineSpec
 from shared.domain import pick_ban_rules as pbr
-from shared.models.catalog.gamemode import Gamemode
-from shared.models.catalog.hero import Hero
-from shared.models.catalog.map import Map
+from shared.models.catalog.entity import CatalogEntity
 from shared.models.tournament.pick_ban import (
     PickBanConfig,
     PickBanConfigItem,
@@ -50,6 +46,7 @@ from shared.models.tournament.pick_ban import (
 from shared.models.tournament.tournament import Tournament
 from shared.repository import PickBanConfigRepository, StageRepository
 from shared.repository.pick_ban import CONFIG_POOL_LOAD
+from shared.services.team_format import tournament_slot_shape
 from src.services.encounter.veto_session import SLOT_CANDIDATE_FLOOR
 
 #: ``detail["code"]`` of the 422 a ruleset with validation errors raises. The
@@ -62,10 +59,10 @@ class SlotSpec:
     """One slot of a slot-mode upsert, as plain data.
 
     A value type rather than the transport's pydantic body model: the service
-    must not import from ``rpc/``, and the two callers of the upsert (the admin
-    route today, a config copier tomorrow) agree on "candidates + optional
-    reserve" and nothing else. ``position`` is absent on purpose -- list order
-    IS the position, assigned 1-based by :meth:`PickBanConfigService.upsert_config`.
+    must not import from ``rpc/``, and every caller of the upsert agrees on
+    "candidates + optional reserve" and nothing else. ``position`` is absent on
+    purpose -- list order IS the position, assigned 1-based by
+    :meth:`PickBanConfigService.upsert_config`.
     """
 
     candidates: list[int] = field(default_factory=list)
@@ -75,40 +72,176 @@ class SlotSpec:
 # ── item groups (the DB half of the engine's vocabulary) ─────────────────────
 
 
-async def group_vocabulary(session: AsyncSession, kind: PickBanKind) -> list[str]:
-    """Every ``item_group`` value a condition of this kind may name.
+def installed_discipline(discipline: str) -> DisciplineSpec:
+    """The module behind ``discipline``; 404 ``discipline_not_installed`` for a code nobody declares.
 
-    The engine is pure and cannot know them: hero classes are a closed set it
-    ships (:data:`pbr.HERO_GROUPS`), but a map's group is its gamemode slug,
-    which is catalog data an admin edits. Both the catalog op (what the
-    constructor offers) and the upsert validation (what it accepts) read the
-    vocabulary from here so the editor can never author a group the validator
-    then refuses.
+    Never the registry's side-less stand-in: a catalog, vocabulary or save for a game that is not installed must fail,
+    not quietly answer with an empty vocabulary."""
+    spec = DISCIPLINES.get(discipline)
+    if spec is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=[ApiExc(code="discipline_not_installed", msg=f"Discipline {discipline!r} is not installed")],
+        )
+    return spec
+
+
+async def tournament_discipline(session: AsyncSession, tournament_id: int) -> str:
+    """The tournament's discipline code: the owner scope every rule, group and pool of its configs is read in."""
+    code = await session.scalar(select(Tournament.discipline).where(Tournament.id == tournament_id))
+    if code is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    return str(code)
+
+
+async def group_vocabulary(session: AsyncSession, kind: PickBanKind, discipline: str) -> list[str]:
+    """Every ``item_group`` value a condition of this kind may name in ``discipline``.
+
+    The engine is pure and cannot know them: a character's group is its class, which is the discipline module's
+    declared ``character_classes`` (never an assigned player role), but a map's group is its gamemode slug, which is
+    catalog data an admin edits -- and a game that declares no ``mode`` kind (League) has none. Both the catalog op
+    (what the constructor offers) and the upsert validation (what it accepts) read the vocabulary from here so the
+    editor can never author a group the validator then refuses.
     """
+    spec = installed_discipline(discipline)
     if kind == PickBanKind.HERO:
-        return list(pbr.HERO_GROUPS)
-    slugs = await session.scalars(select(Gamemode.slug).order_by(Gamemode.slug))
+        return [group for group in (pbr.normalize_group(name) for name in spec.character_classes) if group]
+    if "mode" not in spec.kinds:
+        return []
+    slugs = await session.scalars(
+        select(CatalogEntity.slug)
+        .where(CatalogEntity.kind == "mode", CatalogEntity.discipline == discipline)
+        .order_by(CatalogEntity.slug)
+    )
     return [group for group in (pbr.normalize_group(slug) for slug in slugs) if group]
 
 
-async def pool_group_counts(session: AsyncSession, kind: PickBanKind, item_ids: Sequence[int]) -> dict[str, int]:
-    """``{group: how many pool items are in it}`` -- the preview's budget.
+async def pool_composition(
+    session: AsyncSession, kind: PickBanKind, item_ids: Sequence[int], discipline: str
+) -> tuple[dict[str, int], int]:
+    """``({group: how many pool items are in it}, pool size)`` -- the preview's budget.
 
     "How many supports are left on map 5?" is only answerable against a real
-    pool, so the preview takes the counts rather than the ids.
+    pool, so the preview takes the counts rather than the ids. Only items of
+    ``discipline`` and of the kind's catalog count: an id of another game is not a
+    member of this pool. An item with no group (a League map has no gamemode, a
+    champion may have no class) still counts toward the size: the pool's
+    cardinality never depends on optional grouping data.
     """
     if not item_ids:
-        return {}
+        return {}, 0
     if kind == PickBanKind.HERO:
-        query = select(Hero.type).where(Hero.id.in_(item_ids))
+        query = select(CatalogEntity.attrs["class"].astext).where(
+            CatalogEntity.id.in_(item_ids),
+            CatalogEntity.kind == "character",
+            CatalogEntity.discipline == discipline,
+        )
     else:
-        query = select(Gamemode.slug).join(Map, Map.gamemode_id == Gamemode.id).where(Map.id.in_(item_ids))
+        mode = aliased(CatalogEntity, name="mode")
+        query = (
+            select(mode.slug)
+            .select_from(CatalogEntity)
+            .outerjoin(
+                mode,
+                and_(mode.id == CatalogEntity.parent_id, mode.kind == "mode", mode.discipline == discipline),
+            )
+            .where(
+                CatalogEntity.id.in_(item_ids),
+                CatalogEntity.kind == "map",
+                CatalogEntity.discipline == discipline,
+            )
+        )
     counts: dict[str, int] = {}
+    size = 0
     for raw in await session.scalars(query):
+        size += 1
         group = pbr.normalize_group(raw)
         if group:
             counts[group] = counts.get(group, 0) + 1
-    return counts
+    return counts, size
+
+
+async def assert_pool_in_discipline(
+    session: AsyncSession,
+    *,
+    kind: PickBanKind,
+    discipline: str,
+    item_ids: Sequence[int],
+    slots: Sequence[tuple[Sequence[int], int | None]],
+) -> set[int]:
+    """Every pool id (flat items, slot candidates and reserves) is a catalog row of ``discipline`` and of the
+    kind's catalog (a character for the hero kind, a map for the map kind); 422 ``pool_item_not_in_catalog``
+    otherwise. A map pool's flat items may also name the discipline's modes when it declares the ``mode`` kind: ingest
+    then admits only logs of those modes, and a room never offers a mode as a map (``CONFIG_ROOM_LOAD``). Returns
+    those mode items. The shared save boundary: the admin upsert and the scrim custom pool both go through it."""
+    wanted = set(item_ids)
+    for candidates, reserve in slots:
+        wanted.update(candidates)
+        if reserve is not None:
+            wanted.add(reserve)
+    if not wanted:
+        return set()
+    found = set(
+        await session.scalars(
+            select(CatalogEntity.id).where(
+                CatalogEntity.id.in_(wanted),
+                CatalogEntity.kind == ("character" if kind == PickBanKind.HERO else "map"),
+                CatalogEntity.discipline == discipline,
+            )
+        )
+    )
+    modes: set[int] = set()
+    flat = set(item_ids) - found
+    if kind == PickBanKind.MAP and flat and "mode" in installed_discipline(discipline).kinds:
+        modes = set(
+            await session.scalars(
+                select(CatalogEntity.id).where(
+                    CatalogEntity.id.in_(flat),
+                    CatalogEntity.kind == "mode",
+                    CatalogEntity.discipline == discipline,
+                )
+            )
+        )
+    if missing := sorted(wanted - found - modes):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[
+                ApiExc(
+                    code="pool_item_not_in_catalog",
+                    msg=f"Not a {discipline} {kind.value} catalog item: {', '.join(str(item) for item in missing)}",
+                )
+            ],
+        )
+    return modes
+
+
+async def validate_config(
+    session: AsyncSession,
+    *,
+    kind: PickBanKind,
+    mode: MapVetoMode,
+    ruleset: Any,
+    item_ids: Sequence[int],
+    slots: Sequence[tuple[Sequence[int], int | None]],
+    stage_id: int | None,
+    round: int | None,
+    discipline: str,
+) -> None:
+    """The whole save gate of a config body: the pool's membership in the discipline's catalog, the ruleset against
+    the discipline's group vocabulary, and the pool's shape (its mode items do not count toward a room's demand)."""
+    modes = await assert_pool_in_discipline(session, kind=kind, discipline=discipline, item_ids=item_ids, slots=slots)
+    validate_config_payload(
+        kind=kind,
+        mode=mode,
+        ruleset=ruleset,
+        item_ids=item_ids,
+        slots=slots,
+        stage_id=stage_id,
+        round=round,
+        discipline=discipline,
+        groups=await group_vocabulary(session, kind, discipline),
+        modes=modes,
+    )
 
 
 async def roster_slot_counts(session: AsyncSession, tournament_id: int) -> dict[str, int] | None:
@@ -120,10 +253,8 @@ async def roster_slot_counts(session: AsyncSession, tournament_id: int) -> dict[
     of such a step lands on one role and reports a far bleaker map 5 than the
     rules can actually produce.
 
-    Read straight off the tournament rather than through
-    ``resolve_roster_shape``: what matters here is what the ORGANIZER set for
-    THIS tournament, and a workspace default the editor never showed them would
-    silently change the numbers under the preview.
+    The tournament owns its frozen format; its projection is also what the
+    organizer's editor displays.
 
     Handed to the engine RAW. It matches keys case-insensitively, drops
     non-positive counts and ignores keys that are not pool groups -- and
@@ -131,8 +262,7 @@ async def roster_slot_counts(session: AsyncSession, tournament_id: int) -> dict[
     ``target_role_match``, so their bans raise every role's ceiling. Filtering
     flex out here would make the preview optimistic and swallow a real warning.
     """
-    raw = await session.scalar(select(Tournament.roster_slots_json).where(Tournament.id == tournament_id))
-    return raw or None
+    return (await tournament_slot_shape(session, tournament_id)).slots
 
 
 # ── upsert validation ────────────────────────────────────────────────────────
@@ -141,10 +271,9 @@ async def roster_slot_counts(session: AsyncSession, tournament_id: int) -> dict[
 def validate_pick_ban_slot_config(slots: list[list[int]], *, reserves: list[int | None]) -> None:
     """Validate the slot POOL of a slot-mode :class:`PickBanConfig` upsert.
 
-    Untouched by ruleset v2: a slot is a pool partition, not a rule -- the
-    steps that ban a slot down to its survivor are the ``slot_veto`` generator's
-    business. Generalized to "item" (map or hero id, per the config's ``kind``)
-    instead of "map"."""
+    A slot is a pool partition, not a rule -- the steps that ban a slot down to
+    its survivor are the ``slot_veto`` generator's business. Items are map or
+    hero ids, per the config's ``kind``."""
     if not slots:
         raise HTTPException(status_code=422, detail="slots must not be empty")
     if len(reserves) != len(slots):
@@ -159,19 +288,34 @@ def validate_pick_ban_slot_config(slots: list[list[int]], *, reserves: list[int 
             raise HTTPException(status_code=422, detail=f"slot {index} reserve must not be one of its own candidates")
 
 
+#: Stand-in seats: only HOW MANY participations an actor token resolves to
+#: matters to the demand, never which.
+_DEMAND_SEATS = (1, 2)
+
+
 def _phase_demand(phase: pbr.Phase) -> int:
     """How many pool items one round of ``phase`` consumes, worst case.
 
-    Each non-decider step spends ``count`` items per acting side (``both`` is
-    two sides); a decider settles exactly one. Sides come from the engine's own
-    resolver so the two never drift -- the opener is irrelevant to the COUNT,
-    only to who acts.
+    Each item-spending step spends ``count`` per acting participation
+    (``both`` is everyone); a decider settles exactly one, and a side pick
+    spends nothing from the pool. Actors come from the engine's own resolver so
+    the two never drift.
     """
 
     def _spend(step: pbr.Step) -> int:
         if step.action == "decider":
             return 1
-        return step.count * len(pbr.resolve_sides(step.actors, opener="home", prev_outcome=None))
+        if step.action == "side_pick":
+            return 0
+        try:
+            actors = pbr.resolve_actors(step.actors, participants=_DEMAND_SEATS, opener=_DEMAND_SEATS[0])
+        except pbr.UnassignedSide:
+            # ``side:<code>`` only resolves once the round's ``side_pick`` is
+            # played, and it always names exactly ONE participation -- which is
+            # all the demand arithmetic needs, so it is counted rather than
+            # raising a 500 on a perfectly valid sided ruleset.
+            actors = [_DEMAND_SEATS[0]]
+        return step.count * len(actors)
 
     return sum(_spend(step) for step in phase.steps)
 
@@ -185,7 +329,9 @@ def validate_config_payload(
     slots: Sequence[tuple[Sequence[int], int | None]],
     stage_id: int | None,
     round: int | None,
+    discipline: str,
     groups: Sequence[str] | None = None,
+    modes: Collection[int] = (),
 ) -> None:
     """Everything an upsert body must satisfy before it becomes a config row.
 
@@ -197,16 +343,21 @@ def validate_config_payload(
     A pool-less row is a rules TEMPLATE -- authored at a wide cascade scope so
     narrower ones inherit its rotation and steps. It plays nothing
     (``ensure_pick_ban_session`` refuses to open a room on a config with no
-    pool), so the pool-shaped rules have nothing to hold and are not checked,
-    exactly as in v1.
+    pool), so the pool-shaped rules have nothing to hold and are not checked.
+    Except a hero template that picks sides: 422 ``pool_required``, because
+    ``side_pick_required`` reads its side step all the same and would hold every
+    game's result behind a room that never opens.
 
     ``groups`` is the kind's item-group vocabulary (see :func:`group_vocabulary`);
-    ``None`` skips map-group name checks.
+    ``None`` skips map-group name checks. ``discipline`` decides what the actor
+    vocabulary may say -- whether the game has sides to pick at all. ``modes``
+    are the flat items that are modes, not maps: they restrict logs, never a
+    room, so a pool of only modes is a template to the room.
     """
     if round is not None and stage_id is None:
         raise HTTPException(status_code=422, detail="round requires stage_id")
 
-    issues = pbr.validate_ruleset(ruleset, kind=kind.value, mode=mode.value, groups=groups)
+    issues = pbr.validate_ruleset(ruleset, kind=kind.value, mode=mode.value, discipline=discipline, groups=groups)
     errors = [issue for issue in issues if issue.severity == "error"]
     if errors:
         # A dict detail WITHOUT ``msg``: ``shared.rpc.common.http_error``'s
@@ -221,6 +372,26 @@ def validate_config_payload(
                 "message": f"ruleset has {len(errors)} validation error(s)",
                 "issues": [issue.to_json() for issue in issues],
             },
+        )
+
+    if (
+        kind == PickBanKind.HERO
+        and not item_ids
+        and not slots
+        and any(step.action == "side_pick" for phase in pbr.parse_ruleset(ruleset).phases for step in phase.steps)
+    ):
+        label = installed_discipline(discipline).kinds.get("character", "character").lower()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[
+                ApiExc(
+                    code="pool_required",
+                    msg=(
+                        f"These rules pick sides, so the {label} pool has to be saved first: "
+                        "without a pool the room never opens and every game waits on its side pick"
+                    ),
+                )
+            ],
         )
 
     if mode == MapVetoMode.SLOTS:
@@ -243,17 +414,18 @@ def validate_config_payload(
     # playable and is replayed per map, so its steps are not "spent" items.
     if kind != PickBanKind.MAP:
         return
+    maps = len([item for item in item_ids if item not in modes])
+    if not maps:
+        return
     for index, phase in enumerate(pbr.parse_ruleset(ruleset).phases):
         if phase.generator is not None:
             # A generator sizes itself to the pool it is given.
             continue
         demand = _phase_demand(phase)
-        if demand > len(item_ids):
+        if demand > maps:
             raise HTTPException(
                 status_code=422,
-                detail=(
-                    f"phase {index} ({phase.id}) consumes {demand} items per map but the pool has only {len(item_ids)}"
-                ),
+                detail=f"phase {index} ({phase.id}) consumes {demand} items per map but the pool has only {maps}",
             )
 
 
@@ -379,8 +551,8 @@ class PickBanConfigService:
 
         ruleset_json = normalized_ruleset(ruleset)
 
-        # Upsert key = (tournament_id, kind, stage_id, round) — same cascade
-        # level as veto_admin, additionally partitioned by kind.
+        # Upsert key = (tournament_id, kind, stage_id, round): one config per
+        # cascade level and kind.
         config = await self.config_repo.find_for_stage_round(
             session,
             tournament_id=tournament_id,
@@ -413,13 +585,10 @@ class PickBanConfigService:
             config.first_pick_rule = first_pick_rule
             config.first_ban_rotation = first_ban_rotation
             config.ruleset_json = ruleset_json
-            # Wholesale replace, cleared+flushed first — same ordering rationale
-            # as veto_admin's upsert (SQLAlchemy would otherwise emit the new
-            # children's INSERTs before the old ones' DELETEs and trip the
-            # plain UNIQUE constraints on position/item_id). The clear rides the
-            # `delete-orphan` cascade on both relationships, so it stays ORM-level
-            # rather than becoming a statement delete the loaded collection would
-            # then disagree with.
+            # Wholesale replace, cleared+flushed first: SQLAlchemy would otherwise
+            # emit the new children's INSERTs before the old ones' DELETEs and trip
+            # the plain UNIQUE constraints on position/item_id. The clear rides the
+            # `delete-orphan` cascade, so the loaded collection stays in step.
             config.items = []
             config.slots = []
             await session.flush()
@@ -451,12 +620,14 @@ __all__ = (
     "RULESET_INVALID",
     "PickBanConfigService",
     "SlotSpec",
+    "assert_pool_in_discipline",
     "group_vocabulary",
     "normalized_ruleset",
     "pick_ban_config_service",
-    "pool_group_counts",
+    "pool_composition",
     "roster_slot_counts",
     "serialize_pick_ban_config",
+    "validate_config",
     "validate_config_payload",
     "validate_pick_ban_slot_config",
 )

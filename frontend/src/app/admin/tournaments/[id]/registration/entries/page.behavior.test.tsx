@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 //
 // Registration › Entries (F4). What is pinned here:
-//  1. the sections are one sub-tab bar, and the active one carries
-//     `aria-current="page"` — they used to be reachable only from a dropdown
-//     buried in the table's toolbar;
+//  1. the sub-tab bar holds the views of who entered (entries, teams) and the
+//     tools that act on entries (Sheets feed, rank autofill), each a routed
+//     tab;
 //  2. `teams` is offered only on a tournament that forms its teams by
 //     registration — it used to be a Radix `Tabs` switcher inside this page,
 //     which is neither the admin's one tab implementation nor linkable;
@@ -35,13 +35,18 @@ let rerender: (() => void) | null = null;
 let canTeamRead = true;
 let teamFormation = "balancer";
 
-const replace = vi.fn((url: string) => {
-  const parsed = new URL(url, "http://localhost");
-  window.history.replaceState(null, "", url);
+// Every URL write re-renders from the new `useSearchParams` in the app — the
+// router's `replace` and, through Next's History patch, the inspector's native
+// `replaceState`. Both land here as "write `window.history`, poke the harness".
+const replace = vi.fn((url: string) => window.history.replaceState(null, "", url));
+const nativeReplaceState = window.history.replaceState.bind(window.history);
+window.history.replaceState = (data, unused, url) => {
+  const parsed = new URL(String(url), "http://localhost");
+  nativeReplaceState(data, unused, url);
   currentSearch = parsed.search;
   currentPath = parsed.pathname;
   rerender?.();
-});
+};
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "80" }),
@@ -53,8 +58,12 @@ vi.mock("next/navigation", () => ({
 vi.mock("next/link", () => ({
   default: forwardRef<
     HTMLAnchorElement,
-    { href: string; children: ReactNode } & React.AnchorHTMLAttributes<HTMLAnchorElement>
-  >(function Link({ href, children, ...props }, ref) {
+    {
+      href: string;
+      children: ReactNode;
+      prefetch?: boolean | null;
+    } & React.AnchorHTMLAttributes<HTMLAnchorElement>
+  >(function Link({ href, children, prefetch: _prefetch, ...props }, ref) {
     return (
       <a ref={ref} href={href} {...props}>
         {children}
@@ -202,7 +211,10 @@ function Harness() {
 async function mount(search = "", expectTable = true) {
   currentSearch = search;
   currentPath = "/admin/tournaments/80/registration/entries";
-  window.history.replaceState(null, "", `${currentPath}${search}`);
+  // A harness already mounted by this test re-renders from the new URL.
+  await act(async () => {
+    window.history.replaceState(null, "", `${currentPath}${search}`);
+  });
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -295,21 +307,19 @@ afterEach(async () => {
 });
 
 describe("Registration entries", () => {
-  it("gives the sections one sub-tab bar and marks the active one", async () => {
+  it("offers the tools as routed tabs beside entries", async () => {
     const scope = await mount();
-    const nav = scope.querySelector("nav[aria-label='Registration sections']");
-    const links = [...(nav?.querySelectorAll("a") ?? [])];
+    const links = [
+      ...(scope.querySelector("nav[aria-label='Registration sections']")?.querySelectorAll("a") ??
+        [])
+    ];
 
-    // No `teams`: this tournament balances, so registered teams do not exist.
+    // No `teams`: this tournament balances, so the bar is entries and the tools.
     expect(links.map((link) => link.getAttribute("href"))).toEqual([
       "/admin/tournaments/80/registration/entries",
-      "/admin/tournaments/80/registration/form",
       "/admin/tournaments/80/registration/feed",
       "/admin/tournaments/80/registration/rank-autofill"
     ]);
-    expect(
-      links.filter((link) => link.getAttribute("aria-current") === "page").map((l) => l.textContent)
-    ).toEqual(["Entries"]);
   });
 
   it("offers the teams section only when captains form the teams", async () => {
@@ -321,22 +331,22 @@ describe("Registration entries", () => {
         [])
     ];
 
-    // A linkable section beside its siblings, not a Radix `Tabs` pair inside
+    // A linkable section beside its sibling, not a Radix `Tabs` pair inside
     // the entries table whose state no URL could carry.
-    expect(links.map((link) => link.getAttribute("href"))).toContain(
-      "/admin/tournaments/80/registration/teams"
-    );
-    expect(links.map((link) => link.textContent)).toEqual([
-      "Entries",
-      "Teams",
-      "Form",
-      "Sheets feed",
-      "Rank autofill"
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/admin/tournaments/80/registration/entries",
+      "/admin/tournaments/80/registration/teams",
+      "/admin/tournaments/80/registration/feed",
+      "/admin/tournaments/80/registration/rank-autofill"
     ]);
+    expect(
+      links.filter((link) => link.getAttribute("aria-current") === "page").map((l) => l.textContent)
+    ).toEqual(["Entries"]);
   });
 
   it("hides the section body without team.read", async () => {
     canTeamRead = false;
+    teamFormation = "registration";
 
     const scope = await mount("", false);
 
@@ -367,7 +377,8 @@ describe("Registration entries", () => {
   });
 
   it("drops the page cursor when the filters are cleared", async () => {
-    const scope = await mount("?admission=admitted&page=3");
+    // "Clear all" is offered only from two chips up.
+    const scope = await mount("?admission=admitted&status=approved&page=3");
 
     await click(
       [...scope.querySelectorAll("button")].find(
@@ -377,6 +388,7 @@ describe("Registration entries", () => {
 
     const url = new URL(replace.mock.calls.at(-1)![0], "http://x");
     expect(url.searchParams.get("admission")).toBeNull();
+    expect(url.searchParams.get("status")).toBeNull();
     expect(url.searchParams.get("page")).toBeNull();
   });
 
@@ -385,7 +397,7 @@ describe("Registration entries", () => {
 
     await click(scope.querySelector("tbody tr"));
 
-    expect(new URL(replace.mock.calls.at(-1)![0], "http://x").searchParams.get("id")).toBe("1");
+    expect(new URLSearchParams(window.location.search).get("id")).toBe("1");
 
     const withInspector = await mount("?id=1");
     const inspector = withInspector.querySelector("aside[aria-label='Row inspector']");

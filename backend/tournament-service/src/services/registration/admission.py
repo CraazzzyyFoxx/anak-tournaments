@@ -1,21 +1,13 @@
 """The one place a write path asks "is this player allowed through this gate".
 
-Three handlers used to answer that question in three different shapes:
-``reg_pub_create`` and ``regteam_create`` called a subscription gate, and
-``reg_pub_check_in`` called that gate plus an inline ``if`` for the profile. Which
-requirement bit at which moment was therefore encoded by the presence, absence
-and ORDER of calls across those handlers -- readable only by grepping all of
-them, and wrong the moment a fourth write path forgot one. Here it is one call
-with an explicit ``stage`` (D8).
+``reg_pub_create``, ``regteam_create`` and ``reg_pub_check_in`` all ask through
+one call with an explicit ``stage``, so which requirement bites at which moment
+is decided here rather than by the presence and order of calls across handlers.
 
-Two things are deliberate about the split below.
-
-**The config is loaded once per request and passed by value** (D12). It used to
-be read twice per registration submit -- once in the handler to feed the gate,
-once again inside ``submit_public_registration`` -- against a form an organizer
-can edit live, so the two reads could legitimately disagree. Now the toggles and
-the workspace rule are one frozen value, and everything downstream projects from
-it.
+**The config is loaded once per request and passed by value**: an organizer can
+edit the form live, so two reads within one submit could legitimately disagree.
+The toggles and the workspace rule are one frozen value, and everything
+downstream projects from it.
 
 **``load_admission_config`` reads the form through**
 ``_common_service.get_registration_form``, which is the single form reader. It is
@@ -29,32 +21,13 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.services.admission import AdmissionConfig, AdmissionEvaluation, AdmissionStage
-from shared.services.admission.gates import assert_admitted
-from shared.services.admission.resolve import resolve_admission_for_gate
-from shared.services.subscriptions.wiring import build_resolver
-from src.core.broker import optional_broker
-from src.core.config import settings
+from src.core.clients import subscription_resolver
+from src.services.admission import AdmissionConfig, AdmissionEvaluation, AdmissionStage
+from src.services.admission.gates import assert_admitted
+from src.services.admission.resolve import resolve_admission_for_gate
 from src.services.registration._common import _common_service
 
-__all__ = ("assert_admitted_at", "build_admission_resolver", "load_admission_config")
-
-
-def build_admission_resolver(session: AsyncSession) -> Any:
-    """Resolver wired with this service's provider credentials.
-
-    Built per call rather than memoized: the Discord strategy caches a guild's
-    role list for the lifetime of the resolver, and that cache must not outlive
-    the request that filled it -- a role mapping edited mid-tournament would
-    otherwise keep refusing patrons it no longer applies to.
-    """
-    return build_resolver(
-        session,
-        discord_bot_token=settings.discord_token,
-        twitch_client_id=settings.twitch_client_id,
-        broker=optional_broker(),
-        proxy=settings.proxy_url,
-    )
+__all__ = ("assert_admitted_at", "load_admission_config")
 
 
 async def load_admission_config(
@@ -83,7 +56,7 @@ async def load_admission_config(
     form = await _common_service.get_registration_form(session, tournament_id)
     rule = None
     if form is not None and form.require_subscription:
-        rule = await (resolver or build_admission_resolver(session)).load_requirement(workspace_id=form.workspace_id)
+        rule = await (resolver or subscription_resolver(session)).load_requirement(workspace_id=form.workspace_id)
     return AdmissionConfig.from_form(form, subscription_rule=rule)
 
 
@@ -110,7 +83,7 @@ async def assert_admitted_at(
     :func:`assert_admitted` reads. ``ready`` is data completeness (approved, ranked
     in the balancer pool), not a requirement, and it is not this gate's business.
     """
-    resolver = build_admission_resolver(session)
+    resolver = subscription_resolver(session)
     config = await load_admission_config(session, tournament_id, resolver=resolver)
     evaluation = await resolve_admission_for_gate(
         session,

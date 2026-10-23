@@ -5,22 +5,25 @@ from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
+from shared.core import enums, errors, pagination
 from shared.core.tournament_state import IN_PLAY_STATUSES
 from shared.division_grid import DivisionGrid
-from shared.domain.roster_shape import resolve_roster_shape
 from shared.models.identity.auth_user import AuthUser
+from shared.services.cache_generations import versioned
 from shared.services.challonge_refs import ChallongeRef, resolve_stage_challonge, resolve_tournament_challonge
 from shared.services.division_grid.normalization import DivisionGridNormalizationError, DivisionGridNormalizer
-from shared.services.draft_guards import has_unfinished_draft_session, unfinished_draft_tournament_ids
-from shared.services.registration_team_guards import has_registered_teams, registered_team_tournament_ids
-from shared.services.roster_shape_access import get_workspace_roster_slots
+from shared.services.team_format import tournament_shape_reads
 from shared.services.tournament.visibility import visible_tournaments_predicate
-from src import models, schemas
-from src.core import config, enums, errors, pagination
+from src import schemas
+from src.core import config
 from src.services.admin.tournament_link import tournament_link_service
+from src.services.draft_guards import has_unfinished_draft_session, unfinished_draft_tournament_ids
 from src.services.registration.service import registration_service
+from src.services.registration_team_guards import has_registered_teams, registered_team_tournament_ids
 from src.services.team.service import team_service
 
+from .cache_resources import DETAIL, tournament_generations
 from .service import TournamentService, tournament_service
 
 
@@ -42,8 +45,7 @@ def _apply_stage_challonge(
     stage_id: int,
     stage_challonge_refs: typing.Mapping[int, ChallongeRef] | None,
 ) -> _StageReadT:
-    """Override the KEPT ``challonge_id``/``challonge_slug`` fields with values
-    DERIVED from ``challonge_source`` (never the legacy ``stage`` columns)."""
+    """Set ``challonge_id``/``challonge_slug`` from ``challonge_source``-derived refs, not the ``stage`` columns."""
     challonge_id, challonge_slug = (
         stage_challonge_refs.get(stage_id, (None, None)) if stage_challonge_refs is not None else (None, None)
     )
@@ -65,28 +67,17 @@ class TournamentFlowsService:
         teams_counts: typing.Mapping[int, int] | None = None,
         challonge_ref: ChallongeRef | None = None,
         stage_challonge_refs: typing.Mapping[int, ChallongeRef] | None = None,
-        workspace_slots_by_workspace: typing.Mapping[int, dict[str, int] | None] | None = None,
+        shapes: typing.Mapping[int, schemas.RosterShapeRead] | None = None,
         draft_locked_ids: set[int] | None = None,
         teams_locked_ids: set[int] | None = None,
         links_by_tournament: typing.Mapping[int, list[schemas.TournamentLinkRead]] | None = None,
     ) -> schemas.TournamentRead:
-        """
-        Converts a `Tournament` model instance to a Pydantic `TournamentRead` schema, optionally including related entities.
+        """Convert a tournament to ``TournamentRead`` with the requested ``entities``.
 
-        Args:
-            session: An SQLAlchemy `AsyncSession` for database interaction.
-            tournament: The `Tournament` model instance to convert.
-            entities: A list of strings representing the names of related entities to include.
-            challonge_ref: Optional prefetched ``(challonge_id, slug)`` DERIVED from
-                ``challonge_source`` (see ``shared.services.challonge_refs``). When
-                omitted the fields serialize as ``None`` — callers resolve/pass it so
-                the serializer never reads the deprecated ``tournament`` columns nor
-                issues a per-row query.
-            stage_challonge_refs: Optional prefetched ``stage_id -> (challonge_id, slug)``
-                map used the same way for nested ``stages``.
-
-        Returns:
-            A `TournamentRead` schema instance.
+        ``challonge_ref`` / ``stage_challonge_refs`` are prefetched ``(challonge_id, slug)``
+        values derived from ``challonge_source`` (``resolve_tournament_challonge`` /
+        ``resolve_stage_challonge``). When omitted the fields serialize as ``None``: the
+        serializer never reads the deprecated ``tournament`` columns nor issues a per-row query.
         """
         stages: list[schemas.StageSummaryRead] = []
         participants_count: int | None = None
@@ -131,19 +122,9 @@ class TournamentFlowsService:
         roster_locked_by_draft = None
         roster_locked_by_teams = None
         if _entity_requested(entities, "roster_shape"):
-            # Both levels are read explicitly so `source` is KNOWN rather than
-            # reverse-engineered from the resolved shape: an override that happens to
-            # equal the workspace default is still an override. Tournament slots
-            # come off the already-loaded ORM column; workspace slots are
-            # cache-backed (and prefetched by `get_all` when serializing a page).
-            tournament_slots = tournament.roster_slots_json
-            if workspace_slots_by_workspace is not None:
-                workspace_slots = workspace_slots_by_workspace.get(tournament.workspace_id)
-            else:
-                workspace_slots = await get_workspace_roster_slots(session, tournament.workspace_id)
-            shape = resolve_roster_shape(tournament_slots, workspace_slots)
-            source = "tournament" if tournament_slots else "workspace" if workspace_slots else "default"
-            roster_shape = schemas.RosterShapeRead.from_shape(shape, source=source)
+            if shapes is None:
+                shapes = await tournament_shape_reads(session, [tournament])
+            roster_shape = shapes[tournament.id]
             # Same opt-in gate, same reason: these DO cost a query, so nested
             # reads must not pay for it. The write-path guards use the same
             # predicates, so the form disables exactly what a save would reject.
@@ -159,11 +140,10 @@ class TournamentFlowsService:
                 roster_locked_by_teams = await has_registered_teams(session, tournament.id)
         links: list[schemas.TournamentLinkRead] = []
         if _entity_requested(entities, "links"):
-            # Explicit query, not a relationship: `Tournament` deliberately declares no
-            # `links` relationship, so there is nothing here that could lazy-load
-            # outside the greenlet (MissingGreenlet) when a cached/detached
-            # TournamentRead is rebuilt. Same opt-in gate as `roster_shape` — this
-            # costs a query, so the six schemas that nest TournamentRead don't pay it.
+            # Explicit query, not a relationship: `Tournament` declares no `links`
+            # relationship, so nothing here can lazy-load outside the greenlet
+            # (MissingGreenlet) when a cached/detached TournamentRead is rebuilt.
+            # Opt-in like `roster_shape`: it costs a query nested reads must not pay.
             if links_by_tournament is not None:
                 links = list(links_by_tournament.get(tournament.id, []))
             else:
@@ -199,6 +179,7 @@ class TournamentFlowsService:
             allow_late_registration=tournament.allow_late_registration,
             discord_broadcasts_enabled=tournament.discord_broadcasts_enabled,
             discord_dms_enabled=tournament.discord_dms_enabled,
+            logs_official=tournament.logs_official,
             phase_schedule=[
                 schemas.TournamentPhaseScheduleRead.model_validate(row, from_attributes=True)
                 for row in _loaded_relationship(tournament, "phase_schedule") or []
@@ -208,7 +189,7 @@ class TournamentFlowsService:
             loss_points=tournament.loss_points,
             division_grid_version_id=tournament.division_grid_version_id,
             division_grid_version=division_grid_version,
-            roster_slots_json=tournament.roster_slots_json,
+            discipline=tournament.discipline,
             draft_format_json=tournament.draft_format_json,
             roster_shape=roster_shape,
             roster_locked_by_draft=roster_locked_by_draft,
@@ -221,20 +202,7 @@ class TournamentFlowsService:
         )
 
     async def get(self, session: AsyncSession, id: int, entities: list[str]) -> models.Tournament:
-        """
-        Retrieves a `Tournament` model instance by its ID, optionally including related entities.
-
-        Args:
-            session: An SQLAlchemy `AsyncSession` for database interaction.
-            id: The ID of the tournament to retrieve.
-            entities: A list of strings representing the names of related entities to include.
-
-        Returns:
-            A `Tournament` model instance.
-
-        Raises:
-            errors.ApiHTTPException: If the tournament is not found.
-        """
+        """Return the tournament by id with ``entities`` loaded; 404 when missing."""
         tournament = await self.tournaments.get(session, id, entities)
         if tournament is None:
             raise errors.ApiHTTPException(
@@ -248,26 +216,14 @@ class TournamentFlowsService:
             )
         return tournament
 
-    @cache(
+    @versioned(
+        generations=tournament_generations("{id}", DETAIL),
         ttl=config.settings.tournaments_cache_ttl,
-        # Key deliberately contains "tournaments/{id}:" so the invalidation
-        # pattern behind ``Resource.TOURNAMENT_DETAIL`` (see
-        # ``cache_resources._detail``) purges it on change.
         key="tournaments/{id}:{entities}",
         prefix="fastapi:",
     )
     async def get_read(self, session: AsyncSession, id: int, entities: list[str]) -> schemas.TournamentRead:
-        """
-        Retrieves a `Tournament` model instance by its ID and converts it to a `TournamentRead` schema.
-
-        Args:
-            session: An SQLAlchemy `AsyncSession` for database interaction.
-            id: The ID of the tournament to retrieve.
-            entities: A list of strings representing the names of related entities to include.
-
-        Returns:
-            A `TournamentRead` schema instance.
-        """
+        """Return the tournament by id as ``TournamentRead``; 404 when missing."""
         tournament = await self.get(session, id, entities)
         challonge_ref = (await resolve_tournament_challonge(session, [tournament.id])).get(tournament.id)
         stage_challonge_refs: typing.Mapping[int, ChallongeRef] | None = None
@@ -321,12 +277,13 @@ class TournamentFlowsService:
         *,
         workspace_id: int | None = None,
         is_league: bool | None = None,
+        discipline: str | None = None,
         limit: int = 500,
     ) -> list[schemas.LookupItem]:
-        """Lightweight id/name lookup for pickers (rpc.tournament.lookup_tournaments)."""
+        """Lightweight id/name lookup for pickers (rpc.tournament.lookup_tournaments), optionally of one game."""
         query = (
             sa.select(models.Tournament.id, models.Tournament.name)
-            # Hidden tournaments never appear in public pickers/lookups (issue #115).
+            # Hidden tournaments never appear in public pickers/lookups.
             .where(models.Tournament.is_hidden.is_(False))
             .order_by(models.Tournament.id.desc())
             .limit(limit)
@@ -335,6 +292,8 @@ class TournamentFlowsService:
             query = query.where(models.Tournament.workspace_id == workspace_id)
         if is_league is not None:
             query = query.where(models.Tournament.is_league.is_(is_league))
+        if discipline is not None:
+            query = query.where(models.Tournament.discipline == discipline)
         result = await session.execute(query)
         return [schemas.LookupItem(id=row.id, name=row.name) for row in result.all()]
 
@@ -346,6 +305,7 @@ class TournamentFlowsService:
         workspace_id: int | None = None,
         status: enums.TournamentStatus | None = None,
         is_league: bool | None = None,
+        discipline: str | None = None,
         query: str = "",
     ) -> schemas.TournamentFacets:
         """Chip counters for the public tournaments page (rpc.tournament.tournaments_facets).
@@ -362,17 +322,14 @@ class TournamentFlowsService:
         tournaments, 3 live right now"), not a property of the visitor's current
         filter selection, which would make the headline flicker on every chip.
 
-        Lives here rather than in ``TournamentService`` for the same reason
-        :meth:`lookup` does: the whole method is "predicate in, schema out", and
-        splitting it would leave a service method handing five loose scalars and a
-        dict back for reassembly.
-
         Search matches the same way ``PaginationSortSearchParams.apply_search``
         matches for the list itself — ILIKE on ``name``. Any divergence here shows
         up as counters that disagree with the rows underneath them.
         """
         base = visible_tournaments_predicate(viewer)
         scope = [base] if workspace_id is None else [base, models.Tournament.workspace_id == workspace_id]
+        if discipline is not None:
+            scope.append(models.Tournament.discipline == discipline)
         search = [models.Tournament.name.ilike(f"%{query}%")] if query else []
         league = [] if is_league is None else [models.Tournament.is_league.is_(is_league)]
         status_filter = [] if status is None else [models.Tournament.status == status]
@@ -442,16 +399,7 @@ class TournamentFlowsService:
         *,
         viewer: AuthUser | None = None,
     ) -> pagination.Paginated[schemas.TournamentRead]:
-        """
-        Retrieves a paginated list of `Tournament` model instances and converts them to `TournamentRead` schemas.
-
-        Args:
-            session: An SQLAlchemy `AsyncSession` for database interaction.
-            params: An instance of `SearchPaginationParams` containing pagination and filtering parameters.
-
-        Returns:
-            A `Paginated` instance containing `TournamentRead` schemas.
-        """
+        """Return one page of tournaments visible to ``viewer`` as ``TournamentRead``."""
         results, total = await self.tournaments.get_all(
             session, params, visibility=visible_tournaments_predicate(viewer)
         )
@@ -478,14 +426,11 @@ class TournamentFlowsService:
         if "stages" in params.entities:
             stage_ids = [stage.id for result in results for stage in (_loaded_relationship(result, "stages") or [])]
             stage_challonge_refs = await resolve_stage_challonge(session, stage_ids)
-        workspace_slots_by_workspace: dict[int, dict[str, int] | None] | None = None
+        shapes: dict[int, schemas.RosterShapeRead] | None = None
         draft_locked_ids: set[int] | None = None
         teams_locked_ids: set[int] | None = None
         if _entity_requested(params.entities, "roster_shape"):
-            workspace_slots_by_workspace = {
-                workspace_id: await get_workspace_roster_slots(session, workspace_id)
-                for workspace_id in {result.workspace_id for result in results}
-            }
+            shapes = await tournament_shape_reads(session, results)
             draft_locked_ids = await unfinished_draft_tournament_ids(session, tournament_ids)
             teams_locked_ids = await registered_team_tournament_ids(session, tournament_ids)
         links_by_tournament: dict[int, list[schemas.TournamentLinkRead]] | None = None
@@ -506,7 +451,7 @@ class TournamentFlowsService:
                     teams_counts=teams_counts,
                     challonge_ref=challonge_refs.get(result.id),
                     stage_challonge_refs=stage_challonge_refs,
-                    workspace_slots_by_workspace=workspace_slots_by_workspace,
+                    shapes=shapes,
                     draft_locked_ids=draft_locked_ids,
                     teams_locked_ids=teams_locked_ids,
                     links_by_tournament=links_by_tournament,
@@ -520,8 +465,8 @@ class TournamentFlowsService:
 
     @cache(
         ttl=config.settings.tournaments_cache_ttl,
-        # No tournament_id in the args, so this key can't participate in the
-        # targeted invalidation patterns — staleness is bounded by the short TTL.
+        # No tournament_id in the args, so this key can't carry a tournament's
+        # cache generations — staleness is bounded by the short TTL.
         key="tournaments_statistics_history:{workspace_id}",
         prefix="fastapi:",
     )
@@ -530,15 +475,7 @@ class TournamentFlowsService:
         session: AsyncSession,
         workspace_id: int | None = None,
     ) -> list[schemas.TournamentStatistics]:
-        """
-        Retrieves historical statistics for tournaments.
-
-        Args:
-            session: An SQLAlchemy `AsyncSession` for database interaction.
-
-        Returns:
-            A list of `TournamentStatistics` schemas.
-        """
+        """Return per-tournament historical statistics, optionally scoped to one workspace."""
         output: list[schemas.TournamentStatistics] = []
         stats = await self.tournaments.get_history_tournaments(session, workspace_id=workspace_id)
         for stat in stats:
@@ -558,15 +495,16 @@ class TournamentFlowsService:
     async def get_avg_divisions_tournaments(
         self,
         session: AsyncSession,
+        discipline: str,
         workspace_id: int | None = None,
         *,
         normalizer: DivisionGridNormalizer | None = None,
         fallback_grid: DivisionGrid,
     ) -> list[schemas.DivisionStatistics]:
         """
-        Retrieves average division statistics for tournaments, normalizing each
-        tournament's player ranks through the tournament's own division_grid_version
-        before averaging.
+        Retrieves one game's average division per tournament and per top-level role of its rated
+        dimension, normalizing each tournament's player ranks through the tournament's own
+        division_grid_version before averaging.
 
         When a normalizer is provided, divisions are converted to the target grid so
         values are comparable across tournaments that used different grid versions.
@@ -576,19 +514,17 @@ class TournamentFlowsService:
         # aggregates players to a per-(tournament, role, rank) histogram, so the
         # average is weighted by the count instead of iterating every player row.
         #
-        # Keyed by HeroClass, so a ``flex`` roster row lands in a bucket the three
-        # response fields below never read -- flex players are deliberately absent
-        # from the per-role averages, because their single rank stands for no
-        # particular role and averaging it into one would misreport that role's
-        # strength. The reads use ``.get()``, so this stays a silent skip by design.
-        raw_rank_cache: dict[int, dict[enums.HeroClass, list[tuple[float, int]]]] = {}
+        # Open slots have no role, and are excluded from the per-role averages.
+        raw_rank_cache: dict[int, dict[str, list[tuple[float, int]]]] = {}
         tournament_names: dict[int, str] = {}
 
-        rows = await self.tournaments.get_avg_div_tournaments(session, workspace_id=workspace_id)
+        rows = await self.tournaments.get_avg_div_tournaments(session, discipline, workspace_id=workspace_id)
         for tournament, role, rank, players_count in rows:
             if tournament.id not in raw_rank_cache:
                 raw_rank_cache[tournament.id] = {}
                 tournament_names[tournament.id] = tournament.name
+            if role is None:
+                continue
 
             source_version_id: int | None = tournament.division_grid_version_id
 
@@ -608,42 +544,28 @@ class TournamentFlowsService:
 
             raw_rank_cache[tournament.id].setdefault(role, []).append((float(div_number), int(players_count)))
 
-        def avg_or_none(values: list[tuple[float, int]] | None) -> float | None:
-            if not values:
-                return None
+        def avg_or_none(values: list[tuple[float, int]]) -> float | None:
             total_players = sum(count for _, count in values)
             if not total_players:
                 return None
             return round(sum(division * count for division, count in values) / total_players, 2)
 
-        output: list[schemas.DivisionStatistics] = []
-        for tournament_id, roles in raw_rank_cache.items():
-            output.append(
-                schemas.DivisionStatistics(
-                    id=tournament_id,
-                    name=tournament_names[tournament_id],
-                    tank_avg_div=avg_or_none(roles.get(enums.HeroClass.tank)),
-                    damage_avg_div=avg_or_none(roles.get(enums.HeroClass.damage)),
-                    support_avg_div=avg_or_none(roles.get(enums.HeroClass.support)),
-                )
+        # Keyed by the game's own role codes; a role nobody played in a tournament is absent, not zero.
+        return [
+            schemas.DivisionStatistics(
+                id=tournament_id,
+                name=tournament_names[tournament_id],
+                role_avg_divs={
+                    role: average for role, values in roles.items() if (average := avg_or_none(values)) is not None
+                },
             )
-
-        return output
+            for tournament_id, roles in raw_rank_cache.items()
+        ]
 
     async def get_tournaments_overall(
         self, session: AsyncSession, workspace_id: int | None = None
     ) -> schemas.OverallStatistics:
-        """
-        Retrieves overall statistics for tournaments: how many tournaments, teams,
-        players and champions there are, plus how much was played.
-
-        Args:
-            session: An SQLAlchemy `AsyncSession` for database interaction.
-            workspace_id: Restrict every count to one workspace, or None for the platform.
-
-        Returns:
-            An `OverallStatistics` schema instance.
-        """
+        """Return platform-wide (or one workspace's) counts and played volume."""
         return await self.tournaments.get_tournaments_overall(session, workspace_id=workspace_id)
 
 

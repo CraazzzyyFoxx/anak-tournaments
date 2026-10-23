@@ -48,8 +48,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
 from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
-from shared.services import workspace_roster  # noqa: E402
 from shared.testing import create_test_async_engine  # noqa: E402
+from src.services import workspace_roster  # noqa: E402
 
 _UNIQUE = 0
 

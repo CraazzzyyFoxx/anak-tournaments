@@ -36,7 +36,7 @@ export default function RegistrationBulkActions({
 }: Readonly<RegistrationBulkActionsProps>) {
   const t = useTranslations("registrationsAdmin.bulk");
   return (
-    <BulkBar count={selected.length} unit={t("registrations")} onClear={clearSelection}>
+    <BulkBar count={selected.length} onClear={clearSelection}>
       <Button
         size="sm"
         onClick={() => {

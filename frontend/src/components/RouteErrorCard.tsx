@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Eyebrow } from "@/components/ui/eyebrow";
 
 type RouteErrorCardProps = {
   error: Error & { digest?: string };
@@ -45,9 +46,9 @@ export function RouteErrorCard({ error, reset, homeHref }: Readonly<RouteErrorCa
           {t("errors.boundary.description")}
         </p>
         {error?.digest ? (
-          <p className="mt-3 text-label uppercase tracking-label text-muted-foreground/60">
+          <Eyebrow as="p" className="mt-3">
             {t("errors.boundary.digest", { digest: error.digest })}
-          </p>
+          </Eyebrow>
         ) : null}
         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
           <Button onClick={() => reset()}>

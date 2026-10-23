@@ -12,12 +12,9 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core import http_status as status
-from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.balancer import UserBalancerConfig
 from shared.repository import UserBalancerConfigRepository
-from shared.schemas.roster_slots import normalize_roster_slots
-from src.services.balancer.config.public_contract import normalize_config_payload
+from src.domain.balancer.config.public_contract import normalize_config_payload
 
 __all__ = ("UserMixPrefsService", "user_mix_prefs_service")
 
@@ -41,9 +38,11 @@ class UserMixPrefsService:
         mix_comfort_tilt: float | None,
         role_settings: Mapping[str, Mapping[str, float]] | None,
         max_result_variants: int | None,
-        role_mask: Mapping[str, int] | None,
+        open_slot_settings: Mapping[str, float] | None,
         points_per_win: int | None,
         rating_mode: str,
+        hero_ban_presets: Mapping[str, str],
+        formation_defaults: Mapping[str, Mapping[str, Any]],
     ) -> UserBalancerConfig:
         """Replace the account's settings, splitting them the way the row stores them.
 
@@ -55,12 +54,10 @@ class UserMixPrefsService:
         validation a saved tournament config does, so no key the solver does not
         recognise can ever be persisted into its input.
 
-        The roster shape, the points knob and the rating mode are columns
-        beside it, never keys inside it: none is a solver override (see
-        ``UserBalancerConfig``).
-        The mask is normalized here rather than at the wire so the column can
-        never hold a zero count, and ``0`` points stores as NULL -- "off" has one
-        spelling in the column, whichever of the two the client sent.
+        Points and rating mode are columns beside the solver blob.
+        Zero points stores as NULL, the single spelling of "off".
+        The per-game ban defaults are a column of their own: they are not solver input.
+        The per-game formation defaults are a column of their own as well.
         """
         raw: dict[str, Any] = {
             "mix_comfort_tilt": mix_comfort_tilt,
@@ -68,20 +65,15 @@ class UserMixPrefsService:
             if role_settings
             else None,
             "max_result_variants": max_result_variants,
+            "open_slot_settings": dict(open_slot_settings) if open_slot_settings else None,
         }
         payload = normalize_config_payload({key: value for key, value in raw.items() if value is not None})
-        try:
-            slots = normalize_roster_slots(dict(role_mask) if role_mask else None)
-        except ValueError as exc:
-            # ``normalize_roster_slots`` prefixes the machine-readable
-            # ``RosterShapeError`` code into the message; the frontend localizes
-            # off that, so it must survive into the 422 body.
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
         fields: dict[str, Any] = {
             "config_json": payload,
-            "role_slots_json": slots or None,
             "points_per_win": points_per_win or None,
             "rating_mode": rating_mode,
+            "hero_ban_presets": dict(hero_ban_presets),
+            "formation_defaults": {code: dict(value) for code, value in formation_defaults.items()},
         }
         config = await self.get(session, user_id)
         if config is None:

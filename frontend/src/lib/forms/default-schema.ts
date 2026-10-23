@@ -29,20 +29,22 @@ function builtin(key: string, required = false): FormField {
   };
 }
 
-export function defaultFormSchema(): FormSchema {
+/** The default questionnaire of a game: its own identity provider asks the required game handle. */
+export function defaultFormSchema(identityProvider: string): FormSchema {
   return {
     schema_version: 1,
     sections: [
       {
         key: "accounts",
         fields: [
-          builtin(identityKey("battlenet"), true),
-          builtin(identityKey("discord")),
-          builtin(identityKey("twitch")),
-        ],
+          builtin(identityKey(identityProvider), true),
+          ...["discord", "twitch"]
+            .filter((provider) => provider !== identityProvider)
+            .map((provider) => builtin(identityKey(provider)))
+        ]
       },
       { key: "roles", fields: [builtin("roles")] },
-      { key: "details", fields: [builtin("public_notes")] },
-    ],
+      { key: "details", fields: [builtin("public_notes")] }
+    ]
   };
 }

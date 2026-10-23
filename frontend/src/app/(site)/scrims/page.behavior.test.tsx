@@ -78,9 +78,11 @@ function room(overrides: Partial<ScrimRoom> = {}): ScrimRoom {
     stage_id: 11,
     encounter_id: 500,
     best_of: 3,
-    home_team: { id: 700, name: "Alpha", captain_claimed: true },
-    away_team: { id: 701, name: "Bravo", captain_claimed: true },
-    viewer_side: null,
+    teams: [
+      { slot: 1, id: 700, name: "Alpha", captain_claimed: true },
+      { slot: 2, id: 701, name: "Bravo", captain_claimed: true }
+    ],
+    viewer_slot: null,
     can_claim: false,
     can_close: false,
     created_at: "2026-08-12T00:00:00Z",
@@ -218,7 +220,7 @@ describe("scrims page", () => {
   });
 
   it("hides Close when the server says the viewer may not close", async () => {
-    listRooms.mockResolvedValue({ rooms: [room({ viewer_side: "home", can_close: false })] });
+    listRooms.mockResolvedValue({ rooms: [room({ viewer_slot: 1, can_close: false })] });
     const container = await mount();
 
     expect(buttonWith(container, en.scrims.list.close)).toBeUndefined();

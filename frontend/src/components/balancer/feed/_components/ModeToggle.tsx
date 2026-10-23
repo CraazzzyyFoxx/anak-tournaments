@@ -29,7 +29,7 @@ export function ModeToggle({ value, onChange, availableModes, disabled }: Readon
       size="sm"
     >
       {modes.map((mode) => (
-        <ToggleGroupItem key={mode} value={mode} disabled={disabled} className="px-3 text-xs">
+        <ToggleGroupItem key={mode} value={mode} disabled={disabled} className="px-3">
           {t(`modes.${mode}`)}
         </ToggleGroupItem>
       ))}

@@ -53,7 +53,7 @@ def paginated_dict(results: list[ModelType], total: int, params: PaginationParam
     """Build the ``{results, total, page, per_page}`` envelope typed-RPC handlers return.
 
     Every RPC-facing admin listing (gamemode/hero/map/user in app-service and
-    parser-service, plus identity-service's api-key/permission/role/user/session
+    stats-service, plus identity-service's api-key/permission/role/user/session
     listings) hand-rolled this exact 4-key dict instead of using the
     already-defined ``PaginationDict`` shape. Single source of truth for it.
     """

@@ -1,7 +1,7 @@
 """Platform-zone hostname helpers for host->workspace resolution.
 
-Phase 1 handles subdomains under the platform zone. Custom domains (Phase 2)
-match a separate column and are resolved elsewhere.
+Handles subdomains under the platform zone. Custom domains match a separate
+column and are resolved elsewhere.
 """
 
 from __future__ import annotations

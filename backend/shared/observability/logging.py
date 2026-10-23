@@ -1,6 +1,5 @@
 """Unified structured logging for all microservices.
 
-Replaces duplicate logging setups across services with a single shared implementation.
 Uses Loguru for structured JSON logging in production and human-readable output in development.
 """
 

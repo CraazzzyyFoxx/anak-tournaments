@@ -1,8 +1,8 @@
 """Workspace RBAC catalog, scopes, and the Redis key the cache is stored under.
 
-``RBAC_USER_KEY_PREFIX`` is the identity-service cache *and* the key
-app-service deletes on membership changes. One constant so a version bump
-cannot leave stale entries.
+``RBAC_USER_KEY_PREFIX`` is the identity-service cache key. Only identity
+touches it: a membership change elsewhere arrives as a
+``WorkspaceMemberChangedEvent`` and identity drops the entry itself.
 """
 
 from .bootstrap import (

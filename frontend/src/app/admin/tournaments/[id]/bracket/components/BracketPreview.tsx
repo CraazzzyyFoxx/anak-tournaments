@@ -4,9 +4,11 @@ import { useCallback, useMemo } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import { EYEBROW_CLASS, TONE_TEXT } from "@/components/kit/tone";
+import { TONE_TEXT } from "@/components/ui/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { BracketView, type BracketSlotRef } from "@/components/bracket/BracketView";
 import { previewToBracketMatches, type BracketMatch } from "@/lib/bracket/view";
+import { seatAt } from "@/lib/encounter/seats";
 import { notify } from "@/lib/notify";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -119,15 +121,15 @@ export function BracketPreview({
   const swapSeeds = useCallback(
     async (source: BracketSlotRef, target: BracketSlotRef) => {
       const teamAt = ({ encounter, slot }: BracketSlotRef) =>
-        slot === "home" ? encounter.home_team_id : encounter.away_team_id;
+        seatAt(encounter.teams, slot)?.team_id ?? null;
       const sourceTeam = teamAt(source);
       const targetTeam = teamAt(target);
       const input = stage.items
         .flatMap((item) => item.inputs)
         .find((row) => row.team_id === sourceTeam);
-      // Team ↔ team only: a TBD slot is a later round or an unseeded
-      // placeholder (id <= 0), not a seed to trade places with.
-      if (!input || targetTeam <= 0 || targetTeam === sourceTeam) return;
+      // Team ↔ team only: an empty seat is a later round or an unseeded
+      // placeholder, not a seed to trade places with.
+      if (!input || targetTeam == null || targetTeam === sourceTeam) return;
       try {
         await adminService.updateStageItemInput(input.id, { team_id: targetTeam, input_type: "final" });
         notify.success(t("swapSuccess"));
@@ -171,7 +173,7 @@ export function BracketPreview({
         <h3 id="bracket-preview-heading" className="text-sm font-semibold text-foreground">
           {t("title")}
         </h3>
-        <p className={EYEBROW_CLASS}>
+        <p className={eyebrowClass("muted")}>
           {generated.length > 0
             ? t("generated")
             : canReseed
@@ -212,27 +214,24 @@ export function BracketPreview({
 
       {projection.isGroups ? (
         <p className="mt-3 text-sm text-foreground">
-          {t("groups", { count: projection.itemCount })}
-          {projection.advancingTotal > 0 ? (
-            <span className="text-muted-foreground">
-              {t("advance", { counts: [...new Set(projection.advanceCounts)].join(" / "), total: projection.advancingTotal })}
-            </span>
-          ) : (
-            <span className="text-muted-foreground">
-              {t("autoAdvance")}
-            </span>
-          )}
+          {projection.advancingTotal > 0
+            ? t("advance", {
+                count: projection.itemCount,
+                counts: [...new Set(projection.advanceCounts)].join(" / "),
+                total: projection.advancingTotal
+              })
+            : t("autoAdvance", { count: projection.itemCount })}
         </p>
       ) : null}
 
       <div className="mt-3 border-t border-border pt-3">
         {isLoading ? (
-          <Skeleton className="h-64 w-full rounded-2xl" />
+          <Skeleton className="h-64 w-full rounded-xl" />
         ) : groupSections ? (
           <div className="space-y-4">
             {groupSections.map((section) => (
               <div key={section.key}>
-                <p className={cn(EYEBROW_CLASS, "mb-1")}>{section.label}</p>
+                <p className={cn(eyebrowClass("muted"), "mb-1")}>{section.label}</p>
                 <BracketView
                   encounters={section.matches}
                   type={stage.stage_type}

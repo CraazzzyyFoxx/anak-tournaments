@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import importlib
 import sys
+from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
+
+from shared.domain.division_grid_defaults import native_ladder_tiers
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
@@ -12,6 +15,7 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 
 automap = importlib.import_module("src.domain.division_grid.automap")
 division_service = importlib.import_module("src.services.division_grid.service")
+schemas = importlib.import_module("src.schemas")
 
 
 def _tier(tier_id: int, slug: str, rank_min: int, rank_max: int | None, name: str | None = None):
@@ -29,6 +33,10 @@ def _rules_by_source(result):
     for rule in result.rules:
         grouped.setdefault(rule.source_tier_id, []).append(rule)
     return grouped
+
+
+def _as_writes(result):
+    return [schemas.DivisionGridMappingRuleWrite(**asdict(rule)) for rule in result.rules]
 
 
 def test_identical_slugs_produce_primary_identity_rules() -> None:
@@ -132,14 +140,14 @@ def test_generated_rules_satisfy_runtime_validation() -> None:
 
     assert result.is_complete
     source_tier_ids = {tier.id for tier in source}
-    assert division_service._validate_mapping(source_tier_ids, result.rules) is True
+    assert division_service._validate_mapping(source_tier_ids, _as_writes(result)) is True
 
 
 def test_automap_fully_resolves_realistic_ow2_grid_rename() -> None:
     # Smoke: the default 40-tier OW2 grid, re-slugged but keeping the same rank
     # ranges (a structural save that reorganizes labels), must auto-map with zero
     # conflicts via rank overlap and pass runtime validation.
-    writes = division_service.get_default_ow2_tiers_write()
+    writes = [SimpleNamespace(**tier) for tier in native_ladder_tiers("overwatch")]
     source = [
         SimpleNamespace(id=index + 1, slug=w.slug, name=w.name, rank_min=w.rank_min, rank_max=w.rank_max)
         for index, w in enumerate(writes)
@@ -161,4 +169,4 @@ def test_automap_fully_resolves_realistic_ow2_grid_rename() -> None:
     assert result.is_complete
     covered = {rule.source_tier_id for rule in result.rules}
     assert covered == {tier.id for tier in source}
-    assert division_service._validate_mapping({tier.id for tier in source}, result.rules) is True
+    assert division_service._validate_mapping({tier.id for tier in source}, _as_writes(result)) is True

@@ -46,17 +46,17 @@ class NotificationRecipientRepository:
         """
         query = (
             sa.select(models.User.auth_user_id)
-            .select_from(models.BalancerRegistration)
+            .select_from(models.Registration)
             .join(
                 models.WorkspaceMember,
-                models.WorkspaceMember.id == models.BalancerRegistration.workspace_member_id,
+                models.WorkspaceMember.id == models.Registration.workspace_member_id,
             )
             .join(models.User, models.User.id == models.WorkspaceMember.player_id)
             .where(
-                models.BalancerRegistration.tournament_id == tournament_id,
-                models.BalancerRegistration.status == "approved",
-                models.BalancerRegistration.deleted_at.is_(None),
-                models.BalancerRegistration.checked_in.is_(False),
+                models.Registration.tournament_id == tournament_id,
+                models.Registration.status == "approved",
+                models.Registration.deleted_at.is_(None),
+                models.Registration.checked_in.is_(False),
                 models.User.auth_user_id.is_not(None),
             )
             .distinct()

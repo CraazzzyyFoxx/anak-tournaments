@@ -41,8 +41,23 @@ describe("applyDragEvent", () => {
 
     const afterOver = applyDragEvent(afterStart, 9, overData, 5, 1100);
     expect(afterOver[9]?.overTeamIndex).toBe(1);
-    expect(afterOver[9]?.overRoleKey).toBe("Tank");
+    expect(afterOver[9]?.overRoleKey).toBe("tank");
     expect(afterOver[9]?.updatedAt).toBe(1100);
+  });
+
+  it("reads a tab on an older editor's display spelling as the slot code", () => {
+    const ghost = applyDragEvent({}, 9, overData, 5, 1000)[9];
+    expect(ghost?.fromRoleKey).toBe("damage");
+    expect(ghost?.overRoleKey).toBe("tank");
+  });
+
+  it("keeps another game's slot codes and starts a frame naming no origin on the open slot", () => {
+    const league = applyDragEvent({}, 9, { ...overData, from_role_key: "jungle", over_role_key: "bot" }, 5, 1000)[9];
+    expect(league?.fromRoleKey).toBe("jungle");
+    expect(league?.overRoleKey).toBe("bot");
+
+    const bare = applyDragEvent({}, 9, { phase: "start", player_id: "7" }, 5, 1000)[9];
+    expect(bare?.fromRoleKey).toBe("flex");
   });
 
   it("removes the ghost on end", () => {

@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 
 import { RegistrationTeamsBrowser } from "../../components/RegistrationTeamsBrowser";
-import { tabFallback, useHubTournamentQuery } from "../../hubQueries";
+import { tabError, tabFallback, useHubTournamentQuery } from "../../hubQueries";
 
 /**
  * The teams captains registered, organizer side.
@@ -19,11 +19,19 @@ export default function RegistrationTeamsPage() {
     Number.isFinite(tournamentId) && tournamentId > 0 ? tournamentId : null;
 
   // Already in cache — the shell runs the same query under the same key.
-  const { data: tournament, isLoading } = useHubTournamentQuery(tournamentId);
-  const workspaceId = tournament?.workspace_id ?? null;
+  const tournamentQuery = useHubTournamentQuery(tournamentId);
+  const tournament = tournamentQuery.data;
 
-  if (isLoading) return tabFallback;
-  if (validTournamentId == null || workspaceId == null) return null;
+  if (tournamentQuery.isLoading) return tabFallback;
+  if (validTournamentId == null || tournament?.workspace_id == null) {
+    return tabError(() => void tournamentQuery.refetch());
+  }
 
-  return <RegistrationTeamsBrowser tournamentId={validTournamentId} workspaceId={workspaceId} />;
+  return (
+    <RegistrationTeamsBrowser
+      tournamentId={validTournamentId}
+      workspaceId={tournament.workspace_id}
+      discipline={tournament.discipline}
+    />
+  );
 }

@@ -16,11 +16,15 @@ from faststream.rabbit import RabbitMessage
 
 from shared.core import http_status as status
 from shared.core import pagination
+from shared.core.errors import ApiExc, ApiHTTPException
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
+from shared.disciplines import rated_role_codes
+from shared.repository import WorkspaceRepository
+from shared.rpc.identity import ensure_workspace_permission
+from shared.services.ontology import workspace_discipline
 from src.core import db
 from src.rpc import _common as c
-from src.services.rank_overview import SORTS, RankOverviewFilters, parse_layers, rank_overview_page
+from src.services.rank_overview import SORTS, RankOverviewFilters, parse_layers, rank_overview_queries
 
 _SF = db.async_session_maker
 
@@ -68,20 +72,31 @@ def _bool(data: dict[str, Any], key: str) -> bool:
     return raw is not None and str(raw).strip().lower() in ("1", "true", "yes", "on")
 
 
-def _filters(data: dict[str, Any]) -> RankOverviewFilters:
+def _filters(data: dict[str, Any], disciplines: list[str]) -> RankOverviewFilters:
     page = _int(data, "page") or 1
     per_page = _int(data, "per_page") or 50
     sort = str(c.q1(data, "sort") or "display_name")
     order = str(c.q1(data, "order") or "asc").lower()
     query = str(c.q1(data, "q") or "").strip()
+    div_min = _int(data, "div_min")
+    div_max = _int(data, "div_max")
+    if div_min is not None and div_max is not None and div_min > div_max:
+        raise ApiHTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=[ApiExc(code="invalid_filter", msg="div_min must be less than or equal to div_max.")],
+        )
     return RankOverviewFilters(
         player_id=_int(data, "player_id"),
         query=query or None,
         layers=parse_layers(c.q(data, "layer")),
         author_user_ids=_ints(data, "author_user_id"),
-        roles=tuple(role for role in (c.q(data, "role") or []) if role in REGISTRATION_ROLE_CODES),
-        rank_min=_int(data, "rank_min"),
-        rank_max=_int(data, "rank_max"),
+        roles=tuple(
+            role
+            for role in (c.q(data, "role") or [])
+            if any(role in rated_role_codes(discipline) for discipline in disciplines)
+        ),
+        div_min=div_min,
+        div_max=div_max,
         differs_from_canon=_bool(data, "differs_from_canon"),
         date_from=_when(data, "date_from"),
         date_to=_when(data, "date_to"),
@@ -92,6 +107,31 @@ def _filters(data: dict[str, Any]) -> RankOverviewFilters:
     )
 
 
+#: Filters and sorts that only mean something on one game's roles and grid (spec §6.8).
+_GAME_BOUND_FILTERS = ("role", "div_min", "div_max")
+_GAME_BOUND_SORTS = ("rank_value", "division")
+
+
+def _refuse_game_bound(data: dict[str, Any]) -> None:
+    """Without a game, a game-bound filter or sort is a 422 naming it, never silently dropped."""
+    for name in _GAME_BOUND_FILTERS:
+        if c.q(data, name) is not None:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{name} requires discipline")
+    sort = c.q1(data, "sort")
+    if sort in _GAME_BOUND_SORTS:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"sort={sort} requires discipline")
+
+
+async def _games(session: Any, workspace_id: int, requested: str | None) -> list[str]:
+    """The requested enabled game, or every game the workspace runs (the all-games union)."""
+    if requested is not None:
+        return [await workspace_discipline(session, workspace_id=workspace_id, requested=requested)]
+    workspace = await WorkspaceRepository().get(session, workspace_id)
+    if workspace is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+    return list(workspace.disciplines_enabled)
+
+
 def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.balancer.ranks.list")
     async def _list(data: dict, msg: RabbitMessage) -> dict:
@@ -99,11 +139,15 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = c.path_int(data, "workspace_id")
             c.require_member(user, workspace_id)
-            # Same gate as writing the canon: this read puts every author's
-            # private book on one screen, which only roster management sees.
-            c.require_workspace_permission(data, user, workspace_id, "team", "update")
-            filters = _filters(data)
-            rows, total = await rank_overview_page(session, workspace_id=workspace_id, filters=filters)
+            ensure_workspace_permission(user, workspace_id, "team", "update")
+            requested = c.q1(data, "discipline") or None
+            if requested is None:
+                _refuse_game_bound(data)
+            disciplines = await _games(session, workspace_id, requested)
+            filters = _filters(data, disciplines)
+            rows, total = await rank_overview_queries.page(
+                session, workspace_id=workspace_id, disciplines=disciplines, filters=filters
+            )
             return pagination.paginated_dict(
                 rows, total, pagination.PaginationParams(page=filters.page, per_page=filters.per_page)
             )

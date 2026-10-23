@@ -5,18 +5,12 @@ import Link from "next/link";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
 import { useDraftFeasibilityQuery, useDraftJournalQuery, type DraftMutations } from "@/hooks/useDraftData";
 import { notify } from "@/lib/notify";
 import { captainsOnline, lastResolvedPick } from "@/lib/draft/room-model";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import type { DraftBoard } from "@/types/draft.types";
 
 import { DraftJournal } from "./DraftJournal";
@@ -29,6 +23,7 @@ interface AdminStripProps {
   board: DraftBoard;
   mutations: DraftMutations;
   onlineCaptainIds: ReadonlySet<number>;
+  ontology: RoleOntology | null;
 }
 
 /**
@@ -36,7 +31,7 @@ interface AdminStripProps {
  * draft runs is a reaction to the clock right above it, so it lives there
  * instead of on a control page in a second tab.
  */
-export function AdminStrip({ board, mutations, onlineCaptainIds }: Readonly<AdminStripProps>) {
+export function AdminStrip({ board, mutations, onlineCaptainIds, ontology }: Readonly<AdminStripProps>) {
   const t = useTranslations("draftRedesign");
   const journalId = useId();
   const [confirming, setConfirming] = useState<PendingConfirm>(null);
@@ -166,12 +161,16 @@ export function AdminStrip({ board, mutations, onlineCaptainIds }: Readonly<Admi
               ) : (
                 <>
                   <AlertTriangle className="h-4 w-4" aria-hidden />
-                  <Link
-                    href={`/admin/tournaments/${session.tournament_id}/teams/draft`}
-                    className="rounded-sm underline underline-offset-2 outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
-                  >
-                    {t("admin.infeasible")}
-                  </Link>
+                  {session.tournament_id != null ? (
+                    <Link
+                      href={`/admin/tournaments/${session.tournament_id}/teams/draft`}
+                      className="rounded-sm underline underline-offset-2 outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+                    >
+                      {t("admin.infeasible")}
+                    </Link>
+                  ) : (
+                    t("admin.infeasible")
+                  )}
                 </>
               )}
             </span>
@@ -199,42 +198,33 @@ export function AdminStrip({ board, mutations, onlineCaptainIds }: Readonly<Admi
           id={journalId}
           board={board}
           entries={journal.data?.entries}
+          ontology={ontology}
           isLoading={journal.isPending}
           isError={journal.isError}
           onRetry={() => void journal.refetch()}
         />
       )}
 
-      <Dialog open={confirming != null} onOpenChange={(open) => !open && setConfirming(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {confirming === "rollback" ? t("admin.rollbackTitle") : t("admin.autopickTitle")}
-            </DialogTitle>
-            <DialogDescription>
-              {confirming === "rollback" ? t("admin.rollbackDescription") : t("admin.autopickDescription")}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirming(null)}>
-              {t("admin.cancel")}
-            </Button>
-            <Button
-              onClick={() => {
-                if (confirming === "rollback") runLifecycle("rollback");
-                else autopick();
-                setConfirming(null);
-              }}
-            >
-              {confirming === "rollback"
-                ? lastPick
-                  ? t("shell.admin.rollbackPick", { pick: lastPick.overall_no })
-                  : t("admin.rollback")
-                : t("shell.admin.autopickNow")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={confirming != null}
+        onOpenChange={(open) => !open && setConfirming(null)}
+        intent={{
+          tone: "neutral",
+          title: confirming === "rollback" ? t("admin.rollbackTitle") : t("admin.autopickTitle"),
+          description: confirming === "rollback" ? t("admin.rollbackDescription") : t("admin.autopickDescription"),
+          confirmLabel:
+            confirming === "rollback"
+              ? lastPick
+                ? t("shell.admin.rollbackPick", { pick: lastPick.overall_no })
+                : t("admin.rollback")
+              : t("shell.admin.autopickNow")
+        }}
+        onConfirm={() => {
+          if (confirming === "rollback") runLifecycle("rollback");
+          else autopick();
+          setConfirming(null);
+        }}
+      />
     </div>
   );
 }

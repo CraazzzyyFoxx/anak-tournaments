@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 import { act, useEffect, useState, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 import { EncounterReportsBrowser } from "@/components/admin/EncounterReportsBrowser";
@@ -41,16 +41,21 @@ vi.mock("@/services/report-form.service", () => ({
 }));
 
 /**
- * `router.replace` in the app writes the URL and re-renders from the new
- * `useSearchParams`; here it writes `window.history` and pokes the harness, so
- * a chip really does travel through the query string.
+ * In the app every URL write re-renders the tree from the new
+ * `useSearchParams`: `router.replace` through the router, a native
+ * `history.replaceState` (the inspector's `shallow` write) through Next's
+ * History patch. Both land here as "write `window.history`, poke the harness",
+ * so a chip or an open row really does travel through the query string.
  */
-const replace = vi.fn((url: string) => {
-  window.history.replaceState(null, "", url);
-  rerender?.();
-});
+const replace = vi.fn((url: string) => window.history.replaceState(null, "", url));
 
 let rerender: (() => void) | null = null;
+
+const nativeReplaceState = window.history.replaceState.bind(window.history);
+window.history.replaceState = (data, unused, url) => {
+  nativeReplaceState(data, unused, url);
+  rerender?.();
+};
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin/matches",
@@ -97,15 +102,27 @@ function Harness({ render }: Readonly<{ render: () => ReactNode }>) {
   // while rendering is a side effect the react-compiler rules reject.
   useEffect(() => {
     rerender = () => force((value) => value + 1);
+    return () => {
+      rerender = null;
+    };
   }, []);
   return <>{render()}</>;
 }
+
+const roots: Root[] = [];
+
+// A URL write pokes the mounted harness, so a root left over from the last test
+// would re-render outside `act` the moment the next one resets the URL.
+afterEach(async () => {
+  await act(async () => roots.splice(0).forEach((root) => root.unmount()));
+});
 
 async function mount(render: () => ReactNode) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const root = createRoot(container);
+  roots.push(root);
   await act(async () => {
     root.render(
       <NextIntlClientProvider locale="en" messages={en}>
@@ -141,12 +158,18 @@ function commandItem(label: string) {
   );
 }
 
-/** Open the "+ Filter" popover and pick `filter › option`. */
+/** Open the "+ Filter" popover, pick `filter › option`, and close it — a multi picker stays open. */
 async function pickChip(scope: ParentNode, filter: string, option?: string) {
   await click(scope.querySelector('button[aria-label="Add filter"]'));
   await click(await waitFor(() => commandItem(filter), `the ${filter} filter`));
   if (option) {
     await click(await waitFor(() => commandItem(option), `the ${option} option`));
+  }
+  if (document.querySelector("[cmdk-root]")) {
+    await act(async () => {
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    await tick();
   }
 }
 
@@ -170,14 +193,16 @@ function report(overrides: Partial<AdminCaptainReport> = {}): AdminCaptainReport
   return {
     id: 1,
     encounter_id: 11,
-    team_id: 1,
-    side: "home",
+    encounter_team_id: 1,
     reporter_user_id: 5,
     reporter_name: "captain-alpha",
-    home_score: 3,
-    away_score: 1,
+    games_played: 4,
+    basis_version: 1,
+    results: [
+      { encounter_team_id: 1, score: 3, placement: null, wins: 3 },
+      { encounter_team_id: 2, score: 1, placement: null, wins: 1 }
+    ],
     closeness: 4,
-    map_codes: [],
     comment: null,
     custom_fields: {},
     created_at: "2026-01-01T00:00:00Z",
@@ -199,12 +224,24 @@ function row(overrides: Partial<EncounterReportsRow> = {}): EncounterReportsRow 
     status: "completed",
     result_status: "disputed",
     scheduled_at: null,
-    home_team: { id: 1, name: "Alpha" },
-    away_team: { id: 2, name: "Beta" },
-    home_report: report(),
-    away_report: report({ id: 2, side: "away", home_score: 1, away_score: 3 }),
+    participations: [
+      { encounter_team_id: 1, slot: 1, team_id: 11, name: "Alpha" },
+      { encounter_team_id: 2, slot: 2, team_id: 22, name: "Beta" }
+    ],
+    reports: [
+      report(),
+      report({
+        id: 2,
+        encounter_team_id: 2,
+        results: [
+          { encounter_team_id: 1, score: 1, placement: null, wins: 1 },
+          { encounter_team_id: 2, score: 3, placement: null, wins: 3 }
+        ]
+      })
+    ],
+    replay_codes: [],
     reported_count: 2,
-    scores_match: false,
+    standings_match: false,
     series_score_valid: true,
     last_resolution: null,
     ...overrides
@@ -270,18 +307,18 @@ describe("EncounterReportsBrowser", () => {
     // survives in the URL so a narrowed list is linkable.
     expect(new URLSearchParams(window.location.search).get("result_status")).toBe("disputed");
 
-    await pickChip(container, "Reports filed", "Awaiting second");
+    await pickChip(container, "Captain reports", "Awaiting second");
     expect(lastQuery().reported_count).toBe(1);
     // Two chips, two params: narrowing one must not silently drop the other.
     expect(lastQuery().result_status).toEqual(["disputed"]);
 
     // Zero is a value, not "unset" — "nobody reported" is the whole point of
     // this option and a falsy guard would swallow it.
-    await pickChip(container, "Reports filed", "No reports");
+    await pickChip(container, "Captain reports", "No reports");
     expect(lastQuery().reported_count).toBe(0);
 
     // Removing the chips is how "all" is spelled.
-    await click(activeChip("Reports filed: No reports"));
+    await click(activeChip("Captain reports: No reports"));
     await click(activeChip("Result: Disputed"));
     expect(lastQuery().reported_count).toBeUndefined();
     expect(lastQuery().result_status).toBeUndefined();
@@ -356,8 +393,7 @@ describe("EncounterReportsBrowser", () => {
     listEncounterReports.mockResolvedValue(
       pageOf([
         row({
-          home_report: report({ closeness: 9 }),
-          away_report: report({ id: 2, side: "away", closeness: 2 })
+          reports: [report({ closeness: 9 }), report({ id: 2, encounter_team_id: 2, closeness: 2 })]
         })
       ])
     );
@@ -386,14 +422,15 @@ describe("EncounterReportsBrowser", () => {
     listEncounterReports.mockResolvedValue(
       pageOf([
         row({
-          home_report: report({
-            comment: "they left early",
-            map_codes: [{ id: 1, map_index: 1, map_id: null, code: "B2C3" }],
-            custom_fields: { vod: "https://twitch.tv/clip" }
-          }),
-          away_report: null,
+          reports: [
+            report({
+              comment: "they left early",
+              custom_fields: { vod: "https://twitch.tv/clip" }
+            })
+          ],
+          replay_codes: [{ position: 2, encounter_team_id: 1, code: "B2C3" }],
           reported_count: 1,
-          scores_match: null
+          standings_match: null
         })
       ])
     );
@@ -418,7 +455,7 @@ describe("EncounterReportsBrowser", () => {
 
   it("labels an already confirmed result Review rather than Resolve", async () => {
     listEncounterReports.mockResolvedValue(
-      pageOf([row({ result_status: "confirmed", scores_match: true })])
+      pageOf([row({ result_status: "confirmed", standings_match: true })])
     );
     window.history.replaceState(null, "", "/admin/matches?id=11");
     const container = await mount(() => (

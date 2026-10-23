@@ -8,6 +8,8 @@ import type { Registration } from "@/types/registration.types";
 import type { ColumnDefinition } from "./participantsColumns.model";
 import { readParticipantUrlState } from "./participants-url-state";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
 const testWindow = new Window({
   url: "http://localhost:3000/tournaments/72/participants",
   width: 1280,
@@ -213,7 +215,7 @@ function registration(id: number): Registration {
 
 const registrations = Array.from({ length: 500 }, (_, index) => registration(index + 1));
 const imageColumn: ColumnDefinition = {
-  id: "identity_battlenet",
+  id: "_identity",
   label: "Player",
   category: "built_in",
   defaultVisible: true,
@@ -246,6 +248,7 @@ function ExpandableListHarness() {
 
   return (
     <VirtualParticipantsList
+      discipline="overwatch"
       allColumns={[imageColumn, statusColumn, heavyColumn]}
       expandedIds={expandedIds}
       onToggleExpanded={(registrationId) =>
@@ -344,6 +347,7 @@ describe("VirtualParticipantsList mount budget", () => {
     await act(async () => {
       root.render(
         <VirtualParticipantsList
+          discipline="overwatch"
           allColumns={[imageColumn]}
           expandedIds={new Set()}
           onToggleExpanded={() => {}}
@@ -376,6 +380,7 @@ describe("VirtualParticipantsList mount budget", () => {
     await act(async () => {
       root.render(
         <VirtualParticipantsList
+          discipline="overwatch"
           allColumns={[imageColumn]}
           expandedIds={new Set()}
           onToggleExpanded={() => {}}
@@ -479,6 +484,7 @@ describe("VirtualParticipantsList mount budget", () => {
     await act(async () => {
       root.render(
         <VirtualParticipantsList
+          discipline="overwatch"
           allColumns={columns}
           expandedIds={new Set()}
           onToggleExpanded={() => {}}
@@ -508,7 +514,7 @@ describe("VirtualParticipantsList mount budget", () => {
           columns={[imageColumn, statusColumn, heavyColumn]}
           onReset={() => {}}
           onToggle={(id) => toggled.push(id)}
-          visibility={{ identity_battlenet: true, _status: true, notes: false }}
+          visibility={{ _identity: true, _status: true, notes: false }}
         />
       );
     });
@@ -550,6 +556,7 @@ describe("VirtualParticipantsList mount budget", () => {
     await act(async () => {
       root.render(
         <VirtualParticipantsList
+          discipline="overwatch"
           allColumns={[imageColumn, statusColumn]}
           expandedIds={new Set()}
           onToggleExpanded={() => {}}
@@ -606,6 +613,7 @@ describe("VirtualParticipantsList mount budget", () => {
     await act(async () => {
       root.render(
         <VirtualParticipantsList
+          discipline="overwatch"
           allColumns={columns}
           expandedIds={new Set()}
           onToggleExpanded={() => {}}

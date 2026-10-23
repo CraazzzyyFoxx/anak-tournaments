@@ -10,7 +10,10 @@ from .balance import (
 from .base import BaseRepository
 from .audit import AuditLogRepository
 from .baselines import StatBaselineRepository
-from .catalog import CatalogAliasMissRepository, GamemodeRepository, HeroRepository, MapRepository
+from .catalog import (
+    CatalogAliasMissRepository,
+    CatalogEntityRepository,
+)
 from .challonge import (
     TOURNAMENT_SOURCE_TYPE,
     ChallongeMatchMappingRepository,
@@ -34,17 +37,19 @@ from .draft import (
     DraftTeamRepository,
 )
 from .encounter import (
-    EncounterCaptainReportRepository,
+    EncounterGameClaimRepository,
     EncounterGameRepository,
-    EncounterGameResultRepository,
+    EncounterGameTeamRepository,
     EncounterLinkRepository,
-    EncounterMapCodeRepository,
-    EncounterMapReportRepository,
-    EncounterParticipantRepository,
     EncounterReportFormRepository,
     EncounterResultAuditRepository,
     EncounterRoomEventRepository,
     EncounterSavedViewRepository,
+    EncounterTeamMemberRepository,
+    EncounterTeamMemberRoleRepository,
+    EncounterTeamReportRepository,
+    EncounterTeamRepository,
+    ScoringRuleRepository,
 )
 from .identity import (
     ApiKeyRepository,
@@ -58,11 +63,6 @@ from .identity import (
     UserRepository,
     UserRoleRepository,
 )
-from .match_logs import (
-    MatchEventRepository,
-    MatchKillFeedRepository,
-    MatchStatisticsRepository,
-)
 from .pick_ban import (
     EncounterReadinessRepository,
     PickBanConfigItemRepository,
@@ -75,15 +75,15 @@ from .pick_ban import (
 )
 from .preferences import FavoritePlayerRepository
 from .ranks import (
-    BattleTagRankStateRepository,
+    RankAccountStateRepository,
     RankFetchLogRepository,
     RankSnapshotRepository,
 )
 from .registration import (
-    BalancerRegistrationRepository,
-    BalancerRegistrationRoleRepository,
-    BalancerRegistrationTeamInviteRepository,
-    BalancerRegistrationTeamRepository,
+    RegistrationRepository,
+    RegistrationRoleRepository,
+    RegistrationTeamInviteRepository,
+    RegistrationTeamRepository,
     GoogleSheetBindingRepository,
     GoogleSheetFeedRepository,
     RegistrationFormRepository,
@@ -91,8 +91,11 @@ from .registration import (
     RegistrationFormVersionRepository,
     RegistrationStatusRepository,
 )
+from .roles import CatalogRoleRepository
+from .team_format import TeamFormatRepository
 from .scrim import ScrimRoomRepository
 from .settings import SettingsRepository
+from .stats import EventTypeRepository, IngestJobRepository, StatDefRepository, StatsMatchRepository
 from .stream import (
     SelfDeclaredChannelRow,
     StreamRosterRow,
@@ -124,17 +127,18 @@ from .support import (
     ChallongeMappingRepository,
     DiscordChannelRepository,
     DivisionGridRepository,
-    LogProcessingRepository,
 )
 from .tournament import (
+    BracketEncounterRepository,
     EncounterRepository,
-    MatchRepository,
     PlayerRepository,
-    PlayerSubRoleRepository,
     StageItemInputRepository,
     StageItemRepository,
     StageRepository,
+    StandingPinRepository,
     StandingRepository,
+    SwissByeRepository,
+    SwissStoppedScopeRepository,
     TeamRepository,
     TournamentComputationJobRepository,
     TournamentLinkRepository,
@@ -151,7 +155,7 @@ from .workspace import (
     get_or_create_workspace_member,
     resolve_workspace_member_id,
 )
-from .casual import CasualMatchRepository, CasualPlayerRepository, CasualTeamRepository
+from .custom_game_round import CustomGameRoundRepository
 from .custom_game import (
     CustomGameCoHostRepository,
     CustomGameLobbyRepository,
@@ -172,6 +176,7 @@ from .quota import (
 
 __all__ = (
     "TOURNAMENT_SOURCE_TYPE",
+    "TeamFormatRepository",
     "AchievementOverrideRepository",
     "AchievementRuleRepository",
     "AnalyticsAlgorithmRepository",
@@ -188,16 +193,14 @@ __all__ = (
     "AuditLogRepository",
     "BalancerBalanceRepository",
     "BalancerBalanceVariantRepository",
-    "BalancerRegistrationRepository",
-    "BalancerRegistrationRoleRepository",
-    "BalancerRegistrationTeamInviteRepository",
-    "BalancerRegistrationTeamRepository",
     "BalancerTeamRepository",
     "BalancerTeamSlotRepository",
     "BalancerTournamentConfigRepository",
     "BaseRepository",
-    "BattleTagRankStateRepository",
+    "BracketEncounterRepository",
     "CatalogAliasMissRepository",
+    "CatalogEntityRepository",
+    "CatalogRoleRepository",
     "ChallongeMappingRepository",
     "ChallongeMatchMappingRepository",
     "ChallongeParticipantMappingRepository",
@@ -206,6 +209,9 @@ __all__ = (
     "ChatMessageRepository",
     "ChatMuteRepository",
     "ChatRoomSettingsRepository",
+    "EventTypeRepository",
+    "StatDefRepository",
+    "StatsMatchRepository",
     "DiscordChannelRepository",
     "DivisionGridImportJobRepository",
     "DivisionGridMappingRepository",
@@ -218,30 +224,24 @@ __all__ = (
     "DraftPlayerRepository",
     "DraftSessionRepository",
     "DraftTeamRepository",
-    "EncounterCaptainReportRepository",
+    "EncounterGameClaimRepository",
     "EncounterGameRepository",
-    "EncounterGameResultRepository",
+    "EncounterGameTeamRepository",
     "EncounterLinkRepository",
-    "EncounterMapCodeRepository",
-    "EncounterMapReportRepository",
-    "EncounterParticipantRepository",
     "EncounterReadinessRepository",
     "EncounterReportFormRepository",
     "EncounterRepository",
     "EncounterResultAuditRepository",
     "EncounterRoomEventRepository",
     "EncounterSavedViewRepository",
+    "EncounterTeamMemberRepository",
+    "EncounterTeamMemberRoleRepository",
+    "EncounterTeamReportRepository",
+    "EncounterTeamRepository",
     "FavoritePlayerRepository",
-    "GamemodeRepository",
     "GoogleSheetBindingRepository",
     "GoogleSheetFeedRepository",
-    "HeroRepository",
-    "LogProcessingRepository",
-    "MapRepository",
-    "MatchEventRepository",
-    "MatchKillFeedRepository",
-    "MatchRepository",
-    "MatchStatisticsRepository",
+    "IngestJobRepository",
     "MemberHiddenRatingRepository",
     "MemberRankRepository",
     "MLModelArtifactRepository",
@@ -255,20 +255,25 @@ __all__ = (
     "PickBanSessionRepository",
     "PickBanSubmissionRepository",
     "PlayerRepository",
-    "PlayerSubRoleRepository",
     "QuotaApiKeyLimitRepository",
     "QuotaOperationRepository",
     "QuotaPlanLimitRepository",
     "QuotaPlanRepository",
     "QuotaWorkspaceLimitRepository",
+    "RankAccountStateRepository",
     "RankFetchLogRepository",
     "RankSnapshotRepository",
     "RefreshTokenRepository",
     "RegistrationFormRepository",
     "RegistrationFormTemplateRepository",
     "RegistrationFormVersionRepository",
+    "RegistrationRepository",
+    "RegistrationRoleRepository",
     "RegistrationStatusRepository",
+    "RegistrationTeamInviteRepository",
+    "RegistrationTeamRepository",
     "RoleRepository",
+    "ScoringRuleRepository",
     "ScrimRoomRepository",
     "SelfDeclaredChannelRow",
     "SettingsRepository",
@@ -277,6 +282,7 @@ __all__ = (
     "StageItemInputRepository",
     "StageItemRepository",
     "StageRepository",
+    "StandingPinRepository",
     "StandingRepository",
     "StatBaselineRepository",
     "StreamRosterRow",
@@ -284,6 +290,8 @@ __all__ = (
     "SubscriptionCheckLogRepository",
     "SubscriptionEntitlementRepository",
     "SubscriptionProviderConfigRepository",
+    "SwissByeRepository",
+    "SwissStoppedScopeRepository",
     "TeamRepository",
     "TournamentComputationJobRepository",
     "TournamentLinkRepository",
@@ -300,9 +308,7 @@ __all__ = (
     "VerifiedChannelRow",
     "WorkspaceBalancerConfigRepository",
     "WorkspaceMemberRepository",
-    "CasualMatchRepository",
-    "CasualPlayerRepository",
-    "CasualTeamRepository",
+    "CustomGameRoundRepository",
     "CustomGameCoHostRepository",
     "CustomGameLobbyRepository",
     "CustomGamePlayerRepository",

@@ -20,6 +20,7 @@ import pandas as pd
 from openskill.models import PlackettLuce, PlackettLuceRating
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.analytics_exports import analytics_exports
 from src.domain.ratings import get_id_role, get_plackett_luce, prepare_openskill_data
 from src.services.analytics.flows import flows_service
 from src.services.analytics.service import analytics_service
@@ -33,6 +34,7 @@ async def snapshot_pre_encounter_team_mu(
     session: AsyncSession,
     tournament_id: int,
     *,
+    discipline: str,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
     look_back: int = 10,
@@ -47,18 +49,20 @@ async def snapshot_pre_encounter_team_mu(
         return await _snapshot_pre_encounter_team_mu_uncached(
             session,
             tournament_id,
+            discipline=discipline,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
             look_back=look_back,
         )
 
-    return await get_or_build_dataframe("opponent_strength_snapshot", params, _build)
+    return await get_or_build_dataframe("opponent_strength_snapshot", params, _build, discipline=discipline)
 
 
 async def _snapshot_pre_encounter_team_mu_uncached(
     session: AsyncSession,
     tournament_id: int,
     *,
+    discipline: str,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
     look_back: int = 10,
@@ -86,6 +90,7 @@ async def _snapshot_pre_encounter_team_mu_uncached(
         session,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
+        discipline=discipline,
     )
     if df.empty:
         return pd.DataFrame(columns=["encounter_id", "team_id", "avg_mu", "max_mu", "min_mu", "std_mu"])
@@ -96,17 +101,20 @@ async def _snapshot_pre_encounter_team_mu_uncached(
         look_back,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
+        discipline=discipline,
     )
     matches = await analytics_service.get_matches_for_tournaments(
         session,
         window_ids,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
+        discipline=discipline,
     )
     teams = await analytics_service.get_teams_with_players(session, tournament_id)
 
     pl: PlackettLuce = get_plackett_luce()
-    _, players_rating, _ = prepare_openskill_data(df, pl, teams, matches)
+    rosters = await analytics_service.get_rosters(session, matches)
+    _, players_rating, _ = prepare_openskill_data(df, pl, teams, matches, rosters)
 
     # Players keyed by (user_id, role).
     rating_map: dict[str, PlackettLuceRating] = dict(players_rating)
@@ -115,30 +123,26 @@ async def _snapshot_pre_encounter_team_mu_uncached(
     snapshots: list[dict[str, typing.Any]] = []
     seen_encounters: set[int] = set()
 
-    # NOTE: ``get_matches_for_tournaments`` returns ``Sequence[models.Encounter]``
-    # (the method name is historical — the analytics flow conflates the two).
-    # Each row's own id is ``Encounter.id``; there is no ``encounter_id``
-    # attribute on the ORM object itself.
+    # ``get_matches_for_tournaments`` returns ``Sequence[models.Encounter]``
+    # despite its name: each row's own id is ``Encounter.id``; there is no
+    # ``encounter_id`` attribute on the ORM object itself.
     for encounter in matches:
         if encounter.id in seen_encounters:
             # Already snapshotted before the first match of this encounter.
             continue
         seen_encounters.add(encounter.id)
 
-        # A team cannot meaningfully play itself. Such placeholder/self rows
-        # (home_team_id == away_team_id) would snapshot the same
-        # (encounter_id, team_id) twice — fanning out the downstream standings
-        # merge — and feed a bogus self-vs-self OpenSkill update. Skip them.
-        if encounter.home_team_id == encounter.away_team_id:
-            continue
-
-        for team in (encounter.home_team, encounter.away_team):
+        # One snapshot per live seat that has a roster; a seat is one team of the
+        # encounter, whether it is a duel or a lobby.
+        seats = sorted((seat for seat in encounter.teams if seat.active), key=lambda seat: seat.slot)
+        replay: list[tuple[typing.Any, list[typing.Any]]] = []
+        for seat in seats:
+            team = rosters.get(seat.team_id) if seat.team_id is not None else None
             if team is None or not getattr(team, "players", None):
                 continue
             mus: list[float] = []
             for player in team.players:
-                key = get_id_role(player)
-                rating = rating_map.get(key)
+                rating = rating_map.get(get_id_role(player))
                 if rating is None:
                     continue
                 mus.append(float(rating.mu))
@@ -147,44 +151,29 @@ async def _snapshot_pre_encounter_team_mu_uncached(
             snapshots.append(
                 {
                     "encounter_id": int(encounter.id),
-                    "team_id": int(team.id),
+                    "team_id": int(seat.team_id),
                     "avg_mu": float(sum(mus) / len(mus)),
                     "max_mu": float(max(mus)),
                     "min_mu": float(min(mus)),
                     "std_mu": float(pd.Series(mus).std(ddof=0)) if len(mus) > 1 else 0.0,
                 }
             )
+            replay.append((seat, [p for p in team.players if get_id_role(p) in rating_map]))
 
-        # Update ratings *after* snapshotting, replicating the v1 replay order.
-        home_team_players = [
-            rating_map[get_id_role(p)]
-            for p in (encounter.home_team.players if encounter.home_team else [])
-            if get_id_role(p) in rating_map
-        ]
-        away_team_players = [
-            rating_map[get_id_role(p)]
-            for p in (encounter.away_team.players if encounter.away_team else [])
-            if get_id_role(p) in rating_map
-        ]
-        if not home_team_players or not away_team_players:
+        # Update ratings *after* snapshotting, replicating the v1 replay order: every
+        # live seat is one team, ranked by its placement. An encounter without a
+        # result, or with a seat that has no rated roster, rates nobody.
+        if len(replay) < 2 or len(replay) != len(seats) or any(seat.placement is None for seat, _ in replay):
             continue
-
-        home_score = getattr(encounter, "home_score", 0) or 0
-        away_score = getattr(encounter, "away_score", 0) or 0
-        ranks = [0, 1] if home_score > away_score else [1, 0] if home_score < away_score else [0, 0]
-        new_home, new_away = pl.rate([home_team_players, away_team_players], ranks=ranks)
-        for player, new_rating in zip(
-            (p for p in encounter.home_team.players),
-            new_home,
-            strict=False,
-        ):
-            rating_map[get_id_role(player)] = new_rating
-        for player, new_rating in zip(
-            (p for p in encounter.away_team.players),
-            new_away,
-            strict=False,
-        ):
-            rating_map[get_id_role(player)] = new_rating
+        if not all(players for _, players in replay):
+            continue
+        rated = pl.rate(
+            [[rating_map[get_id_role(p)] for p in players] for _, players in replay],
+            ranks=[seat.placement for seat, _ in replay],
+        )
+        for (_, players), new_ratings in zip(replay, rated, strict=True):
+            for player, new_rating in zip(players, new_ratings, strict=True):
+                rating_map[get_id_role(player)] = new_rating
 
     if not snapshots:
         return pd.DataFrame(columns=["encounter_id", "team_id", "avg_mu", "max_mu", "min_mu", "std_mu"])
@@ -199,6 +188,7 @@ async def snapshot_pre_tournament_team_mu(
     session: AsyncSession,
     tournament_id: int,
     *,
+    discipline: str,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
     look_back: int = 10,
@@ -212,7 +202,7 @@ async def snapshot_pre_tournament_team_mu(
     nothing that happens inside the tournament being forecast leaks into its own
     strength estimate. Rosters with no rated history still get a rating:
     :func:`prepare_openskill_data` seeds every team player from their
-    registration rank.
+    registration rank (the model's default mu when unranked).
 
     Output columns: ``team_id``, ``avg_mu``, ``max_mu``, ``min_mu``, ``std_mu``
     plus per-role means ``tank_mu`` / ``damage_mu`` / ``support_mu`` (NaN when
@@ -222,12 +212,12 @@ async def snapshot_pre_tournament_team_mu(
 
     Deliberately uncached, unlike its per-encounter sibling: this frame exists
     for tournaments whose rosters are still being assembled, where a TTL'd
-    snapshot would forecast a field that no longer exists.
+    snapshot would forecast a field that has since changed.
     """
-    columns = ["team_id", "avg_mu", "max_mu", "min_mu", "std_mu", "tank_mu", "damage_mu", "support_mu"]
+    exports = analytics_exports(discipline)
     teams = await analytics_service.get_teams_with_players(session, tournament_id)
     if not teams:
-        return pd.DataFrame(columns=columns)
+        return exports.summarize_team_strength([], {}, rating_key=get_id_role)
 
     window_ids = await analytics_service.lookback_tournament_ids(
         session,
@@ -235,6 +225,7 @@ async def snapshot_pre_tournament_team_mu(
         look_back,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
+        discipline=discipline,
     )
     history = [
         encounter
@@ -243,6 +234,7 @@ async def snapshot_pre_tournament_team_mu(
             window_ids,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
+            discipline=discipline,
         )
         if encounter.tournament_id != tournament_id
     ]
@@ -250,33 +242,6 @@ async def snapshot_pre_tournament_team_mu(
     pl: PlackettLuce = get_plackett_luce()
     # ``prepare_openskill_data`` ignores its ``df`` argument entirely; it needs
     # only the replay encounters plus the rosters to seed unrated players.
-    _, players_rating, _ = prepare_openskill_data(pd.DataFrame(), pl, teams, history)
-
-    rows: list[dict[str, typing.Any]] = []
-    for team in teams:
-        mus: list[float] = []
-        role_mus: dict[str, list[float]] = {"tank": [], "damage": [], "support": []}
-        for player in team.players:
-            rating = players_rating.get(get_id_role(player))
-            if rating is None:
-                continue
-            value = float(rating.mu)
-            mus.append(value)
-            if player.role in role_mus:
-                role_mus[player.role].append(value)
-        if not mus:
-            continue
-        rows.append(
-            {
-                "team_id": int(team.id),
-                "avg_mu": float(sum(mus) / len(mus)),
-                "max_mu": float(max(mus)),
-                "min_mu": float(min(mus)),
-                "std_mu": float(pd.Series(mus).std(ddof=0)) if len(mus) > 1 else 0.0,
-                **{
-                    f"{role}_mu": (float(sum(values) / len(values)) if values else float("nan"))
-                    for role, values in role_mus.items()
-                },
-            }
-        )
-    return pd.DataFrame(rows, columns=columns)
+    rosters = await analytics_service.get_rosters(session, history)
+    _, players_rating, _ = prepare_openskill_data(pd.DataFrame(), pl, teams, history, rosters)
+    return exports.summarize_team_strength(teams, players_rating, rating_key=get_id_role)

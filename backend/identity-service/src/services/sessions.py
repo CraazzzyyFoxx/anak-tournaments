@@ -10,8 +10,8 @@ from uuid import UUID
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.repository import RefreshTokenRepository
-from src import models
 from src.core import config
 from src.services.security import TokenCodec, token_codec
 from src.services.session_cache import SessionCache, session_cache
@@ -57,33 +57,27 @@ class RefreshTokenService:
         session_started_at: datetime | None = None,
         user_agent: str | None = None,
         ip_address: str | None = None,
-        request: Any | None = None,
         commit: bool = True,
     ) -> models.RefreshToken:
-        """Store a refresh token.
-
-        Client metadata may be supplied explicitly (used by the headless RPC
-        flows, where the gateway forwards the original UA/IP) or extracted from
-        a request (the legacy HTTP path); the explicit values win.
-        """
+        """Store a refresh token under ``session_id``, minting a session when none is given."""
         expires_at = datetime.now(UTC) + timedelta(days=self._config.REFRESH_TOKEN_EXPIRE_DAYS)
         if session_id is None or session_started_at is None:
             generated_session_id, generated_started_at = self._codec.new_session()
             session_id = session_id or generated_session_id
             session_started_at = session_started_at or generated_started_at
 
-        req_user_agent, req_ip_address = self._codec.client_metadata(request)
-
-        refresh_token = models.RefreshToken(
-            token=self._codec.hash_refresh_token(token),
-            user_id=user_id,
-            session_id=session_id,
-            session_started_at=session_started_at,
-            expires_at=expires_at,
-            user_agent=user_agent or req_user_agent,
-            ip_address=ip_address or req_ip_address,
+        refresh_token = await self._tokens.create(
+            session,
+            models.RefreshToken(
+                token=self._codec.hash_refresh_token(token),
+                user_id=user_id,
+                session_id=session_id,
+                session_started_at=session_started_at,
+                expires_at=expires_at,
+                user_agent=user_agent,
+                ip_address=ip_address,
+            ),
         )
-        session.add(refresh_token)
         if commit:
             await session.commit()
         return refresh_token
@@ -205,7 +199,7 @@ class RefreshTokenService:
         return count
 
     async def handle_reuse(self, session: AsyncSession, token: str) -> None:
-        """Contain a replayed refresh token that is no longer live.
+        """Contain a replayed refresh token that is not live (revoked or expired).
 
         Revocation is scoped as narrowly as the stored record allows so one
         stale tab does not log the user out everywhere.
@@ -217,9 +211,8 @@ class RefreshTokenService:
         # WARNING, not ERROR: reuse is an expected consequence of ordinary
         # client behaviour (a stale tab replaying a rotated token, a mobile
         # app resuming from background) and is fully handled right below by
-        # revoking the affected session. As an ERROR it opened a Sentry issue
-        # per occurrence with nothing to fix. Alert on the rate of this
-        # message instead, which is what actually indicates token theft.
+        # revoking the affected session. Alert on the rate of this message,
+        # which is what actually indicates token theft.
         logger.bind(user_id=str(reused.user_id)).warning(
             "Refresh token reuse detected; revoking only the matching browser session"
         )
@@ -360,8 +353,7 @@ class SessionService:
         status: SessionStatus | None = None,
     ) -> list[dict]:
         # One row per logical session, collapsed in SQL: rotation makes the
-        # token count dwarf the session count, so aggregating in Python meant
-        # streaming the whole table.
+        # token count dwarf the session count.
         tokens = await self._tokens.latest_per_session(session, user_id=user_id, search=search)
         summaries = self._summaries_from_tokens(tokens, include_user=True)
         if status is not None:

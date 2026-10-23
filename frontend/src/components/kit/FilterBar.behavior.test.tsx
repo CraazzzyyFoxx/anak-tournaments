@@ -7,9 +7,8 @@
 //  2. a reload restores the chip from the URL;
 //  3. `clear` drops every filter AND `page`, so narrowing does not strand the
 //     user on a page the new result set no longer has;
-//  4. a pinned chip has no remove control (the tournament inside a hub);
-//  5. a preset applies all its keys in ONE write — sequential `set` calls read
-//     the same stale query snapshot and only the last one would survive.
+//  4. an `inline` filter (the game a page's actions need) is always visible as
+//     a select, never hidden behind "+ Filter".
 import { act, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -53,32 +52,41 @@ const DEFS: FilterDef[] = [
 let container: HTMLElement;
 let root: Root;
 
-function Harness() {
+function Harness({ defs = DEFS }: Readonly<{ defs?: FilterDef[] }>) {
   const [, force] = useState(0);
   // Published from an effect, not during render: writing a module-scope binding
   // while rendering is a side effect the react-compiler rules reject.
   useEffect(() => {
     rerender = () => force((value) => value + 1);
   }, []);
-  const filters = useFilters(DEFS);
+  const filters = useFilters(defs);
   return (
-    <FilterBar
-      defs={DEFS}
-      filters={filters}
-      pinned={[{ key: "tournament", label: "Tournament: Anak Cup #14" }]}
-      presets={[{ label: "Needs attention", values: { status: "disputed", has_logs: true } }]}
-    />
+    <FilterBar defs={defs} filters={filters} />
   );
 }
 
-async function render(search = "") {
+const INLINE_DEFS: FilterDef[] = [
+  {
+    key: "discipline",
+    label: "Game",
+    kind: "single",
+    options: [
+      { value: "overwatch", label: "Overwatch" },
+      { value: "lol", label: "League of Legends" }
+    ],
+    inline: { allLabel: "All games" }
+  },
+  ...DEFS
+];
+
+async function render(search = "", defs?: FilterDef[]) {
   currentSearch = search;
   window.history.replaceState(null, "", `/admin/matches${search}`);
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
-    root.render(<Harness />);
+    root.render(<Harness defs={defs} />);
   });
 }
 
@@ -168,27 +176,23 @@ describe("FilterBar", () => {
     expect(url.searchParams.get("page")).toBeNull();
   });
 
-  it("renders a pinned chip with no remove control", async () => {
-    await render();
+  it("shows an inline filter as a visible select, not as a chip or a '+ Filter' entry", async () => {
+    await render("?discipline=lol", INLINE_DEFS);
 
-    const pinnedChip = container.querySelector('[data-pinned-filter="tournament"]');
-    expect(pinnedChip?.textContent).toContain("Anak Cup #14");
-    expect(pinnedChip?.tagName).toBe("SPAN");
-    expect(chip("Tournament: Anak Cup #14")).toBeNull();
+    const select = container.querySelector('[role="combobox"][aria-label="Game"]');
+    expect(select?.textContent).toContain("League of Legends");
+    expect(chip("Game: League of Legends")).toBeNull();
+
+    await click(container.querySelector('button[aria-label="Add filter"]'));
+    expect(commandItem("Game")).toBeUndefined();
+    expect(commandItem("Status")).toBeDefined();
   });
 
-  it("applies a preset in a single URL write", async () => {
-    await render();
+  it("reads 'all' on an inline filter with no value", async () => {
+    await render("", INLINE_DEFS);
 
-    await click(
-      [...container.querySelectorAll("button")].find(
-        (button) => button.textContent?.trim() === "Needs attention"
-      )
+    expect(container.querySelector('[role="combobox"][aria-label="Game"]')?.textContent).toContain(
+      "All games"
     );
-
-    expect(replace).toHaveBeenCalledTimes(1);
-    const url = new URL(replace.mock.calls.at(-1)![0], "http://x");
-    expect(url.searchParams.get("status")).toBe("disputed");
-    expect(url.searchParams.get("has_logs")).toBe("1");
   });
 });

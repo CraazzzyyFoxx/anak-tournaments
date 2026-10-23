@@ -17,14 +17,24 @@
 //     than the host's own book -- editing them belongs to the roster sheet;
 //  6. a read-only mix still reads the roster, membership does not change.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import en from "@/i18n/messages/en.json";
 import type { CustomGamePlayer } from "@/services/custom-game.service";
 import type { RosterMember } from "@/services/workspace-player.service";
 
 import { PickupAddPlayersDialog } from "./PickupAddPlayersDialog";
+import { DEADLOCK_OWNER, LOL_OWNER, OW_OWNER } from "./mix-owner.fixture";
+import type { MixOwner } from "./pickup-lineup";
+
+vi.mock("@/hooks/useDisciplineMetadata", () => ({
+  useDisciplineMetadata: (_axis: number, code: string) => ({
+    data: { discipline: { identity_provider: code === "lol" ? "riot" : "battlenet", enabled: true } }
+  })
+}));
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -86,7 +96,6 @@ vi.mock("@/services/custom-game.service", () => ({
   },
 }));
 
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("@/lib/notify", () => ({ notify: { success: vi.fn(), apiError: vi.fn() } }));
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));
@@ -103,7 +112,7 @@ function member(
   return {
     member_id: memberId,
     player_id: memberId * 10,
-    battle_tag: battleTag,
+    identity: { provider: "battlenet", handle: battleTag },
     display_name: null,
     ranks: {},
     author_ranks: {},
@@ -116,10 +125,10 @@ function seated(memberId: number, battleTag: string, overrides: Partial<CustomGa
     id: memberId,
     workspace_member_id: memberId,
     display_name: null,
-    battle_tag: battleTag,
+    identity: { provider: "battlenet", handle: battleTag },
     sort_order: memberId,
     participation: "pool",
-    roles: ["tank"],
+    roles: [{ dimension: "player_role", role: "tank" }],
     ranks: { tank: 2400 },
     rank_sources: { tank: "workspace" as const },
     author_ranks: {},
@@ -138,9 +147,11 @@ const onTogglePlayer = vi.fn();
 async function mount(
   props: {
     rows?: CustomGamePlayer[];
+    discipline?: string;
     canEdit?: boolean;
     canEditRanks?: boolean;
     canWrite?: boolean;
+    owner?: MixOwner;
     hostUserId?: number | null;
   } = {},
 ) {
@@ -149,19 +160,23 @@ async function mount(
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     createRoot(container).render(
-      <QueryClientProvider client={client}>
-        <PickupAddPlayersDialog
-          open
-          onOpenChange={vi.fn()}
-          workspaceId={WORKSPACE_ID}
-          canEdit={props.canEdit ?? true}
-          canEditRanks={props.canEditRanks ?? true}
-          canWrite={props.canWrite ?? true}
-          hostUserId={props.hostUserId ?? HOST_USER_ID}
-          rows={props.rows ?? []}
-          onTogglePlayer={onTogglePlayer}
-        />
-      </QueryClientProvider>,
+      <NextIntlClientProvider locale="en" messages={en}>
+        <QueryClientProvider client={client}>
+          <PickupAddPlayersDialog
+            open
+            onOpenChange={vi.fn()}
+            workspaceId={WORKSPACE_ID}
+            discipline={props.discipline ?? "overwatch"}
+            owner={props.owner ?? OW_OWNER}
+            canEdit={props.canEdit ?? true}
+            canEditRanks={props.canEditRanks ?? true}
+            canWrite={props.canWrite ?? true}
+            hostUserId={props.hostUserId ?? HOST_USER_ID}
+            rows={props.rows ?? []}
+            onTogglePlayer={onTogglePlayer}
+          />
+        </QueryClientProvider>
+      </NextIntlClientProvider>,
     );
   });
   // The roster query and the chip-count summary query resolve after the first
@@ -239,6 +254,27 @@ beforeEach(() => {
 });
 
 describe("PickupAddPlayersDialog", () => {
+  it("adds a LoL identity with the owner discipline and normalized Riot handle", async () => {
+    upsert.mockResolvedValueOnce(member(7, "Riot Name#EUW"));
+    const scope = await mount({ discipline: "lol" });
+    const trigger = Array.from(scope.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) => button.textContent?.includes("New Riot")
+    );
+    await click(trigger);
+    const input = document.body.querySelector<HTMLInputElement>("input[aria-label='New Riot ID identity']")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "  Riot Name # EUW  ");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const submit = input.closest("form")!.querySelector<HTMLButtonElement>("button[type='submit']")!;
+    await click(submit);
+    await settle();
+    expect(upsert).toHaveBeenCalledWith(WORKSPACE_ID, {
+      discipline: "lol", identity: { provider: "riot", handle: "Riot Name#EUW" }
+    });
+    expect(onTogglePlayer).toHaveBeenCalledWith(7);
+  });
+
   it("counts the lobby against a full one and names the overflow", async () => {
     const rows = Array.from({ length: 12 }, (_unused, index) =>
       seated(100 + index, `P${index}#1000`),
@@ -255,6 +291,38 @@ describe("PickupAddPlayersDialog", () => {
     const scope = await mount({ rows: [seated(1, "Aria#1111")] });
 
     expect(scope.textContent).toContain("9 more for a full lobby");
+  });
+
+  it("counts a League lobby against its five-position shape: ten seats, two per position", async () => {
+    const rows = Array.from({ length: 11 }, (_unused, index) =>
+      seated(100 + index, `P${index}#1000`, {
+        roles: [{ dimension: "position", role: "top" }],
+        ranks: { top: 2400 },
+        rank_sources: { top: "workspace" as const },
+      }),
+    );
+    const scope = await mount({ rows, owner: LOL_OWNER, discipline: "lol" });
+
+    expect(scope.textContent).toContain("1 over a full lobby");
+    // Eleven tops against a demand of two, and five entries because League has five positions.
+    expect(scope.textContent).toContain("11/2");
+    expect(scope.textContent?.match(/\d+\/2/g)).toHaveLength(5);
+    expect(scope.textContent).not.toContain("0/4");
+  });
+
+  it("names no role in a one-role game: no glyph column, no role chips, no supply strip", async () => {
+    const rows = Array.from({ length: 13 }, (_unused, index) =>
+      seated(200 + index, `P${index}#1000`, {
+        roles: null,
+        ranks: { agent: 2400 },
+        rank_sources: { agent: "native" as const },
+      }),
+    );
+    const scope = await mount({ rows, owner: DEADLOCK_OWNER, discipline: "deadlock" });
+
+    expect(scope.textContent).toContain("1 over a full lobby");
+    expect(scope.textContent).not.toContain("13/12");
+    expect(scope.querySelector('[aria-label^="Agent"]')).toBeNull();
   });
 
   it("offers Remove for somebody already in the mix and Add for everyone else", async () => {
@@ -298,11 +366,12 @@ describe("PickupAddPlayersDialog", () => {
     expect(list).toHaveBeenLastCalledWith(
       WORKSPACE_ID,
       expect.objectContaining({ authorOnly: true, authorUserId: HOST_USER_ID }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
 
     await click(findChip(scope, "Everyone"));
 
-    expect(list).toHaveBeenLastCalledWith(WORKSPACE_ID, expect.objectContaining({ authorOnly: false }));
+    expect(list).toHaveBeenLastCalledWith(WORKSPACE_ID, expect.objectContaining({ authorOnly: false }), expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it("shows both chip counts before either filter is clicked", async () => {
@@ -322,6 +391,7 @@ describe("PickupAddPlayersDialog", () => {
     expect(list).toHaveBeenCalledWith(
       WORKSPACE_ID,
       expect.objectContaining({ authorUserId: HOST_USER_ID }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
 
@@ -390,6 +460,7 @@ describe("PickupAddPlayersDialog", () => {
     const scope = await mount();
 
     await click(findChip(scope, "My ranks"));
+    await settle();
 
     expect(scope.textContent).toContain("You haven't ranked anyone yet");
   });
@@ -415,6 +486,7 @@ describe("PickupAddPlayersDialog", () => {
     expect(list).toHaveBeenLastCalledWith(
       WORKSPACE_ID,
       expect.objectContaining({ authorUserId: 501, authorOnly: true }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
 

@@ -27,25 +27,34 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
 import sqlalchemy as sa  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
 
 from shared import models  # noqa: E402
-from shared.core import enums  # noqa: E402
 from shared.core.social import SocialProvider  # noqa: E402
-from shared.division_grid import DivisionGrid  # noqa: E402
+from shared.division_grid import DivisionGrid, ladder_grid  # noqa: E402
+from shared.models.tournament.player_role import assignment_of  # noqa: E402
+from shared.repository import CatalogRoleRepository, MemberHiddenRatingRepository  # noqa: E402
 from shared.services.division_grid.access import get_effective_division_grid  # noqa: E402
 from shared.services.member_rank import MIX_ORDER, TOURNAMENT_ORDER, member_rank_service  # noqa: E402
+from shared.services.ontology import project_disciplines, rated_leaf  # noqa: E402
 from shared.testing import create_test_async_engine, division_grid  # noqa: E402
 from src.domain.mix_ranker import HiddenRating, Ranker  # noqa: E402
 from src.rpc import ranks as ranks_rpc  # noqa: E402
 from src.schemas.ranks import LAYERS  # noqa: E402
+from src.services.mix_ranker import mix_ranker_service  # noqa: E402
+from src.services.mix_rounds import (  # noqa: E402
+    MixMatchDraft,
+    MixMatchSeat,
+    MixResultDraft,
+    record_mix_result,
+    start_mix_match,
+)
 from src.services.rank_overview import (  # noqa: E402
     RankOverviewFilters,
     _grid_rank_case,
-    rank_overview_page,
+    rank_overview_queries,
 )
 
 SUBJECT = "rpc.balancer.ranks.list"
@@ -114,7 +123,8 @@ class RankOverviewPermissionTests(IsolatedAsyncioTestCase):
         self.page = AsyncMock(return_value=([], 0))
         with (
             patch.object(ranks_rpc, "_SF", _FakeSession),
-            patch.object(ranks_rpc, "rank_overview_page", self.page),
+            patch.object(ranks_rpc.rank_overview_queries, "page", self.page),
+            patch.object(ranks_rpc, "_games", AsyncMock(return_value=["overwatch"])),
         ):
             return await broker.handlers[SUBJECT]({"workspace_id": WORKSPACE_ID, "identity": identity}, None)
 
@@ -137,8 +147,61 @@ class RankOverviewPermissionTests(IsolatedAsyncioTestCase):
         self.page.assert_not_awaited()
 
 
+class RankOverviewGameBoundFilterTests(IsolatedAsyncioTestCase):
+    """Without a game, a filter or sort that only means something on one game's grid is a 422 naming it."""
+
+    if sys.platform == "win32":
+        loop_factory = asyncio.SelectorEventLoop
+
+    async def test_game_bound_filters_need_a_game(self) -> None:
+        broker = _CapturingBroker()
+        ranks_rpc.register(broker, _FakeLogger())
+        page = AsyncMock(return_value=([], 0))
+        identity = _identity(WORKSPACE_ID, "organizer", ("team", "read"), ("team", "update"))
+        cases = (
+            ({"role": ["tank"]}, "role"),
+            ({"div_min": ["1"]}, "div_min"),
+            ({"div_max": ["3"]}, "div_max"),
+            ({"sort": ["rank_value"]}, "sort=rank_value"),
+            ({"sort": ["division"]}, "sort=division"),
+        )
+        for query, name in cases:
+            with (
+                self.subTest(name=name),
+                patch.object(ranks_rpc, "_SF", _FakeSession),
+                patch.object(ranks_rpc.rank_overview_queries, "page", page),
+            ):
+                response = await broker.handlers[SUBJECT](
+                    {"workspace_id": WORKSPACE_ID, "identity": identity, "query": query}, None
+                )
+                assert response["ok"] is False, response
+                assert response["error"]["code"] == "unprocessable"
+                assert response["error"]["message"] == f"{name} requires discipline"
+        page.assert_not_awaited()
+
+    async def test_inverted_division_bounds_are_a_400(self) -> None:
+        broker = _CapturingBroker()
+        ranks_rpc.register(broker, _FakeLogger())
+        page = AsyncMock(return_value=([], 0))
+        identity = _identity(WORKSPACE_ID, "organizer", ("team", "read"), ("team", "update"))
+        query = {"discipline": ["overwatch"], "div_min": ["3"], "div_max": ["2"]}
+        with (
+            patch.object(ranks_rpc, "_SF", _FakeSession),
+            patch.object(ranks_rpc.rank_overview_queries, "page", page),
+            patch.object(ranks_rpc, "_games", AsyncMock(return_value=["overwatch"])),
+        ):
+            response = await broker.handlers[SUBJECT](
+                {"workspace_id": WORKSPACE_ID, "identity": identity, "query": query}, None
+            )
+        assert response["ok"] is False, response
+        assert response["error"]["code"] == "bad_request"
+        assert response["error"]["message"] == "div_min must be less than or equal to div_max."
+        assert response["error"]["details"]["fields"][0]["code"] == "invalid_filter"
+        page.assert_not_awaited()
+
+
 class GridRankCaseTests(IsolatedAsyncioTestCase):
-    """``_grid_rank_case`` is the SQL twin of ``resolve_division_from_ow_rank``.
+    """``_grid_rank_case`` is the SQL twin of ``resolve_division_from_native_rank``.
 
     Both regimes: a grid with no OW mapping configured places the raw SR by
     plain rank containment (and never misses), one with an explicit mapping
@@ -164,18 +227,18 @@ class GridRankCaseTests(IsolatedAsyncioTestCase):
     async def test_unmapped_grid_places_every_sr_by_rank_containment(self) -> None:
         grid = division_grid(1, ((10, 3, 3000, None), (11, 2, 2000, 2999), (12, 1, 1000, 1999)))
         for sr in (500, 1500, 2500, 4000):
-            expected = grid.resolve_division_from_ow_rank(sr)
+            expected = grid.resolve_division_from_native_rank(sr)
             assert expected is not None
             assert await self._mapped(grid, sr) == expected.rank_min, sr
 
     async def test_configured_grid_drops_sr_outside_every_range(self) -> None:
         base = division_grid(1, ((10, 3, 3000, None), (11, 2, 2000, 2999), (12, 1, 1000, 1999)))
         tiers = tuple(
-            replace(tier, ow_rank_min=tier.rank_min, ow_rank_max=tier.rank_max or 9999) for tier in base.tiers
+            replace(tier, native_rank_min=tier.rank_min, native_rank_max=tier.rank_max or 9999) for tier in base.tiers
         )
         grid = DivisionGrid(version_id=2, tiers=tiers)
         assert await self._mapped(grid, 2500) == 2000
-        assert grid.resolve_division_from_ow_rank(500) is None
+        assert grid.resolve_division_from_native_rank(500) is None
         assert await self._mapped(grid, 500) is None
 
     async def test_no_ow_rank_at_all_maps_to_nothing(self) -> None:
@@ -211,11 +274,16 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             member = models.WorkspaceMember(workspace_id=workspace.id, player_id=player.id, display_name="Parity")
             s.add(member)
             await s.flush()
+            roles = await CatalogRoleRepository().rated_rows(s, discipline="overwatch", workspace_id=None)
 
             # canon: tank only, so damage has to fall through to OW.
             s.add(
                 models.MemberRank(
-                    workspace_id=workspace.id, workspace_member_id=member.id, role="tank", rank_value=2500
+                    workspace_id=workspace.id,
+                    workspace_member_id=member.id,
+                    catalog_role=roles["tank"],
+                    dimension_id=roles["tank"].dimension_id,
+                    rank_value=2500,
                 )
             )
             # the author's own book: tank corrected upward, support invented.
@@ -225,21 +293,28 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
                         workspace_id=workspace.id,
                         workspace_member_id=member.id,
                         author_user_id=author.id,
-                        role="tank",
+                        catalog_role=roles["tank"],
+                        dimension_id=roles["tank"].dimension_id,
                         rank_value=2700,
                     ),
                     models.MemberRank(
                         workspace_id=workspace.id,
                         workspace_member_id=member.id,
                         author_user_id=author.id,
-                        role="support",
+                        catalog_role=roles["support"],
+                        dimension_id=roles["support"].dimension_id,
                         rank_value=1800,
                     ),
                 ]
             )
             s.add(
                 models.MemberHiddenRating(
-                    workspace_id=workspace.id, workspace_member_id=member.id, role="tank", mu=150.0, sigma=20.0
+                    workspace_id=workspace.id,
+                    workspace_member_id=member.id,
+                    catalog_role=roles["tank"],
+                    dimension_id=roles["tank"].dimension_id,
+                    mu=150.0,
+                    sigma=20.0,
                 )
             )
 
@@ -253,10 +328,11 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             s.add(account)
             await s.flush()
             s.add(
-                models.BattleTagRankState(
+                models.RankAccountState(
+                    discipline="overwatch",
                     social_account_id=account.id,
-                    battle_tag=account.username,
-                    player_id_slug=account.username.replace("#", "-"),
+                    handle=account.username,
+                    external_id=account.username.replace("#", "-"),
                     last_success_at=datetime.now(UTC),
                 )
             )
@@ -264,9 +340,10 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             s.add_all(
                 [
                     models.UserRankSnapshot(
+                        discipline="overwatch",
                         user_id=player.id,
                         social_account_id=account.id,
-                        battle_tag=account.username,
+                        handle=account.username,
                         platform="pc",
                         role="tank",
                         division="grandmaster",
@@ -276,9 +353,10 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
                         captured_at=captured,
                     ),
                     models.UserRankSnapshot(
+                        discipline="overwatch",
                         user_id=player.id,
                         social_account_id=account.id,
-                        battle_tag=account.username,
+                        handle=account.username,
                         platform="pc",
                         role="damage",
                         division="platinum",
@@ -290,9 +368,10 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
                     # Newest support row is unranked: the role has no rank now,
                     # however high the older one was.
                     models.UserRankSnapshot(
+                        discipline="overwatch",
                         user_id=player.id,
                         social_account_id=account.id,
-                        battle_tag=account.username,
+                        handle=account.username,
                         platform="pc",
                         role="support",
                         rank_value=2600,
@@ -300,9 +379,10 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
                         captured_at=captured - timedelta(days=2),
                     ),
                     models.UserRankSnapshot(
+                        discipline="overwatch",
                         user_id=player.id,
                         social_account_id=account.id,
-                        battle_tag=account.username,
+                        handle=account.username,
                         platform="pc",
                         role="support",
                         rank_value=None,
@@ -317,12 +397,20 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             )
             s.add(tournament)
             await s.flush()
-            registration = models.BalancerRegistration(
+            registration = models.Registration(
                 tournament_id=tournament.id, workspace_member_id=member.id, display_name="Parity"
             )
             s.add(registration)
             await s.flush()
-            s.add(models.BalancerRegistrationRole(registration_id=registration.id, role="tank", rank_value=2200))
+            catalog_roles = await CatalogRoleRepository().rated_rows(
+                s, discipline=tournament.discipline, workspace_id=workspace.id
+            )
+            tank = catalog_roles["tank"]
+            s.add(
+                models.RegistrationRole(
+                    registration_id=registration.id, catalog_role=tank, dimension_id=tank.dimension_id, rank_value=2200
+                )
+            )
             team = models.Team(tournament_id=tournament.id, name=f"Team {suffix}", balancer_name=f"Team {suffix}")
             s.add(team)
             await s.flush()
@@ -330,31 +418,54 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
                 models.Player(
                     name="Parity",
                     rank=2100,
-                    role=enums.HeroClass.tank,
+                    assignments=[
+                        assignment_of(
+                            await rated_leaf(
+                                s, discipline="overwatch", workspace_id=workspace.id, role="tank", sub_role=None
+                            )
+                        )
+                    ],
                     tournament_id=tournament.id,
                     team_id=team.id,
                     workspace_member_id=member.id,
                 )
             )
 
-            game = models.CustomGame(workspace_id=workspace.id, host_user_id=author.id, name=f"Mix {suffix}")
+            rule = models.ScoringRule(
+                workspace_id=workspace.id,
+                preset="wins",
+                game_formula="win",
+                end_formula="games >= best_of or max_wins * 2 > best_of",
+            )
+            s.add(rule)
+            await s.flush()
+            game = models.CustomGame(
+                workspace_id=workspace.id, host_user_id=author.id, name=f"Mix {suffix}", scoring_rule_id=rule.id
+            )
             s.add(game)
             await s.flush()
-            match = models.CasualMatch(custom_game_id=game.id, lobby_index=1, points_per_win_applied=25)
-            s.add(match)
-            await s.flush()
-            home = models.CasualTeam(match_id=match.id, side="home", name="Home", score=2)
-            away = models.CasualTeam(match_id=match.id, side="away", name="Away", score=1)
-            s.add_all([home, away])
-            await s.flush()
-            s.add(
-                models.CasualPlayer(
-                    team_id=home.id,
-                    workspace_member_id=member.id,
-                    display_name_snapshot="Parity",
-                    role=enums.HeroClass.tank,
-                    rank=2050,
-                )
+            encounter = await start_mix_match(
+                s,
+                MixMatchDraft(
+                    custom_game_id=game.id,
+                    workspace_id=workspace.id,
+                    discipline="overwatch",
+                    scoring_rule_id=rule.id,
+                    map_id=None,
+                    names=("Alpha", "Bravo"),
+                    seats=((MixMatchSeat(member.id, "Parity", "tank", 2050),), ()),
+                ),
+            )
+            await record_mix_result(
+                s,
+                MixResultDraft(
+                    encounter_id=encounter.id,
+                    lobby_index=1,
+                    names=("Alpha", "Bravo"),
+                    lineup_first_team=frozenset({member.id}),
+                    winner=1,
+                    points_per_win_applied=25,
+                ),
             )
             await s.commit()
 
@@ -381,8 +492,11 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
         overrides.setdefault("layers", LAYERS)
         overrides.setdefault("per_page", 200)
         async with self.Session() as session:
-            return await rank_overview_page(
-                session, workspace_id=self.workspace_id, filters=RankOverviewFilters(**overrides)
+            return await rank_overview_queries.page(
+                session,
+                workspace_id=self.workspace_id,
+                disciplines=("overwatch",),
+                filters=RankOverviewFilters(**overrides),
             )
 
     async def test_every_layer_reaches_the_wire(self) -> None:
@@ -410,13 +524,13 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
         assert author["tank"]["author_user_id"] == self.auth_user_id
         assert author["tank"]["author_name"]
 
-        ow = {r["role"]: r for r in by_layer["ow"]}
-        assert set(ow) == {"tank", "damage"}, "an unranked newest row means the role has no rank"
-        assert ow["tank"]["rank_value"] == 3000
-        assert ow["tank"]["ow_division"] == "grandmaster"
-        assert ow["tank"]["ow_tier"] == 3
-        assert ow["tank"]["context"] == {
-            "kind": "battle_tag",
+        native = {r["role"]: r for r in by_layer["native"]}
+        assert set(native) == {"tank", "damage"}, "an unranked newest row means the role has no rank"
+        assert native["tank"]["rank_value"] == 3000
+        assert native["tank"]["native_division"] == "grandmaster"
+        assert native["tank"]["native_tier"] == 3
+        assert native["tank"]["context"] == {
+            "kind": "native_account",
             "id": None,
             "label": self.battle_tag,
             "team": "pc",
@@ -447,6 +561,154 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
         assert casual["author_user_id"] == self.auth_user_id
         assert casual["at"] is not None
 
+    async def test_overlapping_support_ranks_are_isolated_across_every_overview_layer(self) -> None:
+        async with self.Session() as session:
+            await project_disciplines(session)
+            grid = models.DivisionGrid(workspace_id=self.workspace_id, slug="lol", name="LoL", discipline="lol")
+            version = models.DivisionGridVersion(
+                grid=grid,
+                version=1,
+                label="LoL",
+                status="published",
+                tiers=[
+                    models.DivisionGridTier(
+                        slug="organiser",
+                        number=9,
+                        name="Organiser",
+                        sort_order=0,
+                        rank_min=0,
+                        rank_max=None,
+                        icon_url="/tier.png",
+                    )
+                ],
+            )
+            session.add(version)
+            await session.flush()
+            workspace = await session.get(models.Workspace, self.workspace_id)
+            session.add(
+                models.WorkspaceDivisionGridDefault(workspace_id=workspace.id, discipline="lol", version_id=version.id)
+            )
+            ow_grid = models.DivisionGrid(
+                workspace_id=self.workspace_id, slug="ow-custom", name="Custom OW", discipline="overwatch"
+            )
+            ow_version = models.DivisionGridVersion(
+                grid=ow_grid,
+                version=1,
+                label="Custom OW",
+                status="published",
+                tiers=[
+                    models.DivisionGridTier(
+                        slug="ow-custom",
+                        number=4,
+                        name="OW custom",
+                        sort_order=0,
+                        rank_min=0,
+                        rank_max=None,
+                        icon_url="/ow.png",
+                    )
+                ],
+            )
+            session.add(ow_version)
+            await session.flush()
+            session.add(
+                models.WorkspaceDivisionGridDefault(
+                    workspace_id=workspace.id, discipline="overwatch", version_id=ow_version.id
+                )
+            )
+            await session.flush()
+            for discipline, value in (("overwatch", 1600), ("lol", 3300)):
+                await member_rank_service.set_ranks(
+                    session,
+                    workspace_id=self.workspace_id,
+                    discipline=discipline,
+                    workspace_member_id=self.member_id,
+                    ranks={"support": value},
+                )
+            await member_rank_service.set_ranks(
+                session,
+                workspace_id=self.workspace_id,
+                discipline="lol",
+                workspace_member_id=self.member_id,
+                ranks={"support": 3400},
+                author_user_id=self.auth_user_id,
+            )
+            support = (await CatalogRoleRepository().rated_rows(session, discipline="lol", workspace_id=None))[
+                "support"
+            ]
+            await MemberHiddenRatingRepository().upsert_many(
+                session,
+                workspace_id=self.workspace_id,
+                ratings={(self.member_id, support.id): (140.0, 20.0)},
+            )
+            rows, total = await rank_overview_queries.page(
+                session,
+                workspace_id=self.workspace_id,
+                disciplines=("lol",),
+                filters=RankOverviewFilters(layers=LAYERS, per_page=200),
+            )
+            assert total == 5
+            assert {row["role"] for row in rows} == {"support"}
+            assert {row["division"] for row in rows} == {9}
+            values = {row["layer"]: row["rank_value"] for row in rows}
+            assert values == {
+                "canon": 3300,
+                "author": 3400,
+                "hidden": round(Ranker().projection(HiddenRating(140.0, 20.0))),
+                "effective_tournament": 3300,
+                "effective_mix": 3400,
+            }
+            ow, _ = await rank_overview_queries.page(
+                session,
+                workspace_id=self.workspace_id,
+                disciplines=("overwatch",),
+                filters=RankOverviewFilters(layers=("canon",), roles=("support",)),
+            )
+            assert [row["rank_value"] for row in ow] == [1600]
+            assert [row["division"] for row in ow] == [4]
+            await session.rollback()
+
+    async def test_ranker_stores_and_reads_overlapping_roles_in_separate_disciplines(self) -> None:
+        async with self.Session() as session:
+            await project_disciplines(session)
+            hidden = MemberHiddenRatingRepository()
+            catalogs = {
+                code: await CatalogRoleRepository().rated_rows(session, discipline=code, workspace_id=None)
+                for code in ("overwatch", "lol")
+            }
+            ow_key = (self.member_id, catalogs["overwatch"]["support"].id)
+            lol_key = (self.member_id, catalogs["lol"]["support"].id)
+            await hidden.upsert_many(
+                session,
+                workspace_id=self.workspace_id,
+                ratings={ow_key: (Ranker().initial(1700).mu, 3.0), lol_key: (Ranker().initial(3500).mu, 3.0)},
+            )
+            open_ranks = {(self.member_id, "support"): 2500}
+            ow = await mix_ranker_service.effective_ratings(
+                session,
+                workspace_id=self.workspace_id,
+                discipline="overwatch",
+                open_ranks=open_ranks,
+            )
+            lol = await mix_ranker_service.effective_ratings(
+                session,
+                workspace_id=self.workspace_id,
+                discipline="lol",
+                open_ranks=open_ranks,
+            )
+            assert ow[(self.member_id, "support")] < 2500 < lol[(self.member_id, "support")]
+            before = await hidden.for_members(session, workspace_id=self.workspace_id, member_ids=[self.member_id])
+            await mix_ranker_service.rate_match(
+                session,
+                workspace_id=self.workspace_id,
+                discipline="lol",
+                teams=[[(self.member_id, "support", 2500)], [(None, "support", 2500)]],
+                winner=1,
+            )
+            after = await hidden.for_members(session, workspace_id=self.workspace_id, member_ids=[self.member_id])
+            assert after[ow_key] == before[ow_key]
+            assert after[lol_key] != before[lol_key]
+            await session.rollback()
+
     async def test_effective_tournament_matches_the_resolver(self) -> None:
         rows, _ = await self._page(layers=("effective_tournament",))
         async with self.Session() as session:
@@ -454,6 +716,7 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             resolved = await member_rank_service.resolve(
                 session,
                 workspace_id=self.workspace_id,
+                discipline="overwatch",
                 members={self.member_id: self.player_id},
                 roles=ROLES,
                 order=TOURNAMENT_ORDER,
@@ -465,10 +728,11 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
         rows, _ = await self._page(layers=("effective_mix",))
         assert {row["author_user_id"] for row in rows} == {self.auth_user_id}
         async with self.Session() as session:
-            grid = await get_effective_division_grid(session, self.workspace_id)
+            grid = ladder_grid("overwatch")
             resolved = await member_rank_service.resolve(
                 session,
                 workspace_id=self.workspace_id,
+                discipline="overwatch",
                 members={self.member_id: self.player_id},
                 roles=ROLES,
                 order=MIX_ORDER,
@@ -499,11 +763,8 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
         assert {row["role"] for row in rows} == {"support"}
 
     async def test_filters_and_paging(self) -> None:
-        rows, total = await self._page(layers=("ow",), roles=("tank",))
+        rows, total = await self._page(layers=("native",), roles=("tank",))
         assert total == 1 and rows[0]["rank_value"] == 3000
-
-        _rows, total = await self._page(rank_min=2600)
-        assert total == len([r for r in (await self._page())[0] if r["rank_value"] >= 2600])
 
         first, total = await self._page(sort="rank_value", order="desc", per_page=1, page=1)
         second, _ = await self._page(sort="rank_value", order="desc", per_page=1, page=2)
@@ -513,6 +774,62 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
 
         empty, total = await self._page(player_id=self.player_id + 10_000_000)
         assert (empty, total) == ([], 0)
+
+    async def test_division_bounds_filter_on_the_workspace_grid(self) -> None:
+        """``div_min``/``div_max`` are tier numbers on the workspace grid, 1 = top, inclusive: the top tier is
+        open-ended and every rank below the floor tier counts in the floor division."""
+        async with self.Session() as session:
+            grid = models.DivisionGrid(
+                workspace_id=self.workspace_id, slug="bands", name="Bands", discipline="overwatch"
+            )
+            version = models.DivisionGridVersion(
+                grid=grid,
+                version=1,
+                label="Bands",
+                status="published",
+                tiers=[
+                    models.DivisionGridTier(
+                        slug=slug,
+                        number=number,
+                        name=slug,
+                        sort_order=number,
+                        rank_min=low,
+                        rank_max=high,
+                        icon_url="/tier.png",
+                    )
+                    for slug, number, low, high in (
+                        ("top", 1, 2600, None),
+                        ("mid", 2, 2200, 2599),
+                        ("floor", 3, 2100, 2199),
+                    )
+                ],
+            )
+            session.add(version)
+            await session.flush()
+            session.add(
+                models.WorkspaceDivisionGridDefault(
+                    workspace_id=self.workspace_id, discipline="overwatch", version_id=version.id
+                )
+            )
+            await session.flush()
+
+            async def kept(**bounds) -> list[tuple[int, int]]:
+                rows, total = await rank_overview_queries.page(
+                    session,
+                    workspace_id=self.workspace_id,
+                    disciplines=("overwatch",),
+                    filters=RankOverviewFilters(
+                        layers=("canon", "author", "registration", "tournament", "casual"), per_page=200, **bounds
+                    ),
+                )
+                assert total == len(rows)
+                return sorted((row["rank_value"], row["division"]) for row in rows)
+
+            assert await kept() == [(1800, 3), (2050, 3), (2100, 3), (2200, 2), (2500, 2), (2700, 1)]
+            assert await kept(div_max=1) == [(2700, 1)]
+            assert await kept(div_min=2, div_max=2) == [(2200, 2), (2500, 2)]
+            assert await kept(div_min=3) == [(1800, 3), (2050, 3), (2100, 3)]
+            await session.rollback()
 
     async def test_handler_answers_a_json_serializable_envelope(self) -> None:
         """The whole RPC path: query parsing, the union, and the wire body.
@@ -526,6 +843,7 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             "workspace_id": self.workspace_id,
             "identity": _identity(self.workspace_id, "organizer", ("team", "update")),
             "query": {
+                "discipline": ["overwatch"],
                 "layer": ["canon", "casual"],
                 "role": ["tank"],
                 "sort": ["rank_value"],
@@ -541,6 +859,46 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
         assert {row["layer"] for row in body["results"]} == {"canon", "casual"}
         assert body["total"] == len(body["results"]) == 2
         json.dumps(body)
+
+    async def test_without_a_game_every_enabled_games_rows_come_back_tagged(self) -> None:
+        async with self.Session() as session:
+            await project_disciplines(session)
+            workspace = await session.get(models.Workspace, self.workspace_id)
+            workspace.disciplines_enabled = ["overwatch", "lol"]
+            await session.flush()
+            for discipline, value in (("overwatch", 1600), ("lol", 3300)):
+                await member_rank_service.set_ranks(
+                    session,
+                    workspace_id=self.workspace_id,
+                    discipline=discipline,
+                    workspace_member_id=self.member_id,
+                    ranks={"support": value},
+                )
+
+            async def page(**overrides) -> tuple[list[dict], int]:
+                return await rank_overview_queries.page(
+                    session,
+                    workspace_id=self.workspace_id,
+                    disciplines=("overwatch", "lol"),
+                    filters=RankOverviewFilters(layers=("canon",), **overrides),
+                )
+
+            rows, total = await page(per_page=200)
+            assert total == 3
+            assert {(row["discipline"], row["role"], row["rank_value"]) for row in rows} == {
+                ("overwatch", "tank", 2500),
+                ("overwatch", "support", 1600),
+                ("lol", "support", 3300),
+            }
+            # One member, one layer, one role code in both games, no author: every earlier key ties, so only the
+            # game orders the two support rows (the League row was written last, so row_id alone would flip them).
+            first, _ = await page(per_page=1, page=1)
+            second, _ = await page(per_page=1, page=2)
+            assert [(first[0]["discipline"], first[0]["role"]), (second[0]["discipline"], second[0]["role"])] == [
+                ("lol", "support"),
+                ("overwatch", "support"),
+            ]
+            await session.rollback()
 
 
 def _as_pairs(rows: list[dict], member_id: int) -> dict[str, tuple[int, str]]:

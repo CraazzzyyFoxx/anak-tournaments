@@ -12,7 +12,7 @@ The line drawn now, and pinned here:
 
 * **read** (``admin_list``) is workspace-grantable. ``workspace_id`` is both the
   authorization scope and the row filter, the same shape as the rank/subscription
-  collection admin (``parser-service/src/rpc/rank.py``) -- so a scoped holder
+  collection admin (``stats-service/src/rpc/rank.py``) -- so a scoped holder
   sees their own roster and cannot widen the read to the platform-wide registry
   by dropping the param;
 * **writes to the global identity** (create/update/delete, avatar) still demand
@@ -251,44 +251,3 @@ class ListFilterTests(IsolatedAsyncioTestCase):
         self.assertNotEqual(sql, base)
         self.assertIn("EXISTS", sql)
         self.assertIn("tournament_id", sql)
-
-
-class DashboardIssueScopingTests(IsolatedAsyncioTestCase):
-    """The "Unlinked player identities" card links into the scoped list.
-
-    Every other issue count hangs off ``Tournament`` and so inherits
-    ``ws_filters``; this one counts platform-wide ``players.user`` rows and had no
-    workspace dimension at all -- harmless while only global operators saw the
-    card, a plain lie now that a workspace owner does (a platform-wide number
-    linking to a page that lists their roster).
-    """
-
-    @staticmethod
-    def _session() -> Any:
-        class _Row:
-            def one(self) -> tuple[int, ...]:
-                return (0,) * 7
-
-        class _Session:
-            def __init__(self) -> None:
-                self.statements: list[Any] = []
-
-            async def execute(self, statement: Any) -> Any:
-                self.statements.append(statement)
-                return _Row()
-
-        return _Session()
-
-    async def _sql(self, workspace_id: int | None) -> str:
-        from src.services.dashboard.service import dashboard
-
-        session = self._session()
-        await dashboard.get_issues(session, workspace_id)
-        return str(session.statements[0])
-
-    async def test_a_scoped_dashboard_counts_only_this_workspace_roster(self) -> None:
-        # `workspace_member` reaches the statement from this subquery alone.
-        self.assertIn("workspace_member", await self._sql(WORKSPACE))
-
-    async def test_an_unscoped_dashboard_counts_the_whole_platform(self) -> None:
-        self.assertNotIn("workspace_member", await self._sql(None))

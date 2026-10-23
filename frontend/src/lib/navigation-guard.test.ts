@@ -23,6 +23,13 @@ describe("navigation guard", () => {
     expect(isChangedInternalNavigation(`${ORIGIN}/admin/teams`, "/admin/teams", ORIGIN)).toBe(false);
   });
 
+  it("does not treat a fragment on the same page as leaving it", () => {
+    const here = `${ORIGIN}/admin/settings/general`;
+    expect(isChangedInternalNavigation(here, "#identity", ORIGIN)).toBe(false);
+    expect(isChangedInternalNavigation(`${here}#links`, "/admin/settings/general#games", ORIGIN)).toBe(false);
+    expect(isChangedInternalNavigation(here, "/admin/settings/branding#preview", ORIGIN)).toBe(true);
+  });
+
   it("ignores modifier-assisted navigation", () => {
     const click = { defaultPrevented: false, button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false };
     expect(shouldIgnoreNavigationClick(click)).toBe(false);

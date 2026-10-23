@@ -1,13 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { UserCog, X } from "lucide-react";
 
-import { Combobox } from "@/components/kit/Combobox";
-import { useSearchComboboxQuery } from "@/components/kit/useSearchComboboxQuery";
+import { ServerSearchCombobox } from "@/components/kit/ServerSearchCombobox";
 import { Button } from "@/components/ui/button";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
-import { CommandGroup, CommandItem } from "@/components/ui/command";
 import {
   Dialog,
   DialogContent,
@@ -21,6 +20,11 @@ import type { CustomGame } from "@/services/custom-game.service";
 import { workspacePlayerService, type RosterMember } from "@/services/workspace-player.service";
 
 type MemberOption = { authUserId: number; label: string };
+/** A roster member who has signed in at least once, so has an account to grant. */
+type LinkedMember = RosterMember & { auth_user_id: number };
+
+const memberLabel = (member: LinkedMember) =>
+  member.display_name || member.identity?.handle || `#${member.auth_user_id}`;
 
 interface PickupAccessDialogProps {
   open: boolean;
@@ -35,7 +39,7 @@ interface PickupAccessDialogProps {
   onTransfer: (userId: number) => void;
 }
 
-/** One workspace-roster search box, built on the shared `Combobox` shell every other picker in the app uses. */
+/** One workspace-roster search box, on the server-search picker every other user search uses. */
 function MemberSearchCombobox({
   workspaceId,
   excludeIds,
@@ -49,69 +53,47 @@ function MemberSearchCombobox({
   disabled: boolean;
   onPick: (option: MemberOption) => void;
 }>) {
-  const { open, setOpen, searchValue, setSearchValue, results, handleSelect, emptyMessage } = useSearchComboboxQuery<
-    RosterMember,
-    MemberOption
-  >({
-    queryKeyPrefix: ["workspace-players-search", workspaceId],
-    fetchResults: ({ query }) =>
-      workspacePlayerService
-        .list(workspaceId, { query, perPage: 20 })
-        .then((page) =>
-          // Host and co-host are both addressed by `auth.user.id`, so a member
-          // with no linked account (never signed in) cannot be picked here at
-          // all -- there is nobody who could ever log in and pass the write
-          // check. Filtering them out here, not just disabling them, keeps
-          // this the same "type a name, get a name" search every other picker
-          // in the app is.
-          page.results.filter(
-            (member): member is RosterMember & { auth_user_id: number } =>
-              member.auth_user_id != null && !excludeIds.includes(member.auth_user_id),
-          ),
-        ),
-    onSelect: (option) => option && onPick(option),
-    messages: {
-      loading: "Loading members…",
-      error: "Could not load members. Try again.",
-      minChars: "Type at least 2 characters to search.",
-      empty: "No workspace member matches that name."
-    }
-  });
-
+  const t = useTranslations("mixes.access.search");
   return (
-    <Combobox
-      open={open}
-      onOpenChange={setOpen}
-      label={placeholder}
+    <ServerSearchCombobox<LinkedMember>
+      queryKey={["workspace-players-search", workspaceId]}
+      fetch={({ query }) =>
+        workspacePlayerService
+          .list(workspaceId, { query, perPage: 20 })
+          .then((page) =>
+            // Host and co-host are both addressed by `auth.user.id`, so a member
+            // with no linked account (never signed in) cannot be picked here at
+            // all -- there is nobody who could ever log in and pass the write
+            // check. Filtering them out here, not just disabling them, keeps
+            // this the same "type a name, get a name" search every other picker
+            // in the app is.
+            page.results.filter(
+              (member): member is LinkedMember =>
+                member.auth_user_id != null && !excludeIds.includes(member.auth_user_id),
+            ),
+          )
+      }
+      itemId={(member) => member.auth_user_id}
+      label={memberLabel}
+      renderItem={(member) => (
+        <span className="flex flex-col">
+          <span className="truncate">{memberLabel(member)}</span>
+          {member.identity?.handle ? (
+            <span className="truncate text-xs text-muted-foreground">{member.identity.handle}</span>
+          ) : null}
+        </span>
+      )}
+      onSelect={(member) => member && onPick({ authUserId: member.auth_user_id, label: memberLabel(member) })}
+      messages={{
+        loading: t("loading"),
+        error: t("error"),
+        minChars: t("minChars"),
+        empty: t("empty")
+      }}
+      placeholder={placeholder}
+      searchPlaceholder={t("placeholder")}
       disabled={disabled}
-      searchValue={searchValue}
-      onSearchValueChange={setSearchValue}
-      searchPlaceholder="Search by name or battletag…"
-      emptyMessage={emptyMessage}
-      shouldFilter={false}
-    >
-      <CommandGroup>
-        {results.map((member) => {
-          const label = member.display_name || member.battle_tag || `#${member.auth_user_id}`;
-          return (
-            <CommandItem
-              key={member.member_id}
-              value={`${member.display_name ?? ""} ${member.battle_tag ?? ""} ${member.auth_user_id}`}
-              // `fetchResults` above already filtered out every member with
-              // no linked account, so this is never actually null here.
-              onSelect={() => handleSelect({ authUserId: member.auth_user_id as number, label })}
-            >
-              <div className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate">{label}</span>
-                {member.battle_tag ? (
-                  <span className="truncate text-xs text-muted-foreground">{member.battle_tag}</span>
-                ) : null}
-              </div>
-            </CommandItem>
-          );
-        })}
-      </CommandGroup>
-    </Combobox>
+    />
   );
 }
 
@@ -138,6 +120,9 @@ export function PickupAccessDialog({
   onRemoveCoHost,
   onTransfer
 }: Readonly<PickupAccessDialogProps>) {
+  const t = useTranslations("mixes.access");
+  const tHeader = useTranslations("mixes.header");
+  const tCommon = useTranslations("common");
   const [transferTarget, setTransferTarget] = useState<MemberOption | null>(null);
 
   const coHosts = game?.co_hosts ?? [];
@@ -157,13 +142,13 @@ export function PickupAccessDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserCog className="h-4 w-4" />
-            Manage access
+            {tHeader("access")}
           </DialogTitle>
-          <DialogDescription>Who else can edit this mix, and who owns it.</DialogDescription>
+          <DialogDescription>{t("description")}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-1.5">
-          <Label>Co-hosts</Label>
+          <Label>{t("coHosts")}</Label>
           {coHosts.length > 0 ? (
             <ul className="space-y-1">
               {coHosts.map((coHost) => (
@@ -172,7 +157,7 @@ export function PickupAccessDialog({
                   className="flex items-center justify-between gap-2 rounded-md border border-[color:var(--aqt-border)] px-2.5 py-1.5 text-sm"
                 >
                   <span className="truncate">{coHost.display_name || `#${coHost.user_id}`}</span>
-                  <IconTooltip control label="Remove co-host" className="shrink-0">
+                  <IconTooltip control label={t("removeCoHost")} className="shrink-0">
                     <Button
                       type="button"
                       variant="ghost"
@@ -180,7 +165,7 @@ export function PickupAccessDialog({
                       className="h-6 w-6"
                       disabled={removingCoHostId === coHost.user_id}
                       onClick={() => onRemoveCoHost(coHost.user_id)}
-                      aria-label={`Remove ${coHost.display_name || `#${coHost.user_id}`} as co-host`}
+                      aria-label={t("removeCoHostNamed", { name: coHost.display_name || `#${coHost.user_id}` })}
                     >
                       <X className="h-3.5 w-3.5" aria-hidden="true" />
                     </Button>
@@ -189,37 +174,33 @@ export function PickupAccessDialog({
               ))}
             </ul>
           ) : (
-            <p className="text-xs text-muted-foreground">No co-hosts yet.</p>
+            <p className="text-xs text-muted-foreground">{t("noCoHosts")}</p>
           )}
           <MemberSearchCombobox
             workspaceId={workspaceId}
             excludeIds={excludeFromCoHostSearch}
-            placeholder="Add a co-host…"
+            placeholder={t("addCoHost")}
             disabled={addingCoHost}
             onPick={(option) => onAddCoHost(option.authUserId)}
           />
-          <p className="text-xs text-muted-foreground">
-            A co-host writes the roster, balance, outcomes and settings exactly like the host.
-          </p>
+          <p className="text-xs text-muted-foreground">{t("coHostHint")}</p>
         </div>
 
         <div className="space-y-1.5 border-t border-[color:var(--aqt-border)] pt-4">
-          <Label>Transfer host</Label>
+          <Label>{t("transferHost")}</Label>
           <MemberSearchCombobox
             workspaceId={workspaceId}
             excludeIds={game?.host_user_id != null ? [game.host_user_id] : []}
-            placeholder={transferTarget?.label ?? "Select a member…"}
+            placeholder={transferTarget?.label ?? t("selectMember")}
             disabled={transferring}
             onPick={setTransferTarget}
           />
-          <p className="text-xs text-muted-foreground">
-            Hands primary ownership to the pick below. You keep write access only if you stay a co-host.
-          </p>
+          <p className="text-xs text-muted-foreground">{t("transferHint")}</p>
         </div>
 
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-            Close
+            {tCommon("close")}
           </Button>
           <Button
             size="sm"
@@ -231,7 +212,7 @@ export function PickupAccessDialog({
               setTransferTarget(null);
             }}
           >
-            {transferring ? "Transferring…" : "Transfer"}
+            {transferring ? t("transferring") : t("transfer")}
           </Button>
         </DialogFooter>
       </DialogContent>

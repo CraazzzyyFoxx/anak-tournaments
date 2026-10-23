@@ -6,13 +6,13 @@ Discord channel every mix announces in (the workspace's own server,
 ``workspace.update``). The write used to demand ``workspace.update`` for the
 whole payload, so an organizer saving a threshold was rejected over a channel
 they were not touching. The mix voice setup (category + general voices) joined
-that blob later and shares the channel's ``workspace.update`` gate.
+that blob later and shares the channel's ``workspace.update`` gate. A newly set
+Discord id must also be a channel of the workspace's own guild.
 """
 
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -26,9 +26,14 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
+from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
+
+from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
+from shared.services.discord_errors import DiscordUnavailable  # noqa: E402
+from shared.testing import create_test_async_engine  # noqa: E402
 from src.rpc import admin as admin_rpc  # noqa: E402
+from src.services.admin.balancer import BalancerAdminService  # noqa: E402
 
 SUBJECT = "rpc.balancer.admin.workspace_config_upsert"
 WORKSPACE_ID = 9
@@ -62,10 +67,10 @@ class _FakeSession:
         return False
 
 
-def _handler():
+def _handler(subject: str = SUBJECT):
     broker = _CapturingBroker()
     admin_rpc.register(broker, _FakeLogger())
-    return broker.handlers[SUBJECT]
+    return broker.handlers[subject]
 
 
 def _identity(*permissions: tuple[str, str]) -> dict:
@@ -145,6 +150,7 @@ class WorkspaceConfigUpsertGateTests(IsolatedAsyncioTestCase):
         self.upsert = AsyncMock(return_value=_stored(stored_channel))
         with (
             patch.object(admin_rpc, "_SF", lambda: _FakeSession()),
+            patch.object(admin_rpc, "_ensure_workspace_exists", AsyncMock()),
             patch.object(
                 admin_rpc.balancer_admin_service,
                 "get_workspace_balancer_config",
@@ -181,6 +187,8 @@ class WorkspaceConfigUpsertGateTests(IsolatedAsyncioTestCase):
 
         assert response["ok"] is True, response
         assert self.upsert.await_args.kwargs["mix_discord_channel_id"] == "777"
+        # The guild check asks discord-service, over the broker the handler holds.
+        assert callable(self.upsert.await_args.kwargs["list_channels"])
 
     async def test_pool_knobs_still_need_team_update(self) -> None:
         response = await self._call(_request(BYSTANDER, "555"), stored_channel="555")
@@ -242,3 +250,118 @@ class WorkspaceConfigUpsertGateTests(IsolatedAsyncioTestCase):
 
         assert response["ok"] is True, response
         assert self.upsert.await_args.kwargs["mix_general_voice_channel_ids"] == ["2", "1"]
+
+
+class MissingWorkspaceTests(IsolatedAsyncioTestCase):
+    """A superuser passes the gate for any id, so a typo'd one used to reach the INSERT and 500."""
+
+    if sys.platform == "win32":
+        loop_factory = asyncio.SelectorEventLoop
+
+    async def test_workspace_reads_and_writes_404_for_a_missing_workspace(self) -> None:
+        engine = create_test_async_engine()
+        superuser = {"user_id": 1, "is_superuser": True, "is_active": True}
+        try:
+            for subject, payload in (
+                (SUBJECT, {"rank_delta_threshold": 700, "rank_delta_hide_from_pool": False}),
+                ("rpc.balancer.admin.workspace_ranker_upsert", {}),
+                # Answered 200 with defaults / an empty rebuild for any id.
+                ("rpc.balancer.admin.workspace_config_get", {}),
+                ("rpc.balancer.admin.workspace_ranker_get", {}),
+                ("rpc.balancer.admin.workspace_ranker_rebuild", {}),
+            ):
+                with self.subTest(subject=subject), patch.object(admin_rpc, "_SF", async_sessionmaker(engine)):
+                    response = await _handler(subject)(
+                        {"id": 999_999_999, "identity": superuser, "payload": payload}, None
+                    )
+
+                    assert response["ok"] is False, response
+                    assert response["error"]["code"] == "not_found", response
+        finally:
+            await engine.dispose()
+
+
+class WorkspaceConfigGuildCheckTests(IsolatedAsyncioTestCase):
+    """Without the check an admin of workspace A could point the bot at a channel
+    of guild B; same rule and codes as app-service's notification channel."""
+
+    if sys.platform == "win32":
+        loop_factory = asyncio.SelectorEventLoop
+
+    def setUp(self) -> None:
+        self.configs = SimpleNamespace(
+            get_by_workspace=AsyncMock(return_value=_stored("555")),
+            config_with_guild=AsyncMock(return_value=({}, "42")),
+            update_fields=AsyncMock(),
+        )
+        self.service = BalancerAdminService(workspace_configs=self.configs)
+        self.session = SimpleNamespace(commit=AsyncMock())
+        self.list_channels = AsyncMock(
+            return_value=[
+                {"id": "777", "type": "text"},
+                {"id": "20", "type": "category"},
+                {"id": "7", "type": "voice"},
+                {"id": "8", "type": "voice"},
+            ]
+        )
+
+    async def _save(self, channel: str | None, category: str | None = _CATEGORY, generals: list[str] | None = None):
+        return await self.service.upsert_workspace_balancer_config(
+            self.session,
+            WORKSPACE_ID,
+            700,
+            True,
+            channel,
+            category,
+            list(_GENERALS if generals is None else generals),
+            1,
+            list_channels=self.list_channels,
+        )
+
+    async def _refused(self, *args, **kwargs) -> HTTPException:
+        with self.assertRaises(HTTPException) as ctx:
+            await self._save(*args, **kwargs)
+        self.configs.update_fields.assert_not_awaited()
+        return ctx.exception
+
+    async def test_a_channel_category_and_voices_of_the_guild_are_stored(self) -> None:
+        await self._save("777", category="20", generals=["7", "8"])
+
+        self.list_channels.assert_awaited_once_with("42")
+        payload = self.configs.update_fields.await_args.args[2]["config_json"]
+        assert (payload["mix_discord_channel_id"], payload["mix_voice_category_id"]) == ("777", "20")
+        assert payload["mix_general_voice_channel_ids"] == ["7", "8"]
+
+    async def test_an_id_outside_the_guild_or_of_the_wrong_kind_is_422(self) -> None:
+        for channel, category, generals in (
+            ("888", _CATEGORY, None),  # not in the guild
+            ("7", _CATEGORY, None),  # a voice is no channel to post in
+            ("555", "777", None),  # a text channel is no category
+            ("555", _CATEGORY, ["7", "20"]),  # a category is no voice
+        ):
+            with self.subTest(channel=channel, category=category, generals=generals):
+                refused = await self._refused(channel, category=category, generals=generals)
+                assert (refused.status_code, refused.detail) == (422, "discord_channel_not_in_guild")
+
+    async def test_a_workspace_without_a_guild_is_409(self) -> None:
+        self.configs.config_with_guild.return_value = ({}, None)
+
+        refused = await self._refused("777")
+
+        assert (refused.status_code, refused.detail) == (409, "discord_guild_not_linked")
+        self.list_channels.assert_not_awaited()
+
+    async def test_an_unreachable_discord_is_503_never_a_silent_accept(self) -> None:
+        self.list_channels.side_effect = DiscordUnavailable("down")
+
+        refused = await self._refused("777")
+
+        assert (refused.status_code, refused.detail) == (503, "discord_unavailable")
+
+    async def test_an_unchanged_or_cleared_value_asks_discord_nothing(self) -> None:
+        self.configs.config_with_guild.return_value = ({}, None)
+        await self._save("555")
+        await self._save(None, category=None, generals=[])
+
+        self.list_channels.assert_not_awaited()
+        assert self.configs.update_fields.await_count == 2

@@ -6,10 +6,11 @@ import {
 } from "@/app/(site)/users/components/tournaments/tournaments-history.helpers";
 import type { UserTournament } from "@/types/user.types";
 
-const buildTournament = (id: number, name: string, isLeague: boolean): UserTournament =>
+const buildTournament = (id: number, name: string, isLeague: boolean, discipline = "overwatch"): UserTournament =>
   ({
     id,
     name,
+    discipline,
     is_league: isLeague
   }) as UserTournament;
 
@@ -56,6 +57,20 @@ describe("groupTournamentsByLeague", () => {
       buildTournament(1, "Winter League | Division 1", true),
       buildTournament(2, "Winter League | Division 2", true),
       buildTournament(3, "Summer League | Division 1", true)
+    ];
+
+    const result = groupTournamentsByLeague(tournaments);
+
+    expect(result).toHaveLength(2);
+    expect((result[0] as UserTournament[]).map((t) => t.id)).toEqual([1, 2]);
+    expect((result[1] as UserTournament[]).map((t) => t.id)).toEqual([3]);
+  });
+
+  it("splits adjacent same-named leagues of different games (a cross-game history)", () => {
+    const tournaments = [
+      buildTournament(1, "Winter League | Division 1", true, "overwatch"),
+      buildTournament(2, "Winter League | Division 2", true, "overwatch"),
+      buildTournament(3, "Winter League | Division 1", true, "lol")
     ];
 
     const result = groupTournamentsByLeague(tournaments);

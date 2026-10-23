@@ -100,8 +100,9 @@ describe("Resizable", () => {
 
     const initialSize = panelSize(scope, "sidebar");
 
-    handle?.focus();
     await act(async () => {
+      // The handle tracks its focus in state, so focusing it is an update too.
+      handle?.focus();
       handle?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
     });
 

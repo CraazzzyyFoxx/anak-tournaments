@@ -53,22 +53,6 @@ class DivisionGridTierRepository(BaseRepository[models.DivisionGridTier]):
     def __init__(self) -> None:
         super().__init__(models.DivisionGridTier)
 
-    async def list_by_version(
-        self,
-        session: AsyncSession,
-        version_id: int,
-        *,
-        options: Sequence[_AbstractLoad] | None = None,
-    ) -> Sequence[models.DivisionGridTier]:
-        query = self._apply_options(
-            self.select()
-            .where(models.DivisionGridTier.version_id == version_id)
-            .order_by(models.DivisionGridTier.sort_order),
-            options,
-        )
-        result = await session.execute(query)
-        return result.unique().scalars().all()
-
     async def list_ids_by_version(self, session: AsyncSession, version_id: int) -> Sequence[int]:
         result = await session.execute(
             sa.select(models.DivisionGridTier.id).where(models.DivisionGridTier.version_id == version_id)
@@ -95,20 +79,12 @@ class DivisionGridMappingRepository(BaseRepository[models.DivisionGridMapping]):
             target_version_id=target_version_id,
         )
 
-    async def set_completeness(self, session: AsyncSession, mapping_id: int, *, is_complete: bool) -> None:
-        await session.execute(
-            sa.update(models.DivisionGridMapping)
-            .where(models.DivisionGridMapping.id == mapping_id)
-            .values(is_complete=is_complete)
-        )
-
     async def mark_incomplete_for_version(self, session: AsyncSession, version_id: int) -> None:
         """Invalidate every mapping touching a version, on either side, in one statement.
 
         Editing a version's tiers can only make existing mappings stale, and a version
         is both a source and a target in different mappings — hence the ``OR`` over the
-        two FK columns. Kept bulk on purpose: fanning this out to per-id
-        ``set_completeness`` calls would turn one statement into N.
+        two FK columns, in one statement.
         """
         mapping = models.DivisionGridMapping
         await session.execute(
@@ -190,8 +166,8 @@ class DivisionGridImportJobRepository(BaseRepository[models.DivisionGridImportJo
         """Conditional status transition — the claim race between pollers.
 
         Returns ``True`` only for the caller whose UPDATE actually matched, so a job
-        is never picked up twice. Preserved as a single conditional statement on
-        purpose: a read-then-write would reintroduce the race.
+        is never picked up twice. A single conditional statement on purpose: a
+        read-then-write would race.
 
         ``extra_values`` rides in the *same* statement so per-attempt resets
         (``progress``, ``error``, ``finished_at``) commit atomically with the claim —

@@ -44,11 +44,12 @@ class DiscordMessage(db.Base):
     No foreign keys, like the rest of the platform journals: the row outlives
     its subject, which is exactly when a delete still has to find the message.
 
-    ``card_json`` is what the message shows, or should show once the bot gets
-    to it: written when the row is claimed and on every edit, while the
-    ``edit_message`` command carries only the row id. The bot reads the card
-    here when it applies the edit, so whatever order edits reach it in, the
-    message ends on the last card written.
+    ``payload_json`` is what discord-service renders the message from when the
+    subject is not a table it can re-read: a broadcast carries its event
+    payload here, a personal notification and a mix carry nothing (the
+    ``notification`` and ``custom_game`` rows are the fact). ``card_json`` is
+    the bot's own last render of a live message, kept so the next render can
+    tell a no-op from a change; the publisher never writes it.
     ``ponytail:`` no retention; add it to the purge tick when the table gets big.
     """
 
@@ -81,6 +82,7 @@ class DiscordMessage(db.Base):
     discord_channel_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     message_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     error: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    payload_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     card_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

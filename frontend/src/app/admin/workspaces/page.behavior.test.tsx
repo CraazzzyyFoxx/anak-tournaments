@@ -56,21 +56,25 @@ vi.mock("@/services/workspace.service", () => ({
       last_name: null,
       avatar_url: null
     })),
-    create: vi.fn(),
-    delete: (...args: unknown[]) => deleteWorkspace(...args),
-    uploadIcon: vi.fn()
+    delete: (...args: unknown[]) => deleteWorkspace(...args)
   }
 }));
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() }
 }));
 
-const replace = vi.fn((url: string) => {
-  window.history.replaceState(null, "", url);
-  rerender?.();
-});
+// Every URL write re-renders from the new `useSearchParams` in the app — the
+// router's `replace` and, through Next's History patch, the inspector's native
+// `replaceState`. Both land here as "write `window.history`, poke the harness".
+const replace = vi.fn((url: string) => window.history.replaceState(null, "", url));
 
 let rerender: (() => void) | null = null;
+
+const nativeReplaceState = window.history.replaceState.bind(window.history);
+window.history.replaceState = (data, unused, url) => {
+  nativeReplaceState(data, unused, url);
+  rerender?.();
+};
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin/workspaces",
@@ -108,8 +112,9 @@ function workspace(overrides: Partial<Workspace> = {}): Workspace {
     discord_guild_id: null,
     discord_guild_verified_at: null,
     verification_status: "unverified",
-    default_division_grid_version_id: null,
-    default_division_grid_version: null,
+    disciplines_enabled: ["overwatch"],
+    default_division_grid_versions: {},
+    effective_division_grid_versions: {},
     newcomer_scope: "workspace",
     ...overrides
   };
@@ -170,10 +175,7 @@ async function click(element: Element | null | undefined) {
 async function type(input: HTMLInputElement, value: string) {
   // React tracks the DOM value on the node, so a plain assignment is swallowed
   // as "no change"; the native setter is what makes `onChange` fire.
-  const setter = Object.getOwnPropertyDescriptor(
-    window.HTMLInputElement.prototype,
-    "value"
-  )?.set;
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
   await act(async () => {
     setter?.call(input, value);
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -246,7 +248,7 @@ describe("/admin/workspaces", () => {
     managesAny = false;
     const container = await mount();
 
-    expect(container.textContent).toContain("Unauthorized");
+    expect(container.textContent).toContain("No access");
     expect(getAll).not.toHaveBeenCalled();
   });
 
@@ -260,7 +262,8 @@ describe("/admin/workspaces", () => {
     );
     // The list shows none of this; the inspector is why the row is clickable.
     expect(inspector.textContent).toContain("Europe/Moscow");
-    expect(inspector.textContent).toContain("Hidden from the public list");
+    // Visibility is the row's icon column; the inspector does not repeat it.
+    expect(inspector.textContent).not.toContain("Hidden from the public list");
     // The owner is not on the workspace payload at all — the inspector is the
     // only place on this screen that resolves it.
     await waitFor(() => inspector.textContent?.includes("@ada"), "the resolved owner");
@@ -331,23 +334,18 @@ describe("/admin/workspaces", () => {
     expect(cards[0].textContent).toContain("Hidden");
   });
 
-  it("opens the create dialog for a non-superuser, because creation is no longer superuser-only", async () => {
+  it("links a non-superuser to the creation wizard, because creation is no longer superuser-only", async () => {
     superuser = false;
     const container = await mount();
     const create = await waitFor(
       () =>
-        Array.from(container.querySelectorAll("button")).find(
-          (button) => button.textContent?.trim() === "Create workspace"
+        Array.from(container.querySelectorAll("a")).find(
+          (link) => link.textContent?.trim() === "Create workspace"
         ),
-      "the create button"
+      "the create link"
     );
 
-    expect(create.hasAttribute("disabled")).toBe(false);
-    await click(create);
-
-    const dialog = await waitFor(() => document.querySelector('[role="dialog"]'), "the dialog");
-    expect(dialog.querySelector("#slug")).not.toBeNull();
-    expect(dialog.querySelector("#name")).not.toBeNull();
+    expect(create.getAttribute("href")).toBe("/admin/workspaces/new");
   });
 
   // `workspace.self_create` is allow-by-default and revocable per account
@@ -359,8 +357,8 @@ describe("/admin/workspaces", () => {
     await waitFor(() => container.textContent?.includes("Rivals Cup"), "the workspace row");
 
     expect(
-      Array.from(container.querySelectorAll("button")).find(
-        (button) => button.textContent?.trim() === "Create workspace"
+      Array.from(container.querySelectorAll("a, button")).find(
+        (element) => element.textContent?.trim() === "Create workspace"
       )
     ).toBeUndefined();
   });

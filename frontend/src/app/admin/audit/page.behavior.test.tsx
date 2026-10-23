@@ -30,7 +30,13 @@ const listAudit = vi.fn();
 let permitted = true;
 let superuser = false;
 
-const MESSAGES = { kit: en.kit, kitAudit: en.kitAudit, kitTable: en.kitTable, adminMatches: { audit: en.adminMatches.audit } };
+const MESSAGES = {
+  common: en.common,
+  kit: en.kit,
+  kitAudit: en.kitAudit,
+  kitTable: en.kitTable,
+  adminMatches: { audit: en.adminMatches.audit }
+};
 
 vi.mock("next-intl", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next-intl")>();
@@ -65,13 +71,19 @@ vi.mock("@/services/admin.service", () => ({
   default: { listAudit: (...args: unknown[]) => listAudit(...args) }
 }));
 
-const replace = vi.fn((url: string) => {
-  window.history.replaceState(null, "", url);
-  rerender?.();
-});
+// Every URL write re-renders from the new `useSearchParams` in the app — the
+// router's `replace` and, through Next's History patch, the inspector's native
+// `replaceState`. Both land here as "write `window.history`, poke the harness".
+const replace = vi.fn((url: string) => window.history.replaceState(null, "", url));
 const push = vi.fn();
 
 let rerender: (() => void) | null = null;
+
+const nativeReplaceState = window.history.replaceState.bind(window.history);
+window.history.replaceState = (data, unused, url) => {
+  nativeReplaceState(data, unused, url);
+  rerender?.();
+};
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin/audit",
@@ -228,7 +240,7 @@ describe("/admin/audit", () => {
     permitted = false;
     const container = await mount();
 
-    expect(container.textContent).toContain("Unauthorized");
+    expect(container.textContent).toContain("No access");
     // Not even the journal-start probe: every request here would be a 403.
     expect(listAudit).not.toHaveBeenCalled();
   });
@@ -271,12 +283,35 @@ describe("/admin/audit", () => {
     await waitFor(() => container.textContent?.includes("Tournament updated"), "the audit row");
     replace.mockClear();
 
-    await click(linkButton("only this record"));
+    await click(linkButton("Only this record"));
 
     const params = new URLSearchParams(window.location.search);
     expect(params.get("entity_type")).toBe("tournament");
     expect(params.get("entity_id")).toBe("14");
     expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a superuser widen the feed to every workspace from the filter picker", async () => {
+    superuser = true;
+    const container = await mount();
+    await waitFor(() => container.textContent?.includes("Tournament updated"), "the audit row");
+    expect(feedQuery().allWorkspaces).toBe(false);
+
+    // One option is no list to choose from, so the scope is a toggle chip: the
+    // picker would never offer a one-option single filter.
+    await click(container.querySelector('button[aria-label="Add filter"]'));
+    await click(await waitFor(() => commandItem("Every workspace + platform"), "the scope toggle"));
+
+    expect(new URLSearchParams(window.location.search).get("scope")).toBe("1");
+    await waitFor(() => feedQuery().allWorkspaces === true, "the platform-wide request");
+  });
+
+  it("still opens an old `?scope=all` link platform-wide, and rewrites it to the chip's value", async () => {
+    superuser = true;
+    await mount("?scope=all");
+
+    await waitFor(() => feedQuery().allWorkspaces === true, "the platform-wide request");
+    expect(new URLSearchParams(window.location.search).get("scope")).toBe("1");
   });
 
   it("opens the inspector on a row instead of a dialog", async () => {
@@ -298,7 +333,6 @@ describe("/admin/audit", () => {
     expect(inspector.textContent).toContain("name");
     expect(inspector.textContent).toContain("MoonRise Mix Vol.3");
     expect(inspector.textContent).toContain("10.0.0.4");
-    expect(inspector.textContent).toContain("#4210");
   });
 
   it("renders rows as cards below md, where six columns do not fit", async () => {

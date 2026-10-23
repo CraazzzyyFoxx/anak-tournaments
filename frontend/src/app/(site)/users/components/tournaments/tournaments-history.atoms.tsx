@@ -1,37 +1,9 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
-import { placementMedal, type PlacementMedal } from "@/app/(site)/users/components/tournaments/tournaments-history.helpers";
+import { SummaryCellBox } from "@/components/profile/atoms";
 
 // ─── Master-detail (Event dossier) atoms ────────────────────────────────────────
-
-const MEDAL_STYLE: Record<PlacementMedal, React.CSSProperties> = {
-  gold: { background: "hsl(42 63% 60% / 0.14)", border: "1px solid hsl(42 63% 60% / 0.4)", color: "var(--aqt-gold)" },
-  silver: { background: "hsl(212 21% 73% / 0.12)", border: "1px solid hsl(212 21% 73% / 0.35)", color: "var(--aqt-silver)" },
-  bronze: { background: "hsl(26 49% 54% / 0.12)", border: "1px solid hsl(26 49% 54% / 0.35)", color: "var(--aqt-bronze)" },
-  none: { border: "1px solid var(--aqt-border-2)", color: "var(--aqt-fg-muted)" }
-};
-
-/** Square placement badge with medal colours (gold/silver/bronze) for the top 3. */
-export const PlaceBadge = ({ placement, size = "md" }: { placement: number | null; size?: "sm" | "md" | "lg" }) => {
-  const px = size === "lg" ? 44 : size === "sm" ? 28 : 36;
-  const font = size === "lg" ? 20 : size === "sm" ? 13 : 16;
-  return (
-    <span
-      className="aqt-display aqt-tnum inline-flex shrink-0 items-center justify-center rounded-[7px] font-bold leading-none"
-      style={{ ...MEDAL_STYLE[placementMedal(placement)], width: px, height: px, fontSize: font }}
-    >
-      {placement && placement > 0 ? placement : "—"}
-    </span>
-  );
-};
-
-/** Neutral "League" tag. */
-export const LeagueBadge = ({ children }: { children: React.ReactNode }) => (
-  <span className="aqt-tnum shrink-0 rounded-[5px] border border-[color:var(--aqt-border-2)] px-1.5 py-0.5 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
-    {children}
-  </span>
-);
 
 /** W-D-L record as coloured mono text. Draws are hidden when zero. */
 export const WdlText = ({
@@ -93,24 +65,15 @@ export interface SummaryCell {
   color?: string;
 }
 
-/** Open hairline summary strip — top+bottom border only, cells hairline-divided.
- *  Scrolls horizontally inside its own container on narrow screens (§7). */
-export const SummaryStrip = ({ cells }: { cells: SummaryCell[] }) => (
+/** Open hairline summary strip — top+bottom border only, cells hairline-divided; `extra` is a game module's
+ *  own trailing cell (or nothing). Scrolls horizontally inside its own container on narrow screens (§7). */
+export const SummaryStrip = ({ cells, extra }: { cells: SummaryCell[]; extra?: React.ReactNode }) => (
   <div className="overflow-x-auto border-y border-[color:var(--aqt-border)]">
-    <div className="grid min-w-[540px] grid-cols-6">
+    <div className="grid min-w-[540px] auto-cols-fr grid-flow-col">
       {cells.map((cell) => (
-        <div
-          key={cell.key}
-          className="flex flex-col gap-1 border-l border-[color:var(--aqt-border)] px-3 py-2.5 first:border-l-0"
-        >
-          <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-            {cell.label}
-          </span>
-          <span className="aqt-display aqt-tnum text-base font-bold leading-none" style={{ color: cell.color ?? "var(--aqt-fg)" }}>
-            {cell.value}
-          </span>
-        </div>
+        <SummaryCellBox key={cell.key} label={cell.label} value={cell.value} color={cell.color} />
       ))}
+      {extra}
     </div>
   </div>
 );

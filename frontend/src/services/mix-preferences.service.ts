@@ -1,5 +1,4 @@
 import { apiFetch } from "@/lib/api/fetch";
-import type { RosterShape, RosterSlotMap } from "@/lib/roster/shape";
 
 /**
  * The mix engine's knobs, held per account rather than per mix.
@@ -25,11 +24,8 @@ export type MixBalancerPreferences = {
   role_settings: Record<string, { mix_weight: number }> | null;
   /** How many balance options one run hands back for the pager to walk. */
   max_result_variants: number | null;
-  /**
-   * How many slots of each kind one team gets, or `null` to follow the
-   * workspace each mix runs in. Same shape a tournament pins, one level up.
-   */
-  role_mask: RosterSlotMap | null;
+  /** Weights for open slots, separate from role weights. */
+  open_slot_settings: { mix_weight: number } | null;
   /** Rank points a recorded win moves, in the host's own book; `null`/`0` = off. */
   points_per_win: number | null;
   /**
@@ -38,20 +34,16 @@ export type MixBalancerPreferences = {
    * ranker formula, balancing on the effective rating instead of the open one.
    */
   rating_mode: MixRatingMode;
+  /** Per game (discipline code): the hero ban preset a new mix of that game starts with; an absent game, none. */
+  hero_ban_presets: Record<string, string>;
+  /** Per game (discipline code): how a new mix of that game forms its teams, and the draft's pick clock; absent = balancer, 30 s. */
+  formation_defaults: Record<string, { team_formation: "balance" | "draft"; draft_pick_seconds: number }>;
 };
 
 /** The two ways a host's rank book reacts to a recorded match. */
 export type MixRatingMode = "points" | "ranker";
 
-/**
- * What a read adds on top: the stored shape already resolved, so the editor can
- * render team size and draft rounds without reimplementing the server's
- * resolution. `source` is `"user"` when a shape is stored, `"default"` when the
- * account follows whatever workspace a mix runs in.
- */
-export type MixBalancerPreferencesRead = MixBalancerPreferences & {
-  roster_shape: RosterShape;
-};
+export type MixBalancerPreferencesRead = MixBalancerPreferences;
 
 export const mixPreferencesKeys = {
   /** One row per account; the caller is always its own subject. */

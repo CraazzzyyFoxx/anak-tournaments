@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 
 import { TournamentTeamCard } from "@/components/TournamentTeamCard";
 import { FilterChip } from "@/components/ui/filter-chip";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { SearchField } from "@/components/ui/search-field";
 import {
   Select,
@@ -14,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { useTournamentQuery } from "@/hooks/useTournamentClientData";
 import { getPublicPageQueryPresentation } from "@/lib/public-page-query-presentation";
@@ -43,6 +45,8 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
   const t = useTranslations();
   const { teamsQuery, records, registrationsByUser, heroesMap } =
     useTournamentTeamsData(tournament);
+  // The tournament's own game names and draws every role of the roster.
+  const ontology = useDisciplineMetadata(tournament.workspace_id, tournament.discipline).data ?? null;
 
   const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
   const storedView = useStoredTeamsView();
@@ -126,7 +130,7 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
                   label={t("tournamentDetail.teams.searchLabel")}
                   placeholder={t("tournamentDetail.teams.searchPlaceholder")}
                   containerClassName="w-[11rem]"
-                  className="h-8 py-1"
+                  className="py-1"
                 />
                 <Select
                   value={sortBy}
@@ -137,7 +141,8 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
                 >
                   <SelectTrigger
                     aria-label={t("tournamentDetail.sortTeams")}
-                    className="filter-sort h-8 w-[10.5rem] shadow-none focus:ring-0 focus:ring-offset-0"
+                    size="sm"
+                    className="filter-sort w-[10.5rem] shadow-none focus:ring-0 focus:ring-offset-0"
                   >
                     <SelectValue />
                   </SelectTrigger>
@@ -193,6 +198,8 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
             ) : null}
           </SectionToolbar>
 
+          <Eyebrow as="h2">{t("common.teams")}</Eyebrow>
+
           {visibleTeams.length === 0 ? (
             <TournamentPageState
               state="filtered-empty"
@@ -223,7 +230,13 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
                         ))}
                       </p>
                     ) : null}
-                    <TournamentTeamCard team={team} medal={medal} showGroup={showGroup} />
+                    <TournamentTeamCard
+                      team={team}
+                      medal={medal}
+                      showGroup={showGroup}
+                      discipline={tournament.discipline}
+                      ontology={ontology}
+                    />
                   </div>
                 );
               })}
@@ -241,6 +254,7 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
                   showGroup={showGroup}
                   registrationsByUser={registrationsByUser}
                   heroesMap={heroesMap}
+                  ontology={ontology}
                 />
               ))}
             </div>

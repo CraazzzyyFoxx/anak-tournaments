@@ -1,6 +1,8 @@
-import type { PlayerRoleOption, PlayerRoleSlotCode } from "@/lib/roster/player-role";
+import type { RoleRef } from "@/lib/roster/role-ref";
+import type { SlotCode } from "@/lib/roster/shape";
 import type { Statistics as BalancerStatistics } from "@/types/balancer.types";
 import type { Answers, FormField, FormSchema } from "@/types/forms.types";
+import type { PlayerIdentity } from "@/types/identity.types";
 import type {
   Admission,
   StatusKind,
@@ -10,22 +12,33 @@ import type {
   SubscriptionOutcome,
   SubscriptionRequirement,
 } from "@/types/registration.types";
+import type { TournamentStatus } from "@/types/tournament.types";
 
-/** Registration/draft wire code — the non-flex slice of `PlayerRoleSlotCode`. */
-export type BalancerRoleCode = Exclude<PlayerRoleSlotCode, "flex">;
-/** Capitalized roster bucket key — a role, or the role-less `Flex` slot. */
-export type BalancerRosterKey = PlayerRoleOption;
+/** A role code of the owner game's rated dimension (`tank`, `top`, …): the game's own vocabulary, never a fixed list. */
+export type BalancerRoleCode = string;
+/**
+ * A roster bucket key: a role code of the owner game, or the open slot `flex`. Always the lower-case slot code the
+ * solver speaks; a payload saved before that (`Tank`, `Flex`) is re-keyed when it is loaded.
+ */
+export type BalancerRosterKey = SlotCode;
 export type BalancerRoleSubtype = string;
 /** Layers a registration role's rank can resolve from, strongest first. */
-export type RegistrationRankSource = "registration" | "workspace" | "ow" | "none";
+type RegistrationRankSource = "registration" | "workspace" | "native" | "none";
 
 
+/**
+ * The balancer tool's per-registration player record, synthesized client-side from an `AdminRegistration`.
+ * `identity` is the registration's primary handle for the owner game's identity provider in its display form (the
+ * registration's own name when it carries none); `identity_key` is that handle as it is MATCHED (provider-normalized);
+ * `additional_handles` are the extra accounts of the same provider, primary excluded.
+ */
 export interface BalancerPlayerRecord {
   id: number;
   tournament_id: number;
   application_id: number;
-  battle_tag: string;
-  battle_tag_normalized: string;
+  identity: string;
+  identity_key: string;
+  additional_handles: string[];
   user_id: number | null;
   role_entries_json: BalancerPlayerRoleEntry[];
   is_flex: boolean;
@@ -49,13 +62,14 @@ export interface BalancerPlayerRoleEntry {
   rank_source?: RegistrationRankSource;
 }
 
+/** Synthesized from an `AdminRegistration` like {@link BalancerPlayerRecord}; the identity fields mean the same. */
 export interface BalancerApplication {
   id: number;
   tournament_id: number;
   tournament_sheet_id: number;
-  battle_tag: string;
-  battle_tag_normalized: string;
-  smurf_tags_json: string[];
+  identity: string;
+  identity_key: string;
+  additional_handles: string[];
   twitch_nick: string | null;
   discord_nick: string | null;
   stream_pov: boolean;
@@ -90,6 +104,8 @@ export interface InternalBalanceTeam {
   rating_variance?: number | null;
   total_discomfort?: number | null;
   max_discomfort?: number | null;
+  format_violations?: string[];
+  format_advisories?: string[];
   roster: Record<BalancerRosterKey, InternalBalancePlayer[]>;
 }
 
@@ -105,7 +121,7 @@ interface SavedBalancerTeam {
   exported_team_id: number | null;
   name: string;
   balancer_name: string;
-  captain_battle_tag: string | null;
+  captain_identity: PlayerIdentity | null;
   avg_sr: number;
   total_sr: number;
   roster_json: Record<string, unknown>;
@@ -130,6 +146,7 @@ export interface BalanceExportResponse {
   removed_teams: number;
   imported_teams: number;
   balance_id: number;
+  advisories: string[];
 }
 
 /** Rank-only re-export (balance or draft): nothing was created or removed. */
@@ -155,7 +172,7 @@ export interface BalancerTournamentConfigUpsertInput {
 export interface BalancerTournamentSummary {
   id: number;
   name: string;
-  status: string;
+  status: TournamentStatus;
   workspace_id: number;
 }
 
@@ -247,7 +264,7 @@ export interface RegistrationRankAutofillRequest {
 }
 
 export interface RegistrationRankAutofillRole {
-  role: BalancerRoleCode;
+  role: RoleRef;
   current_rank_value: number | null;
   parsed_rank_value: number | null;
   action: RegistrationRankAutofillRoleAction;
@@ -269,7 +286,7 @@ export interface RegistrationRankAutofillRole {
 export interface RegistrationRankAutofillPlayer {
   registration_id: number;
   display_name: string | null;
-  battle_tag: string | null;
+  identity: PlayerIdentity | null;
   status: RegistrationRankAutofillPlayerStatus;
   reason: string | null;
   will_add_to_balancer: boolean;
@@ -299,7 +316,7 @@ export interface RegistrationRankAutofillResponse {
 export interface BalancerRegistrationRankHistoryEntry {
   tournament_id: number;
   tournament_name: string | null;
-  role: BalancerRoleCode;
+  role: RoleRef;
   rank_value: number;
 }
 
@@ -388,8 +405,7 @@ export interface AdminRegistrationFormUpsert {
 }
 
 export interface AdminRegistrationRole {
-  role: BalancerRoleCode;
-  subrole: BalancerRoleSubtype | null;
+  role: RoleRef;
   is_primary: boolean;
   priority: number;
   /**
@@ -407,7 +423,8 @@ export interface AdminRegistrationRole {
   is_active: boolean;
   /** The raw `registration_role.is_active` column — what the organizer ticked. */
   is_declared_active: boolean;
-  top_heroes?: string[] | null;
+  /** Ordered character slugs (the native spelling; the persisted form answer keeps `top_heroes`). */
+  top_characters?: string[] | null;
   /** Latest OW2 rank for this role, normalised to the workspace grid (from the backend). */
   ow_rank_value?: number | null;
   rank_source?: RegistrationRankSource;

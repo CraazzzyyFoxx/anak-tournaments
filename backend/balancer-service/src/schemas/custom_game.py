@@ -4,19 +4,32 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StringConstraints, field_validator, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictBool, StringConstraints, model_validator
 
 from shared.core.enums import MixParticipation, MixSelfSignup
 from shared.domain.mix_lobby import MAX_LOBBIES
-from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
+from shared.schemas.discipline_filter import DisciplineFilterQuery
+from shared.schemas.role import RoleRef
+from src.domain.mix_self_service import MAX_ROSTER
 
 __all__ = (
     "CustomGameBalanceRequest",
+    "CustomGameBanPresetPatch",
+    "CustomGameCaptainPatch",
     "CustomGameCoHostPatch",
     "CustomGameCreate",
+    "CustomGameDiscordLineup",
+    "CustomGameDiscordView",
+    "CustomGameDraftCaptainPatch",
+    "CustomGameDraftPlayerAdd",
+    "CustomGameDraftSeed",
+    "CustomGameDraftSettingsPatch",
     "CustomGameHostTransfer",
+    "CustomGameListQuery",
     "CustomGameLobbyCountPatch",
     "CustomGameLobbyVoice",
+    "CustomGameMatchRun",
+    "CustomGameMatchStart",
     "CustomGameNextMapPatch",
     "CustomGameOutcome",
     "CustomGamePlayerPatch",
@@ -28,6 +41,7 @@ __all__ = (
     "CustomGameRename",
     "CustomGameRosterUpdate",
     "CustomGameSeatSwap",
+    "CustomGameSelfAway",
     "CustomGameSelfServicePatch",
     "CustomGameSelfUpdate",
     "CustomGameTeamNamesPatch",
@@ -41,15 +55,39 @@ class _Request(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class CustomGameListQuery(DisciplineFilterQuery):
+    """``GET .../custom-games``: one keyset page of the workspace's mixes, newest first."""
+
+    status: Literal["open", "history"] | None = Field(
+        None, description="`open` = draft or balanced, `history` = completed or cancelled; absent = every mix."
+    )
+    q: Annotated[str, StringConstraints(strip_whitespace=True)] | None = Field(
+        None, description="Case-insensitive substring of the mix name or its host's display name; blank = no filter."
+    )
+    limit: int = Field(30, ge=1, le=100, description="Page size, 1..100, default 30.")
+    before_id: int | None = Field(
+        None, description="Keyset cursor: only mixes with a smaller id (the previous page's `next_before_id`)."
+    )
+
+
 #: Trimmed before the length check, so a blank name is refused rather than stored.
 _MixName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
 
 
+def _dedupe_roles(roles: list[RoleRef]) -> list[RoleRef]:
+    return list({(ref.dimension, ref.role): ref for ref in roles}.values())
+
+
+_RoleOrder = Annotated[list[RoleRef], AfterValidator(_dedupe_roles)]
+
+
 class CustomGameCreate(_Request):
     name: _MixName
-    member_ids: list[int] = Field(default_factory=list, max_length=100)
-    #: Start from a previous mix of this workspace: its pool, role setup, role
-    #: shape, points knob, team names and co-hosts, but none of its played state.
+    #: Required: no game is implied. A clone keeps its source's game, so the value is the source's own.
+    discipline: str
+    team_format_preset: str | None = Field(default=None, max_length=64)
+    member_ids: list[int] = Field(default_factory=list, max_length=MAX_ROSTER)
+    #: Clone the pool, role setup, frozen team format, team names and co-hosts, not played state.
     clone_from_game_id: int | None = None
 
 
@@ -58,32 +96,18 @@ class CustomGameRename(_Request):
 
 
 class CustomGameRosterUpdate(_Request):
-    member_ids: list[int] = Field(max_length=100)
+    member_ids: list[int] = Field(max_length=MAX_ROSTER)
 
 
 class CustomGamePlayerPatch(_Request):
     participation: MixParticipation | None = None
-    roles: list[str] | None = None
+    roles: _RoleOrder | None = None
     is_flex: StrictBool | None = None
+    # Stepped away: in no lobby's seated set until cleared (spec §7.4).
+    away: StrictBool | None = None
     # ``None`` is "auto": the balance places them wherever they fit. A patch that
     # does not mention the field leaves the pin exactly as it was.
     lobby_pin: int | None = Field(None, ge=0, le=MAX_LOBBIES - 1)
-
-    @field_validator("roles")
-    @classmethod
-    def _roles(cls, roles: list[str] | None) -> list[str] | None:
-        if roles is None:
-            return None
-        seen: set[str] = set()
-        normalized: list[str] = []
-        for raw in roles:
-            role = raw.strip().lower()
-            if role not in REGISTRATION_ROLE_CODES:
-                raise ValueError(f"unknown role {role}")
-            if role not in seen:
-                seen.add(role)
-                normalized.append(role)
-        return normalized
 
 
 class CustomGamePlayerParticipationPatch(_Request):
@@ -113,6 +137,23 @@ class _LobbyScoped(_Request):
     lobby_index: int = Field(0, ge=0, le=MAX_LOBBIES - 1)
 
 
+class CustomGameDraftSeed(_LobbyScoped):
+    """Which lobby drafts its teams (spec §9.2)."""
+
+
+class CustomGameDraftCaptainPatch(_LobbyScoped):
+    """Replace a draft team's captain: the team and the draft player who takes over (spec §9.3, §9.5)."""
+
+    team_id: int
+    player_id: int
+
+
+class CustomGameDraftPlayerAdd(_LobbyScoped):
+    """A waiting player added to a lobby's draft (spec §9.5)."""
+
+    workspace_member_id: int
+
+
 class CustomGameNextMapPatch(_LobbyScoped):
     """``null`` clears the pick; the next match then records with no map."""
 
@@ -126,7 +167,7 @@ class CustomGameVariantIndexPatch(_LobbyScoped):
 
 
 class CustomGameBalanceRequest(_LobbyScoped):
-    """What to balance. An empty body is the first lobby, as before there was a second.
+    """What to balance. An empty body is the first lobby.
 
     ``scope="all"`` reshuffles every lobby at once and needs ``lobby_count >= 2``.
     """
@@ -135,9 +176,24 @@ class CustomGameBalanceRequest(_LobbyScoped):
 
 
 class CustomGamePostDiscord(_LobbyScoped):
-    """Which balance option's lineup to post; the picture of it is drawn server-side."""
+    """Which balance option's lineup to post; discord-service renders the card."""
 
     variant_index: int = Field(ge=0)
+
+
+class CustomGameDiscordLineup(_Request):
+    """One posted lineup card, by its slot: the lobby and the match it announces."""
+
+    lobby_index: int = Field(ge=0, le=MAX_LOBBIES - 1)
+    match_number: int = Field(ge=1)
+
+
+class CustomGameDiscordView(_Request):
+    """``rpc.balancer.custom.discord_view``: the mix, and the lineup cards the bot is rendering."""
+
+    custom_game_id: int
+    # Plenty for every lineup a mix keeps live; bounds the reads one call makes.
+    lineups: list[CustomGameDiscordLineup] = Field(default_factory=list, max_length=64)
 
 
 class CustomGameHostTransfer(_Request):
@@ -154,14 +210,30 @@ class CustomGameSeatSwap(_LobbyScoped):
     second_uuid: str = Field(min_length=1)
 
 
+class CustomGameCaptainPatch(_LobbyScoped):
+    """Who captains their team in the lobby's shown option."""
+
+    workspace_member_id: int
+
+
 class CustomGameOutcome(_Request):
     winner: Literal[1, 2] | None
 
 
 class CustomGameRecordOutcome(_LobbyScoped):
+    """The result of the lobby's live match; its seats and map were fixed when it started."""
+
     outcome: CustomGameOutcome
-    variant_index: int = Field(ge=0)
-    map_id: int | None = None
+
+
+class CustomGameMatchRun(_LobbyScoped):
+    """Which lobby's match to cancel."""
+
+
+class CustomGameMatchStart(_LobbyScoped):
+    """Which lobby's match to start, and whether the host swaps the computed ban opener (spec §8.3)."""
+
+    flip_opener: StrictBool = False
 
 
 class CustomGameSelfUpdate(_Request):
@@ -172,24 +244,14 @@ class CustomGameSelfUpdate(_Request):
     ``model_fields_set``, so a flex toggle cannot silently reset a role order.
     """
 
-    roles: list[str] | None = None
+    roles: _RoleOrder | None = None
     is_flex: StrictBool | None = None
 
-    @field_validator("roles")
-    @classmethod
-    def _roles(cls, roles: list[str] | None) -> list[str] | None:
-        if roles is None:
-            return None
-        seen: set[str] = set()
-        normalized: list[str] = []
-        for raw in roles:
-            role = raw.strip().lower()
-            if role not in REGISTRATION_ROLE_CODES:
-                raise ValueError(f"unknown role {role}")
-            if role not in seen:
-                seen.add(role)
-                normalized.append(role)
-        return normalized
+
+class CustomGameSelfAway(_Request):
+    """The player's own away switch: ``true`` steps away, ``false`` comes back."""
+
+    away: StrictBool
 
 
 class CustomGameSelfServicePatch(_Request):
@@ -197,6 +259,21 @@ class CustomGameSelfServicePatch(_Request):
 
     self_signup: MixSelfSignup | None = None
     self_role_edit: StrictBool | None = None
+
+
+class CustomGameBanPresetPatch(_Request):
+    """The mix's hero room: its ban preset (``null`` turns bans off) and, when sent, Fearless (spec §11.4)."""
+
+    hero_ban_preset: str | None = Field(max_length=64)
+    #: Omitted = unchanged. On: a player cannot pick a hero they were recorded on earlier in this mix.
+    hero_fearless: StrictBool | None = None
+
+
+class CustomGameDraftSettingsPatch(_Request):
+    """How the mix's lobbies form their teams by default, and the draft's pick clock (spec §4.3)."""
+
+    team_formation: Literal["balance", "draft"]
+    draft_pick_seconds: int = Field(ge=10, le=600)
 
 
 class CustomGamePostSignup(_Request):

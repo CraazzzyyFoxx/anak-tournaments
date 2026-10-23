@@ -10,7 +10,6 @@ an ``ffa_league`` stage, which the group-source guard used to reject.
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,13 +20,17 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 enums = importlib.import_module("shared.core.enums")
 errors = importlib.import_module("shared.core.errors")
 stage_service = importlib.import_module("src.services.admin.stage")
 ffa_module = importlib.import_module("src.services.encounter.ffa")
 
+from shared import models  # noqa: E402
+from shared.models.encounter import Encounter  # noqa: E402
+from shared.models.tournament.bracket_encounter import BracketEncounter  # noqa: E402
+from shared.services.encounter.participants import active_teams  # noqa: E402
+from tests._encounter_layer import EncounterLayerCase  # noqa: E402
 from tests._stage_regulation import stage_regulation  # noqa: E402
 
 HTTPException = errors.BaseAPIException
@@ -127,24 +130,45 @@ class FfaLobbyGenerationTests(IsolatedAsyncioTestCase):
         self.assertEqual(400, ctx.exception.status_code)
         self.assertEqual(["ffa_lobby_size"], [err.code for err in ctx.exception.detail])
 
-    async def test_create_lobby_seats_participants_and_carries_the_format(self) -> None:
-        stage = SimpleNamespace(id=77, tournament_id=1)
-        item = _item(5, "Group C")
-        session = SimpleNamespace(add=Mock(), flush=AsyncMock())
 
-        lobby = await ffa_module.ffa_encounter_service.create_lobby(session, stage, item, [30, 10, 20], games=5)
+class FfaLobbyCreationTests(EncounterLayerCase):
+    """``create_lobby`` writes the lobby the rest of the layer reads: a card of
+    N seats under the stage's points rule, with its bracket coordinate."""
 
-        self.assertEqual(enums.EncounterFormat.FFA, lobby.format)
-        self.assertEqual("Group C", lobby.name)
-        self.assertEqual(5, lobby.best_of)
-        self.assertEqual(77, lobby.stage_id)
-        self.assertEqual(5, lobby.stage_item_id)
-        self.assertIsNone(lobby.home_team_id)
-        self.assertIsNone(lobby.away_team_id)
-        self.assertEqual(enums.EncounterStatus.OPEN, lobby.status)
-        self.assertEqual([(1, 30), (2, 10), (3, 20)], [(p.slot, p.team_id) for p in lobby.participants])
-        session.add.assert_called_once_with(lobby)
-        session.flush.assert_awaited_once()
+    async def test_create_lobby_seats_participants_and_sizes_the_card(self) -> None:
+        async with self.Session() as s:
+            stage = await s.get_one(models.Stage, self.stage_id)
+            item = await s.get_one(models.StageItem, self.item_id)
+            teams = [self.teams[2], self.teams[0], self.teams[1]]
+
+            lobby = await ffa_module.ffa_encounter_service.create_lobby(
+                s, stage, item, teams, games=5, names={team: f"n{team}" for team in teams}
+            )
+            await s.commit()
+
+            row = await s.get_one(Encounter, lobby.id)
+            position = await s.get_one(BracketEncounter, lobby.id)
+            seats = await active_teams(s, lobby.id)
+
+        self.assertEqual((3, 5, "A"), (row.slot_count, row.best_of, row.name))
+        self.assertEqual(stage.scoring_rule_id, row.scoring_rule_id)
+        self.assertEqual(enums.EncounterStatus.OPEN, row.status)
+        self.assertEqual((self.stage_id, self.item_id), (position.stage_id, position.stage_item_id))
+        # The slot is the seed: teams arrive in seed order.
+        self.assertEqual(
+            [(1, teams[0], 1), (2, teams[1], 2), (3, teams[2], 3)],
+            [(seat.slot, seat.team_id, seat.seed) for seat in seats],
+        )
+        self.assertEqual([f"n{team}" for team in teams], [seat.name for seat in seats])
+
+    async def test_a_lobby_of_one_team_is_refused(self) -> None:
+        async with self.Session() as s:
+            stage = await s.get_one(models.Stage, self.stage_id)
+            item = await s.get_one(models.StageItem, self.item_id)
+            with self.assertRaises(HTTPException) as ctx:
+                await ffa_module.ffa_encounter_service.create_lobby(s, stage, item, [self.teams[0]], games=3)
+
+        self.assertEqual(400, ctx.exception.status_code)
 
 
 class FfaAsQualifyingSourceTests(IsolatedAsyncioTestCase):

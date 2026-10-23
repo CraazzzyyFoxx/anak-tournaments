@@ -1,4 +1,4 @@
-import type { RosterShape } from "@/lib/roster/shape";
+import { isRoleSlot, slotCodesOf, type RosterShape } from "@/lib/roster/shape";
 import type {
   DraftCaptainOrder,
   DraftFormat,
@@ -98,10 +98,12 @@ export function derivePoolReadiness(
   shape: RosterShape
 ): DraftPoolReadiness {
   const included = candidates.filter((candidate) => !candidate.excluded);
-  const roleCoverage: Record<DraftRole, number> = { tank: 0, damage: 0, support: 0 };
+  // Every role the shape asks for starts at zero, so a role nobody plays still reads as "0 covered".
+  const shapeRoles = slotCodesOf(shape.slots).filter(isRoleSlot);
+  const roleCoverage: Record<DraftRole, number> = Object.fromEntries(shapeRoles.map((role) => [role, 0]));
   for (const candidate of included) {
     for (const role of new Set(candidate.roles)) {
-      roleCoverage[role] += 1;
+      roleCoverage[role] = (roleCoverage[role] ?? 0) + 1;
     }
   }
   const requiredPlayers = Math.max(0, teamCount) * shape.team_size;
@@ -115,7 +117,7 @@ export function derivePoolReadiness(
   // The per-role targets ARE the server's roster shape. A code the shape does
   // not ask for has a target of 0 and can never be short; flex slots take any
   // role, so they never name one here.
-  for (const role of ["tank", "damage", "support"] as const) {
+  for (const role of shapeRoles) {
     if (roleCoverage[role] < (shape.slots[role] ?? 0) * teamCount) {
       blockers.push(`role_shortage:${role}`);
     }
@@ -143,7 +145,7 @@ export function derivePoolReadiness(
 export function maxDraftTeamCount(candidates: DraftPoolCandidate[], shape: RosterShape): number {
   const ranked = candidates.filter((candidate) => !candidate.excluded && candidate.rank != null);
   let max = shape.team_size > 0 ? Math.floor(ranked.length / shape.team_size) : 0;
-  for (const role of ["tank", "damage", "support"] as const) {
+  for (const role of slotCodesOf(shape.slots).filter(isRoleSlot)) {
     const slots = shape.slots[role] ?? 0;
     if (slots === 0) continue;
     const covered = ranked.filter((candidate) => candidate.roles.includes(role)).length;

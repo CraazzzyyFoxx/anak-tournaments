@@ -9,7 +9,6 @@ projection cannot know (tournament, roster shape, flex mode, division grid).
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,19 +22,19 @@ for candidate in (str(BACKEND_ROOT), str(SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ.setdefault("DEBUG", "false")
 
-from shared.core.enums import HeroClass  # noqa: E402
 from shared.division_grid import DivisionGrid  # noqa: E402
 from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
-from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
+from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from src.rpc import _helpers as helpers  # noqa: E402
 from src.rpc import integrations  # noqa: E402
+from src.services.registration import player_export  # noqa: E402
 from tests._rpc_fakes import CapturingBroker, FakeSessionMaker, make_identity  # noqa: E402
 
 SUBJECT = "rpc.tournament.sheet_players_export"
 TOURNAMENT_ID = 84
-SHAPE = parse_roster_slots({"tank": 1, "damage": 2, "support": 2})
+SHAPE = RosterShape(entries=tuple({"tank": 1, "damage": 2, "support": 2}.items()))
 GRID = DivisionGrid(version_id=7, tiers=())
 
 
@@ -58,19 +57,19 @@ class _FakeResult:
 def _roster() -> PlayerRoster:
     return PlayerRoster(
         registration_id=1,
-        battle_tag="player#2100",
+        identity=PlayerIdentityRead(provider="battlenet", handle="player#2100"),
         display_name=None,
         player_id=None,
         auth_user_id=None,
         workspace_member_id=None,
         roles=(
             RosterRole(
-                role=HeroClass.tank,
+                role="tank",
                 rank=3100,
                 source="registration",
                 is_primary=True,
                 priority=0,
-                subrole=None,
+                subrole="tank_main_tank",
             ),
         ),
         is_full_flex=False,
@@ -91,7 +90,7 @@ class PlayersExportFormatsTests(IsolatedAsyncioTestCase):
             self.assertEqual(TOURNAMENT_ID, tournament_id)
             return {1: _roster()}
 
-        async def fake_shape(_session, **_kwargs):
+        async def fake_shape(_session, _tournament_id):
             return SHAPE
 
         async def fake_grid(*_args, **_kwargs):
@@ -100,17 +99,15 @@ class PlayersExportFormatsTests(IsolatedAsyncioTestCase):
         async def fake_ws_id(_session, _tournament_id):
             return 3
 
-        session = SimpleNamespace(
-            execute=self._fake_execute,
-            scalar=self._fake_scalar,
-            add=lambda _row: None,
-        )
+        session = SimpleNamespace(execute=self._fake_execute, add=lambda _row: None)
         with (
             patch.object(helpers.db, "async_session_maker", FakeSessionMaker(session)),
             patch.object(integrations.auth, "require_tournament_id_permission", fake_permission),
-            patch.object(integrations.roster_engine, "for_tournament", fake_for_tournament),
-            patch.object(integrations, "get_effective_roster_shape", fake_shape),
-            patch.object(integrations, "get_effective_division_grid", fake_grid),
+            patch.object(player_export.roster_engine, "for_tournament", fake_for_tournament),
+            patch.object(player_export, "tournament_slot_shape", fake_shape),
+            patch.object(player_export, "get_effective_division_grid", fake_grid),
+            # No registration form row -> the flex mode falls back to "optional".
+            patch.object(player_export.form_service, "get_form", AsyncMock(return_value=None)),
             patch.object(integrations.auth, "get_tournament_workspace_id", fake_ws_id),
             patch.object(integrations, "quota", SimpleNamespace(charge=AsyncMock())),
         ):
@@ -120,11 +117,7 @@ class PlayersExportFormatsTests(IsolatedAsyncioTestCase):
             )
 
     async def _fake_execute(self, _query):
-        return _FakeResult(SimpleNamespace(id=TOURNAMENT_ID, name="OWT #12", workspace_id=3))
-
-    async def _fake_scalar(self, _query):
-        # No registration form row -> the flex mode falls back to "optional".
-        return None
+        return _FakeResult(SimpleNamespace(id=TOURNAMENT_ID, name="OWT #12", workspace_id=3, discipline="overwatch"))
 
     @staticmethod
     def _result(envelope: dict) -> dict:
@@ -149,6 +142,29 @@ class PlayersExportFormatsTests(IsolatedAsyncioTestCase):
         self.assertEqual("OWT #12", payload["source"]["tournament_name"])
         self.assertEqual(7, payload["source"]["division_grid_version_id"])
         self.assertEqual(3100, payload["players"]["1"]["owt"]["flex_rating"])
+        owt = payload["players"]["1"]["owt"]
+        expected_role = {"dimension": "player_role", "role": "tank_main_tank", "parent": "tank"}
+        self.assertEqual(expected_role, owt["primary_role"])
+        self.assertEqual(expected_role, owt["roles"][0]["role"])
+        self.assertNotIn("sub_role", owt)
+        self.assertNotIn("subrole", owt["roles"][0])
+        self.assertEqual("main_tank", payload["players"]["1"]["stats"]["classes"]["tank"]["subtype"])
+
+    async def test_owt_role_refs_use_the_owner_disciplines_rated_dimension(self) -> None:
+        owner = SimpleNamespace(id=TOURNAMENT_ID, name="Arena", workspace_id=3, discipline="arena")
+        with (
+            patch.object(self, "_fake_execute", AsyncMock(return_value=_FakeResult(owner))),
+            patch.object(
+                player_export,
+                "discipline",
+                return_value=SimpleNamespace(rated_dimension=SimpleNamespace(code="position")),
+            ) as module,
+        ):
+            payload = self._result(await self._invoke({"format": ["owt-1"]}))
+        module.assert_called_once_with("arena")
+        owt = payload["players"]["1"]["owt"]
+        self.assertEqual("position", owt["primary_role"]["dimension"])
+        self.assertEqual("position", owt["roles"][0]["role"]["dimension"])
 
     async def test_private_block_needs_the_query_flag(self) -> None:
         without = self._result(await self._invoke({"format": ["owt-1"]}))

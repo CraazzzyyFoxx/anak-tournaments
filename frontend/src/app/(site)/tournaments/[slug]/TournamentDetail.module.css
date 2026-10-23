@@ -70,6 +70,7 @@
    density: the same components stay 36px in the hero. Unlayered, so it beats
    the Tailwind utilities on the button, which live in `@layer utilities`. */
 .railRow > .railTrail > * {
+  height: auto;
   min-height: 1.75rem;
   padding-block: 0.1875rem;
   padding-inline: 0.5rem;
@@ -147,37 +148,6 @@
 
 .rail::-webkit-scrollbar {
   display: none;
-}
-
-.scrollControl {
-  display: inline-grid;
-  place-items: center;
-  width: 2rem;
-  min-width: 2rem;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: var(--aqt-bg);
-  color: var(--aqt-fg-dim);
-  cursor: pointer;
-}
-
-.scrollControl svg {
-  width: 0.875rem;
-  height: 0.875rem;
-}
-
-.scrollControl:hover,
-.scrollControl:focus-visible {
-  color: var(--aqt-teal);
-  outline: 1px solid var(--aqt-teal);
-  outline-offset: -3px;
-}
-
-.scrollControl:disabled {
-  color: var(--aqt-fg-faint);
-  cursor: default;
-  opacity: 0.45;
-  outline: none;
 }
 
 .scrollControlHidden {
@@ -291,20 +261,6 @@
   gap: 1rem;
 }
 
-.skeletonBlock {
-  display: block;
-  min-width: 0;
-  border: 1px solid hsl(217 17% 21% / 0.45);
-  border-radius: 0.45rem;
-  background:
-    linear-gradient(105deg, transparent 32%, color-mix(in srgb, var(--aqt-teal) 7%, transparent) 48%, transparent 64%),
-    hsl(220 22% 11% / 0.72);
-  background-size:
-    240% 100%,
-    100% 100%;
-  animation: skeletonSweep 1.8s ease-in-out infinite;
-}
-
 .skeletonHeader {
   display: flex;
   align-items: end;
@@ -375,21 +331,6 @@
   border-bottom: 1px solid var(--aqt-border);
 }
 
-.stateAction {
-  min-height: 2.25rem;
-  padding: 0.45rem 0.75rem;
-  border: 1px solid var(--aqt-border-2);
-  border-radius: 0.4rem;
-  background: color-mix(in srgb, var(--aqt-teal) 8%, transparent);
-  color: var(--aqt-teal);
-  font-family: var(--aqt-data);
-  font-size: var(--text-label);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-
 .refreshState {
   display: grid;
   gap: 0.75rem;
@@ -451,84 +392,6 @@
   min-width: 0;
 }
 
-/* ── Section vocabulary (wireframes §11, "broadcast scoreboard") ──
-   A block is a CARD: the site's first-level surface (`--aqt-card` at 8% L over
-   the page's 5%), a hairline and a 12px radius — the same treatment as
-   `.aqt-card-surface` and the tournament list's cards, so the overview speaks
-   the site's existing vocabulary.
-
-   This replaced a bare mono eyebrow over a top hairline. The hairline version
-   was chosen to avoid "a third border around every list", but with three to six
-   blocks per column the reader had to infer where one ended and the next began
-   from spacing alone — and the phase timeline, the podium and the numbers grid
-   all bleed to the same edges, so there was no edge to read. Separation is what
-   the eye needs here; the eyebrow stays as the block's anchor (§11), now inside
-   the card instead of straddling a rule.
-
-   Deliberately no `overflow: hidden` (unlike `.aqt-card-surface`): the
-   mini-bracket scrolls horizontally inside its own block, and `#phases`
-   must stay scrollable-to. */
-.block {
-  min-width: 0;
-  padding: 0.875rem 1rem 1rem;
-  border: 1px solid var(--aqt-border);
-  border-radius: 0.75rem;
-  background: var(--aqt-card);
-}
-
-.blockHead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
-}
-
-.blockTitle {
-  margin: 0;
-  font-family: var(--aqt-data);
-  font-size: var(--text-label);
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--aqt-fg-faint);
-}
-
-/* A figure: label above, the number in the display face — the number is what
-   the block is for, so it is the largest thing in it. */
-.figure {
-  display: grid;
-  gap: 0.2rem;
-  min-width: 0;
-}
-
-.figureLabel {
-  font-family: var(--aqt-data);
-  font-size: var(--text-label);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  color: var(--aqt-fg-faint);
-}
-
-.figureValue {
-  font-family: var(--aqt-display);
-  font-size: 2rem;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.01em;
-  font-variant-numeric: tabular-nums;
-  color: var(--aqt-fg);
-}
-
-.figureHint {
-  margin-inline-start: 0.35rem;
-  font-family: var(--aqt-data);
-  font-size: var(--text-label);
-  font-weight: 400;
-  letter-spacing: 0;
-  color: var(--aqt-fg-faint);
-}
-
 /* Score in a match row: the display face, heavier and larger than the team
    names beside it (§11: "score larger than the name"). */
 .score {
@@ -542,39 +405,39 @@
 
 /* One match row. Under 640px it is the bracket node: each team on its own
    line with its score on the right, so neither name is cut to fit the other.
-   From 640px it is the scoreboard line: home · score · away, the names
+   From 640px it is the scoreboard line: slot 1 · score · slot 2, the names
    leaning on the score. Every cell is placed by area, so the DOM is one. */
 .matchRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   grid-template-areas:
     "lead lead act"
-    "home hs hs"
-    "away as as";
+    "t1 s1 s1"
+    "t2 s2 s2";
   align-items: center;
   column-gap: 0.75rem;
   row-gap: 0.25rem;
 }
 
 .matchRow > [data-cell="lead"] { grid-area: lead; }
-.matchRow > [data-cell="home"] { grid-area: home; }
-.matchRow > [data-cell="hs"] { grid-area: hs; justify-self: end; }
+.matchRow > [data-cell="t1"] { grid-area: t1; }
+.matchRow > [data-cell="s1"] { grid-area: s1; justify-self: end; }
 .matchRow > [data-cell="dash"] { display: none; }
-.matchRow > [data-cell="as"] { grid-area: as; justify-self: end; }
-.matchRow > [data-cell="away"] { grid-area: away; }
+.matchRow > [data-cell="s2"] { grid-area: s2; justify-self: end; }
+.matchRow > [data-cell="t2"] { grid-area: t2; }
 .matchRow > [data-cell="act"] { grid-area: act; }
 
 @media (min-width: 640px) {
   .matchRow {
     grid-template-columns: minmax(4.5rem, auto) minmax(0, 1fr) 1.5rem auto 1.5rem minmax(0, 1fr) auto;
-    grid-template-areas: "lead home hs dash as away act";
+    grid-template-areas: "lead t1 s1 dash s2 t2 act";
     row-gap: 0;
   }
 
-  .matchRow > [data-cell="home"] { justify-self: end; }
-  .matchRow > [data-cell="hs"] { justify-self: end; }
+  .matchRow > [data-cell="t1"] { justify-self: end; }
+  .matchRow > [data-cell="s1"] { justify-self: end; }
   .matchRow > [data-cell="dash"] { display: block; grid-area: dash; }
-  .matchRow > [data-cell="as"] { justify-self: start; }
+  .matchRow > [data-cell="s2"] { justify-self: start; }
 }
 
 /* The bracket canvas is intrinsically wider than any viewport. It owns its own
@@ -637,6 +500,8 @@
   border-radius: var(--aqt-radius-sm);
   background: var(--aqt-card);
   scrollbar-width: thin;
+  /* `.participantExpandedRegion` sizes itself to this box's visible width. */
+  container-type: inline-size;
 }
 
 .participantsTable {
@@ -739,38 +604,21 @@
   padding-inline: 0.35rem;
 }
 
-.participantExpander {
-  display: inline-flex;
-  min-width: 2.25rem;
-  min-height: 2.25rem;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  border: 1px solid transparent;
-  border-radius: 0.35rem;
-  background: transparent;
-  color: var(--aqt-fg-dim);
-  cursor: pointer;
-}
-
-.participantExpander:hover,
-.participantExpander:focus-visible {
-  color: var(--aqt-teal);
-  outline: none;
-}
-
-.participantExpanderLabel {
-  display: none;
-}
-
 .participantExpandedCell {
   min-width: 0;
 }
 
+/* The table can be wider than its scroller, and the details panel used to
+   span the whole table: its right column sat past the visible edge until the
+   reader scrolled sideways. It takes the scroller's width instead and stays
+   pinned while the columns above it scroll. */
 .participantExpandedRegion {
+  position: sticky;
+  left: 0;
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(12rem, 1fr);
   gap: 1rem;
+  width: 100cqi;
   padding: 1rem;
   border-top: 1px solid var(--aqt-border);
   background: hsl(0 0% 0% / 0.1);
@@ -833,19 +681,6 @@
   font-style: italic;
 }
 
-@keyframes skeletonSweep {
-  from {
-    background-position:
-      125% 0,
-      0 0;
-  }
-  to {
-    background-position:
-      -125% 0,
-      0 0;
-  }
-}
-
 @keyframes navLivePulse {
   0%,
   100% {
@@ -878,11 +713,11 @@
     grid-template-columns: repeat(3, 13rem);
   }
 
+  /* One bordered list with hairline rows, as on desktop. Per-row cards
+     stacked with no gap read as one ragged block, and the virtualizer measures
+     border boxes, so a margin between them would overlap the next row. */
   .participantsTableViewport {
     overflow-x: hidden;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
   }
 
   .participantsTable {
@@ -901,23 +736,22 @@
     border: 0;
   }
 
+  /* The desktop hairline is nearly invisible on its own; without column
+     tracks to line up against, the rows need it at full strength. */
   .participantVirtualRow {
-    border: 1px solid var(--aqt-border);
-    border-left: 2px solid color-mix(in srgb, var(--aqt-teal) 40%, transparent);
-    border-radius: 0.55rem;
-    background: hsl(220 22% 9% / 0.96);
+    border-bottom-color: var(--aqt-border);
   }
 
   .participantSummaryRow {
     grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
-    min-height: 4.25rem;
-    padding: 0.7rem 0.75rem;
+    column-gap: 0.75rem;
+    min-height: 4rem;
+    padding: 0.5rem 0.375rem 0.5rem 0.875rem;
   }
 
   .participantCell,
   .participantExpanderCell {
-    padding: 0.2rem 0;
+    padding: 0.125rem 0;
   }
 
   .participantCell {
@@ -932,7 +766,8 @@
     grid-column: 1;
     grid-row: 1;
     color: var(--aqt-fg);
-    font-weight: 650;
+    font-size: var(--text-body);
+    font-weight: 600;
   }
 
   .participantCell[data-participant-kind="status"] {
@@ -949,15 +784,20 @@
     grid-column: 1 / -1;
   }
 
+  .participantVirtualRow[data-expanded="true"] .participantCell[data-participant-kind="status"] {
+    padding-bottom: 0.625rem;
+  }
+
+  /* Sentence case and whole words, like `.participantHiddenField` labels: a
+     tracked uppercase label in a 5.5rem column split "Балансировщик" mid-word
+     (the cell's `overflow-wrap: anywhere` is for values, not labels). */
   .participantMobileCellLabel {
     display: inline;
-    flex: 0 0 5.5rem;
+    flex: 0 0 7.5rem;
     color: var(--aqt-fg-dim);
-    font-family: var(--aqt-data);
-    font-size: var(--text-label);
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    font-size: var(--text-caption);
+    font-weight: 500;
+    overflow-wrap: break-word;
   }
 
   .participantCell[data-participant-kind="identity"] .participantMobileCellLabel,
@@ -975,20 +815,11 @@
     align-self: center;
   }
 
+  /* Icon-only, as on desktop: the chevron and `aria-expanded` say it all, and
+     a spelled-out uppercase label took half the row from the name. */
   .participantExpander {
-    min-width: 5.4rem;
-    border-color: var(--aqt-border-2);
-    background: var(--aqt-overlay-2);
-    color: var(--aqt-fg-muted);
-    font-family: var(--aqt-data);
-    font-size: var(--text-label);
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-  }
-
-  .participantExpanderLabel {
-    display: inline;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
   }
 
   .participantExpandedRegion {
@@ -999,14 +830,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .navItem,
-  .skeletonBlock,
   .liveTag {
     animation: none;
     scroll-behavior: auto;
     transition: none;
-  }
-
-  .skeletonBlock {
-    background: hsl(220 22% 11% / 0.72);
   }
 }

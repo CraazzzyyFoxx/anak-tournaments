@@ -1,27 +1,19 @@
 """Public / captain tournament methods over typed RPC.
 
-Each handler preserves the contract of the former HTTP route it replaced (the
-``src/routes/`` HTTP service has been decommissioned): it rehydrates the
-gateway-injected identity where a user was required, validates the SAME body
-schema, calls the SAME service function with the SAME args, and serializes the
-SAME way the route returned. The request schemas and read-model builders now
-live in ``src/schemas/{captain,registration,registration_build}.py``.
-
-Serialization parity:
-- captain handlers return custom dicts -> returned verbatim.
-- registration handlers do NOT use ``response_model_exclude_none`` -> plain
-  ``model_dump(mode="json")`` (keep nulls). ``RegistrationFormRead | None`` and
-  ``RegistrationRead | None`` may serialize to ``None``.
-- saved-view writes DID use ``response_model_exclude_none=True`` ->
-  ``model_dump(mode="json", exclude_none=True)``; the delete returns 204 -> None.
+Serialization:
+- captain handlers return custom dicts verbatim.
+- registration handlers return plain ``model_dump(mode="json")`` (nulls kept);
+  ``RegistrationFormRead | None`` and ``RegistrationRead | None`` may serialize
+  to ``None``.
+- saved-view writes return ``model_dump(mode="json", exclude_none=True)``; the
+  delete returns None.
 
 Commit semantics: every write service called here commits internally
-(captain.submit_captain_report,
+(captain.submit_team_report,
 pick_ban_action.perform_pick_ban_action, reg_service.create/update/withdraw/check_in,
-encounter service.upsert_saved_view/delete_saved_view), so the handlers add no
+encounter service.create_saved_view/delete_saved_view), so the handlers add no
 extra commit. The pick-ban state read commits nothing at all: it is a pure
 read, and the room's healing belongs to ``encounter.room_reconcile``.
-
 
 The gateway passes path params as ``data["<name>"]`` (and the primary id as
 ``data["id"]`` when the RouteSpec sets IDParam), query params as
@@ -30,22 +22,19 @@ The gateway passes path params as ``data["<name>"]`` (and the primary id as
 
 from __future__ import annotations
 
-import asyncio
 from datetime import timedelta
 from typing import Any
 
-from cashews import cache
 from faststream.rabbit import Channel
 from faststream.rabbit.annotations import RabbitMessage
 
-from shared.balancer_registration_statuses import get_status_metas_map
-from shared.balancer_subrole_catalog import resolve_subrole_catalog
+from shared import models
 from shared.core.enums import PickBanKind, SubscriptionCollectionSource
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import identity_provider
 from shared.domain.forms import schema_from_form
+from shared.registration_statuses import get_status_metas_map
 from shared.rpc.identity import rehydrate_user
-from shared.services.admission import AdmissionStage
-from shared.services.bracket.usability import assert_encounter_live
 from shared.services.chat import (
     HISTORY_DEFAULT,
     ChatMuteInput,
@@ -53,13 +42,13 @@ from shared.services.chat import (
     ChatRoom,
     ChatSettingsInput,
 )
+from shared.services.encounter.participants import active_teams
 from shared.services.subscriptions.realtime import emit_subscriptions_updated
-from shared.services.subscriptions.wiring import build_resolver, build_store
+from shared.services.subscriptions.wiring import build_store
 from shared.services.tournament.visibility import ensure_tournament_viewable
-from src import models, schemas
+from src import schemas
 from src.core import db
-from src.core.broker import optional_broker
-from src.core.config import settings
+from src.core.clients import subscription_resolver
 from src.rpc._helpers import (
     _dump,
     _identity,
@@ -71,14 +60,14 @@ from src.rpc._helpers import (
     _run,
 )
 from src.schemas.captain import (
-    CaptainReportSubmission,
     ElectOpenerInput,
+    GameClaimIn,
     GameMapSelectInput,
-    GameReportInput,
     PickBanActionInput,
     PickBanSubmitInput,
     PickBanUndoInput,
-    resolve_optional_viewer_side,
+    TeamReportIn,
+    resolve_optional_viewer,
 )
 from src.schemas.registration import (
     RegistrationStatusResponse,
@@ -109,31 +98,33 @@ from src.schemas.registration_team import (
     serialize_invite,
 )
 from src.services import visibility_resolvers
+from src.services.admission import AdmissionStage
+from src.services.bracket.usability import assert_encounter_live
 from src.services.encounter import flows as encounter_flows
 from src.services.encounter import pick_ban_action as pick_ban_action
-from src.services.encounter.captain import captain_service
+from src.services.encounter.captain import ReportResultIn, captain_service
 from src.services.encounter.chat_access import encounter_chat_service
 from src.services.encounter.games import encounter_game_service
-from src.services.encounter.map_report import map_report_service
+from src.services.encounter.map_report import ClaimResultIn, map_report_service
 from src.services.encounter.pick_ban_session import pick_ban_session_service
 from src.services.encounter.pick_ban_undo import pick_ban_undo_service
+from src.services.encounter.replay_codes import replay_codes_by_encounter
 from src.services.encounter.report_form import report_form_service
+from src.services.encounter.room_owner import ensure_room_viewable, load_room_encounter
 from src.services.registration import _common as reg_common
 from src.services.registration import audit as reg_audit
+from src.services.registration import public_list
 from src.services.registration import service as reg_service
-from src.services.registration import subscription_config
 from src.services.registration import teams as team_service
 from src.services.registration.admission import assert_admitted_at
 from src.services.registration.answers import answer_service
 from src.services.registration.recheck import assert_recheck_allowed, recheck_registration
 from src.services.registration.self_edit import SelfEditPolicy, self_edit_policy, submitted_late
-from src.services.registration.serializers import serialize_registration_form
 from src.services.registration.subscription_codes import redeem_challenge_code
 from src.services.registration.subscription_status import (
     assert_redeem_attempt_allowed,
     subscription_status_for_user,
 )
-from src.services.registration.windows import windows_service
 
 
 async def _require_tournament(session: Any, tournament_id: int) -> models.Tournament:
@@ -146,9 +137,9 @@ async def _require_tournament(session: Any, tournament_id: int) -> models.Tourna
 
 async def _me_read_context(
     session: Any,
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
     tournament_id: int,
-    form: models.BalancerRegistrationForm | None,
+    form: models.RegistrationForm | None,
 ) -> tuple[SelfEditPolicy | None, bool]:
     """``(edit rights, signed up late)`` for the caller's own registration read.
 
@@ -161,21 +152,6 @@ async def _me_read_context(
     schema = schema_from_form(form)
     policy = self_edit_policy(registration, tournament, schema) if schema is not None else None
     return policy, submitted_late(registration, tournament)
-
-
-def _subscription_resolver(session: Any) -> Any:
-    """Resolver wired with this service's provider credentials.
-
-    Built per request: the Discord strategy memoizes a guild's role list, and that
-    memo must not outlive the request that filled it.
-    """
-    return build_resolver(
-        session,
-        discord_bot_token=settings.discord_token,
-        twitch_client_id=settings.twitch_client_id,
-        broker=optional_broker(),
-        proxy=settings.proxy_url,
-    )
 
 
 # --- helpers -----------------------------------------------------------------
@@ -192,52 +168,6 @@ def _optional_identity(data: dict[str, Any]) -> models.AuthUser | None:
     return rehydrate_user(data.get("identity"))
 
 
-# Coalesces concurrent rebuilds of the public registration list for the same
-# tournament. A registration mutation notifies every connected viewer at once
-# (the "realtime invalidation herd" -- see the channel comment on
-# ``_reg_pub_list`` below), so without this a burst of N viewers refetching
-# after one mutation triggers N identical, expensive read-model builds that
-# queue behind the channel's ``prefetch_count`` -- the actual driver of this
-# endpoint's p95 tail latency. Followers join the leader's task instead of
-# starting their own: still exactly one live DB read per burst, just shared by
-# everyone asking for the same tournament_id at the same instant. Keyed by
-# tournament_id only -- the viewer-dependent visibility check always runs on
-# the caller's own session before this is ever reached (see
-# ``assert_tournament_viewable``'s cache note), so a hidden tournament's gate
-# is never skipped for a follower.
-_reg_pub_list_inflight: dict[int, asyncio.Task[Any]] = {}
-
-
-@cache(
-    ttl=settings.tournaments_cache_ttl,
-    key="registration_list:{tournament_id}:",
-    prefix="fastapi:",
-)
-async def _build_registration_list(tournament_id: int) -> Any:
-    async with db.async_session_maker() as session:
-        return await reg_service.registration_service.build_public_registration_list(
-            session, tournament_id=tournament_id
-        )
-
-
-async def _coalesced_registration_list(tournament_id: int) -> Any:
-    task = _reg_pub_list_inflight.get(tournament_id)
-    if task is None:
-        task = asyncio.create_task(_build_registration_list(tournament_id))
-        _reg_pub_list_inflight[tournament_id] = task
-
-        def _cleanup(done: asyncio.Task[Any]) -> None:
-            if _reg_pub_list_inflight.get(tournament_id) is done:
-                del _reg_pub_list_inflight[tournament_id]
-
-        task.add_done_callback(_cleanup)
-    # Shielded: a follower's own cancellation (its caller disconnected/timed
-    # out) must not cancel the shared build out from under every other
-    # follower -- and unlike a plain ``await task``, ``Task.cancel()`` DOES
-    # propagate into whatever future a task is currently awaiting.
-    return await asyncio.shield(task)
-
-
 def register(broker: Any, logger: Any) -> None:
     # ── captain: identity / result submission ─────────────────────────────
 
@@ -248,10 +178,10 @@ def register(broker: Any, logger: Any) -> None:
             encounter_id = _require_id(data)
             encounter = await captain_service._load_encounter(session, encounter_id)
             try:
-                side = await captain_service.resolve_captain_side(session, user, encounter)
+                participation, _player_id = await captain_service.captain_seat(session, user, encounter)
             except HTTPException:
-                side = None
-            return {"side": side}
+                return {"encounter_team_id": None, "slot": None}
+            return {"encounter_team_id": participation.id, "slot": participation.slot}
 
         return await _run(logger, op)
 
@@ -260,26 +190,45 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            body = CaptainReportSubmission.model_validate(_payload(data))
-            # submit_captain_report commits internally; route returns a custom dict.
-            encounter = await captain_service.submit_captain_report(
+            body = TeamReportIn.model_validate(_payload(data))
+            encounter = await captain_service._load_encounter(session, encounter_id)
+            # The reporter is the CALLER's seat, never the body's: a captain
+            # files their own report and nobody else's.
+            participation, player_id = await captain_service.captain_seat(session, user, encounter)
+            # submit_team_report commits internally.
+            encounter = await captain_service.submit_team_report(
                 session,
-                user,
                 encounter_id,
-                home_score=body.home_score,
-                away_score=body.away_score,
+                encounter_team_id=participation.id,
+                reporter_user_id=player_id,
+                games_played=body.games_played,
+                results=[
+                    ReportResultIn(
+                        encounter_team_id=line.encounter_team_id,
+                        score=line.score,
+                        placement=line.placement,
+                        wins=line.wins,
+                    )
+                    for line in body.results
+                ],
+                basis_version=body.basis_version,
                 closeness=body.closeness,
-                map_codes=[(mc.map_index, mc.code) for mc in body.map_codes],
                 comment=body.comment,
                 custom_fields=body.custom_fields,
+                map_codes=[(mc.map_index, mc.code) for mc in body.map_codes],
+                actor_auth_user_id=user.id,
             )
             reports = await captain_service.get_encounter_reports(session, encounter_id)
             return {
                 "id": encounter.id,
                 "result_status": encounter.result_status,
                 "status": encounter.status,
-                "home_score": encounter.home_score,
-                "away_score": encounter.away_score,
+                "result_source": encounter.result_source,
+                "result_version": encounter.result_version,
+                "teams": [
+                    {"encounter_team_id": seat.id, "score": seat.score, "placement": seat.placement}
+                    for seat in await active_teams(session, encounter.id)
+                ],
                 "closeness": encounter.closeness,
                 "reports": reports,
             }
@@ -299,6 +248,7 @@ def register(broker: Any, logger: Any) -> None:
             # exactly the rules the submit endpoint will enforce, in one round trip.
             return {
                 "reports": await captain_service.get_encounter_reports(session, encounter_id),
+                "replay_codes": _dump((await replay_codes_by_encounter(session, [encounter_id])).get(encounter_id, [])),
                 "form": _dump(await report_form_service.resolve_report_form(session, tournament_id)),
             }
 
@@ -316,14 +266,11 @@ def register(broker: Any, logger: Any) -> None:
             kind = _parse_kind(data)
             encounter_id = _require_id(data)
             user = _optional_identity(data)
-            tournament_id = await visibility_resolvers.visibility_resolvers_service.tournament_id_for_encounter(
-                session, encounter_id
-            )
-            await ensure_tournament_viewable(session, user, tournament_id)
-            encounter = await captain_service._load_encounter(session, encounter_id, for_update=False)
-            viewer_side = await resolve_optional_viewer_side(session, user, encounter)
+            encounter = await load_room_encounter(session, encounter_id, for_update=False)
+            await ensure_room_viewable(session, user, encounter)
+            viewer, viewer_member = await resolve_optional_viewer(session, user, encounter)
             return await pick_ban_action.pick_ban_action_service.get_pick_ban_state(
-                session, encounter_id, kind, viewer_side=viewer_side
+                session, encounter_id, kind, viewer=viewer, viewer_member=viewer_member
             )
 
         return await _run(logger, op)
@@ -335,19 +282,28 @@ def register(broker: Any, logger: Any) -> None:
             user = _identity(data)
             encounter_id = _require_id(data)
             body = PickBanActionInput.model_validate(_payload(data))
-            encounter = await captain_service._load_encounter(session, encounter_id)
-            captain_side = await captain_service.resolve_captain_side(session, user, encounter)
-            # Returns the acting captain's own new state: the room re-renders
-            # from the response instead of racing its own refetch.
-            return await pick_ban_action.pick_ban_action_service.perform_pick_ban_action(
+            encounter = await load_room_encounter(session, encounter_id, for_update=True)
+            participation, is_captain, own = await captain_service.acting_seat(session, user, encounter, body.member_id)
+            # Returns the acting captain's own new state, read as the GET reads
+            # it (their own seat first): the room re-renders from the response
+            # instead of racing its own refetch.
+            state = await pick_ban_action.pick_ban_action_service.perform_pick_ban_action(
                 session,
                 encounter_id,
                 kind,
-                captain_side,
+                participation.id,
                 item_id=body.item_id,
                 action=body.action,
                 target_player_id=body.target_player_id,
+                member_id=body.member_id,
+                viewer_member=own,
                 actor_auth_user_id=user.id,
+            )
+            if is_captain:
+                return state
+            # A member who is not the captain reads the room as themselves, never as their team's captain.
+            return await pick_ban_action.pick_ban_action_service.get_pick_ban_state(
+                session, encounter_id, kind, viewer=None, viewer_member=own
             )
 
         return await _run(logger, op)
@@ -359,15 +315,16 @@ def register(broker: Any, logger: Any) -> None:
             user = _identity(data)
             encounter_id = _require_id(data)
             body = PickBanSubmitInput.model_validate(_payload(data))
-            encounter = await captain_service._load_encounter(session, encounter_id)
-            captain_side = await captain_service.resolve_captain_side(session, user, encounter)
+            encounter = await load_room_encounter(session, encounter_id, for_update=True)
+            participation, _is_captain, own = await captain_service.acting_seat(session, user, encounter, None)
             return await pick_ban_action.pick_ban_action_service.submit_items(
                 session,
                 encounter_id,
                 kind,
-                captain_side,
+                participation.id,
                 items=[item.model_dump() for item in body.items],
                 lock=body.lock,
+                viewer_member=own,
                 actor_auth_user_id=user.id,
             )
 
@@ -379,10 +336,10 @@ def register(broker: Any, logger: Any) -> None:
             kind = _parse_kind(data)
             user = _identity(data)
             encounter_id = _require_id(data)
-            encounter = await captain_service._load_encounter(session, encounter_id)
-            captain_side = await captain_service.resolve_captain_side(session, user, encounter)
+            encounter = await load_room_encounter(session, encounter_id, for_update=True)
+            participation, _player_id = await captain_service.captain_seat(session, user, encounter)
             return await pick_ban_action.pick_ban_action_service.dispute_step(
-                session, encounter_id, kind, captain_side, actor_auth_user_id=user.id
+                session, encounter_id, kind, participation.id, actor_auth_user_id=user.id
             )
 
         return await _run(logger, op)
@@ -394,20 +351,20 @@ def register(broker: Any, logger: Any) -> None:
             user = _identity(data)
             encounter_id = _require_id(data)
             body = ElectOpenerInput.model_validate(_payload(data))
-            encounter = await captain_service._load_encounter(session, encounter_id)
-            captain_side = await captain_service.resolve_captain_side(session, user, encounter)
+            encounter = await load_room_encounter(session, encounter_id, for_update=True)
+            participation, _player_id = await captain_service.captain_seat(session, user, encounter)
             pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, kind)
             if pick_ban is None:
                 raise HTTPException(status_code=400, detail="No round is awaiting an opener choice")
             await pick_ban_session_service.elect_round_opener(
                 session,
                 pick_ban,
-                first_side=body.first_side,
-                acting_side=captain_side,
+                first_team_id=body.first_team_id,
+                acting_team_id=participation.id,
                 actor_auth_user_id=user.id,
             )
             return await pick_ban_action.pick_ban_action_service.get_pick_ban_state(
-                session, encounter_id, kind, viewer_side=captain_side
+                session, encounter_id, kind, viewer=participation.id
             )
 
         return await _run(logger, op)
@@ -419,13 +376,13 @@ def register(broker: Any, logger: Any) -> None:
             user = _identity(data)
             encounter_id = _require_id(data)
             body = PickBanUndoInput.model_validate(_payload(data))
-            encounter = await captain_service._load_encounter(session, encounter_id)
-            captain_side = await captain_service.resolve_captain_side(session, user, encounter)
+            encounter = await load_room_encounter(session, encounter_id, for_update=True)
+            participation, _player_id = await captain_service.captain_seat(session, user, encounter)
             # Commits internally; returns the resulting undo block (empty
             # `item_ids` once the undo landed and the step it restored is open
             # again).
             return await pick_ban_undo_service.perform_undo(
-                session, encounter_id, kind, captain_side, consent=body.consent, actor_auth_user_id=user.id
+                session, encounter_id, kind, participation.id, consent=body.consent, actor_auth_user_id=user.id
             )
 
         return await _run(logger, op)
@@ -436,20 +393,27 @@ def register(broker: Any, logger: Any) -> None:
             user = _identity(data)
             encounter_id = _require_id(data)
             game_id = _path_int(data, "game_id")
-            body = GameReportInput.model_validate(_payload(data))
+            body = GameClaimIn.model_validate(_payload(data))
             encounter = await captain_service._load_encounter(session, encounter_id)
-            # The side is the CALLER's, never the body's: a captain files their
-            # own claim and nobody else's.
-            side = await captain_service.resolve_captain_side(session, user, encounter)
-            # Commits internally once the pair of claims is reconciled.
-            return await map_report_service.submit_map_report(
+            # The claimant is the CALLER's seat, never the body's: a captain
+            # files their own claim and nobody else's.
+            participation, player_id = await captain_service.captain_seat(session, user, encounter)
+            # Commits internally once every live participation has claimed.
+            return await map_report_service.submit_game_claim(
                 session,
-                encounter,
-                game_id=game_id,
-                side=side,
-                reporter_user_id=user.id,
-                home_score=body.home_score,
-                away_score=body.away_score,
+                game_id,
+                claimant_team_id=participation.id,
+                reporter_user_id=player_id,
+                results=[
+                    ClaimResultIn(
+                        encounter_team_id=line.encounter_team_id,
+                        score=line.score,
+                        placement=line.placement,
+                        column_values=dict(line.column_values),
+                    )
+                    for line in body.results
+                ],
+                basis_version=body.basis_version,
                 actor_auth_user_id=user.id,
             )
 
@@ -464,7 +428,7 @@ def register(broker: Any, logger: Any) -> None:
             body = GameMapSelectInput.model_validate(_payload(data))
             encounter = await captain_service._load_encounter(session, encounter_id)
             await assert_encounter_live(session, encounter)
-            await captain_service.resolve_captain_side(session, user, encounter)
+            await captain_service.captain_seat(session, user, encounter)
             # Locked for the same reason a claim locks it: two captains naming a
             # map at once must not both win.
             game = await encounter_game_service.game_repo.get_for_update(session, game_id)
@@ -472,8 +436,9 @@ def register(broker: Any, logger: Any) -> None:
                 raise HTTPException(status_code=404, detail="Game not found")
             await encounter_game_service.select_map(session, encounter, game, map_id=body.map_id)
             await session.commit()
-            reports = (await encounter_game_service.reports_by_game(session, [game])).get(game.id) or []
-            return {"game": encounter_game_service.serialize(game, reports)}
+            lines = (await encounter_game_service.lines_by_game(session, [game])).get(game.id) or []
+            claims = (await encounter_game_service.claim_payloads(session, [game]))[game.id]
+            return {"game": encounter_game_service.serialize(game, lines, claims)}
 
         return await _run(logger, op)
 
@@ -482,15 +447,13 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            encounter = await captain_service._load_encounter(session, encounter_id)
+            encounter = await load_room_encounter(session, encounter_id, for_update=True)
             await assert_encounter_live(session, encounter)
-            captain_side, captain_user_id, _team_id = await captain_service.resolve_captain_identity(
-                session, user, encounter
-            )
-            # mark_ready commits internally and signals the opposite captain's
-            # room -- nothing polls it while no session exists.
+            participation, captain_user_id = await captain_service.captain_seat(session, user, encounter)
+            # mark_ready commits internally and signals the other captains'
+            # rooms -- nothing polls it while no session exists.
             readiness = await pick_ban_session_service.mark_ready(
-                session, encounter, captain_side, captain_user_id, actor_auth_user_id=user.id
+                session, encounter, participation.id, captain_user_id, actor_auth_user_id=user.id
             )
             return {"readiness": readiness}
 
@@ -587,26 +550,7 @@ def register(broker: Any, logger: Any) -> None:
             # Public route — no identity required, but hidden tournaments 404.
             tournament_id = _path_int(data, "tournament_id")
             await ensure_tournament_viewable(session, _optional_identity(data), tournament_id)
-            form = await reg_common._common_service.get_registration_form(session, tournament_id)
-            if form is None:
-                return None
-            subrole_catalog = await resolve_subrole_catalog(session, form.workspace_id)
-            # The rule is the workspace's now; fetched once here so the sync serializer
-            # below stays free of round trips.
-            requirement = await subscription_config.subscription_config_service.load_workspace_requirement_blob(
-                session, form.workspace_id
-            )
-            is_open, registration_late = await windows_service.load_registration_state(session, tournament_id)
-            return _dump(
-                serialize_registration_form(
-                    form,
-                    is_open=is_open,
-                    registration_late=registration_late,
-                    subrole_catalog=subrole_catalog,
-                    subscription_requirement=requirement,
-                    stale_registrations=None,
-                )
-            )
+            return _dump(await reg_service.registration_service.get_public_form(session, tournament_id))
 
         return await _run(logger, op)
 
@@ -659,11 +603,8 @@ def register(broker: Any, logger: Any) -> None:
             form = await reg_common._common_service.get_registration_form(session, tournament_id)
             show_ranks = form.show_ranks if form is not None else False
             # The registrant's own card goes through the SAME resolver as the
-            # participants list and the admin table -- one batch of one row. That is
-            # the point of the layer: this handler used to resolve the profile
-            # verdict and the subscription verdicts itself, with its own two calls,
-            # and "why am I not admitted" was therefore answerable differently here
-            # than on the list the player was reading it next to.
+            # participants list and the admin table -- one batch of one row -- so
+            # "why am I not admitted" answers identically on every surface.
             admissions = await reg_service.registration_service.resolve_admission_list(session, [reg], form=form)
             chips = AdmissionChips.of(admissions.get(reg.id))
             workspace_id = (
@@ -675,6 +616,7 @@ def register(broker: Any, logger: Any) -> None:
                 _reg_to_read(
                     reg,
                     workspace_id=workspace_id,
+                    provider=identity_provider(reg.tournament.discipline),
                     status_meta_map=status_meta_map,
                     show_ranks=show_ranks,
                     admission=chips.admission,
@@ -709,19 +651,22 @@ def register(broker: Any, logger: Any) -> None:
             if reg is None:
                 raise HTTPException(status_code=404, detail="No registration found")
 
+            provider = identity_provider(reg.tournament.discipline)
             schema = reg_service._require_current_schema(form, body.form_version_id)
-            hero_catalog, _ = await _resolve_top_heroes_config(session, form)
+            hero_catalog, _ = await _resolve_top_heroes_config(session, form, discipline=reg.tournament.discipline)
             values = await answer_service.validate(
                 session,
                 schema=schema,
                 answers=body.answers,
                 partial=True,
                 enforce_required=True,
-                # get_registration eager-loads workspace_member (the
-                # registration's only identity anchor since dbarch02).
+                # get_registration eager-loads workspace_member, the
+                # registration's only identity anchor.
                 player_id=reg.workspace_member.player_id if reg.workspace_member is not None else None,
                 workspace_id=form.workspace_id,
+                discipline=reg.tournament.discipline,
                 hero_catalog=hero_catalog,
+                registration=reg,
             )
 
             # update_registration commits internally, so the audit row is staged
@@ -736,7 +681,7 @@ def register(broker: Any, logger: Any) -> None:
                     workspace_id=form.workspace_id,
                     data=data,
                     entity_id=reg.id,
-                    entity_label=reg_audit.label(reg),
+                    entity_label=reg_audit.label(reg, provider=provider),
                     source="player",
                     before=before,
                     after=after,
@@ -757,6 +702,7 @@ def register(broker: Any, logger: Any) -> None:
                 _reg_to_read(
                     updated,
                     workspace_id=form.workspace_id,
+                    provider=provider,
                     status_meta_map=status_meta_map,
                     show_ranks=form.show_ranks,
                     roster=(await _public_rosters(session, [updated])).get(updated.id),
@@ -794,23 +740,15 @@ def register(broker: Any, logger: Any) -> None:
             if reg is None:
                 raise HTTPException(status_code=404, detail="No registration found")
 
-            # Admission gate, check-in stage: ONE call, every requirement. The
-            # profile rule used to be an inline `if` right here and the subscription
-            # rule a call into another module, so "what refuses a check-in" could
-            # only be answered by reading two places and trusting there was no
-            # third. Both are registry entries now, and adding a requirement needs
-            # no edit to this handler at all.
+            # Admission gate, check-in stage: ONE call, every requirement armed at
+            # check-in. Only a CONFIRMED refusal blocks, so a provider outage or a
+            # BattleTag nobody has polled yet can never lock somebody out of a live
+            # check-in.
             #
-            # Only a CONFIRMED refusal blocks, so a provider outage or a BattleTag
-            # nobody has polled yet can never lock somebody out of a live check-in.
-            #
-            # The admin path (`registration_admin.py::_reg_check_in`) deliberately
-            # has NO gate: it IS the organizer's override mechanism, and
-            # `AdmissionEvaluation.overridden` is what finally makes the result of
-            # using it visible instead of the badge re-deriving a refusal forever
-            # (D2/D4). Do not add a gate there, and do not add an `override=True`
-            # parameter here -- a parameter whose only job is to skip the call is
-            # the same call written twice.
+            # The admin path (`registration_admin.py::_reg_check_in`) has NO gate: it
+            # IS the organizer's override, and `AdmissionEvaluation.overridden` is what
+            # makes using it visible instead of the badge re-deriving a refusal
+            # forever. Do not add a gate there, nor an `override=True` parameter here.
             await assert_admitted_at(
                 session,
                 reg,
@@ -820,6 +758,7 @@ def register(broker: Any, logger: Any) -> None:
             )
 
             form = await reg_common._common_service.get_registration_form(session, tournament_id)
+            provider = identity_provider(reg.tournament.discipline)
 
             # check_in_registration commits internally.
             checked_in = await reg_service.registration_service.check_in_registration(
@@ -834,6 +773,7 @@ def register(broker: Any, logger: Any) -> None:
                 _reg_to_read(
                     checked_in,
                     workspace_id=workspace_id,
+                    provider=provider,
                     status_meta_map=status_meta_map,
                     show_ranks=form.show_ranks if form else False,
                     roster=(await _public_rosters(session, [checked_in])).get(checked_in.id),
@@ -854,7 +794,7 @@ def register(broker: Any, logger: Any) -> None:
 
         No body: the client refetches its registration, whose admission then
         carries the fresh subscription verdict (the profile one follows once
-        parser-service has fetched the tags).
+        stats-service has fetched the tags).
         """
 
         async def op(session: Any) -> Any:
@@ -888,7 +828,7 @@ def register(broker: Any, logger: Any) -> None:
                 await subscription_status_for_user(
                     form=form,
                     auth_user_id=user.id,
-                    resolver=_subscription_resolver(session),
+                    resolver=subscription_resolver(session),
                 )
             )
 
@@ -932,7 +872,7 @@ def register(broker: Any, logger: Any) -> None:
                 await subscription_status_for_user(
                     form=form,
                     auth_user_id=user.id,
-                    resolver=_subscription_resolver(session),
+                    resolver=subscription_resolver(session),
                 )
             )
 
@@ -941,19 +881,17 @@ def register(broker: Any, logger: Any) -> None:
     # Isolated QoS: the participants list is the heaviest public read and fans
     # out to every connected viewer after each registration mutation (the
     # realtime invalidation herd). On its own channel a burst of list rebuilds
-    # can no longer occupy the default channel's RPC_PREFETCH_COUNT slots and
-    # starve the write RPCs (check-in/register) queued behind it — mirrors
-    # recalculation_events._EVENTS_CHANNEL.
+    # cannot occupy the default channel's RPC_PREFETCH_COUNT slots and starve the
+    # write RPCs (check-in/register) queued behind it.
     @broker.subscriber("rpc.tournament.reg_pub_list", channel=Channel(prefetch_count=8))
     async def _reg_pub_list(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             # Public route — no identity required. The visibility check is
-            # viewer-dependent and always runs on this call's own session; the
-            # (expensive, viewer-agnostic) read-model build below is coalesced
-            # across concurrent callers -- see ``_coalesced_registration_list``.
+            # viewer-dependent and runs on this call's own session; the expensive,
+            # viewer-agnostic build is coalesced across concurrent callers.
             tournament_id = _path_int(data, "tournament_id")
             await ensure_tournament_viewable(session, _optional_identity(data), tournament_id)
-            return _dump(await _coalesced_registration_list(tournament_id))
+            return _dump(await public_list.coalesced_registration_list(db.async_session_maker, tournament_id))
 
         return await _run(logger, op)
 
@@ -1027,7 +965,7 @@ def register(broker: Any, logger: Any) -> None:
     # Every handler here is a *public* surface: the invitee flows in particular are
     # reachable by anyone holding a link. The service layer owns the row lock, the
     # slot decision and the machine error codes; these handlers only translate
-    # transport to arguments. See docs/plans/2026-08-20-team-registration.md §4.
+    # transport to arguments.
 
     @broker.subscriber("rpc.tournament.regteam_create")
     async def _regteam_create(data: dict, msg: RabbitMessage) -> dict:
@@ -1361,7 +1299,7 @@ def register(broker: Any, logger: Any) -> None:
             if not user.is_workspace_member(workspace_id):
                 raise HTTPException(status_code=403, detail="Not a member of this workspace")
             body = schemas.EncounterSavedViewCreate.model_validate(_payload(data))
-            # upsert_saved_view commits internally; route uses response_model_exclude_none=True.
+            # save_view commits internally.
             saved_view = await encounter_flows.flows_service.save_view(
                 session,
                 workspace_id=workspace_id,
@@ -1380,7 +1318,7 @@ def register(broker: Any, logger: Any) -> None:
             workspace_id = _require_q1(data, "workspace_id", int)
             if not user.is_workspace_member(workspace_id):
                 raise HTTPException(status_code=403, detail="Not a member of this workspace")
-            # delete_saved_view commits internally; route returns 204 (no body).
+            # delete_saved_view commits internally.
             await encounter_flows.flows_service.delete_saved_view(
                 session,
                 workspace_id=workspace_id,

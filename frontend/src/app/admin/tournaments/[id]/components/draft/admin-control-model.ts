@@ -1,3 +1,5 @@
+import { roleOf } from "@/lib/roster/role-ref";
+import { playerRoles } from "@/lib/draft/workspace-model";
 import type {
   DraftFeasibility,
   DraftPlayer,
@@ -5,12 +7,10 @@ import type {
   DraftRoleEditResponse
 } from "@/types/draft.types";
 
-const ROLES: DraftRole[] = ["tank", "damage", "support"];
-
-export function availableRolesForPlayer(player: DraftPlayer): DraftRole[] {
-  const declared = new Set<DraftRole>(player.secondary_roles as DraftRole[]);
-  if (player.primary_role) declared.add(player.primary_role);
-  return ROLES.filter((role) => !declared.has(role));
+/** Of the owner game's `roles`, the ones the player does not declare yet: what an organizer may add. */
+export function availableRolesForPlayer(player: DraftPlayer, roles: readonly DraftRole[]): DraftRole[] {
+  const declared = playerRoles(player);
+  return roles.filter((role) => !declared.includes(role));
 }
 
 interface RoleEditCommitState {
@@ -31,7 +31,7 @@ export function canCommitRoleEdit(state: RoleEditCommitState): boolean {
   return (
     preview.player_id === player.id &&
     preview.player_version === player.version &&
-    preview.role === role &&
+    roleOf(preview.role) === role &&
     preview.after.matched_slots >= preview.before.matched_slots
   );
 }
@@ -47,4 +47,3 @@ export function roleEditImpact(preview: {
   if (preview.after.matched_slots < preview.before.matched_slots) return "worse";
   return "unchanged";
 }
-

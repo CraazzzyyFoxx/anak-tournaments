@@ -2,55 +2,24 @@
 
 import { useTranslations } from "next-intl";
 
+import { ProfileStat } from "@/components/profile/atoms";
 import { StatusDot } from "@/components/ui/status-dot";
-import { normalizePlayerRole, playerRoleSlotCode } from "@/lib/roster/player-role";
-import { ROSTER_SLOT_CODES, type RosterSlotCode } from "@/lib/roster/shape";
-import { cn } from "@/lib/utils";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { roleColor, slotCodeOrder, slotRank } from "@/lib/roster/ontology";
 
-import styles from "../../TournamentDetail.module.css";
-
-/** The site's role tints (`PlayerRoleIcon` uses the same tokens), keyed by slot code. */
-export const ROLE_TINT: Record<RosterSlotCode, string> = {
-  tank: "var(--aqt-tank)",
-  damage: "var(--aqt-damage)",
-  support: "var(--aqt-support)",
-  flex: "var(--aqt-flex)"
-};
-
-export function StatTile({
-  label,
-  value,
-  hint,
-  accent
-}: Readonly<{ label: string; value: string; hint?: string; accent?: string }>) {
+/** A figure with its advisory capacity as a quiet inline `/ N` suffix. */
+export function CapacityValue({ value, max }: Readonly<{ value: number; max?: number | null }>) {
   return (
-    <div className={styles.figure}>
-      <div className={cn(styles.figureLabel, "flex items-center gap-1.5")}>
-        {accent ? <StatusDot style={{ color: accent }} /> : null}
-        {label}
-      </div>
-      <div className={styles.figureValue}>
-        {value}
-        {hint ? <span className={styles.figureHint}>{hint}</span> : null}
-      </div>
-    </div>
+    <>
+      {value}
+      {max != null && max > 0 ? (
+        <span className="ms-1.5 font-[family-name:var(--aqt-data)] text-label font-normal text-[color:var(--aqt-fg-faint)]">
+          / {max}
+        </span>
+      ) : null}
+    </>
   );
-}
-
-/**
- * Folds the server's raw registration role codes onto the four slot codes the
- * site renders. The server counts one bucket per registration (its primary
- * role) and sends whatever code that row stores; capitalized `Damage` and
- * friends resolve here rather than in two places.
- */
-export function toRoleSlotCounts(
-  roleCounts: Readonly<Record<string, number>> | undefined
-): Record<RosterSlotCode, number> {
-  const counts: Record<RosterSlotCode, number> = { tank: 0, damage: 0, support: 0, flex: 0 };
-  for (const [role, count] of Object.entries(roleCounts ?? {})) {
-    counts[playerRoleSlotCode(normalizePlayerRole(role))] += count;
-  }
-  return counts;
 }
 
 /**
@@ -62,39 +31,55 @@ export function toRoleSlotCounts(
  * thing either page can say, because the server sends no rows at all.
  */
 export function RegistrationSummary({
+  workspaceId,
+  discipline,
   total,
   roleCounts,
   maxParticipants
 }: Readonly<{
+  /** The owner tournament's workspace and game: roles are named and tinted in that game's own ontology. */
+  workspaceId: number;
+  discipline: string;
   total: number;
   roleCounts: Readonly<Record<string, number>>;
   /** Advisory capacity. Rendered as a `/ N` suffix; never compared against `total`. */
   maxParticipants?: number | null;
 }>) {
   const t = useTranslations();
-  const counts = toRoleSlotCounts(roleCounts);
-  // Only roles somebody actually declared: four tiles of which three read zero
-  // describe the component, not the field.
-  const shares = ROSTER_SLOT_CODES.filter((code) => counts[code] > 0);
+  const ontology = useDisciplineMetadata(workspaceId, discipline).data ?? null;
+  const roleLabel = useSlotLabel(ontology);
+  const order = slotCodeOrder(ontology);
+  // Only roles somebody actually declared: tiles that read zero describe the component, not the
+  // field. A bucket this game's ontology does not know keeps its own code and a neutral tint — it is
+  // never folded into another role.
+  const counts = roleCounts as Readonly<Record<string, number>>;
+  const shares = Object.keys(counts)
+    .filter((code) => counts[code] > 0)
+    .sort((a, b) => slotRank(order, a) - slotRank(order, b));
   const shareTotal = shares.reduce((sum, code) => sum + counts[code], 0);
-  const hasCapacity = maxParticipants != null && maxParticipants > 0;
 
   return (
     <>
       <div className="grid gap-2 sm:grid-cols-4">
-        <StatTile
+        <ProfileStat
           label={t("tournamentDetail.overview.registration.total")}
-          value={String(total)}
-          hint={hasCapacity ? `/ ${maxParticipants}` : undefined}
+          value={<CapacityValue value={total} max={maxParticipants} />}
         />
-        {shares.map((code) => (
-          <StatTile
-            key={code}
-            label={t(`common.roles.${code}`)}
-            value={String(counts[code])}
-            accent={ROLE_TINT[code]}
-          />
-        ))}
+        {shares.map((code) => {
+          const tint = roleColor(ontology, code);
+          return (
+            <ProfileStat
+              key={code}
+              label={
+                <span className="inline-flex items-center gap-1.5">
+                  {tint ? <StatusDot style={{ color: tint }} /> : null}
+                  {roleLabel(code)}
+                </span>
+              }
+              value={counts[code]}
+            />
+          );
+        })}
       </div>
       {shares.length > 1 && shareTotal > 0 ? (
         <div aria-hidden className="mt-3 flex h-1.5 gap-px overflow-hidden rounded-sm">
@@ -103,7 +88,7 @@ export function RegistrationSummary({
               key={code}
               style={{
                 width: `${(counts[code] / shareTotal) * 100}%`,
-                background: ROLE_TINT[code]
+                background: roleColor(ontology, code) ?? "var(--aqt-fg-dim)"
               }}
             />
           ))}

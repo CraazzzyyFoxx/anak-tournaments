@@ -1,10 +1,17 @@
 import {
+  CharacterLeaderboardResponse,
+  MapStatsResponse,
+  PlayerLeaderboardRow,
+  PlayerSort,
+  StatRecord,
   TournamentDivisionStatistics,
   TournamentStatistics,
   TournamentOverall,
   PlayerStatistics
 } from "@/types/statistics.types";
+import type { CharacterPlaytime } from "@/types/user.types";
 import { apiFetch } from "@/lib/api/fetch";
+import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 import { PaginatedResponse } from "@/types/pagination.types";
 
 // Platform aggregates (totals, champions, win rates, per-tournament history)
@@ -33,6 +40,20 @@ function buildWorkspaceOpts(opts?: StatsOpts) {
   };
 }
 
+/** A player leaderboard (`/statistics/{champion,winrate}`): one game's, or every game's when `discipline` is `null`
+ *  (spec §6.5; the param is then omitted). */
+function playerLeaderboard(
+  path: string,
+  discipline: string | null,
+  opts?: StatsOpts
+): Promise<PaginatedResponse<PlayerStatistics>> {
+  const base = buildWorkspaceOpts(opts);
+  return apiFetch(path, {
+    ...base,
+    query: { ...base.query, discipline, sort: "value", order: "desc" },
+  }).then((res) => res.json());
+}
+
 export default class statisticsService {
   static async getTournaments(opts?: StatsOpts): Promise<TournamentStatistics[]> {
     return apiFetch("/api/v1/tournaments/statistics/history", buildWorkspaceOpts(opts)).then(
@@ -40,10 +61,16 @@ export default class statisticsService {
     );
   }
 
-  static async getTournamentsDivision(opts?: StatsOpts): Promise<TournamentDivisionStatistics[]> {
-    return apiFetch("/api/v1/tournaments/statistics/division", buildWorkspaceOpts(opts)).then(
-      (res) => res.json()
-    );
+  /** One game's per-tournament average division by its own rated roles: the game is explicit, never defaulted. */
+  static async getTournamentsDivision(
+    discipline: string,
+    opts?: StatsOpts
+  ): Promise<TournamentDivisionStatistics[]> {
+    const base = buildWorkspaceOpts(opts);
+    return apiFetch("/api/v1/tournaments/statistics/division", {
+      ...base,
+      query: { ...base.query, discipline },
+    }).then((res) => res.json());
   }
 
   static async getOverallStatistics(opts?: StatsOpts): Promise<TournamentOverall> {
@@ -52,27 +79,117 @@ export default class statisticsService {
     );
   }
 
-  static async getChampions(opts?: StatsOpts): Promise<PaginatedResponse<PlayerStatistics>> {
+  static async getChampions(discipline: string | null, opts?: StatsOpts): Promise<PaginatedResponse<PlayerStatistics>> {
+    return playerLeaderboard("/api/v1/statistics/champion", discipline, opts);
+  }
+
+  static async getTopWinratePlayers(
+    discipline: string | null,
+    opts?: StatsOpts
+  ): Promise<PaginatedResponse<PlayerStatistics>> {
+    return playerLeaderboard("/api/v1/statistics/winrate", discipline, opts);
+  }
+
+  /** The all-time players table: every game's, or one game's; `query` filters it without renumbering the ranks. */
+  static async getPlayers(
+    discipline: string | null,
+    { sort, query, page, perPage }: { sort: PlayerSort; query: string; page: number; perPage: number },
+    opts?: StatsOpts
+  ): Promise<PaginatedResponse<PlayerLeaderboardRow>> {
     const base = buildWorkspaceOpts(opts);
-    return apiFetch("/api/v1/statistics/champion", {
+    return apiFetch("/api/v1/statistics/players", {
       ...base,
-      query: { ...base.query, sort: "value", order: "desc" },
+      query: { ...base.query, discipline, sort, order: "desc", query: query || undefined, page, per_page: perPage },
     }).then((res) => res.json());
   }
 
-  static async getTopWinratePlayers(opts?: StatsOpts): Promise<PaginatedResponse<PlayerStatistics>> {
+  /** All-time records in their fixed order; one game's log-based ones only when `discipline` names it. */
+  static async getRecords(discipline: string | null, opts?: StatsOpts): Promise<{ records: StatRecord[] }> {
     const base = buildWorkspaceOpts(opts);
-    return apiFetch("/api/v1/statistics/winrate", {
+    return apiFetch("/api/v1/statistics/records", {
       ...base,
-      query: { ...base.query, sort: "value", order: "desc" },
+      query: { ...base.query, discipline },
     }).then((res) => res.json());
   }
 
-  static async getTopWonMapsPlayers(opts?: StatsOpts): Promise<PaginatedResponse<PlayerStatistics>> {
-    const base = buildWorkspaceOpts(opts);
-    return apiFetch("/api/v1/statistics/won-maps", {
-      ...base,
-      query: { ...base.query, sort: "value", order: "desc" },
+  /** One game's finished games per map, grouped by mode. */
+  static async getMaps(discipline: string, opts?: StatsOpts): Promise<MapStatsResponse> {
+    return apiFetch(
+      `/api/v1/statistics/${encodeURIComponent(discipline)}/maps`,
+      buildWorkspaceOpts(opts)
+    ).then((res) => res.json());
+  }
+
+  /** One game's characters by share of observed playtime, most played first. */
+  static async getCharacterPlaytime(
+    discipline: string,
+    {
+      axis,
+      page = 1,
+      perPage = 10,
+      userId = "all",
+      tournamentId = null,
+      signal
+    }: {
+      axis: WorkspaceAxis;
+      page?: number;
+      perPage?: number;
+      userId?: number | "all";
+      tournamentId?: number | null;
+      signal?: AbortSignal;
+    }
+  ): Promise<PaginatedResponse<CharacterPlaytime>> {
+    return apiFetch(`/api/v1/statistics/${encodeURIComponent(discipline)}/characters/playtime`, {
+      signal,
+      // A tournament-scoped read is gated on the viewer (a hidden tournament 404s anonymously), so it carries identity;
+      // the unscoped community read is the same for everyone and stays anonymous (one Data Cache entry per URL).
+      skipAuth: tournamentId == null,
+      query: {
+        page,
+        per_page: perPage,
+        user_id: userId,
+        tournament_id: tournamentId ?? undefined,
+        sort: "playtime",
+        order: "desc",
+        workspace_id: axis,
+      },
+      next: { revalidate: STATS_TTL_SECONDS },
     }).then((res) => res.json());
+  }
+
+  /** One character's player leaderboard; a character of another game is a 404. */
+  static async getCharacterLeaderboard(
+    discipline: string,
+    entityId: number,
+    {
+      axis,
+      stat,
+      tournamentId,
+      page = 1,
+      perPage = 50,
+      signal
+    }: {
+      axis: WorkspaceAxis;
+      /** The ordering stat; absent = the server's default ranking. */
+      stat?: string;
+      tournamentId?: number | null;
+      page?: number;
+      perPage?: number;
+      signal?: AbortSignal;
+    }
+  ): Promise<CharacterLeaderboardResponse> {
+    return apiFetch(
+      `/api/v1/statistics/${encodeURIComponent(discipline)}/characters/${entityId}/leaderboard`,
+      {
+        signal,
+        query: {
+          tournament_id: tournamentId ?? undefined,
+          stat,
+          page,
+          per_page: perPage,
+          workspace_id: axis,
+        },
+      }
+    ).then((res) => res.json());
   }
 }

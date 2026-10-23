@@ -17,6 +17,10 @@ import { InfiniteScrollFooter } from "@/components/ui/infinite-scroll";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import type { StatsScope } from "@/lib/site/stats-scope";
+import { showsGameMarks, type GameScopeInit } from "@/lib/site/discipline-scope";
+import { useGameScope } from "@/hooks/useGameScope";
+import { useGameDescriptors } from "@/hooks/useGameDescriptors";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
 
 import TournamentsHero from "./TournamentsHero";
 import FeaturedLive from "./FeaturedLive";
@@ -68,7 +72,10 @@ const TournamentsPageSkeleton = () => (
   </div>
 );
 
-const TournamentsClient = ({ scope }: Readonly<{ scope: StatsScope }>) => {
+const TournamentsClient = ({
+  scope,
+  initial
+}: Readonly<{ scope: StatsScope; initial?: GameScopeInit }>) => {
   const t = useTranslations();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const workspaces = useWorkspaceStore((s) => s.workspaces);
@@ -78,6 +85,17 @@ const TournamentsClient = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     scope === "all"
       ? t("common.scope.all")
       : workspaces.find((w) => w.id === currentWorkspaceId)?.name;
+
+  // The directory's game (spec §4.3, multi): `?discipline=`, else the saved scope, else every game. Only the list
+  // and its facets know games server-side; they wait for the resolution and never read a guessed one.
+  const gameScope = useGameScope({ initial });
+  const resolution = gameScope.resolution;
+  const disciplineFilter = gameScope.game;
+  const disciplineKey = disciplineFilter ?? "all";
+  const ready = resolution?.game.kind === "all" || resolution?.game.kind === "game";
+  // Under every game of a multi-game area each card names its game (§6.1).
+  const descriptors = useGameDescriptors();
+  const games = resolution !== null && showsGameMarks(resolution, gameScope.games ?? []) ? descriptors : undefined;
 
   // Filters live in the URL, so a filtered view survives a reload and can be
   // shared. Scroll depth deliberately does NOT: it belongs to the query cache,
@@ -130,7 +148,8 @@ const TournamentsClient = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     workspaceId,
     status: statusFilter === "all" ? undefined : statusFilter,
     isLeague: typeFilter === "all" ? undefined : typeFilter === "league",
-    query: query || undefined
+    query: query || undefined,
+    discipline: disciplineFilter
   };
 
   const {
@@ -145,14 +164,18 @@ const TournamentsClient = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   } = useInfiniteQuery({
     // Every filter is in the key: a narrowed filter is a different list, so the
     // pages already accumulated for the old one must not carry over.
-    queryKey: tournamentQueryKeys.listPage(workspaceId, statusFilter, typeFilter, query, sortBy),
-    queryFn: ({ pageParam }) =>
-      tournamentService.listTournaments({
-        ...filterQuery,
-        ...SORT_QUERY[sortBy],
-        page: pageParam,
-        perPage: PER_PAGE
-      }),
+    queryKey: tournamentQueryKeys.listPage(workspaceId, disciplineKey, statusFilter, typeFilter, query, sortBy),
+    queryFn: ({ pageParam, signal }) =>
+      tournamentService.listTournaments(
+        {
+          ...filterQuery,
+          ...SORT_QUERY[sortBy],
+          page: pageParam,
+          perPage: PER_PAGE
+        },
+        { signal }
+      ),
+    enabled: ready,
     initialPageParam: 1,
     getNextPageParam: (lastPage, pages) => {
       // An empty page also ends the run: without that guard a `total` that
@@ -165,21 +188,25 @@ const TournamentsClient = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   });
 
   const { data: facets } = useQuery({
-    queryKey: tournamentQueryKeys.facets(workspaceId, statusFilter, typeFilter, query),
-    queryFn: () => tournamentService.getFacets(filterQuery)
+    queryKey: tournamentQueryKeys.facets(workspaceId, disciplineKey, statusFilter, typeFilter, query),
+    queryFn: ({ signal }) => tournamentService.getFacets(filterQuery, { signal }),
+    enabled: ready
   });
 
   const { data: overview } = useQuery({
-    queryKey: tournamentQueryKeys.encountersOverview(workspaceId),
-    queryFn: () => encounterService.getOverview("", {}, workspaceId),
+    queryKey: tournamentQueryKeys.encountersOverview(workspaceId, disciplineFilter),
+    queryFn: () => encounterService.getOverview("", { discipline: disciplineFilter }, workspaceId),
+    enabled: ready,
     refetchInterval: 30_000,
     staleTime: 15_000
   });
 
+  // Platform-wide totals have no per-game reader: they are shown for all games only.
   const { data: overall } = useQuery({
     queryKey: tournamentQueryKeys.overallStatistics(workspaceId),
     queryFn: () =>
-      statisticsService.getOverallStatistics(workspaceId != null ? { workspaceId } : undefined)
+      statisticsService.getOverallStatistics(workspaceId != null ? { workspaceId } : undefined),
+    enabled: resolution?.game.kind === "all"
   });
 
   const results = useMemo(
@@ -187,10 +214,28 @@ const TournamentsClient = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     [listPages]
   );
 
-  const liveGroups = useMemo(
-    () => groupLiveByTournament(overview?.featured.live ?? []),
-    [overview]
-  );
+  // The overview is read for the chosen game, so its live strip is that game's before the server limit.
+  const liveGroups = useMemo(() => groupLiveByTournament(overview?.live ?? []), [overview]);
+
+  if (resolution === null) {
+    return gameScope.isError ? (
+      <div className="aqt-tn">
+        <PageStateCard state="error" headingLevel={1} onAction={gameScope.refetch} />
+      </div>
+    ) : (
+      <div className="aqt-tn">
+        <TournamentsPageSkeleton />
+      </div>
+    );
+  }
+
+  if (resolution.game.kind === "invalid" || resolution.game.kind === "empty") {
+    return (
+      <div className="aqt-tn">
+        <GameScopeControl scope={gameScope} variant="multi" headingLevel={1} />
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -211,20 +256,9 @@ const TournamentsClient = ({ scope }: Readonly<{ scope: StatsScope }>) => {
       <TournamentsHero
         workspaceName={workspaceName}
         liveEvents={facets?.live ?? 0}
-        totalPlayers={overall?.players ?? 0}
-        totalTeams={overall?.teams ?? 0}
+        totalPlayers={disciplineFilter === null ? (overall?.players ?? 0) : null}
+        totalTeams={disciplineFilter === null ? (overall?.teams ?? 0) : null}
       />
-
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h2 className="m-0 font-display text-title font-bold text-[color:var(--aqt-fg)]">
-          {t("tournamentsList.heading.all")}
-        </h2>
-        {/* The size of the result set, named: "77 shown" sat above twelve cards
-            and read as a claim about the screen. */}
-        <span className="aqt-tnum text-caption text-[color:var(--aqt-fg-muted)]">
-          {t("tournamentsList.heading.count", { count: matchedTotal })}
-        </span>
-      </div>
 
       <FeaturedLive groups={liveGroups} />
 
@@ -266,11 +300,11 @@ const TournamentsClient = ({ scope }: Readonly<{ scope: StatsScope }>) => {
                whatever `?view=` says — and a JS media query would have to flash
                the wrong one through hydration first. */
             <>
-              <TournamentsTable tournaments={results} className="max-md:hidden" />
-              <TournamentsGrid tournaments={results} className="md:hidden" />
+              <TournamentsTable tournaments={results} games={games} className="max-md:hidden" />
+              <TournamentsGrid tournaments={results} games={games} className="md:hidden" />
             </>
           ) : (
-            <TournamentsGrid tournaments={results} />
+            <TournamentsGrid tournaments={results} games={games} />
           )}
 
           <InfiniteScrollFooter

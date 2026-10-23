@@ -39,17 +39,14 @@ var ReadRoutes = []edge.RouteSpec{
 // WriteRoutes are mutations + job-control (typed RPC).
 //
 // recalculate/points return 202 (now async compute jobs, not the legacy
-// synchronous 200); openskill returns 410 (gone). All require auth + the same
-// permission gate as their routes (enforced in the handler).
+// synchronous 200). All require auth + the same permission gate as their
+// routes (enforced in the handler).
 var WriteRoutes = []edge.RouteSpec{
 	// rating writes
 	{Method: "POST", Pattern: "/api/v1/analytics/recalculate", Queue: "rpc.analytics.recalculate", Body: true, AllQuery: true, Auth: edge.AuthRequired, Success: 202},
 	{Method: "POST", Pattern: "/api/v1/analytics/points", Queue: "rpc.analytics.points", AllQuery: true, Auth: edge.AuthRequired, Success: 202},
-	{Method: "POST", Pattern: "/api/v1/analytics/openskill", Queue: "rpc.analytics.openskill", AllQuery: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/analytics/shift", Queue: "rpc.analytics.shift", Body: true, Auth: edge.AuthRequired},
 	// ML + jobs
 	{Method: "POST", Pattern: "/api/v1/analytics/player-anomalies/feedback", Queue: "rpc.analytics.feedback_submit", Body: true, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/analytics/train", Queue: "rpc.analytics.train", Body: true, Auth: edge.AuthRequired, Success: 202},
-	{Method: "POST", Pattern: "/api/v1/analytics/infer", Queue: "rpc.analytics.infer", Body: true, Auth: edge.AuthRequired, Success: 202},
 	{Method: "POST", Pattern: "/api/v1/analytics/jobs", Queue: "rpc.analytics.create_job", Body: true, AllQuery: true, Auth: edge.AuthRequired, Success: 202},
 }

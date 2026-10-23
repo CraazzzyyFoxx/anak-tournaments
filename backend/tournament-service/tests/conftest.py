@@ -12,11 +12,70 @@ from shared.testing import apply_test_env_defaults
 # local ``.env`` win; committed ``shared/testing/test.env`` fills the rest.
 apply_test_env_defaults()
 
-import pytest  # noqa: E402
+import asyncio  # noqa: E402
+from collections.abc import Generator  # noqa: E402
+from typing import Any  # noqa: E402
 
-from shared.testing import configure_test_cache, db_session  # noqa: E402,F401
+import pytest  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
+
+from shared.testing import configure_test_cache, db_session, ensure_test_postgres  # noqa: E402,F401
+from shared.testing.db import CONNECT_TIMEOUT  # noqa: E402
+from shared.testing.stats_parity import stats_parity_database, stats_parity_template  # noqa: E402,F401
+from tests._rpc_fakes import CapturingBroker  # noqa: E402
 
 
 @pytest.fixture(autouse=True, scope="session")
 def setup_test_cache() -> None:
     configure_test_cache()
+
+
+class DashboardRpc:
+    """The organizer dashboard subscribers (``src/rpc/dashboard.py``) on a capture broker, dispatched by subject."""
+
+    def __init__(self) -> None:
+        # The handlers log with loguru's ``{}`` placeholders (``serve.py`` hands them a loguru logger); a stdlib
+        # logger would turn a failing RPC into a logging TypeError that hides the real exception.
+        from loguru import logger
+
+        from src.rpc import dashboard
+
+        self.broker = CapturingBroker()
+        dashboard.register(self.broker, logger)
+
+    async def call(self, subject: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
+        return await self.broker.handlers[subject](data or {}, None)
+
+    def call_sync(self, subject: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Drive an async handler from a synchronous test (``asyncio.run`` owns the loop)."""
+        return asyncio.run(self.call(subject, data))
+
+
+@pytest.fixture
+def rpc() -> Generator[DashboardRpc]:
+    """The dashboard handlers against the real test DB (they open their own async session).
+
+    Each ``asyncio.run`` gets a fresh loop, so the handlers' pooled asyncpg connections are dropped after the test
+    (``close=False``: never touch the dead loop) or the next test breaks on "Event loop is closed".
+    """
+    ensure_test_postgres()
+    yield DashboardRpc()
+    from src.core import db as async_db
+
+    async_db.async_engine.sync_engine.dispose(close=False)
+
+
+@pytest.fixture(scope="session")
+def db() -> Generator[Session]:
+    """A sync session for seeding."""
+    ensure_test_postgres()
+    from src.core.config import settings
+
+    connect_args: dict[str, object] = {"connect_timeout": CONNECT_TIMEOUT}
+    if settings.db_statement_timeout > 0:
+        connect_args["options"] = f"-c statement_timeout={settings.db_statement_timeout}"
+    engine = create_engine(settings.db_url, pool_pre_ping=True, connect_args=connect_args)
+    with sessionmaker(engine, class_=Session, expire_on_commit=False)() as session:
+        yield session
+    engine.dispose()

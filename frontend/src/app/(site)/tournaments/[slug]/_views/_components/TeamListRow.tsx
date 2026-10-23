@@ -4,15 +4,16 @@ import type { CSSProperties } from "react";
 import Link from "next/link";
 import { ArrowRight, ChevronDown, Crown } from "lucide-react";
 import { useTranslations } from "next-intl";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import { useFormatter } from "@/lib/datetime/client";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { TeamPlacement, TournamentTeamTable } from "@/components/TournamentTeamCard";
 import TeamName from "@/components/TeamName";
-import { sortTeamPlayers } from "@/lib/player";
+import { sortTeamPlayers, splitHandle } from "@/lib/player";
 import { groupDisplayName, groupHue } from "@/lib/tournament/group";
 import { cn } from "@/lib/utils";
-import type { Hero } from "@/types/hero.types";
+import type { CatalogEntityChip } from "@/types/catalog.types";
 import type { Registration } from "@/types/registration.types";
 import type { Team } from "@/types/team.types";
 import type { Tournament } from "@/types/tournament.types";
@@ -36,7 +37,8 @@ export const TeamListRow = ({
   needle,
   showGroup,
   registrationsByUser,
-  heroesMap
+  heroesMap,
+  ontology
 }: {
   team: Team;
   tournament: Tournament;
@@ -45,13 +47,15 @@ export const TeamListRow = ({
   needle: string;
   showGroup: boolean;
   registrationsByUser: Map<number, Registration>;
-  heroesMap: Map<string, Hero>;
+  heroesMap: Map<string, CatalogEntityChip>;
+  /** The tournament's own game's scoped ontology; `null` while it loads. */
+  ontology: RoleOntology | null;
 }) => {
   const t = useTranslations();
   const format = useFormatter();
   // A live leader is not on the podium yet: `placement` moves with every result.
   const medal = overviewVariant(tournament.status) === "completed";
-  const players = sortTeamPlayers(team.players);
+  const players = sortTeamPlayers(team.players, ontology);
   const roster = team.players.map((player) => ({
     ...player,
     heroes: declaredHeroes(player, registrationsByUser.get(player.user_id), heroesMap)
@@ -97,12 +101,12 @@ export const TeamListRow = ({
                     {/* Inline, not flex: an atomic box is clipped whole, so
                         `truncate` could only ellipsize plain text runs. */}
                     <span className="mr-1 inline-block align-[-2px]">
-                      <PlayerRoleIcon role={player.role} size={13} decorative />
+                      <PlayerRoleIcon role={player.role} ontology={ontology} size={13} decorative />
                     </span>
                     {matched ? (
                       <mark className={MARK_CLASS}>{player.name}</mark>
                     ) : (
-                      player.name.split("#")[0]
+                      splitHandle(player.name).name
                     )}
                     {player.user_id === team.captain_id ? (
                       <Crown
@@ -137,6 +141,8 @@ export const TeamListRow = ({
       <TournamentTeamTable
         players={roster}
         tournamentGrid={tournament.division_grid_version}
+        discipline={tournament.discipline}
+        ontology={ontology}
         captainUserId={team.captain_id}
       />
       <div className="tc-divider" />

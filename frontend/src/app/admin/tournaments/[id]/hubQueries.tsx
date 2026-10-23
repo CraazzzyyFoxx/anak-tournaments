@@ -2,11 +2,11 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import adminService from "@/services/admin.service";
 import encounterService from "@/services/encounter.service";
 import teamService from "@/services/team.service";
-import tournamentService from "@/services/tournament.service";
 import workspaceService from "@/services/workspace.service";
 import type { DivisionGridEntity, DivisionGridVersion } from "@/types/workspace.types";
 import { getTournamentWorkspaceQueryKeys } from "@/lib/tournament/workspace-query-keys";
@@ -18,7 +18,7 @@ import { adminQueryKeys } from "@/lib/admin/query-keys";
  * hub already invalidates on realtime events and TanStack refetches on focus,
  * so a hidden tab polling every minute only bills the API for nothing.
  */
-export const TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS = 60_000;
+const TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS = 60_000;
 
 /** Shared loading fallback of every hub tab route. */
 export const tabFallback = (
@@ -27,6 +27,14 @@ export const tabFallback = (
     <Skeleton className="h-64 w-full rounded-xl" />
   </div>
 );
+
+/**
+ * Shared failure state of every hub tab body that needs the tournament: a
+ * failed read is an error with a retry, never a blank tab.
+ */
+export function tabError(retry: () => unknown) {
+  return <PageStateCard state="error" onAction={() => void retry()} />;
+}
 
 /*
  * Shared query hooks of the tournament hub (T5). Keys and options MUST stay
@@ -63,12 +71,17 @@ export function useHubTeamsQuery(tournamentId: number) {
   });
 }
 
-/** Header metric only — the count endpoint, not the team list. */
-export function useHubTeamsCountQuery(tournamentId: number) {
+/**
+ * Header metric only — the count endpoint, not the team list. Scoped to the
+ * tournament's OWN workspace and held until it is known: fired alongside the
+ * tournament read, apiFetch injected the admin's current workspace, and a
+ * tournament of another workspace read "0 teams" until the next refetch.
+ */
+export function useHubTeamsCountQuery(tournamentId: number, workspaceId: number | null) {
   return useQuery({
     queryKey: adminQueryKeys.tournamentTeamsCount(tournamentId),
-    queryFn: () => teamService.getCount(tournamentId),
-    enabled: Number.isFinite(tournamentId) && tournamentId > 0,
+    queryFn: () => teamService.getCount(tournamentId, workspaceId),
+    enabled: Number.isFinite(tournamentId) && tournamentId > 0 && workspaceId != null,
     refetchInterval: TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
     refetchIntervalInBackground: false
   });
@@ -84,26 +97,12 @@ export function useHubEncountersQuery(tournamentId: number) {
   });
 }
 
-/** Header metric only — the count endpoint, not the encounter list. */
-export function useHubEncountersCountQuery(tournamentId: number) {
+/** Header metric only — the count endpoint, not the encounter list. Scoped like the teams count. */
+export function useHubEncountersCountQuery(tournamentId: number, workspaceId: number | null) {
   return useQuery({
     queryKey: adminQueryKeys.tournamentEncountersCount(tournamentId),
-    queryFn: () => encounterService.getCount(tournamentId),
-    enabled: Number.isFinite(tournamentId) && tournamentId > 0,
-    refetchInterval: TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
-    refetchIntervalInBackground: false
-  });
-}
-
-export function useHubStandingsQuery(tournamentId: number) {
-  return useQuery({
-    queryKey: getTournamentWorkspaceQueryKeys(tournamentId).standings,
-    queryFn: () =>
-      tournamentService.getStandings(tournamentId, {
-        includeMatchesHistory: false,
-        includeTeamGroup: false
-      }),
-    enabled: Number.isFinite(tournamentId) && tournamentId > 0,
+    queryFn: () => encounterService.getCount(tournamentId, workspaceId),
+    enabled: Number.isFinite(tournamentId) && tournamentId > 0 && workspaceId != null,
     refetchInterval: TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
     refetchIntervalInBackground: false
   });
@@ -132,4 +131,3 @@ export function flattenDivisionGridVersions(
     .slice()
     .sort((left, right) => right.version - left.version);
 }
-

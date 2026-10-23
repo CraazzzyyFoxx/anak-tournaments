@@ -140,6 +140,10 @@ docker run --rm --network container:owt-alloy-1 curlimages/curl:8.16.0 \
 docker logs owt-alloy-1 --since 10m | grep -i error
 ```
 
+Alloy has a 1 GiB memory limit. At 512 MiB, page-cache/swap thrashing saturated the
+production disk despite available host RAM. For sustained read I/O, check the
+container's memory and swap limits, not just host memory usage.
+
 **Ingest returns 401.** `TELEMETRY_INGEST_PASSWORD` in the production `.env` does not match
 what the ingest endpoint expects.
 

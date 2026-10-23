@@ -578,13 +578,15 @@ export default class balancerAdminService {
     return response.json();
   }
 
+  /** One game's balancer rank history of a user in a workspace: another game's ranks are never returned. */
   static async getUserBalancerRankHistory(
     userId: number,
-    workspaceId: number
+    workspaceId: number,
+    discipline: string
   ): Promise<BalancerRegistrationRankHistoryEntry[]> {
     const response = await apiFetch(`/api/v1/admin/balancer/users/${userId}/registration-rank-history`,
       {
-        query: { workspace_id: workspaceId }
+        query: { workspace_id: workspaceId, discipline }
       }
     );
     const data = await response.json();

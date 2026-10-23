@@ -1,4 +1,5 @@
 import { CheckCircle2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -110,6 +111,7 @@ export function BalancerSetupChecklist({
   onReviewConflicts,
   onRunBalance,
 }: Readonly<BalancerSetupChecklistProps>) {
+  const t = useTranslations("balancerTool.page");
   const hasPoolPlayers = poolPlayerCount > 0;
   const hasInvalidPlayers = invalidPlayerCount > 0;
 
@@ -118,44 +120,44 @@ export function BalancerSetupChecklist({
       <div className="w-full max-w-sm px-6">
         <WorkflowStep
           step={1}
-          label="Add players to pool"
+          label={t("checklist.poolStep")}
           status={hasPoolPlayers ? "done" : "active"}
           detail={
             hasPoolPlayers
-              ? `${poolPlayerCount} player${poolPlayerCount !== 1 ? "s" : ""} included`
-              : "Change a registration's balancer status to bring it into the pool"
+              ? t("checklist.poolIncluded", { count: poolPlayerCount })
+              : t("checklist.poolEmpty")
           }
           action={
             !hasPoolPlayers
-              ? { label: "Browse excluded", onClick: onBrowseExcluded }
+              ? { label: t("checklist.browseExcluded"), onClick: onBrowseExcluded }
               : undefined
           }
         />
         <WorkflowStep
           step={2}
-          label="Resolve issues"
+          label={t("checklist.issuesStep")}
           status={!hasPoolPlayers ? "pending" : hasInvalidPlayers ? "active" : "done"}
           detail={
             hasInvalidPlayers
-              ? `${invalidPlayerCount} player${invalidPlayerCount !== 1 ? "s" : ""} need fixes`
-              : "All players are ready"
+              ? t("checklist.issuesCount", { count: invalidPlayerCount })
+              : t("checklist.issuesNone")
           }
           action={
             hasInvalidPlayers
-              ? { label: "Review conflicts", onClick: onReviewConflicts }
+              ? { label: t("checklist.reviewConflicts"), onClick: onReviewConflicts }
               : undefined
           }
         />
         <WorkflowStep
           step={3}
-          label="Run the balancer"
+          label={t("checklist.runStep")}
           isLast
           status={canRunBalance ? "active" : "pending"}
-          detail="Pick a preset above and generate team compositions"
+          detail={t("checklist.runDetail")}
           action={
             canRunBalance
               ? {
-                  label: "Run balance",
+                  label: t("run.runBalance"),
                   onClick: onRunBalance,
                   variant: "primary",
                   disabled: isRunPending,

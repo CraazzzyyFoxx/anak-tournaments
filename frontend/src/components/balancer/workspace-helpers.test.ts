@@ -1,21 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   derivePoolLane,
-  formatBattleTagsForClipboard,
-  formatSmurfCount,
-  getRegistrationBattleTags,
+  formatHandlesForClipboard,
   getPoolDropPatch,
   type PlayerValidationState,
   type PoolLane,
 } from "@/components/balancer/balancer-page-helpers";
 import {
+  buildVariantFromSavedBalance,
   convertBalanceResponseToInternalPayload,
   createSyntheticApplicationFromRegistration,
-  createSyntheticPlayerFromRegistration,
-  getPlayerValidationIssues,
+  createSyntheticPlayerFromRegistration as createSynthetic,
+  fetchPlayerRankHistoryPreview,
+  getRegistrationHandles,
+  getPlayerValidationIssues as validationIssues,
   isRegistrationIncludedInBalancer,
   type PlayerValidationIssue,
+  type SlotLabeler,
 } from "@/components/balancer/workspace-helpers";
 import { buildRegistrationUpdateFromPlayerPayload } from "@/components/balancer/registration-update-payload";
 import type {
@@ -25,16 +27,46 @@ import type {
   BalancerPlayerRecord,
 } from "@/types/balancer-admin.types";
 import type { BalanceResponse, PlayerData } from "@/types/balancer.types";
-import { DEFAULT_DIVISION_GRID } from "@/lib/divisions/grid";
+import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
+import { apiFetch } from "@/lib/api/fetch";
+import { slotLabel } from "@/lib/roster/ontology";
+import balancerAdminService from "@/services/balancer-admin.service";
+import userService from "@/services/user.service";
+import { LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 import type { StatusMeta, StatusScope } from "@/types/registration.types";
+import type { DivisionGrid } from "@/types/workspace.types";
+
+vi.mock("@/lib/api/fetch", () => ({ apiFetch: vi.fn() }));
+
+// The helpers take the owner's grid and role names. Most of this file pins Overwatch behavior, so it reads them
+// through these two OW-bound entry points; the League cases below pass League's own.
+const owLabel: SlotLabeler = (code) => slotLabel(OW_METADATA, code, "Flex");
+const lolLabel: SlotLabeler = (code) => slotLabel(LOL_METADATA, code, "Flex");
+
+function getPlayerValidationIssues(
+  player: BalancerPlayerRecord,
+  application: BalancerApplication | null,
+  workspaceConfig?: { rank_delta_threshold: number | null } | null,
+) {
+  return validationIssues(player, application, workspaceConfig ?? null, OW_REFERENCE_GRID, owLabel);
+}
+
+function createSyntheticPlayerFromRegistration(
+  registration: AdminRegistration,
+  grid: DivisionGrid = OW_REFERENCE_GRID,
+  identityProvider: string | null = "battlenet",
+) {
+  return createSynthetic(registration, grid, identityProvider);
+}
 
 function createPlayer(overrides: Partial<BalancerPlayerRecord>): BalancerPlayerRecord {
   return {
     id: 1,
     tournament_id: 60,
     application_id: 10,
-    battle_tag: "player#1234",
-    battle_tag_normalized: "player#1234",
+    identity: "player#1234",
+    identity_key: "player#1234",
+    additional_handles: [],
     user_id: 1,
     role_entries_json: [],
     is_flex: false,
@@ -50,9 +82,9 @@ function createApplication(overrides: Partial<BalancerApplication>): BalancerApp
     id: 10,
     tournament_id: 60,
     tournament_sheet_id: 1,
-    battle_tag: "player#1234",
-    battle_tag_normalized: "player#1234",
-    smurf_tags_json: [],
+    identity: "player#1234",
+    identity_key: "player#1234",
+    additional_handles: [],
     twitch_nick: null,
     discord_nick: null,
     stream_pov: false,
@@ -108,24 +140,16 @@ function createRegistration(overrides: Partial<AdminRegistration> = {}): AdminRe
     form_version_stale: false,
     best_rank: 900,
     roles: [
-      {
-        role: "support",
-        subrole: null,
-        is_primary: true,
-        priority: 0,
-        rank_value: 900,
-        is_active: true,
-        is_declared_active: true,
-      },
-      {
-        role: "damage",
-        subrole: null,
-        is_primary: false,
-        priority: 1,
-        rank_value: 700,
-        is_active: true,
-        is_declared_active: true,
-      },
+      { role: {dimension: "player_role", role: "support"}, is_primary: true,
+      priority: 0,
+      rank_value: 900,
+      is_active: true,
+      is_declared_active: true, },
+      { role: {dimension: "player_role", role: "damage"}, is_primary: false,
+      priority: 1,
+      rank_value: 700,
+      is_active: true,
+      is_declared_active: true, },
     ],
     admin_notes: null,
     is_flex: false,
@@ -288,7 +312,7 @@ describe("pool lane helpers", () => {
 
   it.each([
     ["excluded", createState({ is_in_pool: false })],
-    ["needs_fix", createState({ is_in_pool: true }, [{ code: "missing_ranked_role", message: "No ranked roles configured" }])],
+    ["needs_fix", createState({ is_in_pool: true }, [{ code: "missing_ranked_role" }])],
     ["ready", createState({ is_in_pool: true })],
   ] satisfies Array<[PoolLane, PlayerValidationState]>)("derives %s from pool membership and validation issues", (expectedLane, state) => {
     expect(derivePoolLane(state)).toBe(expectedLane);
@@ -357,33 +381,63 @@ describe("pool lane helpers", () => {
   });
 });
 
-describe("battle tag clipboard helpers", () => {
-  it("returns the primary BattleTag followed by unique non-empty smurf tags", () => {
+describe("game handle helpers", () => {
+  it("returns the primary handle followed by unique non-empty extra accounts", () => {
     const registration = createRegistration({
       answers: {
         identity_battlenet: ["Main#1111", " ", "Main#1111", "Alt#2222", "alt#2222", "Pocket#3333"],
       },
     });
 
-    expect(getRegistrationBattleTags(registration, "Fallback#0000")).toEqual([
+    expect(getRegistrationHandles(registration, "battlenet", "Fallback#0000")).toEqual([
       "Main#1111",
       "Alt#2222",
       "Pocket#3333",
     ]);
   });
 
-  it("falls back to the player BattleTag when the row answered no Battle.net identity", () => {
+  it("falls back to the player's handle when the row answered none for the game's provider", () => {
     const registration = createRegistration({ answers: {} });
 
-    const battleTags = getRegistrationBattleTags(registration, "Player#1234");
+    const handles = getRegistrationHandles(registration, "battlenet", "Player#1234");
 
-    expect(battleTags).toEqual(["Player#1234"]);
-    expect(formatBattleTagsForClipboard(battleTags)).toBe("Player#1234");
+    expect(handles).toEqual(["Player#1234"]);
+    expect(formatHandlesForClipboard(handles)).toBe("Player#1234");
   });
 
-  it("formats smurf count labels for collapsed UI", () => {
-    expect(formatSmurfCount(1)).toBe("1 smurf");
-    expect(formatSmurfCount(3)).toBe("3 smurfs");
+  it("reads the answer of the owner game's provider only", () => {
+    const registration = createRegistration({
+      answers: { identity_battlenet: ["Main#1111", "Alt#2222"], identity_riot: ["Faker#KR1"] },
+    });
+
+    expect(getRegistrationHandles(registration, "riot", "Fallback")).toEqual(["Faker#KR1"]);
+    // A game with no identity provider has no handle answer to read.
+    expect(getRegistrationHandles(registration, null, "Fallback")).toEqual(["Fallback"]);
+  });
+});
+
+describe("synthetic player identity", () => {
+  it("names a League registration by its Riot ID answers, extras apart, keyed by the Riot grammar", () => {
+    const registration = createRegistration({
+      primary_handle: "Faker # KR1",
+      answers: { identity_riot: ["Faker # KR1", "Alt#EUW"], identity_battlenet: ["Wrong#1111"] },
+    });
+
+    const player = createSyntheticPlayerFromRegistration(registration, OW_REFERENCE_GRID, "riot");
+
+    expect(player.identity).toBe("Faker # KR1");
+    expect(player.identity_key).toBe("faker#kr1");
+    expect(player.additional_handles).toEqual(["Alt#EUW"]);
+  });
+
+  it("keeps a registration with no game identity nameable by its own name", () => {
+    const registration = createRegistration({ primary_handle: null, display_name: "Walk In", answers: {} });
+
+    const player = createSyntheticPlayerFromRegistration(registration, OW_REFERENCE_GRID, null);
+    const application = createSyntheticApplicationFromRegistration(registration, player, null);
+
+    expect(player).toMatchObject({ identity: "Walk In", identity_key: "walk in", additional_handles: [] });
+    expect(application).toMatchObject({ identity: "Walk In", additional_handles: [] });
   });
 });
 
@@ -428,14 +482,10 @@ describe("synthetic registration helpers", () => {
       balancer_status: "injured",
       balancer_status_meta: createStatusMeta("injured", "balancer", "Injured", false, true),
       roles: [
-        {
-          role: "support",
-          subrole: null,
-          is_primary: true,
-          priority: 0,
-          rank_value: 900,
-          is_active: true,
-        },
+        { role: {dimension: "player_role", role: "support"}, is_primary: true,
+        priority: 0,
+        rank_value: 900,
+        is_active: true, },
       ],
     });
 
@@ -452,22 +502,14 @@ describe("synthetic registration helpers", () => {
     const flexRegistration = createRegistration({
       is_flex: true,
       roles: [
-        {
-          role: "tank",
-          subrole: null,
-          is_primary: true,
-          priority: 0,
-          rank_value: 1100,
-          is_active: true,
-        },
-        {
-          role: "support",
-          subrole: null,
-          is_primary: true,
-          priority: 1,
-          rank_value: 1200,
-          is_active: true,
-        },
+        { role: {dimension: "player_role", role: "tank"}, is_primary: true,
+        priority: 0,
+        rank_value: 1100,
+        is_active: true, },
+        { role: {dimension: "player_role", role: "support"}, is_primary: true,
+        priority: 1,
+        rank_value: 1200,
+        is_active: true, },
       ],
     });
     const strictRegistration = createRegistration();
@@ -480,27 +522,19 @@ describe("synthetic registration helpers", () => {
     const registration = createRegistration({
       is_flex: true,
       roles: [
-        {
-          role: "tank",
-          subrole: null,
-          is_primary: true,
-          priority: 0,
-          rank_value: 1100,
-          is_active: true,
-        },
-        {
-          role: "support",
-          subrole: null,
-          is_primary: true,
-          priority: 1,
-          rank_value: 1200,
-          is_active: true,
-        },
+        { role: {dimension: "player_role", role: "tank"}, is_primary: true,
+        priority: 0,
+        rank_value: 1100,
+        is_active: true, },
+        { role: {dimension: "player_role", role: "support"}, is_primary: true,
+        priority: 1,
+        rank_value: 1200,
+        is_active: true, },
       ],
     });
 
     const player = createSyntheticPlayerFromRegistration(registration);
-    const application = createSyntheticApplicationFromRegistration(registration, player);
+    const application = createSyntheticApplicationFromRegistration(registration, player, "battlenet");
 
     expect(application.primary_role).toBeNull();
     expect(application.additional_roles_json).toEqual(["tank", "support"]);
@@ -510,15 +544,11 @@ describe("synthetic registration helpers", () => {
   it("copies rank_source onto synthetic role entries", () => {
     const registration = createRegistration({
       roles: [
-        {
-          role: "support",
-          subrole: null,
-          is_primary: true,
-          priority: 0,
-          rank_value: 900,
-          is_active: true,
-          rank_source: "registration",
-        },
+        { role: {dimension: "player_role", role: "support"}, is_primary: true,
+        priority: 0,
+        rank_value: 900,
+        is_active: true,
+        rank_source: "registration", },
       ],
     });
 
@@ -540,8 +570,7 @@ describe("registration role pass-through", () => {
       priority?: number;
     } = {},
   ): AdminRegistrationRole => ({
-    role: roleCode,
-    subrole: extra.subrole ?? null,
+    role: { dimension: "player_role", role: extra.subrole ? `${roleCode}_${extra.subrole}` : roleCode, parent: extra.subrole ? roleCode : null },
     is_primary: true,
     priority: extra.priority ?? 0,
     rank_value: rank,
@@ -551,7 +580,7 @@ describe("registration role pass-through", () => {
   });
 
   const built = (roles: AdminRegistrationRole[]) =>
-    createSyntheticPlayerFromRegistration(createRegistration({ roles }), DEFAULT_DIVISION_GRID);
+    createSyntheticPlayerFromRegistration(createRegistration({ roles }), OW_REFERENCE_GRID);
 
   // The roster engine already applied every flex rule server-side, so the
   // client copies the rows it was given instead of re-deriving them. A second
@@ -619,11 +648,141 @@ describe("registration rank pin save", () => {
     },
   ];
 
+  it("edits a LoL registration without converting its position into an OW role", () => {
+    const registration = createRegistration({
+      roles: [
+        {
+          role: { dimension: "position", role: "support" },
+          is_primary: true,
+          priority: 0,
+          rank_value: 100,
+          is_active: true,
+          is_declared_active: true,
+          ow_rank_value: null
+        }
+      ]
+    });
+    const player = createSyntheticPlayerFromRegistration(registration);
+    const patch = buildRegistrationUpdateFromPlayerPayload(
+      {
+        role_entries_json: player.role_entries_json.map((entry) => ({
+          ...entry,
+          rank_value: 1500
+        })),
+        is_flex: player.is_flex
+      },
+      registration.roles,
+      "position"
+    );
+    expect(patch.roles?.[0]).toMatchObject({
+      role: { dimension: "position", role: "support" },
+      rank_value: 1500
+    });
+  });
+
+  it("writes a League registration that has no roles yet in the game's rated dimension", () => {
+    const patch = buildRegistrationUpdateFromPlayerPayload(
+      {
+        role_entries_json: [{ ...roleEntries[0], role: "jungle" }, { ...roleEntries[0], role: "mid", priority: 2 }],
+        is_flex: false
+      },
+      [],
+      "position"
+    );
+    expect(patch.roles?.map((entry) => entry.role)).toEqual([
+      { dimension: "position", role: "jungle" },
+      { dimension: "position", role: "mid" }
+    ]);
+  });
+
+  it("uses the rated dimension of the owner over a stale existing role's", () => {
+    const registration = createRegistration({
+      roles: [
+        {
+          role: { dimension: "legacy", role: "support" },
+          is_primary: true,
+          priority: 0,
+          rank_value: 100,
+          is_active: true,
+          is_declared_active: true,
+          ow_rank_value: null
+        }
+      ]
+    });
+    const patch = buildRegistrationUpdateFromPlayerPayload(
+      { role_entries_json: roleEntries, is_flex: false },
+      registration.roles,
+      "position"
+    );
+    expect(patch.roles?.[0]?.role).toEqual({ dimension: "position", role: "support" });
+  });
+
+  it("falls back to the existing roles' dimension while the owner's roles load", () => {
+    const registration = createRegistration({
+      roles: [
+        {
+          role: { dimension: "position", role: "support" },
+          is_primary: true,
+          priority: 0,
+          rank_value: 100,
+          is_active: true,
+          is_declared_active: true,
+          ow_rank_value: null
+        }
+      ]
+    });
+    const patch = buildRegistrationUpdateFromPlayerPayload(
+      { role_entries_json: roleEntries, is_flex: false },
+      registration.roles,
+      null
+    );
+    expect(patch.roles?.[0]?.role).toEqual({ dimension: "position", role: "support" });
+  });
+
+  it("refuses to guess a dimension for a role write when neither the game nor the registration names one", () => {
+    expect(() =>
+      buildRegistrationUpdateFromPlayerPayload(
+        { role_entries_json: roleEntries, is_flex: false },
+        [],
+        null
+      )
+    ).toThrow(/rated role dimension/);
+    // A write that touches no role entry needs no dimension.
+    expect(
+      buildRegistrationUpdateFromPlayerPayload({ admin_notes: "n" } as never, [], null)
+    ).toEqual({ admin_notes: "n" });
+  });
+
+  it("carries a role's saved character picks as `top_characters`, never the persisted-form spelling", () => {
+    const registration = createRegistration({
+      roles: [
+        {
+          role: { dimension: "position", role: "mid" },
+          is_primary: true,
+          priority: 0,
+          rank_value: 100,
+          is_active: true,
+          is_declared_active: true,
+          top_characters: ["ahri", "syndra"],
+          ow_rank_value: null
+        }
+      ]
+    });
+    const player = createSyntheticPlayerFromRegistration(registration);
+    const patch = buildRegistrationUpdateFromPlayerPayload(
+      { role_entries_json: player.role_entries_json, is_flex: player.is_flex },
+      registration.roles,
+      "position"
+    );
+    expect(patch.roles?.[0]).toMatchObject({ top_characters: ["ahri", "syndra"] });
+    expect(patch.roles?.[0]).not.toHaveProperty("top_heroes");
+  });
+
   it("does not send pin:true when the editor pin is off", () => {
     const patch = buildRegistrationUpdateFromPlayerPayload({
       role_entries_json: roleEntries,
       is_flex: false,
-    });
+    }, undefined, "player_role");
     expect(patch.pin).toBe(undefined);
     expect(patch.clear_pin).toBe(undefined);
   });
@@ -633,7 +792,7 @@ describe("registration rank pin save", () => {
       role_entries_json: roleEntries,
       is_flex: false,
       pin: true,
-    });
+    }, undefined, "player_role");
     expect(patch.pin).toBe(true);
   });
 
@@ -642,17 +801,13 @@ describe("registration rank pin save", () => {
       role_entries_json: roleEntries,
       is_flex: false,
       clear_pin: true,
-    });
+    }, undefined, "player_role");
     expect(patch.clear_pin).toBe(true);
     expect(patch.roles).toEqual([
-      {
-        role: "support",
-        subrole: null,
-        priority: 1,
-        is_primary: true,
-        rank_value: 900,
-        is_active: true,
-      },
+      { role: {dimension: "player_role", role: "support"}, priority: 1,
+      is_primary: true,
+      rank_value: 900,
+      is_active: true, },
     ]);
   });
 
@@ -660,7 +815,7 @@ describe("registration rank pin save", () => {
     const patch = buildRegistrationUpdateFromPlayerPayload({
       role_entries_json: [{ ...roleEntries[0], is_active: true, is_declared_active: false }],
       is_flex: false,
-    });
+    }, undefined, "player_role");
     expect(patch.roles?.[0]?.is_active).toBe(false);
   });
 });
@@ -695,31 +850,55 @@ describe("convertBalanceResponseToInternalPayload", () => {
       statistics: {},
     }) as unknown as BalanceResponse;
 
-  it("re-keys the solver's canonical roster codes onto the editor's buckets", () => {
-    // The solver keys the response by the tournament roster shape's slot codes,
-    // so a run whose roster arrives as tank/damage/support must still land in the
-    // Tank/Damage/Support buckets the editor and result_json use.
+  it("keys the editor's buckets by the solver's lower-case slot codes", () => {
+    // The solver keys the response by the tournament roster shape's slot codes, and the editor, result_json and
+    // the save endpoint speak the same codes: tank/damage/support stay tank/damage/support.
     const payload = convertBalanceResponseToInternalPayload(
       response({ tank: [player({ uuid: "t" })], damage: [player({ uuid: "d" })], support: [player({ uuid: "s" })] }),
     );
 
     const roster = payload.teams[0].roster;
-    expect(roster.Tank.map((entry) => entry.uuid)).toEqual(["t"]);
-    expect(roster.Damage.map((entry) => entry.uuid)).toEqual(["d"]);
-    expect(roster.Support.map((entry) => entry.uuid)).toEqual(["s"]);
+    expect(roster.tank.map((entry) => entry.uuid)).toEqual(["t"]);
+    expect(roster.damage.map((entry) => entry.uuid)).toEqual(["d"]);
+    expect(roster.support.map((entry) => entry.uuid)).toEqual(["s"]);
   });
 
-  it("re-keys the per-role player maps the editor compares against roster keys", () => {
+  it("preserves format findings from the solver through the save request", async () => {
+    const generated = response({ tank: [player()] });
+    const findings = {
+      format_violations: ["role_below_hard_min"],
+      format_advisories: ["role_below_recommended_min"],
+    };
+    Object.assign(generated.teams[0], findings);
+    vi.mocked(apiFetch).mockResolvedValueOnce(new Response("{}"));
+
+    await balancerAdminService.saveBalance(17, {
+      config_json: null,
+      result_json: convertBalanceResponseToInternalPayload(generated),
+    });
+
+    expect(apiFetch).toHaveBeenLastCalledWith("/api/v1/balancer/tournaments/17/balance", {
+      method: "PUT",
+      body: {
+        config_json: null,
+        result_json: expect.objectContaining({
+          teams: [expect.objectContaining(findings)],
+        }),
+      },
+    });
+  });
+
+  it("keeps the per-role player maps keyed like the roster buckets", () => {
     const payload = convertBalanceResponseToInternalPayload(response({ tank: [player()] }));
 
-    const entry = payload.teams[0].roster.Tank[0];
-    expect(entry.role_preferences).toEqual(["Tank", "Damage"]);
-    expect(entry.all_ratings).toEqual({ Tank: 3000, Damage: 2800 });
-    expect(entry.all_discomforts).toEqual({ Tank: 0, Damage: 100, Support: 5000 });
+    const entry = payload.teams[0].roster.tank[0];
+    expect(entry.role_preferences).toEqual(["tank", "damage"]);
+    expect(entry.all_ratings).toEqual({ tank: 3000, damage: 2800 });
+    expect(entry.all_discomforts).toEqual({ tank: 0, damage: 100, support: 5000 });
   });
 
-  it("keeps display-name payloads unchanged", () => {
-    // Saved balances and pre-roster-shape runs carry the display names already.
+  it("re-keys display-name payloads onto the slot codes", () => {
+    // The solver echoes the spelling of the mask it was given; runs from before the roster shape say `Damage`.
     const legacy = player({
       role_preferences: ["Damage"],
       all_ratings: { Damage: 2800 },
@@ -728,9 +907,9 @@ describe("convertBalanceResponseToInternalPayload", () => {
 
     const payload = convertBalanceResponseToInternalPayload(response({ Damage: [legacy] }));
 
-    const entry = payload.teams[0].roster.Damage[0];
-    expect(entry.role_preferences).toEqual(["Damage"]);
-    expect(entry.all_ratings).toEqual({ Damage: 2800 });
+    const entry = payload.teams[0].roster.damage[0];
+    expect(entry.role_preferences).toEqual(["damage"]);
+    expect(entry.all_ratings).toEqual({ damage: 2800 });
   });
 
   it("normalizes benched players the same way", () => {
@@ -738,6 +917,223 @@ describe("convertBalanceResponseToInternalPayload", () => {
 
     const payload = convertBalanceResponseToInternalPayload(benched);
 
-    expect(payload.benched_players?.[0].all_ratings).toEqual({ Tank: 3000, Damage: 2800 });
+    expect(payload.benched_players?.[0].all_ratings).toEqual({ tank: 3000, damage: 2800, });
+  });
+
+  it("keeps every bucket of another game: a League balance loses no player", () => {
+    const seats = ["top", "jungle", "mid", "bot", "support"];
+    const payload = convertBalanceResponseToInternalPayload(
+      response(
+        Object.fromEntries(
+          seats.map((seat) => [seat, [player({ uuid: seat, role_preferences: [seat], all_ratings: { [seat]: 2500 } })]]),
+        ),
+      ),
+    );
+
+    const roster = payload.teams[0].roster;
+    expect(Object.keys(roster)).toEqual(seats);
+    expect(Object.values(roster).flat().map((entry) => entry.uuid)).toEqual(seats);
+    expect(roster.jungle[0].role_preferences).toEqual(["jungle"]);
+  });
+
+  it("keeps the open slot and a bucket the game does not know instead of dropping their players", () => {
+    const payload = convertBalanceResponseToInternalPayload(
+      response({ flex: [player({ uuid: "f" })], retired: [player({ uuid: "r" })] }),
+    );
+
+    expect(Object.values(payload.teams[0].roster).flat().map((entry) => entry.uuid)).toEqual(["f", "r"]);
+  });
+});
+
+describe("buildVariantFromSavedBalance", () => {
+  it("re-keys a balance saved under display names; both spellings are one bucket on every team", () => {
+    const seat = (uuid: string): PlayerData => ({
+      uuid,
+      name: uuid,
+      assigned_rating: 2000,
+      role_discomfort: 0,
+      is_captain: false,
+      role_preferences: ["Tank", "Damage"],
+      all_ratings: { Tank: 2000 },
+    });
+    const saved = {
+      id: 5,
+      config_json: null,
+      result_json: {
+        teams: [
+          { id: 1, name: "A", average_mmr: 1, roster: { Tank: [seat("a")], tank: [seat("b")], Flex: [] } },
+          { id: 2, name: "B", average_mmr: 1, roster: { Tank: [seat("c")] } },
+        ],
+        benched_players: [seat("x")],
+      },
+    } as unknown as Parameters<typeof buildVariantFromSavedBalance>[0];
+
+    const { payload } = buildVariantFromSavedBalance(saved);
+
+    expect(payload.teams[0].roster.tank.map((entry) => entry.uuid)).toEqual(["a", "b"]);
+    expect(Object.keys(payload.teams[1].roster)).toEqual(["tank", "flex"]);
+    expect(payload.teams[0].roster.tank[0].role_preferences).toEqual(["tank", "damage"]);
+    expect(payload.teams[0].roster.tank[0].all_ratings).toEqual({ tank: 2000 });
+    expect(payload.benched_players?.[0].role_preferences).toEqual(["tank", "damage"]);
+  });
+});
+
+describe("a League roster", () => {
+  const NO_TIERS: DivisionGrid = { tiers: [] };
+  const entry = (role: string, rank: number | null, extra: Partial<BalancerPlayerRecord["role_entries_json"][number]> = {}) => ({
+    role,
+    subtype: null,
+    priority: 1,
+    division_number: null,
+    rank_value: rank,
+    is_active: true,
+    is_declared_active: true,
+    ow_rank_value: null,
+    ...extra,
+  });
+
+  it("matches the application's positions against the player's own", () => {
+    const player = createPlayer({ role_entries_json: [entry("top", 900), entry("jungle", 900, { priority: 2 })] });
+    const application = createApplication({ primary_role: "Top", additional_roles_json: ["jungle"] });
+
+    expect(validationIssues(player, application, null, NO_TIERS, lolLabel)).toEqual([]);
+  });
+
+  it("names a position mismatch in League's own roles", () => {
+    const player = createPlayer({ role_entries_json: [entry("bot", 900)] });
+    const application = createApplication({ primary_role: "mid", additional_roles_json: [] });
+
+    const [issue] = validationIssues(player, application, null, NO_TIERS, lolLabel);
+
+    expect(issue).toMatchObject({
+      code: "application_role_mismatch",
+      applicationRoleCodes: ["mid"],
+      playerRoleCodes: ["bot"],
+      applicationRoleLabels: ["Mid"],
+      playerRoleLabels: ["Bot"],
+    });
+  });
+
+  it("quotes a rank-delta warning with the position's own name", () => {
+    const player = createPlayer({ role_entries_json: [entry("jungle", 2000, { ow_rank_value: 2500 })] });
+
+    const [issue] = validationIssues(player, null, { rank_delta_threshold: 100 }, NO_TIERS, lolLabel);
+
+    // Off the grid, the warning quotes the raw ranks.
+    expect(issue).toMatchObject({
+      code: "rank_delta_warning",
+      role: "jungle",
+      roleLabel: "Jungle",
+      currentLabel: "2000",
+      owLabel: "2500",
+      delta: 500,
+    });
+  });
+
+  it("reads the owner game's roles from history, in declared order, and never a flex or unranked participation", async () => {
+    const tournament = (id: number, discipline: string, role: { dimension: string; role: string } | null, rank: number | null) => ({
+      id,
+      name: `T${id}`,
+      discipline,
+      role,
+      division_grid_version_id: null,
+      players: [{ user_id: 7, rank }],
+    });
+    const byName = vi.spyOn(userService, "getUserByName").mockResolvedValue({ id: 7 } as never);
+    const tournaments = vi.spyOn(userService, "getUserTournaments").mockResolvedValue({
+      results: [
+        // The newest jungle event recorded no rank: the role's rank comes from the one before it.
+        tournament(5, "lol", { dimension: "position", role: "jungle" }, null),
+        tournament(3, "lol", { dimension: "position", role: "jungle" }, 2400),
+        tournament(2, "lol", { dimension: "position", role: "top" }, 1800),
+        tournament(1, "lol", null, 3000),
+        tournament(4, "overwatch", { dimension: "player_role", role: "tank" }, 4000),
+      ],
+      division_grid_versions: [],
+    } as never);
+
+    try {
+      const preview = await fetchPlayerRankHistoryPreview(
+        "Name#EUW",
+        null,
+        NO_TIERS,
+        undefined,
+        null,
+        "lol",
+        ["top", "jungle", "mid", "bot", "support"],
+        "position",
+      );
+
+      expect(preview?.entries.map((row) => [row.role, row.rank_value])).toEqual([
+        ["top", 1800],
+        ["jungle", 2400],
+      ]);
+      expect(preview?.average_rank_value).toBe(2100);
+    } finally {
+      byName.mockRestore();
+      tournaments.mockRestore();
+    }
+  });
+
+  describe("the balancer-history step", () => {
+    const LOL_ROLES = ["top", "jungle", "mid", "bot", "support"];
+    const entry = (tournament_id: number, dimension: string, role: string, rank_value: number) => ({
+      tournament_id,
+      tournament_name: `T${tournament_id}`,
+      role: { dimension, role },
+      rank_value,
+    });
+
+    it("asks for the previewed game's history in the chosen workspace and keeps its own rank", async () => {
+      const byName = vi.spyOn(userService, "getUserByName").mockResolvedValue({ id: 7 } as never);
+      const history = vi
+        .spyOn(balancerAdminService, "getUserBalancerRankHistory")
+        .mockResolvedValue([entry(9, "position", "support", 2200), entry(8, "position", "support", 1000)]);
+      const tournaments = vi
+        .spyOn(userService, "getUserTournaments")
+        .mockResolvedValue({ results: [], division_grid_versions: [] } as never);
+
+      try {
+        const preview = await fetchPlayerRankHistoryPreview(
+          "Name#EUW", null, NO_TIERS, 3, null, "lol", LOL_ROLES, "position",
+        );
+
+        expect(history).toHaveBeenCalledWith(7, 3, "lol");
+        expect(preview?.entries).toMatchObject([
+          { role: "support", rank_value: 2200, tournament_id: 9, source: "balancer" },
+        ]);
+      } finally {
+        byName.mockRestore();
+        history.mockRestore();
+        tournaments.mockRestore();
+      }
+    });
+
+    it("never lets another game's rank under the same role code stand in for a position, or hide its fallback", async () => {
+      const byName = vi.spyOn(userService, "getUserByName").mockResolvedValue({ id: 7 } as never);
+      // A response that still carries Overwatch's `support` (same code, other dimension).
+      const history = vi
+        .spyOn(balancerAdminService, "getUserBalancerRankHistory")
+        .mockResolvedValue([entry(9, "player_role", "support", 4100)]);
+      const tournaments = vi.spyOn(userService, "getUserTournaments").mockResolvedValue({
+        results: [
+          { id: 5, name: "T5", discipline: "lol", role: { dimension: "position", role: "support" }, division_grid_version_id: null, players: [{ user_id: 7, rank: 1700 }] },
+        ],
+        division_grid_versions: [],
+      } as never);
+
+      try {
+        const preview = await fetchPlayerRankHistoryPreview(
+          "Name#EUW", null, NO_TIERS, 3, null, "lol", LOL_ROLES, "position",
+        );
+
+        // The League analytics rank fills `support`; Overwatch's 4100 is nowhere in the preview.
+        expect(preview?.entries).toMatchObject([{ role: "support", rank_value: 1700, source: "analytics" }]);
+      } finally {
+        byName.mockRestore();
+        history.mockRestore();
+        tournaments.mockRestore();
+      }
+    });
   });
 });

@@ -1,24 +1,24 @@
 "use client";
 
 import { useMemo } from "react";
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { ImageOff } from "lucide-react";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
+import { eyebrowClass } from "@/components/ui/eyebrow";
+import { characterClassOf, classRank } from "@/components/pick-ban/pick-ban-model";
 import { TournamentTeamCardFrame } from "@/components/TournamentTeamCard";
-import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { tournamentCharacterPlaytimeQueryOptions } from "@/lib/tournament/character-playtime-query";
 import { tournamentHref } from "@/lib/tournament/url";
 import { cn } from "@/lib/utils";
-import heroService from "@/services/hero.service";
-import { normalizePlayerRole, playerRoleSlotCode, type PlayerRoleSlotCode } from "@/lib/roster/player-role";
 import type { Encounter } from "@/types/encounter.types";
-import type { HeroPlaytime } from "@/types/hero.types";
 import type { Tournament } from "@/types/tournament.types";
+import type { CharacterPlaytime } from "@/types/user.types";
 
 import styles from "../TournamentDetail.module.css";
 import { TournamentPageState } from "../_components/TournamentPageState";
@@ -36,9 +36,6 @@ import {
   type PublicPageQueryState
 } from "@/lib/public-page-query-presentation";
 
-type RoleKey = Exclude<PlayerRoleSlotCode, "flex">;
-const ROLE_ORDER: RoleKey[] = ["tank", "damage", "support"];
-
 export const getHeroesQueryPresentation = (state: PublicPageQueryState) =>
   getPublicPageQueryPresentation(state);
 
@@ -46,8 +43,8 @@ const toPercent = (share: number) =>
   Number.isFinite(share) ? Math.min(100, Math.max(0, share * 100)) : 0;
 
 /**
- * A hero's share of all play-time, and its bar against the column's leader.
- * On the absolute 0–100% scale the leader of a 53-hero pool filled a sixth of
+ * A character's share of all play-time, and its bar against the column's leader.
+ * On the absolute 0–100% scale the leader of a 53-character pool filled a sixth of
  * the track and most bars were slivers; the exact share is still printed.
  */
 export function getHeroPlaytimeMetric(playtime: number, leaderPlaytime: number) {
@@ -59,12 +56,7 @@ export function getHeroPlaytimeMetric(playtime: number, leaderPlaytime: number) 
   };
 }
 
-function heroRole(playtime: HeroPlaytime): RoleKey {
-  const slotCode = playerRoleSlotCode(normalizePlayerRole(playtime.hero.type ?? playtime.hero.role));
-  return slotCode === "flex" ? "damage" : slotCode;
-}
-
-/** `heroes` first: hero play-time is what the section answered before maps joined it. */
+/** `heroes` (the URL value) first: character play-time is what the section answered before maps joined it. */
 export const STATS_TABS = ["heroes", "maps"] as const;
 export type StatsTab = (typeof STATS_TABS)[number];
 
@@ -88,8 +80,8 @@ export function buildMapPlayedCounts(
     for (const match of encounter.matches ?? []) {
       const entry = totals.get(match.map_id) ?? { played: 0, durationSec: 0, timed: 0 };
       entry.played += 1;
-      if (match.time != null) {
-        entry.durationSec += match.time;
+      if (match.duration_s != null) {
+        entry.durationSec += match.duration_s;
         entry.timed += 1;
       }
       totals.set(match.map_id, entry);
@@ -110,32 +102,34 @@ function clock(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")}`;
 }
 
-function HeroesTab({
-  tournament,
-  tournamentId
-}: Readonly<{ tournament: Tournament; tournamentId: number }>) {
+function CharactersTab({ tournament }: Readonly<{ tournament: Tournament }>) {
   const t = useTranslations();
-  const statsQuery = useQuery({
-    queryKey: tournamentQueryKeys.heroPlaytime(tournamentId),
-    queryFn: () =>
-      heroService.getHeroPlaytime(1, -1, "all", tournament.id, {
-        workspaceId: tournament.workspace_id
-      })
-  });
-  const heroes = useMemo(
+  const statsQuery = useQuery(tournamentCharacterPlaytimeQueryOptions(tournament));
+  // The game's declared class order; until it loads, classes sort by name.
+  const declared = useDisciplineMetadata(tournament.workspace_id, tournament.discipline).data?.discipline
+    .character_classes;
+  const characters = useMemo(
     () =>
       statsQuery.data ? [...statsQuery.data.results].sort((a, b) => b.playtime - a.playtime) : [],
     [statsQuery.data]
   );
-  // One ranked column per role: the columns are the filter, so a reader
-  // compares the tank pool with itself instead of scrolling past 53 rows.
-  const columns = ROLE_ORDER.map((role) => ({
-    role,
-    heroes: heroes.filter((hero) => heroRole(hero) === role)
-  })).filter((column) => column.heroes.length > 0);
+  // One ranked column per character class: the columns are the filter, so a reader
+  // compares one class's pool with itself instead of scrolling past 53 rows.
+  const columns = useMemo(() => {
+    const byClass = new Map<string | null, CharacterPlaytime[]>();
+    for (const row of characters) {
+      const group = characterClassOf(row.entity);
+      byClass.set(group, [...(byClass.get(group) ?? []), row]);
+    }
+    return [...byClass].sort(
+      ([left], [right]) =>
+        classRank(left, declared ?? []) - classRank(right, declared ?? []) ||
+        (left ?? "").localeCompare(right ?? "")
+    );
+  }, [characters, declared]);
   const presentation = getHeroesQueryPresentation({
     data: statsQuery.data,
-    itemCount: heroes.length,
+    itemCount: characters.length,
     isPending: statsQuery.isPending,
     isError: statsQuery.isError,
     isFetching: statsQuery.isFetching
@@ -147,6 +141,12 @@ function HeroesTab({
   if (presentation.initialState === "skeleton" || presentation.contentState === null) {
     return <TournamentHeroesSkeleton />;
   }
+
+  const className = (group: string | null) => {
+    // A class code is catalog data; only a code that happens to have a localized word gets one.
+    const key = `common.roles.${group}` as "common.roles.tank";
+    return group === null ? "—" : t.has(key) ? t(key) : group;
+  };
 
   const content = (
     <>
@@ -160,35 +160,35 @@ function HeroesTab({
         />
       ) : (
         <div className="grid gap-3 lg:grid-cols-3 lg:items-start">
-          {columns.map(({ role, heroes: roleHeroes }) => {
-            const roleName = t(`common.roles.${role}`);
-            const roleShare = roleHeroes.reduce((sum, hero) => sum + toPercent(hero.playtime), 0);
+          {columns.map(([group, rows]) => {
+            const label = className(group);
+            const classShare = rows.reduce((sum, row) => sum + toPercent(row.playtime), 0);
             return (
               <TournamentTeamCardFrame
-                key={role}
-                aria-label={roleName}
+                key={group ?? ""}
+                aria-label={label}
                 name={
-                  <span className="inline-flex items-center gap-2">
-                    <PlayerRoleIcon role={normalizePlayerRole(role)} size={18} decorative />
-                    {roleName}
-                    {/* The role's share of all play-time, said beside its name;
+                  <span className="inline-flex items-center gap-2 capitalize">
+                    {label}
+                    {/* The class's share of all play-time, said beside its name;
                         every value below carries its own % sign. */}
                     <span className="aqt-tnum font-normal text-[color:var(--aqt-fg-dim)]">
-                      · {roleShare.toFixed(1)}%
+                      · {classShare.toFixed(1)}%
                     </span>
                   </span>
                 }
               >
                 <ol className="py-1.5">
-                  {roleHeroes.map((hero, index) => {
+                  {rows.map((row, index) => {
                     const { sharePercent, barWidthPercent } = getHeroPlaytimeMetric(
-                      hero.playtime,
-                      roleHeroes[0].playtime
+                      row.playtime,
+                      rows[0].playtime
                     );
                     const valueText = `${sharePercent.toFixed(1)} ${t("common.playtimeLabel")}`;
+                    const color = row.entity.attrs.color;
                     return (
                       <li
-                        key={hero.hero.id}
+                        key={row.entity.id}
                         data-rank={index + 1}
                         className="grid grid-cols-[1.25rem_28px_minmax(0,1fr)_3.25rem] items-center gap-x-2.5 px-3.5 py-1.5"
                       >
@@ -198,23 +198,14 @@ function HeroesTab({
                         >
                           {String(index + 1).padStart(2, "0")}
                         </span>
-                        <Avatar className="size-7 border-none bg-transparent">
-                          {hero.hero.image_path ? (
-                            <AvatarImage
-                              src={hero.hero.image_path}
-                              alt=""
-                              className="object-contain"
-                            />
-                          ) : null}
-                          <AvatarFallback className="bg-transparent" />
-                        </Avatar>
+                        <CatalogEntityImage entity={row.entity} size={28} decorative />
                         <span className="flex min-w-0 flex-col gap-1">
                           <span className="truncate text-caption font-semibold">
-                            {hero.hero.name}
+                            {row.entity.name}
                           </span>
                           <span
                             role="progressbar"
-                            aria-label={`${hero.hero.name}: ${valueText}`}
+                            aria-label={`${row.entity.name}: ${valueText}`}
                             aria-valuemin={0}
                             aria-valuemax={100}
                             aria-valuenow={sharePercent}
@@ -225,7 +216,7 @@ function HeroesTab({
                               className="block h-full rounded-full"
                               style={{
                                 width: `${barWidthPercent}%`,
-                                backgroundColor: hero.hero.color || `var(--aqt-${role})`
+                                backgroundColor: typeof color === "string" && color ? color : "var(--aqt-teal)"
                               }}
                             />
                           </span>
@@ -272,7 +263,7 @@ function HeroesTab({
  */
 function MapsTab({ tournament, slug }: Readonly<{ tournament: Tournament; slug: string }>) {
   const t = useTranslations();
-  const mapPool = useTournamentMapPool(tournament.id);
+  const mapPool = useTournamentMapPool(tournament.id, tournament.discipline);
   // The matches section's own all-encounters-with-maps entry, not the bracket's
   // `tournamentQueryKeys.encounters`: the bracket asks for no `matches` entity,
   // so counting map plays out of it would depend on which screen mounted first.
@@ -334,7 +325,7 @@ function MapsTab({ tournament, slug }: Readonly<{ tournament: Tournament; slug: 
         >
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[color:var(--aqt-overlay-border)] text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+              <tr className={cn(eyebrowClass(), "border-b border-[color:var(--aqt-overlay-border)]")}>
                 <th scope="col" className="py-2.5 pl-3.5 pr-3 text-left font-medium">
                   {t("tournamentDetail.mapPool.col.map")}
                 </th>
@@ -393,9 +384,9 @@ function MapsTab({ tournament, slug }: Readonly<{ tournament: Tournament; slug: 
                             data-map-mode
                             className="flex items-center gap-1.5 text-label text-[color:var(--aqt-fg-muted)]"
                           >
-                            {map.gamemode?.image_path ? (
+                            {map.parent?.image_path ? (
                               <Image
-                                src={map.gamemode.image_path}
+                                src={map.parent.image_path}
                                 alt=""
                                 width={12}
                                 height={12}
@@ -452,17 +443,14 @@ function MapsTab({ tournament, slug }: Readonly<{ tournament: Tournament; slug: 
 }
 
 /**
- * Statistics: hero play-time and how often each map was played, as two sub-tabs
+ * Statistics: character play-time and how often each map was played, as two sub-tabs
  * of one section.
  *
  * The pool itself is not here — it went back to its own `maps` section, which
  * is open before the tournament starts while this one is still locked. What
  * stays is the part that only exists once matches have been played.
  */
-const TournamentStatsPage = ({
-  tournamentId,
-  slug
-}: Readonly<{ tournamentId: number; slug: string }>) => {
+const TournamentStatsPage = ({ slug }: Readonly<{ slug: string }>) => {
   const t = useTranslations();
   const searchParams = useSearchParams();
   const tab = readViewParam(searchParams, "tab", STATS_TABS, "heroes");
@@ -488,7 +476,7 @@ const TournamentStatsPage = ({
         <ViewSegment
           param="tab"
           options={[
-            { value: "heroes", label: t("common.heroes") },
+            { value: "heroes", label: t("common.characters") },
             { value: "maps", label: t("common.maps") }
           ]}
           defaultValue="heroes"
@@ -500,7 +488,7 @@ const TournamentStatsPage = ({
       {tab === "maps" ? (
         <MapsTab tournament={tournament} slug={slug} />
       ) : (
-        <HeroesTab tournament={tournament} tournamentId={tournamentId} />
+        <CharactersTab tournament={tournament} />
       )}
     </section>
   );

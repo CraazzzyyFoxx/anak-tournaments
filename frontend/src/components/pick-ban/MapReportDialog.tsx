@@ -23,20 +23,38 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ApiError } from "@/lib/api/error";
 import { notify } from "@/lib/notify";
 import pickBanService from "@/services/pickBan.service";
 import type { PickBanGame } from "@/types/tournament.types";
 import { Spinner } from "@/components/ui/spinner";
 
-import { acceptedScore } from "./pick-ban-model";
+import { MatchImport } from "./MatchImport";
+import { acceptedScore, type PickBanSeat } from "./pick-ban-model";
+
+/** Server codes of a game claim a captain can act on (`map_report.submit_game_claim`, `games.select_map`). */
+const CLAIM_ERROR_CODES = [
+  "stale_state",
+  "result_locked",
+  "map_locked",
+  "side_pick_pending",
+  "side_pick_required"
+] as const;
+type ClaimErrorCode = (typeof CLAIM_ERROR_CODES)[number];
+
+function isClaimErrorCode(code: string | undefined): code is ClaimErrorCode {
+  return CLAIM_ERROR_CODES.some((known) => known === code);
+}
 
 interface MapReportDialogProps {
   encounterId: number;
   /** The position being reported — the claim is filed against IT, not the map. */
   game: PickBanGame;
   mapName: string;
-  /** The captain's own team side — decides which score field is "yours". */
-  side: "home" | "away";
+  /** The duel's two participations in slot order. */
+  seats: PickBanSeat[];
+  /** The captain's own participation — decides which score field is "yours". */
+  viewerTeamId: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /**
@@ -46,6 +64,8 @@ interface MapReportDialogProps {
   mapChoices?: ReadonlyArray<{ id: number; name: string }>;
   /** Query keys to invalidate once the report lands (encounter + pick-ban state). */
   invalidateKeys: unknown[][];
+  /** Offer filing the game's match by its id: a tournament game of a discipline with a match fetcher. */
+  matchImport?: boolean;
 }
 
 /**
@@ -65,26 +85,27 @@ export function MapReportDialog({
   encounterId,
   game,
   mapName,
-  side,
+  seats,
+  viewerTeamId,
   open,
   onOpenChange,
   mapChoices,
   invalidateKeys,
+  matchImport = false,
 }: Readonly<MapReportDialogProps>) {
   const t = useTranslations("pickBan.room.mapReport");
   const tRoom = useTranslations("pickBan.room");
   const queryClient = useQueryClient();
-  const filed = game.reports.find((report) => report.side === side) ?? null;
-  const accepted = acceptedScore(game);
+  const opponent = seats.find((seat) => seat.id !== viewerTeamId) ?? null;
+  const filed = game.claims.find((claim) => claim.claimant_team_id === viewerTeamId) ?? null;
+  const accepted = acceptedScore(game, seats);
   const locked = game.state === "confirmed";
+  const scoreOf = (teamId: number | undefined) =>
+    filed?.results.find((line) => line.encounter_team_id === teamId)?.score ?? 0;
   // The dialog is mounted on demand, so seeding state is enough to reopen an
   // already-filed report as an edit rather than a blank form.
-  const [yourScore, setYourScore] = useState(
-    filed == null ? 0 : side === "home" ? filed.home_score : filed.away_score,
-  );
-  const [opponentScore, setOpponentScore] = useState(
-    filed == null ? 0 : side === "home" ? filed.away_score : filed.home_score,
-  );
+  const [yourScore, setYourScore] = useState(scoreOf(viewerTeamId));
+  const [opponentScore, setOpponentScore] = useState(scoreOf(opponent?.id));
   const [mapId, setMapId] = useState<number | null>(game.map_id);
   const needsMap = game.map_id == null;
 
@@ -95,8 +116,11 @@ export function MapReportDialog({
         await pickBanService.selectGameMap(encounterId, game.id, { map_id: mapId });
       }
       return pickBanService.reportGame(encounterId, game.id, {
-        home_score: side === "home" ? yourScore : opponentScore,
-        away_score: side === "home" ? opponentScore : yourScore,
+        basis_version: game.result_version,
+        results: [
+          { encounter_team_id: viewerTeamId, score: yourScore },
+          ...(opponent ? [{ encounter_team_id: opponent.id, score: opponentScore }] : []),
+        ],
       });
     },
     onSuccess: (result) => {
@@ -109,7 +133,19 @@ export function MapReportDialog({
       }
       onOpenChange(false);
     },
-    onError: (error) => notify.apiError(error, { title: t("failed") }),
+    onError: (error) => {
+      // A server code the captain can act on gets its own sentence; anything
+      // else falls back to the generic failure with the server's own text.
+      const code =
+        error instanceof ApiError
+          ? error.details.map((detail) => detail.code).find(isClaimErrorCode)
+          : undefined;
+      if (code != null) {
+        notify.error(t("failed"), { description: t(`errors.${code}`) });
+        return;
+      }
+      notify.apiError(error, { title: t("failed") });
+    },
     onSettled: () => {
       for (const key of invalidateKeys) void queryClient.invalidateQueries({ queryKey: key });
     },
@@ -128,7 +164,7 @@ export function MapReportDialog({
         {locked ? (
           <p className="flex items-start gap-2 text-sm text-[color:var(--aqt-fg-muted)]">
             <Lock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-            {t("lockedHint", { home: accepted?.home ?? 0, away: accepted?.away ?? 0 })}
+            {t("lockedHint", { first: accepted?.one ?? 0, second: accepted?.two ?? 0 })}
           </p>
         ) : (
           <>
@@ -176,6 +212,12 @@ export function MapReportDialog({
             </div>
           </>
         )}
+
+        {matchImport ? (
+          <div className="border-t border-[color:var(--aqt-border)] pt-4">
+            <MatchImport encounterId={encounterId} games={[game]} />
+          </div>
+        ) : null}
 
         <DialogFooter>
           {locked ? (

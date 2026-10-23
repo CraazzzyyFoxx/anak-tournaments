@@ -2,10 +2,11 @@
 
 Subclasses ``commands.Bot`` (rather than a bare ``discord.Client``) for its
 Cog/extension machinery. It reacts to gateway events (via Cogs), RabbitMQ
-commands and RPC (via ``DiscordRabbitGateway``), and the action buttons on the
-notification cards it sends (``InteractionsCog``, which also carries the
-``/mix`` command group). The command tree is never synced from here: a sync is
-a deploy step, run by hand through ``python -m src.tools.sync_commands``.
+commands, RPC and mix changes (via ``DiscordRabbitGateway`` and the
+``MixProjector`` it registers), and the action buttons on the cards it sends
+(``InteractionsCog``, which also carries the ``/mix`` command group). The
+command tree is never synced from here: a sync is a deploy step, run by hand
+through ``python -m src.tools.sync_commands``.
 """
 
 from __future__ import annotations
@@ -21,17 +22,13 @@ from src.core.db import async_session_maker
 from src.interactions.dispatcher import ActionDispatcher
 from src.interactions.emoji import registry as emoji_registry
 from src.rabbit.gateway import DiscordRabbitGateway
-from src.result_waiter import ResultWaiter
+from src.services.attachment_client import AttachmentClientFactory
 from src.services.attachment_processor import AttachmentProcessor
 from src.services.channel_registry import ChannelRegistry
 from src.services.directory import DiscordDirectoryService
-from src.services.parser_client import ParserClientFactory
-from src.services.subscription_sync import MemberSubscriptionSyncService
+from src.services.mix_projector import MixProjector
 from src.services.voice import VoiceMover
 from src.watchdog import GatewayWatchdog
-
-# Seconds before giving up on a parser processing result for an uploaded log.
-_PROCESSING_RESULT_TIMEOUT = 120
 
 
 def _build_intents() -> discord.Intents:
@@ -58,16 +55,13 @@ class LogCollectorBot(commands.Bot):
         self.session_maker = async_session_maker
 
         self.channel_registry = ChannelRegistry(session_maker=self.session_maker)
-        self.result_waiter = ResultWaiter(timeout=_PROCESSING_RESULT_TIMEOUT)
         self.attachment_processor = AttachmentProcessor(
             client=self,
-            session_maker=self.session_maker,
-            parser_clients=ParserClientFactory(settings),
-            result_waiter=self.result_waiter,
+            attachment_clients=AttachmentClientFactory(settings),
+            registry=self.channel_registry,
         )
         self.directory = DiscordDirectoryService(self)
         self.voice = VoiceMover(self)
-        self.subscription_sync = MemberSubscriptionSyncService(settings=settings, session_maker=self.session_maker)
         self.action_dispatcher = ActionDispatcher(site_url=settings.public_site_url, session_maker=self.session_maker)
         self.rabbit_gateway = DiscordRabbitGateway(
             settings=settings,
@@ -75,9 +69,9 @@ class LogCollectorBot(commands.Bot):
             registry=self.channel_registry,
             directory=self.directory,
             voice=self.voice,
-            result_waiter=self.result_waiter,
             bot=self,
             session_maker=self.session_maker,
+            projector=MixProjector(bot=self, session_maker=self.session_maker),
         )
         self.watchdog = GatewayWatchdog(
             self,

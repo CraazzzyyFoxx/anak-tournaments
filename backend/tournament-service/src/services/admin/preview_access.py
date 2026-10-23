@@ -1,4 +1,4 @@
-"""Admin service for the per-tournament preview allowlist (issue #115).
+"""Admin service for the per-tournament preview allowlist.
 
 Idempotent add, hard delete, ordered list. Callers gate on
 ``is_workspace_admin`` before invoking these.

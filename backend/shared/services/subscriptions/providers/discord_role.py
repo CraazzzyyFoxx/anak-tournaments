@@ -12,22 +12,18 @@ so no reverse-engineering and no new user-facing scope.
 ``config["guild_id"]`` is NOT stored in the provider blob: it is injected by
 ``SqlEntitlementStore.load_configs`` from ``Workspace.discord_guild_id``, so one
 organizer's guild is configured once and every feature reads the same snowflake.
-That injection is deliberately invisible here -- this resolver's contract and its
-whole decision table (including the fail-open ``unknown("guild_not_configured")``
-branch, which is now reached when the *workspace* has no guild) are unchanged by
-the move. Do NOT "tidy" the injection into an explicit parameter: that would
-re-open the fail-open question argued in ``shared.services.subscriptions.verification``.
+A workspace with no guild reaches the fail-open ``unknown("guild_not_configured")``
+branch.
 
-Discord access notes (verified against the API docs, see the design doc):
+Discord access notes:
 
-- ``GET /guilds/{guild}/members/{user}`` needs NO privileged intent. Do not use
-  the *list* endpoint, which does.
-- A missing bot token of OUR own is ``DiscordNotConfigured``, never a 403: it
-  resolves ``bot_not_configured`` so a service deployed without ``DISCORD_TOKEN``
-  does not report a perfectly good guild as unreachable.
-- Rate limits bucket per ``guild_id``, so the guild's role list is fetched at
-  most once per resolver instance (one batch) and only when it is actually
-  needed.
+- Every read goes through discord-service (``shared.services.discord_client``),
+  which answers from discord.py's guild cache; a missing broker in the calling
+  process is ``DiscordNotConfigured``, never a 403, so it resolves
+  ``bot_not_configured`` instead of reporting a perfectly good guild as
+  unreachable.
+- The guild's role list is fetched at most once per resolver instance (one
+  batch) and only when it is actually needed.
 - Without the ``GUILD_MEMBERS`` intent there are no ``GUILD_MEMBER_UPDATE``
   events, so this is strictly pull-based: verdicts carry a TTL.
 """
@@ -39,6 +35,13 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
+from shared.services.discord_errors import (
+    DiscordError,
+    DiscordForbidden,
+    DiscordNotConfigured,
+    DiscordUnavailable,
+    MemberNotFound,
+)
 from shared.services.subscriptions.discord_roles import parse_role_tiers, resolve_role_tier
 from shared.services.subscriptions.types import (
     SubscriptionSource,
@@ -46,46 +49,12 @@ from shared.services.subscriptions.types import (
     SubscriptionVerdict,
 )
 
-__all__ = (
-    "DEFAULT_TTL_SECONDS",
-    "DiscordForbidden",
-    "DiscordNotConfigured",
-    "DiscordRoleResolver",
-    "DiscordUnavailable",
-    "MemberNotFound",
-)
+__all__ = ("DEFAULT_TTL_SECONDS", "DiscordRoleResolver")
 
 DEFAULT_TTL_SECONDS: Final = 15 * 60
 
 MemberRolesFetcher = Callable[[str, str], Awaitable[list[str]]]
 GuildRolesFetcher = Callable[[str], Awaitable[set[str]]]
-
-
-class DiscordError(Exception):
-    """Base for the three outcomes the resolver distinguishes."""
-
-
-class MemberNotFound(DiscordError):
-    """404 -- the user is not a member of the guild, so not subscribed."""
-
-
-class DiscordForbidden(DiscordError):
-    """403 -- the bot cannot see the guild. Organizer misconfiguration."""
-
-
-class DiscordNotConfigured(DiscordError):
-    """Our own bot token is missing, so no request was ever made.
-
-    Deliberately distinct from ``DiscordForbidden``: a 403 means the guild really
-    is unreachable, while this means we never asked. Collapsing the two made
-    every check run by a service without ``DISCORD_TOKEN`` read as
-    ``guild_not_accessible`` -- pointing the operator at a guild id that was
-    fine, instead of at the credential that was missing.
-    """
-
-
-class DiscordUnavailable(DiscordError):
-    """5xx / timeout / transport failure."""
 
 
 class DiscordRoleResolver:

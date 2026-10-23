@@ -1,20 +1,24 @@
+import { roleOf } from "@/lib/roster/role-ref";
 import type { DateFormatter } from "@/components/kit/format-time";
 import type { AdmissionDecision, RegistrationForm } from "@/types/registration.types";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 
-// Minimal fallback used only until the real registration form loads. Its schema
-// is EMPTY on purpose: the questions this tournament asks are the ones the
-// server sends, and inventing a plausible set here would render a form nobody
-// configured. The sub-role catalog rides along on the same query.
-export const ADMIN_ROLE_FORM: RegistrationForm = {
-  id: 0,
-  tournament_id: 0,
-  workspace_id: 0,
-  is_open: true,
-  form_schema: { schema_version: 1, sections: [] },
-  version_id: 0,
-  version_number: 0
-};
+// The form an organizer edits against when the tournament has no questionnaire. Its schema is EMPTY on
+// purpose: the questions this tournament asks are the ones the server sends, and inventing a plausible set here
+// would render a form nobody configured. The owner scope is not invented either: the form's roles, characters
+// and identity provider are the loaded tournament's own, so without the tournament there is no fallback at all.
+export function adminRoleForm(tournament: { id: number; workspace_id: number; discipline: string }): RegistrationForm {
+  return {
+    id: 0,
+    tournament_id: tournament.id,
+    workspace_id: tournament.workspace_id,
+    discipline: tournament.discipline,
+    is_open: true,
+    form_schema: { schema_version: 1, sections: [] },
+    version_id: 0,
+    version_number: 0
+  };
+}
 
 export const ADMISSION_LABELS: Record<AdmissionDecision, string> = {
   admitted: "Admitted",
@@ -85,7 +89,7 @@ export function buildRegistrationFacets(
     // has that role, so a row must count once for it.
     const codes = new Set<string>();
     for (const entry of registration.roles) {
-      if (entry.is_declared_active) codes.add(entry.role);
+      if (entry.is_declared_active) codes.add(roleOf(entry.role));
     }
     for (const code of codes) role.set(code, (role.get(code) ?? 0) + 1);
     status.set(registration.status, (status.get(registration.status) ?? 0) + 1);
@@ -126,7 +130,7 @@ export function filterRegistrations(
     if (admissionFilter && registration.admission.decision !== admissionFilter) return false;
     if (
       roleFilter &&
-      !registration.roles.some((role) => role.is_declared_active && role.role === roleFilter)
+      !registration.roles.some((role) => role.is_declared_active && roleOf(role.role) === roleFilter)
     ) {
       return false;
     }

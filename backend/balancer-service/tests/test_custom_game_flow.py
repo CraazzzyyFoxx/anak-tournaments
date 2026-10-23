@@ -25,17 +25,22 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-from shared.core.enums import CasualTeamSide, MixParticipation, MixRoleSelectionMode  # noqa: E402
+from shared.core.enums import MixParticipation, MixRoleSelectionMode  # noqa: E402
+from shared.core.social import SocialProvider  # noqa: E402
 from shared.domain.member_rank import ResolvedRank  # noqa: E402
-from shared.services.workspace_roster import RosterMember  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
+from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
+from shared.services import ontology  # noqa: E402
+from shared.tests.test_team_format import OW_5V5, _module_ontology  # noqa: E402
 from src.services.custom_game import CustomGameService  # noqa: E402
+from src.services.workspace_roster import RosterMember  # noqa: E402
 from tests.mix_ranker_fakes import in_memory_ranker  # noqa: E402
 
 _MEMBERS = (7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
 
 
 class _Games:
-    """``balancer.custom_game`` as a dict, ids handed out on insert."""
+    """``mix.custom_game`` as a dict, ids handed out on insert."""
 
     def __init__(self) -> None:
         self.rows: dict[int, Any] = {}
@@ -49,8 +54,28 @@ class _Games:
     async def get(self, _session: Any, game_id: int, **_options: Any) -> Any:
         return self.rows.get(game_id)
 
-    async def list_for_workspace(self, _session: Any, workspace_id: int) -> list[Any]:
-        return [row for row in self.rows.values() if row.workspace_id == workspace_id]
+    async def list_for_workspace(
+        self,
+        _session: Any,
+        workspace_id: int,
+        discipline: str | None = None,
+        *,
+        statuses: Any = None,
+        search: str | None = None,
+        before_id: int | None = None,
+        limit: int | None = None,
+    ) -> list[Any]:
+        rows = [
+            row
+            for row in sorted(self.rows.values(), key=lambda row: row.id, reverse=True)
+            if row.workspace_id == workspace_id
+            and (discipline is None or row.discipline == discipline)
+            and (statuses is None or row.status in statuses)
+            and (before_id is None or row.id < before_id)
+            # Name only: the host-name half of the search is SQL against the roster, which has no fake here.
+            and (not search or search.lower() in row.name.lower())
+        ]
+        return rows[:limit]
 
     async def delete(self, _session: Any, row: Any) -> None:
         self.rows.pop(row.id, None)
@@ -86,7 +111,7 @@ class _PlayerRoles:
         wanted = set(player_ids)
         return {pid: roles for pid, roles in self.by_player.items() if pid in wanted}
 
-    async def replace_for_player(self, _session: Any, player_id: int, roles: Any) -> None:
+    async def replace_for_player(self, _session: Any, player_id: int, roles: Any, *, discipline: str) -> None:
         self.by_player[player_id] = list(roles)
 
 
@@ -106,7 +131,7 @@ class _TeamNames:
 
 
 class _Lobbies:
-    """``balancer.custom_game_lobby`` as a dict keyed by (game id, lobby index)."""
+    """``mix.lobby`` as a dict keyed by (game id, lobby index)."""
 
     def __init__(self) -> None:
         self.rows: dict[tuple[int, int], Any] = {}
@@ -126,11 +151,7 @@ class _Lobbies:
 
 
 class _HostPrefs:
-    """``balancer.user_config`` as a dict: everything the HOST configures.
-
-    The roster shape and the points knob are the account's, not the mix's, so
-    the flow arranges them up front instead of setting them per session.
-    """
+    """The host's solver and rating knobs."""
 
     def __init__(self) -> None:
         self.rows: dict[int, Any] = {}
@@ -139,9 +160,10 @@ class _HostPrefs:
         self.rows[user_id] = SimpleNamespace(
             user_id=user_id,
             config_json=fields.get("config_json", {}),
-            role_slots_json=fields.get("role_slots_json"),
             points_per_win=fields.get("points_per_win"),
             rating_mode=fields.get("rating_mode", "points"),
+            hero_ban_presets=fields.get("hero_ban_presets", {}),
+            formation_defaults=fields.get("formation_defaults", {}),
         )
 
     async def get_by_user(self, _session: Any, user_id: int) -> Any:
@@ -164,42 +186,34 @@ class _CoHosts:
             granted.remove(user_id)
 
 
-class _CasualStore:
-    """``casual.match`` and its owned sides/seats, wired like the real cascade."""
+class _RoundStore:
+    """Matches as Start leaves them and rounds as Record leaves them, shaped like ``CustomGameRoundRepository`` rows."""
 
     def __init__(self) -> None:
         self.matches: list[Any] = []
-        self.teams: list[Any] = []
-        self.players: list[Any] = []
-        self._match_ids = count(500)
-        self._team_ids = count(100)
+        self.drafts: list[Any] = []
+        self.rounds: list[Any] = []
 
-    # match repository ----------------------------------------------------
-    async def create(self, _session: Any, row: Any) -> Any:
-        row.id = next(self._match_ids)
-        row.created_at = len(self.matches) + 1
-        row.teams = []
-        self.matches.append(row)
-        return row
+    async def open(self, _session: Any, draft: Any) -> Any:
+        self.matches.append(draft)
+        return SimpleNamespace(id=500 + len(self.matches))
+
+    async def record(self, _session: Any, draft: Any) -> Any:
+        match = self.matches[draft.encounter_id - 501]
+        self.drafts.append(draft)
+        seated = [seat.workspace_member_id for team in match.seats for seat in team]
+        self.rounds.append(
+            SimpleNamespace(
+                encounter_id=draft.encounter_id,
+                custom_game_id=match.custom_game_id,
+                encounter=SimpleNamespace(created_at=len(self.rounds) + 1),
+                members=[SimpleNamespace(workspace_member_id=m, busy=False) for m in seated]
+                + [SimpleNamespace(workspace_member_id=m, busy=True) for m in sorted(draft.busy - set(seated))],
+            )
+        )
 
     async def list_for_custom_game(self, _session: Any, game_id: int) -> list[Any]:
-        return [row for row in reversed(self.matches) if row.custom_game_id == game_id]
-
-    # team repository -----------------------------------------------------
-    async def create_many(self, _session: Any, rows: list[Any]) -> list[Any]:
-        for row in rows:
-            row.id = next(self._team_ids)
-            row.players = []
-            self.teams.append(row)
-            match = next(item for item in self.matches if item.id == row.match_id)
-            match.teams.append(row)
-        return rows
-
-    # player repository ---------------------------------------------------
-    async def create_player(self, _session: Any, row: Any) -> Any:
-        self.players.append(row)
-        next(team for team in self.teams if team.id == row.team_id).players.append(row)
-        return row
+        return [row for row in reversed(self.rounds) if row.custom_game_id == game_id]
 
 
 def _solver_result(lineup: list[Any]) -> dict[str, Any]:
@@ -239,7 +253,7 @@ class MixFlowTests(IsolatedAsyncioTestCase):
         self.team_names = _TeamNames()
         self.host_prefs = _HostPrefs()
         self.co_hosts = _CoHosts()
-        self.casual = _CasualStore()
+        self.store = _RoundStore()
         self.lobbies = _Lobbies()
 
         self.ranks = MagicMock()
@@ -258,34 +272,42 @@ class MixFlowTests(IsolatedAsyncioTestCase):
 
         for target, value in (
             ("get_effective_division_grid", object()),
-            ("get_workspace_roster_slots", None),
+            ("custom_game_slot_shape", RosterShape(entries=(("tank", 1), ("damage", 1)))),
+            ("copy_for_custom_game", None),
+            ("custom_game_format", (OW_5V5, "custom_game")),
         ):
             patcher = patch(f"src.services.custom_game.{target}", new=AsyncMock(return_value=value))
             patcher.start()
             self.addCleanup(patcher.stop)
+        ontology_patch = patch(
+            "src.services.custom_game.CatalogRoleRepository.ontology",
+            new=AsyncMock(return_value=_module_ontology("overwatch")),
+        )
+        ontology_patch.start()
+        self.addCleanup(ontology_patch.stop)
 
         self.service = CustomGameService(
             games=self.games,
+            workspaces=SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(disciplines_enabled=["overwatch"]))),
             roster=self.roster,
             co_hosts=self.co_hosts,
             lobbies=self.lobbies,
             player_roles=self.player_roles,
             team_names=self.team_names,
-            # The host's own row: solver knobs, roster shape, points per win.
+            # The host's solver and points knobs, not the mix's format.
             host_prefs=self.host_prefs,
-            casual_matches=SimpleNamespace(
-                create=self.casual.create,
-                list_for_custom_game=self.casual.list_for_custom_game,
-            ),
-            casual_teams=SimpleNamespace(create_many=self.casual.create_many),
-            casual_players=SimpleNamespace(create=self.casual.create_player),
+            mix_rounds=SimpleNamespace(list_for_custom_game=self.store.list_for_custom_game),
+            open_match=self.store.open,
+            write_result=self.store.record,
+            players=SimpleNamespace(get_id_by_auth_user_id=AsyncMock(return_value=90)),
             ranks=self.ranks,
+            scoring_rules=SimpleNamespace(create=AsyncMock(side_effect=lambda _s, row: setattr(row, "id", 5) or row)),
             load_roster=AsyncMock(
-                side_effect=lambda _s, *, workspace_id, member_ids: {
+                side_effect=lambda _s, *, workspace_id, provider, member_ids: {
                     member_id: RosterMember(
                         member_id=member_id,
                         player_id=member_id * 10,
-                        battle_tag=f"P{member_id}#1",
+                        identity=PlayerIdentityRead.of(SocialProvider.BATTLENET, f"P{member_id}#1"),
                         display_name=f"P{member_id}",
                         auth_user_id=member_id * 100,
                     )
@@ -296,16 +318,25 @@ class MixFlowTests(IsolatedAsyncioTestCase):
             load_member_user_ids=AsyncMock(return_value=set()),
             run_balance=AsyncMock(),
             ranker=in_memory_ranker(),
+            drafts=SimpleNamespace(
+                active_lobby_pools=AsyncMock(return_value={}), active_for_custom_game=AsyncMock(return_value=[])
+            ),
+        )
+        self.enterContext(
+            patch.object(
+                ontology._roles,
+                "resolve",
+                AsyncMock(side_effect=lambda _s, **kw: SimpleNamespace(code=kw["code"], parent_role_id=None)),
+            )
         )
 
     async def test_a_whole_mix_from_create_to_close(self) -> None:
-        # Everything the host configures is on their account before the mix
-        # exists: two teams of two, and 25 rank points riding on the result.
-        self.host_prefs.save(9, role_slots_json={"tank": 1, "damage": 1}, points_per_win=25)
+        self.host_prefs.save(9, points_per_win=25)
 
         game = await self.service.create(
             self.session,
             workspace_id=1,
+            discipline="overwatch",
             host_user_id=9,
             name="Thursday scrim",
             actor_user_id=9,
@@ -332,7 +363,7 @@ class MixFlowTests(IsolatedAsyncioTestCase):
             workspace_id=1,
             custom_game_id=game.id,
             workspace_member_id=8,
-            patch={"roles": ["damage"], "is_flex": False},
+            patch={"roles": [{"dimension": "player_role", "role": "damage"}], "is_flex": False},
             actor_user_id=9,
         )
         narrowed = next(row for row in self.roster.rows if row.workspace_member_id == 8)
@@ -372,24 +403,29 @@ class MixFlowTests(IsolatedAsyncioTestCase):
         self.assertEqual(by_member[11].participation, MixParticipation.BENCHED)
         self.assertEqual(by_member[7].participation, MixParticipation.MUST_PLAY)
 
+        await self.service.start_match(self.session, workspace_id=1, custom_game_id=game.id, actor_user_id=9)
+        [match] = self.store.matches
+        self.assertEqual(match.names, ("Wolves", "Team 2"))
+        seats = [seat for team in match.seats for seat in team]
+        self.assertEqual(sorted(seat.workspace_member_id for seat in seats), [7, 8, 9, 10])
+        self.assertTrue(all(seat.display_name for seat in seats))
+        # One captain per team.
+        self.assertEqual([1, 1], [sum(seat.is_captain for seat in team) for team in match.seats])
+
         recorded = await self.service.record_outcome(
             self.session,
             workspace_id=1,
             custom_game_id=game.id,
             winner=1,
-            variant_index=0,
             actor_user_id=9,
         )
         # Repeatable: the mix stays open, and the match is the only record.
         self.assertEqual(recorded.status, "balanced")
-        self.assertEqual(len(self.casual.matches), 1)
-        match = self.casual.matches[0]
-        self.assertEqual(
-            [(team.side, team.name, team.score) for team in match.teams],
-            [(CasualTeamSide.HOME, "Wolves", 1), (CasualTeamSide.AWAY, "Team 2", 0)],
-        )
-        self.assertEqual(sorted(seat.workspace_member_id for seat in self.casual.players), [7, 8, 9, 10])
-        self.assertTrue(all(seat.display_name_snapshot for seat in self.casual.players))
+        self.assertEqual(len(self.store.drafts), 1)
+        draft = self.store.drafts[0]
+        self.assertEqual((draft.encounter_id, draft.names, draft.winner), (501, ("Wolves", "Team 2"), 1))
+        # No bans: Start kept the lineup order, so lineup team 1 is the team in slot 1.
+        self.assertEqual(draft.lineup_first_team, frozenset(seat.workspace_member_id for seat in match.seats[0]))
         # The pin was redeemed by the seat it guaranteed; the win moved ranks.
         self.assertEqual(by_member[7].participation, MixParticipation.POOL)
         self.assertEqual(len(self.ranks.set_ranks.await_args_list), 9)

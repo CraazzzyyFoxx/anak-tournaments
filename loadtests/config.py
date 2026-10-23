@@ -30,6 +30,9 @@ SEED_TIMEOUT: float = float(os.getenv("OWT_SEED_TIMEOUT", "30"))
 #: Cap for how many ids of each entity the seeder keeps in its pools.
 SEED_POOL_SIZE: int = int(os.getenv("OWT_SEED_POOL_SIZE", "100"))
 
+#: Discipline whose catalog (characters, maps, modes) the seeder and the metadata task read.
+CATALOG_DISCIPLINE: str = os.getenv("OWT_CATALOG_DISCIPLINE", "overwatch")
+
 # -- draft room scenario (draft_locustfile.py) ------------------------------
 
 #: Tournament whose LIVE draft the scenario drives. Required by that

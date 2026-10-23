@@ -1,11 +1,13 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { AlertCircle, Copy, Download, Images } from "lucide-react";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
+import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
 import { resolveDivisionFromRank, getDivisionIconSrc, getDivisionLabel } from "@/lib/divisions/grid";
 import {
   capturePngBlob,
@@ -23,16 +26,18 @@ import {
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import { formatSubRoleLabel } from "@/lib/player";
-import type { InternalBalancePayload, InternalBalanceTeam } from "@/types/balancer-admin.types";
+import type {
+  BalancerRosterKey,
+  InternalBalancePayload,
+  InternalBalanceTeam
+} from "@/types/balancer-admin.types";
 import type { DivisionGrid } from "@/types/workspace.types";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
 
-import {
-  BALANCE_ROSTER_KEYS,
-  MUTED_BUTTON_CLASS,
-  TEAM_BADGE_ACCENTS,
-  calculateTeamAverageFromPayload,
-  calculateTeamTotalFromPayload
-} from "@/components/balancer/balancer-page-helpers";
+import { MUTED_BUTTON_CLASS } from "@/components/balancer/balancer-page-helpers";
+import { balanceBucketKeys } from "@/components/balancer/balance-editor-helpers";
+import { BalanceTeamHeader } from "@/components/balancer/BalanceTeamHeader";
 import { Spinner } from "@/components/ui/spinner";
 
 const TEAMS_PER_IMAGE = 10;
@@ -43,6 +48,8 @@ type BalanceImageExportDialogProps = {
   onOpenChange: (open: boolean) => void;
   payload: InternalBalancePayload | null;
   divisionGrid: DivisionGrid;
+  /** The tournament owner's role dictionary: role names, glyphs and the order of the buckets. `null` while it loads. */
+  ontology: RoleOntology | null;
   tournamentId: number | null;
 };
 
@@ -53,7 +60,6 @@ type TeamChunk = {
 
 type GeneratedImage = {
   id: string;
-  label: string;
   blob: Blob;
   url: string;
 };
@@ -84,8 +90,10 @@ export function BalanceImageExportDialog({
   onOpenChange,
   payload,
   divisionGrid,
+  ontology,
   tournamentId
 }: Readonly<BalanceImageExportDialogProps>) {
+  const t = useTranslations("balancerTool.page.imageExport");
   const chunkRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const fullImageRef = useRef<HTMLDivElement | null>(null);
   const [images, setImages] = useState<GeneratedImage[]>([]);
@@ -94,6 +102,10 @@ export function BalanceImageExportDialog({
   const [error, setError] = useState<string | null>(null);
 
   const chunks = useMemo(() => chunkBalanceTeams(payload?.teams ?? []), [payload]);
+  const bucketKeys = useMemo(
+    () => (payload ? balanceBucketKeys(payload, ontology) : []),
+    [payload, ontology]
+  );
 
   const clearGeneratedImages = useCallback(() => {
     setImages((current) => {
@@ -131,7 +143,7 @@ export function BalanceImageExportDialog({
 
         const nextImages: GeneratedImage[] = [];
 
-        for (const [index, chunk] of chunks.entries()) {
+        for (const chunk of chunks) {
           const node = chunkRefs.current[chunk.id];
           if (!node) {
             throw new Error("Image export node is unavailable");
@@ -142,12 +154,7 @@ export function BalanceImageExportDialog({
           const url = URL.createObjectURL(blob);
           objectUrls.push(url);
 
-          nextImages.push({
-            id: chunk.id,
-            label: `Image ${index + 1}`,
-            blob,
-            url
-          });
+          nextImages.push({ id: chunk.id, blob, url });
         }
 
         if (!fullImageRef.current) {
@@ -168,8 +175,8 @@ export function BalanceImageExportDialog({
         objectUrls.forEach((url) => URL.revokeObjectURL(url));
 
         if (!cancelled) {
-          setError("Could not generate balance images.");
-          notify.error("Image export failed");
+          setError(t("failed"));
+          notify.error(t("failedToast"));
         }
       } finally {
         if (!cancelled) {
@@ -183,16 +190,19 @@ export function BalanceImageExportDialog({
     return () => {
       cancelled = true;
     };
-  }, [chunks, clearGeneratedImages, open, payload]);
+  }, [chunks, clearGeneratedImages, open, payload, t]);
 
-  const handleCopyImage = useCallback(async (blob: Blob, title: string) => {
-    try {
-      await copyImageBlob(blob);
-      notify.success(title);
-    } catch {
-      notify.error("Clipboard image copy unavailable");
-    }
-  }, []);
+  const handleCopyImage = useCallback(
+    async (blob: Blob, title: string) => {
+      try {
+        await copyImageBlob(blob);
+        notify.success(title);
+      } catch {
+        notify.error(t("copyUnavailable"));
+      }
+    },
+    [t]
+  );
 
   const handleDownloadAll = useCallback(() => {
     images.forEach((image, index) => {
@@ -206,16 +216,16 @@ export function BalanceImageExportDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="flex h-[min(860px,calc(100vh-2rem))] w-[min(1180px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden border-border bg-popover p-0 text-[color:var(--aqt-fg)] shadow-2xl shadow-black/60">
-          <DialogHeader className="shrink-0 border-b border-[color:var(--aqt-border)] px-5 py-4 text-left">
+        <DialogContent variant="panel" className="h-[min(860px,calc(100vh-2rem))] w-[min(1180px,calc(100vw-2rem))] max-w-none">
+          <DialogHeader variant="panel">
             <div className="flex flex-col gap-3 pr-8 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <DialogTitle className="flex items-center gap-2 text-base font-semibold text-[color:var(--aqt-fg)]">
                   <Images className="h-4 w-4 text-cyan-200" />
-                  Balance Images
+                  {t("title")}
                 </DialogTitle>
                 <DialogDescription className="mt-1 text-xs text-[color:var(--aqt-fg-dim)]">
-                  Preview, copy, or download readable team images.
+                  {t("description")}
                 </DialogDescription>
               </div>
 
@@ -229,7 +239,7 @@ export function BalanceImageExportDialog({
                   disabled={isGenerating || images.length === 0}
                 >
                   <Download className="h-4 w-4" />
-                  Download all
+                  {t("downloadAll")}
                 </Button>
                 <Button
                   type="button"
@@ -238,13 +248,13 @@ export function BalanceImageExportDialog({
                   className={MUTED_BUTTON_CLASS}
                   onClick={() => {
                     if (fullImageBlob) {
-                      void handleCopyImage(fullImageBlob, "Full image copied");
+                      void handleCopyImage(fullImageBlob, t("fullCopied"));
                     }
                   }}
                   disabled={isGenerating || !fullImageBlob}
                 >
                   <Copy className="h-4 w-4" />
-                  Copy full image
+                  {t("copyFull")}
                 </Button>
               </div>
             </div>
@@ -254,7 +264,7 @@ export function BalanceImageExportDialog({
             {isGenerating ? (
               <div className="flex min-h-64 items-center justify-center rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] text-sm text-[color:var(--aqt-fg-muted)]">
                 <Spinner className="mr-2" />
-                Generating images...
+                {t("generating")}
               </div>
             ) : null}
 
@@ -268,38 +278,35 @@ export function BalanceImageExportDialog({
             {!isGenerating && !error ? (
               <div className="flex flex-col gap-4">
                 {images.map((image, index) => (
-                  <div
-                    key={image.id}
-                    className="overflow-hidden rounded-xl border border-border bg-card"
-                  >
+                  <Card key={image.id} variant="flat" className="overflow-hidden">
                     <div className="flex items-center justify-between gap-3 border-b border-[color:var(--aqt-border)] px-3 py-2.5">
-                      <div className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
-                        {image.label}
-                      </div>
+                      <Eyebrow as="div" tone="muted">
+                        {t("image", { index: index + 1 })}
+                      </Eyebrow>
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
                         className={MUTED_BUTTON_CLASS}
                         onClick={() =>
-                          void handleCopyImage(image.blob, `Image ${index + 1} copied`)
+                          void handleCopyImage(image.blob, t("imageCopied", { index: index + 1 }))
                         }
                       >
                         <Copy className="h-4 w-4" />
-                        Copy
+                        {t("copy")}
                       </Button>
                     </div>
                     <div className="bg-background p-2">
                       <Image
                         src={image.url}
-                        alt={`${image.label} preview`}
+                        alt={t("imagePreview", { index: index + 1 })}
                         width={EXPORT_WIDTH}
                         height={720}
                         unoptimized
                         className="h-auto w-full rounded-xl border border-[color:var(--aqt-border)]"
                       />
                     </div>
-                  </div>
+                  </Card>
                 ))}
               </div>
             ) : null}
@@ -321,6 +328,8 @@ export function BalanceImageExportDialog({
               }}
               entries={chunk.entries}
               divisionGrid={divisionGrid}
+              bucketKeys={bucketKeys}
+              ontology={ontology}
             />
           ))}
           <BalanceImageCaptureFrame
@@ -329,6 +338,8 @@ export function BalanceImageExportDialog({
             }}
             entries={payload.teams.map((team, teamIndex) => ({ team, teamIndex }))}
             divisionGrid={divisionGrid}
+            bucketKeys={bucketKeys}
+            ontology={ontology}
           />
         </div>
       ) : null}
@@ -339,11 +350,15 @@ export function BalanceImageExportDialog({
 function BalanceImageCaptureFrame({
   refCallback,
   entries,
-  divisionGrid
+  divisionGrid,
+  bucketKeys,
+  ontology
 }: Readonly<{
   refCallback: (node: HTMLDivElement | null) => void;
   entries: TeamExportEntry[];
   divisionGrid: DivisionGrid;
+  bucketKeys: BalancerRosterKey[];
+  ontology: RoleOntology | null;
 }>) {
   return (
     <div
@@ -358,6 +373,8 @@ function BalanceImageCaptureFrame({
             team={team}
             teamIndex={teamIndex}
             divisionGrid={divisionGrid}
+            bucketKeys={bucketKeys}
+            ontology={ontology}
           />
         ))}
       </div>
@@ -368,69 +385,47 @@ function BalanceImageCaptureFrame({
 function BalanceExportTeamCard({
   team,
   teamIndex,
-  divisionGrid
+  divisionGrid,
+  bucketKeys,
+  ontology
 }: Readonly<{
   team: InternalBalanceTeam;
   teamIndex: number;
   divisionGrid: DivisionGrid;
+  bucketKeys: BalancerRosterKey[];
+  ontology: RoleOntology | null;
 }>) {
-  const total = Math.round(calculateTeamTotalFromPayload(team));
-  const average = Math.round(calculateTeamAverageFromPayload(team));
-  const teamAccent = TEAM_BADGE_ACCENTS[teamIndex % TEAM_BADGE_ACCENTS.length];
+  const t = useTranslations("balancerTool.page.imageExport");
+  const slotLabel = useSlotLabel(ontology);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] shadow-[0_16px_48px_rgba(0,0,0,0.24)]">
-      <div className="flex items-start justify-between gap-3 border-b border-[color:var(--aqt-border)] px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <div
-            className={cn(
-              "rounded-full border px-2.5 py-1 text-label font-semibold uppercase tracking-label",
-              teamAccent
-            )}
-          >
-            #{team.id}
-          </div>
-          <div className="truncate text-sm font-semibold text-[color:var(--aqt-fg)]" title={team.name}>
-            {team.name}
-          </div>
-        </div>
-
-        <div className="shrink-0 text-right">
-          <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-label font-medium text-[color:var(--aqt-fg-muted)]">
-            <span>
-              Total: <span className="tabular-nums text-[color:var(--aqt-fg)]">{total}</span>
-            </span>
-            <span>
-              Avg: <span className="tabular-nums text-[color:var(--aqt-fg)]">{average}</span>
-            </span>
-          </div>
-        </div>
-      </div>
+      <BalanceTeamHeader team={team} teamIndex={teamIndex} />
 
       <table className="w-full min-w-90 caption-bottom text-sm">
         <thead>
           <tr className="border-b border-[color:var(--aqt-border)]">
-            <th className="h-8 w-13 px-4 text-left align-middle text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-              Role
+            <th className={cn(eyebrowClass("dim"), "h-8 w-13 px-4 text-left align-middle")}>
+              {t("role")}
             </th>
-            <th className="h-8 min-w-45 px-0 text-left align-middle text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-              Player
+            <th className={cn(eyebrowClass("dim"), "h-8 min-w-45 px-0 text-left align-middle")}>
+              {t("player")}
             </th>
-            <th className="h-8 w-18 px-2 text-center align-middle text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-              Rank
+            <th className={cn(eyebrowClass("dim"), "h-8 w-18 px-2 text-center align-middle")}>
+              {t("rank")}
             </th>
-            <th className="h-8 w-22 px-3 text-center align-middle text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-              Prefs
+            <th className={cn(eyebrowClass("dim"), "h-8 w-22 px-3 text-center align-middle")}>
+              {t("prefs")}
             </th>
           </tr>
         </thead>
-        {BALANCE_ROSTER_KEYS.map((roleKey) => (
+        {bucketKeys.map((roleKey) => (
           <tbody key={`${team.id}-${roleKey}`}>
             {team.roster[roleKey].map((player) => (
               <tr key={player.uuid} className="border-b border-[color:var(--aqt-border)]">
                 <td className="w-13 px-4 py-2.5">
                   <div className="flex justify-center">
-                    <PlayerRoleIcon role={roleKey} size={18} />
+                    <PlayerRoleIcon role={roleKey} ontology={ontology} size={18} />
                   </div>
                 </td>
                 <td className="min-w-45 py-2.5 pr-2">
@@ -444,9 +439,9 @@ function BalanceExportTeamCard({
                       </span>
                     </div>
                     {formatSubRoleLabel(player.sub_role) ? (
-                      <span className="truncate text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+                      <Eyebrow tone="dim" className="truncate">
                         {formatSubRoleLabel(player.sub_role)}
-                      </span>
+                      </Eyebrow>
                     ) : null}
                   </div>
                 </td>
@@ -461,7 +456,7 @@ function BalanceExportTeamCard({
                           key={`${player.uuid}-${preference}-${index}`}
                           className="flex items-center justify-center opacity-85"
                         >
-                          <PlayerRoleIcon role={preference} size={14} />
+                          <PlayerRoleIcon role={preference} ontology={ontology} size={14} />
                         </span>
                       ))
                     ) : (
@@ -476,9 +471,9 @@ function BalanceExportTeamCard({
               <tr className="border-b border-[color:var(--aqt-border)]">
                 <td
                   colSpan={4}
-                  className="px-3 py-2.5 text-center text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
+                  className={cn(eyebrowClass(), "px-3 py-2.5 text-center")}
                 >
-                  Empty {roleKey.toLowerCase()}
+                  {t("emptyRole", { role: slotLabel(roleKey).toLowerCase() })}
                 </td>
               </tr>
             ) : null}
@@ -490,6 +485,7 @@ function BalanceExportTeamCard({
 }
 
 function ExportDivisionIcon({ divisionGrid, rank }: Readonly<{ divisionGrid: DivisionGrid; rank: number }>) {
+  const t = useTranslations("balancerTool.page.imageExport");
   const division = resolveDivisionFromRank(divisionGrid, rank);
   const src = getDivisionIconSrc(divisionGrid, division);
   const label = getDivisionLabel(divisionGrid, division);
@@ -503,7 +499,7 @@ function ExportDivisionIcon({ divisionGrid, rank }: Readonly<{ divisionGrid: Div
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
-        alt={label ?? `Division ${division}`}
+        alt={label ?? t("division", { division })}
         width={26}
         height={26}
         loading="eager"
