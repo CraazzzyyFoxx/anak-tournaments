@@ -32,7 +32,14 @@ from shared.messaging.rpc import request_rpc
 from shared.repository import CustomGameRepository, WorkspaceRepository
 from src.core.broker import optional_broker
 from src.interactions import copy
-from src.interactions.actions import ACTIONS, parse_setup_target, parse_voice_target, setup_target, voice_target
+from src.interactions.actions import (
+    ACTIONS,
+    parse_setup_target,
+    parse_voice_target,
+    role_letters,
+    setup_target,
+    voice_target,
+)
 from src.interactions.cards import card_view, seat_modal, settle
 from src.render.card import DiscordActionButton, DiscordButton, DiscordCard, DiscordLinkButton
 from src.ui import AMBER, BLUE, GREEN, RED, emoji
@@ -288,7 +295,9 @@ class ActionDispatcher:
         target = str(state.get("custom_game_id"))
 
         buttons: list[DiscordButton] = []
-        if policy.get("can_edit_roles"):
+        discipline = str(state.get("discipline") or "")
+        # A one-role game has no role form at all (spec §12.1 R3-1).
+        if policy.get("can_edit_roles") and role_letters(discipline) is not None:
             roles = seat.get("roles") if seat else None
             buttons.append(
                 DiscordActionButton(
@@ -298,6 +307,7 @@ class ActionDispatcher:
                     # opens it needs no lookup -- Discord takes no other answer.
                     target=setup_target(
                         target,
+                        discipline,
                         [role["role"] for role in roles] if isinstance(roles, list) else None,
                         bool(seat and seat.get("is_flex")),
                     ),
@@ -374,8 +384,8 @@ class ActionDispatcher:
         if action_name == _SEAT_SETUP:
             # A modal is only ever the first answer to a click: no defer, no
             # lookup, nothing between the press and the form.
-            game_id, roles, is_flex = parse_setup_target(target)
-            await interaction.response.send_modal(seat_modal(locale, game_id, roles, is_flex))
+            game_id, discipline, roles, is_flex = parse_setup_target(target)
+            await interaction.response.send_modal(seat_modal(locale, game_id, discipline, roles, is_flex))
             return
         # Acknowledge first: Discord fails a click left unanswered for three
         # seconds, and two RPCs can take longer. For a button this is a silent

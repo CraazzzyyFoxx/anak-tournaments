@@ -373,16 +373,6 @@
     },
     {
       "path": "backend/discord-service/src/interactions/copy.py",
-      "rule": "discipline-code",
-      "token": "overwatch",
-      "context": "OW_ROLE_DIMENSION = DISCIPLINES[\"overwatch\"].rated_dimension.code",
-      "count": 1,
-      "reason": "C21 Discord-copy debt: the OW mix bot's role copy and its rated dimension",
-      "owner": "P9",
-      "remove_when": "the Discord mix bot reads roles from the mix game's ontology"
-    },
-    {
-      "path": "backend/discord-service/src/interactions/copy.py",
       "rule": "role-vocabulary",
       "token": "tank",
       "context": "\"ru\": {\"tank\": \"Танк\", \"damage\": \"Дамаг\", \"support\": \"Саппорт\", \"flex\": \"Флекс\"},",

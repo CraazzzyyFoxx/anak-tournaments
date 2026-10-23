@@ -40,6 +40,8 @@ DiscordAction = Literal[
     "mix.roles",
     "mix.setup",
     "mix.seat_set",
+    "mix.away",
+    "mix.back",
     "voice.move",
     "voice.return",
     "voice.move_confirm",

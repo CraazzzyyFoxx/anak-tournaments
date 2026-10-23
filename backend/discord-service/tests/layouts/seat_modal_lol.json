@@ -1,0 +1,60 @@
+{
+  "custom_id": "owt:mix.seat_set:42-lol",
+  "components": [
+    {
+      "type": 18,
+      "component": {
+        "type": 21,
+        "custom_id": "role1",
+        "required": true,
+        "options": [
+          "top",
+          "jungle",
+          "mid",
+          "bot",
+          "support",
+          "all"
+        ]
+      }
+    },
+    {
+      "type": 18,
+      "component": {
+        "type": 21,
+        "custom_id": "role2",
+        "required": false,
+        "options": [
+          "top",
+          "jungle",
+          "mid",
+          "bot",
+          "support",
+          "none"
+        ]
+      }
+    },
+    {
+      "type": 18,
+      "component": {
+        "type": 21,
+        "custom_id": "role3",
+        "required": false,
+        "options": [
+          "top",
+          "jungle",
+          "mid",
+          "bot",
+          "support",
+          "none"
+        ]
+      }
+    },
+    {
+      "type": 18,
+      "component": {
+        "type": 23,
+        "custom_id": "flex"
+      }
+    }
+  ]
+}

@@ -30,11 +30,11 @@ from urllib.parse import urljoin
 
 from shared.core.social import PROVIDERS
 from shared.disciplines import identity_provider
-from shared.division_grid import DEFAULT_GRID, ladder_grid
+from shared.division_grid import DEFAULT_GRID
 from shared.domain.mix_lobby import LOBBY_LETTERS
 from src.render.card import DISCORD_CARD_TEXT_LIMIT, DiscordActionButton, DiscordCard, DiscordLinkButton
 from src.render.mix_lineup_image import LineupPicture, LineupSeat, LineupTeam
-from src.ui import BLUE, ROLE_EMOJI, SHORTCODE, TEAL, division_emoji, emoji
+from src.ui import BLUE, ROLE_EMOJI, SHORTCODE, TEAL, art_drawn_for, division_emoji, emoji
 
 __all__ = ("SignupLobby", "SignupPlayer", "lineup_card", "lineup_picture", "signup_card")
 
@@ -104,12 +104,6 @@ def _board_button(board_url: str) -> DiscordLinkButton:
 def _timestamp(moment: datetime) -> str:
     """Discord's own relative clock, so "2 minutes ago" is rendered per reader."""
     return f"<t:{int(moment.timestamp())}:R>"
-
-
-def _is_overwatch(discipline: str) -> bool:
-    """Overwatch, told by the registry rather than by its code: the game whose own ladder is the grid
-    (``DEFAULT_GRID``) the bot's ``div_*`` badges and role emoji were drawn for (spec §12.1 R3-5)."""
-    return ladder_grid(discipline) is DEFAULT_GRID
 
 
 def _signup_counts(players: Sequence[SignupPlayer], codes: Sequence[str]) -> dict[str, int]:
@@ -205,9 +199,10 @@ def signup_card(
     """The live channel post that opens a mix for self-signup.
 
     Three states, because a reader has to see the difference from across the
-    room: open (green dot, every button live), closed by the host (lock, Join
-    greyed out -- the card stays readable, and whoever is already in can still
-    check their seat or leave), and over (lock, no buttons at all; a finished
+    room: open (green dot, every button live: join, my seat, leave, away,
+    back), closed by the host (lock, Join greyed out -- the card stays
+    readable, and whoever is already in can still check their seat, leave,
+    step away or come back), and over (lock, no buttons at all; a finished
     mix answers nothing).
 
     ``players`` is the whole roster in balancer order: the counters say how the
@@ -243,7 +238,7 @@ def signup_card(
         facts.append(f"{emoji('bench')} сначала на скамейку")
     text = "\n".join([headline, " · ".join(facts)])
 
-    overwatch = _is_overwatch(discipline)
+    overwatch = art_drawn_for(discipline)
     # One role is no role: nothing to count, mark or set up.
     labels = dict(roles) if len(roles) > 1 else None
     counted = [*(code for code, _label in roles), *(["flex"] if flex else [])] if labels is not None else []
@@ -280,6 +275,8 @@ def signup_card(
             ),
             DiscordActionButton(label="Моё место", action="mix.roles", target=target, emoji="edit"),
             DiscordActionButton(label="Выписаться", action="mix.leave", target=target, style="danger", emoji="leave"),
+            DiscordActionButton(label="Отойти", action="mix.away", target=target, emoji="clock"),
+            DiscordActionButton(label="Вернуться", action="mix.back", target=target, emoji="ok"),
         ]
     )
     return DiscordCard(
@@ -352,7 +349,7 @@ def lineup_picture(
     game's seat shows its number alone (spec §12.1 R3-5). ``map_image`` is the
     next map's art as the database stores its URL.
     """
-    overwatch = _is_overwatch(discipline)
+    overwatch = art_drawn_for(discipline)
     raw_teams = variant.get("teams")
     teams = tuple(
         _picture_team(team_names.get(index) or f"Команда {index + 1}", team, players, board_url, overwatch)

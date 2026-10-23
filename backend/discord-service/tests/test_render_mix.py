@@ -124,13 +124,14 @@ def test_an_open_card_explains_the_two_clicks_and_stamps_when_it_was_rendered() 
     assert f"<t:{int(NOW.timestamp())}:R>" in details
 
 
-def test_an_open_card_carries_the_three_actions_with_their_emoji_and_the_board_link() -> None:
+def test_an_open_card_carries_the_five_actions_with_their_emoji_and_the_board_link() -> None:
+    """R3-2: join, my seat, leave, away, back -- every answer slot a card has."""
     card = _signup()
 
-    assert [button.action for button in card.answers] == ["mix.join", "mix.roles", "mix.leave"]
+    assert [button.action for button in card.answers] == ["mix.join", "mix.roles", "mix.leave", "mix.away", "mix.back"]
     assert {button.target for button in card.answers} == {"42"}
-    assert [button.style for button in card.answers] == ["success", "secondary", "danger"]
-    assert [button.emoji for button in card.answers] == ["join", "edit", "leave"]
+    assert [button.style for button in card.answers] == ["success", "secondary", "danger", "secondary", "secondary"]
+    assert [button.emoji for button in card.answers] == ["join", "edit", "leave", "clock", "ok"]
     assert all(button.disabled is False for button in card.answers)
     [[link]] = card.rows
     assert (link.url, link.emoji) == (BOARD_URL, "link")
@@ -141,9 +142,10 @@ def test_a_closed_card_greys_out_joining_but_still_lets_the_seated_leave() -> No
     card = _signup(self_signup="closed", players=[_player("tank")])
 
     assert card.text.startswith("## :owt_lock: Запись на микс «Friday Scrim» закрыта")
-    join, seat, leave = card.answers
+    join, *others = card.answers
     assert join.disabled is True
-    assert (seat.disabled, leave.disabled) == (False, False)
+    # Whoever is in can still check their seat, leave, step away and come back.
+    assert [button.disabled for button in others] == [False, False, False, False]
     assert "Нажмите «Записаться»" not in (card.details or "")
     assert ":owt_players: **1** записано" in (card.details or "")
 
