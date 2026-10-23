@@ -414,9 +414,10 @@ def test_the_picture_names_the_same_lineup_the_same_file_and_a_swap_a_new_one() 
 
 
 def test_the_picture_draws_as_a_card_sized_png_whatever_the_names_and_whatever_failed_to_load() -> None:
-    """Guards the asset paths too: a missing font fails here, not in the projector.
+    """Guards the asset paths too: a missing font or crown fails here, not in the projector.
     A picture that did not load, or loaded as garbage, is left out, not fatal."""
     document = _document({"Goalie": [("Ana" * 40, 3000)]}, {"Tank": [("Сережа Спардович", 900)]})
+    document["players"]["Ana" * 40]["is_captain"] = True
     picture = _picture(
         document,
         points_per_win=25,

@@ -2,15 +2,16 @@
 
 :func:`src.render.mix.lineup_picture` decides what the picture says; this module lays
 it out in the site's own look -- the mix board's matchup card (one panel, two
-team columns around a VS seam, a tile per seat with role, rank badge, name and
-rating) over the next map's art.
+team columns around a VS seam, a tile per seat with role, rank badge, name,
+the captain's crown and rating) over the next map's art.
 
 Pictures come by URL: the map's art as the database holds it (``image_path``)
 and the OW2 ladder's rank badge, served by the site (:mod:`src.render.mix`). The
 caller fetches them (``LineupPicture.image_urls``) and hands the bytes to
 :func:`render_png`; one missing from them is simply left out of the picture,
 the post still goes. Fonts (Onest for headings, Inter for the rest -- the
-site's two faces) and the role glyphs are local copies in ``assets/lineup``.
+site's two faces), the role glyphs and the captain's crown (Lucide's ``Crown``,
+as the board draws it) are local copies in ``assets/lineup``.
 
 ``LineupPicture.filename`` hashes everything drawn: a card whose picture would
 come out the same names the same file, so the projector can tell an unchanged
@@ -53,8 +54,10 @@ _BORDER_2 = _hsl(217, 17, 21)
 _FG = _hsl(214, 33, 96)
 _FG_MUTED = _hsl(212, 13, 65)
 _FG_FAINT = _hsl(214, 10, 52)
+#: ``--aqt-amber``: the captain's crown on either team, as the board tints it.
+_AMBER = _hsl(36, 88, 65)
 #: Team accents, in the board's order (``pickup-chrome.ts``): teal, then amber.
-_SIDES = (_hsl(172, 70, 49), _hsl(36, 88, 65))
+_SIDES = (_hsl(172, 70, 49), _AMBER)
 #: ``--tracking-label``: the eyebrow's 0.08em.
 _LABEL_TRACKING = 0.08
 
@@ -114,6 +117,13 @@ def _role_glyph(role: str, size: int) -> Image.Image | None:
         return None
     with Image.open(path) as source:
         return source.convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
+
+
+@cache
+def _crown(size: int) -> Image.Image:
+    """The captain's crown as a mask, drawn in ``_AMBER`` the way text is."""
+    with Image.open(_ASSETS / "crown.png") as source:
+        return source.convert("RGBA").getchannel("A").resize((size, size), Image.Resampling.LANCZOS)
 
 
 def _decode(images: Mapping[str, bytes], url: str | None) -> Image.Image | None:
@@ -241,7 +251,7 @@ def _team(
     draw.line((left, rule_y, right, rule_y), fill=_BORDER, width=1)
 
     step = min(62, (bottom - rule_y - 10) // max(rows, 1))
-    seat_font, rating_font, tag_font = _font("inter-600", 20), _font("inter-700", 21), _font("inter-700", 10)
+    seat_font, rating_font = _font("inter-600", 20), _font("inter-700", 21)
     for index, seat in enumerate(team.seats):
         tile_top = rule_y + 10 + step * index
         tile_bottom = tile_top + step - 6
@@ -257,22 +267,14 @@ def _team(
         rating = str(seat.rating)
         draw.text((right - 16, middle), rating, font=rating_font, fill=_FG, anchor="rm")
         name_x = left + 96
-        room = right - 16 - draw.textlength(rating, font=rating_font) - 16 - name_x
-        tag = "капитан" if seat.captain else ""
-        tag_width = _tracked_width(draw, tag.upper(), tag_font) + 14 if tag else 0
-        name = _fit(draw, seat.name, seat_font, room - (tag_width + 10 if tag else 0))
+        name_end = right - 16 - draw.textlength(rating, font=rating_font) - 16
+        if seat.captain:
+            # ``SeatRow``: the crown sits between the name and the rating.
+            name_end -= 18
+            draw.bitmap((round(name_end), middle - 9), _crown(18), fill=(*_AMBER, 255))
+            name_end -= 12
+        name = _fit(draw, seat.name, seat_font, name_end - name_x)
         draw.text((name_x, middle), name, font=seat_font, fill=_FG, anchor="lm")
-        if tag:
-            tag_x = round(name_x + draw.textlength(name, font=seat_font) + 10)
-            tint = (*accent, 40)
-            _panel(
-                image,
-                (tag_x, middle - 10, tag_x + round(tag_width), middle + 10),
-                radius=10,
-                fill=tint,
-                outline=(*accent, 110),
-            )
-            _label(draw, (tag_x + 7, middle), tag, tag_font, (*accent, 255))
 
 
 def render_png(picture: LineupPicture, images: Mapping[str, bytes]) -> bytes:
