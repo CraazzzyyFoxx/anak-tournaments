@@ -8,6 +8,7 @@ import { Clock, UserX } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { notify } from "@/lib/notify";
+import adminService from "@/services/admin.service";
 import pickBanService, {
   type PickBanActionInput,
   type PickBanSubmitInput
@@ -20,9 +21,11 @@ import type {
 } from "@/types/tournament.types";
 
 import {
+  DRAFT_SAVE_DELAY_MS,
   eligibleItemIds,
   isSessionActive,
   lastRevealedBlindStep,
+  memberName,
   pickBanReserveMap,
   pickBanSeats,
   seatName,
@@ -34,15 +37,13 @@ import { PickBanCommandBar } from "@/components/pick-ban/PickBanCommandBar";
 import { PickBanDraftTray } from "@/components/pick-ban/PickBanDraftTray";
 import { PickBanGrid, type PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
 import { PickBanRevealPanel } from "@/components/pick-ban/PickBanRevealPanel";
+import { PickBanAssignBoard, PickBanMemberChooser } from "@/components/pick-ban/PickBanMemberTurn";
 import { PickBanStepTimeline } from "@/components/pick-ban/PickBanStepTimeline";
 import { PickBanTargetBoard } from "@/components/pick-ban/PickBanTargetBoard";
 import { PickBanUndoControl } from "@/components/pick-ban/PickBanUndoControl";
 import { PickBanSideAssignment, PickBanSideChoice } from "@/components/pick-ban/PickBanSideChoice";
 import { useSideLabel } from "@/components/pick-ban/useSideLabel";
 import { ElectOpenerDialog } from "@/components/pick-ban/ElectOpenerDialog";
-
-/** How long a blind draft edit waits before it is saved, so five quick clicks are one request. */
-const DRAFT_SAVE_DELAY_MS = 300;
 
 /**
  * What the board lends the room's admin panel: the tile the organizer has
@@ -114,7 +115,25 @@ export function PickBanPanel({
   const seats = pickBanSeats(encounter.teams);
   const opponentTeamId =
     viewerTeamId == null ? null : (seats.find((seat) => seat.id !== viewerTeamId)?.id ?? null);
-  const submission = viewerSubmission(state);
+  // A mix's hero picks (spec §11.6): a member step is answered for ONE player, an assignment by a captain at once.
+  const memberStep = step?.member != null;
+  const assignStep = step?.action === "assign";
+  // Whom this viewer may pick for: themselves, as captain their teammates still owing, as a host anyone still owing.
+  const choosableMembers = !memberStep
+    ? []
+    : isAdmin
+      ? [
+          ...state.viewer_member_ids,
+          ...state.acting_member_ids.filter((id) => !state.viewer_member_ids.includes(id))
+        ]
+      : state.viewer_can_act
+        ? state.viewer_member_ids
+        : [];
+  const [chosenMember, setChosenMember] = useState<number | null>(null);
+  const actingMemberId =
+    chosenMember != null && choosableMembers.includes(chosenMember) ? chosenMember : (choosableMembers[0] ?? null);
+  // On a member step the answer is that player's own: a teammate's lock never closes this pick.
+  const submission = viewerSubmission(state, actingMemberId);
   const serverDraft = submission?.items ?? [];
   const draftLocked = submission != null && submission.state !== "draft";
 
@@ -147,7 +166,9 @@ export function PickBanPanel({
 
   const selectedItemId =
     pickedItemId != null &&
-    state.pool.some((entry) => entry.item_id === pickedItemId && entry.status === "available")
+    state.pool.some((entry) => entry.item_id === pickedItemId && entry.status === "available") &&
+    // A member pick is the chosen player's: switching to one who may not take the hero (Fearless) drops it.
+    (!memberStep || (state.member_eligible?.[String(actingMemberId)] ?? []).includes(pickedItemId))
       ? pickedItemId
       : null;
 
@@ -176,6 +197,15 @@ export function PickBanPanel({
       setSelectedTargetId(null);
       queryClient.setQueryData(queryKey, next);
     },
+    onError: (error) => notify.apiError(error, { title: t("captain.actionFailed") }),
+    onSettled: () => void queryClient.invalidateQueries({ queryKey })
+  });
+
+  // A host picking for a player they are not: the organizer route, which acts for any seat (spec §11.6 R4-9).
+  const hostPickMutation = useMutation({
+    mutationFn: (input: { encounter_team_id: number; item_id: number; member_id: number }) =>
+      adminService.adminPickBanAct(encounterId, { kind, action: "pick", ...input }),
+    onSuccess: () => setSelectedItemId(null),
     onError: (error) => notify.apiError(error, { title: t("captain.actionFailed") }),
     onSettled: () => void queryClient.invalidateQueries({ queryKey })
   });
@@ -224,8 +254,15 @@ export function PickBanPanel({
       .find((player) => player.player_id === playerId)?.name ?? null;
 
   const isBlindStep = step?.blind === true;
-  const captainAction: PickBanAction | null =
-    !isBlindStep && state.viewer_can_act && state.allowed_actions.length > 0
+  // A member step picks for the chosen player; an assignment is answered by submit, never by an act (spec §11.6 R4-1).
+  const captainAction: PickBanAction | null = memberStep
+    ? actingMemberId != null
+      ? "pick"
+      : null
+    : !isBlindStep &&
+        state.viewer_can_act &&
+        state.allowed_actions.length > 0 &&
+        state.allowed_actions[0] !== "assign"
       ? state.allowed_actions[0]
       : null;
   // An organizer standing in for an absent captain fills the blind draft out of
@@ -234,6 +271,7 @@ export function PickBanPanel({
   const adminDrafting = isAdmin && isBlindStep && !state.viewer_can_act;
   const canSelect =
     isSessionActive(session) &&
+    !assignStep &&
     !state.is_complete &&
     ((state.viewer_can_act && !draftLocked) || (isAdmin && !isBlindStep) || adminDrafting);
   const selectedItemName =
@@ -244,7 +282,11 @@ export function PickBanPanel({
   const draftItemIds = new Set(
     (adminDrafting ? adminDraft : draftItems).map((item) => item.item_id)
   );
-  const eligibleIds = eligibleItemIds(state.eligible, selectedTargetId);
+  const eligibleIds = memberStep
+    ? actingMemberId != null
+      ? new Set(state.member_eligible?.[String(actingMemberId)] ?? [])
+      : null
+    : eligibleItemIds(state.eligible, selectedTargetId);
   const assignedByPlayer: Record<number, number | undefined> = {};
   for (const item of draftItems) {
     if (item.target_player_id != null) assignedByPlayer[item.target_player_id] = item.item_id;
@@ -338,6 +380,7 @@ export function PickBanPanel({
             itemsById={itemsById}
             sideLabels={sideLabels}
             teamName={teamName}
+            memberName={(memberId) => memberName(state.members, memberId)}
             session={session}
           />
           <PickBanSideAssignment
@@ -346,6 +389,13 @@ export function PickBanPanel({
             seats={seats}
             sideLabel={sideLabel}
           />
+          {memberStep && choosableMembers.length > 1 ? (
+            <PickBanMemberChooser
+              members={choosableMembers.map((id) => ({ id, name: memberName(state.members, id) }))}
+              value={actingMemberId}
+              onChange={setChosenMember}
+            />
+          ) : null}
           {step?.target != null && opponentTeamId != null ? (
             targetRoster.length > 0 ? (
               <div className="lg:sticky lg:top-[var(--aqt-sticky-top)]">
@@ -421,6 +471,17 @@ export function PickBanPanel({
                 />
               </CardContent>
             </Card>
+          ) : assignStep ? (
+            <PickBanAssignBoard
+              kind={kind}
+              encounterId={encounterId}
+              state={state}
+              itemsById={itemsById}
+              isAdmin={isAdmin}
+              queryKey={queryKey}
+              teamName={teamName}
+              header={header}
+            />
           ) : (
             <PickBanGrid
               kind={kind}
@@ -528,9 +589,26 @@ export function PickBanPanel({
               : selectedItemName
           }
           selectedItem={!isSideStep && selectedItemId != null ? itemsById[selectedItemId] : undefined}
-          pending={actionMutation.isPending}
+          pending={actionMutation.isPending || hostPickMutation.isPending}
+          forMember={memberStep && actingMemberId != null ? memberName(state.members, actingMemberId) : null}
           onConfirm={(itemId) => {
             if (captainAction == null) return;
+            if (memberStep && actingMemberId != null) {
+              // Their own or a teammate's pick goes by the captain route; anyone else's is a host's, for that seat.
+              if (state.viewer_can_act && state.viewer_member_ids.includes(actingMemberId)) {
+                actionMutation.mutate({ item_id: itemId, action: "pick", member_id: actingMemberId });
+                return;
+              }
+              const seat = state.members.find((member) => member.id === actingMemberId);
+              if (seat != null) {
+                hostPickMutation.mutate({
+                  encounter_team_id: seat.encounter_team_id,
+                  item_id: itemId,
+                  member_id: actingMemberId
+                });
+              }
+              return;
+            }
             actionMutation.mutate({
               item_id: itemId,
               action: captainAction,

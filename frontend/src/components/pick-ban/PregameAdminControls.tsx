@@ -169,7 +169,8 @@ export function PregameAdminControls({
   // The step names the action; the override only chooses WHOSE turn is being
   // taken, and it is stored with the step it was made for so the next step
   // falls back to whoever is actually on the clock.
-  const action: PickBanAction = step != null && step.action !== "decider" ? step.action : "ban";
+  const action: PickBanAction =
+    step != null && step.action !== "decider" && step.action !== "assign" ? step.action : "ban";
   const sideStep = step?.action === "side_pick";
   const defaultTeamId = state.acting_team_ids[0] ?? seats[0]?.id ?? 0;
   const [resetOpen, setResetOpen] = useState(false);
@@ -440,6 +441,8 @@ export function PregameAdminControls({
                     {sideIndex != null ? `: ${sideLabels[sideIndex] ?? `#${sideIndex}`}` : ""}
                   </Button>
                 </>
+              ) : step?.member != null || step?.action === "assign" ? (
+                <span className="max-w-64 text-xs text-[color:var(--aqt-fg-muted)]">{t("admin.actOnBoard")}</span>
               ) : (
                 <>
                   <Button

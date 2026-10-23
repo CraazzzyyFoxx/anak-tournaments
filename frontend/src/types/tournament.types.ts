@@ -357,7 +357,19 @@ export interface Standings {
 
 export type PickBanKind = "map" | "hero";
 export type PickBanAction = "ban" | "pick" | "protect" | "side_pick";
-export type PickBanStepAction = PickBanAction | "decider";
+/** `assign` is a mix room's (spec §11.6): a captain gives each player one of the team's picked heroes. */
+export type PickBanStepAction = PickBanAction | "decider" | "assign";
+/** What a viewer may answer the current step with: an act's, or a mix captain's assignment (answered by submit). */
+export type PickBanAllowedAction = PickBanAction | "assign";
+/** Who answers a mix's member pick: the team's next player in pick order, or every player at once. */
+export type PickBanMemberMode = "next" | "each";
+
+/** One seated player of a mix match (`encounter.team_member`), in pick order. */
+export interface PickBanMember {
+  id: number;
+  encounter_team_id: number;
+  name: string;
+}
 export type PickBanEntryStatus = "available" | "picked" | "banned" | "protected";
 
 /** Who performed a board action: `team` names a participation, the rest are the engine, an organizer or a tiebreak. */
@@ -372,6 +384,8 @@ export interface PickBanEntry {
   picked_by_kind: PickBanActorKind | null;
   /** The participation (`EncounterTeam.id`) that picked; set exactly when `picked_by_kind` is `team`. */
   picked_by_team_id: number | null;
+  /** Whose hero a pick is (a mix player's seat, `PickBanMember.id`); null otherwise. */
+  picked_for_member_id: number | null;
   protected_by_kind: PickBanActorKind | null;
   protected_by_team_id: number | null;
   status: PickBanEntryStatus;
@@ -439,6 +453,8 @@ export interface PickBanRulesetStep {
   dispute: PickBanDisputeRule;
   eligible: PickBanCondition;
   constraints: PickBanConstraint[];
+  /** A mix room's member pick; absent/null = the team picks. */
+  member?: PickBanMemberMode | null;
 }
 
 export interface PickBanRulesetPhase {
@@ -479,11 +495,17 @@ export interface PickBanResolvedStep {
   dispute: PickBanDisputeRule;
   eligible: PickBanCondition;
   constraints: PickBanConstraint[];
+  /** A mix room's member pick. Like `member_seats`, sent only when set: absent on a team step. */
+  member?: PickBanMemberMode | null;
+  /** `[participation, member seat]` per player a member step owes an answer from, in pick order. */
+  member_seats?: [number, number][];
 }
 
 export interface PickBanSubmissionItem {
   item_id: number;
   target_player_id: number | null;
+  /** An assignment's item: the player (`PickBanMember.id`) this hero is given to. */
+  member_id?: number | null;
 }
 
 type PickBanSubmissionState = "draft" | "locked" | "revealed";
@@ -493,6 +515,8 @@ export interface PickBanSubmission {
   step_index: number;
   /** The participation that authored it. */
   encounter_team_id: number;
+  /** The player a member step's answer is for; null for a team step. */
+  team_member_id: number | null;
   attempt: number;
   state: PickBanSubmissionState;
   items: PickBanSubmissionItem[];
@@ -699,12 +723,20 @@ export interface PickBanState {
   /** The participation the viewer captains, or null for a spectator. */
   viewer_team_id: number | null;
   viewer_can_act: boolean;
-  allowed_actions: PickBanAction[];
+  allowed_actions: PickBanAllowedAction[];
   current_step_index: number | null;
   current_step: PickBanResolvedStep | null;
   expected_action: PickBanStepAction | null;
   /** Participations of the current step that have not locked yet. */
   acting_team_ids: number[];
+  /** A mix room's seated players in pick order; empty elsewhere. */
+  members: PickBanMember[];
+  /** Players who still owe the current member step a hero. */
+  acting_member_ids: number[];
+  /** Of those, whom the viewer may pick for: themselves first, then -- as captain -- teammates. */
+  viewer_member_ids: number[];
+  /** Per player (`PickBanMember.id` as a string): the heroes they may take now, Fearless applied. */
+  member_eligible: Record<string, number[]> | null;
   /** Per participation (`EncounterTeam.id` as a string) of the current step; null when no step is in play. */
   step_progress: Record<string, PickBanStepProgress> | null;
   /** ISO deadline of the current step's timer; null = no timer. */

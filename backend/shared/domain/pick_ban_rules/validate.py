@@ -8,7 +8,7 @@ document, so the editor can highlight the offending field.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, Literal
 
 from shared.disciplines import DisciplineSpec
 from shared.disciplines import discipline as discipline_spec
@@ -50,6 +50,7 @@ def validate_ruleset(
     mode: str = "pool",
     slot_count: int = 2,
     groups: Sequence[str] | None = None,
+    owner: Literal["tournament", "mix"] = "tournament",
 ) -> list[Issue]:
     """Validate a ruleset document for ``kind``/``mode``/``discipline``.
 
@@ -63,6 +64,9 @@ def validate_ruleset(
     the discipline declares AND a side some earlier ``side_pick`` assigned, and
     ``side_pick`` itself is legal only for a discipline that declares exactly
     as many sides as the encounter seats participants.
+
+    ``owner`` is who will play it: member picks and assignments are a pickup mix's only (spec §11.6 R4-6), and a hero
+    pick at all needs a game that fields a hero once per match (§11.2).
     """
     try:
         ruleset = parse_ruleset(ruleset_json)
@@ -95,6 +99,7 @@ def validate_ruleset(
             seen_step_ids.add(step.id)
             _validate_step(step, step_path, issues, kind=kind, phase=phase, known_groups=known_groups)
             _validate_actors(step, step_path, issues, spec=spec, slot_count=slot_count, assigned_sides=assigned_sides)
+            _validate_picks(step, step_path, issues, kind=kind, spec=spec, owner=owner)
             if step.action == "side_pick":
                 assigned_sides.update(spec.sides)
 
@@ -305,6 +310,38 @@ def _validate_actors(
                     f"side {code!r} is read before any side_pick step assigned it",
                 )
             )
+
+
+def _validate_picks(step: Step, path: str, issues: list[Issue], *, kind: str, spec: DisciplineSpec, owner: str) -> None:
+    """Hero picks (spec §11.2, §11.6 R4-1, R4-5, R4-6): who answers, whether the game allows them, whose room."""
+    if step.member is not None:
+        if step.action != "pick" or kind != "hero":
+            issues.append(_error(f"{path}.member", "member_pick_only", "only a hero pick is made by a member"))
+        if step.count != 1:
+            issues.append(_error(f"{path}.count", "member_count", "a member picks exactly one hero"))
+        if step.actors == "system":
+            issues.append(_error(f"{path}.member", "member_system", "the engine has no members"))
+    if step.action == "assign":
+        if kind != "hero":
+            issues.append(_error(f"{path}.action", "assign_hero_only", "only heroes are assigned to members"))
+        if step.actors != "both":
+            issues.append(_error(f"{path}.actors", "assign_actors", "each captain assigns their own team's heroes"))
+        if step.blind or step.target is not None:
+            issues.append(_error(f"{path}.action", "assign_open", "an assignment is open and names no opponent"))
+    if kind != "hero" or step.action not in ("pick", "assign"):
+        return
+    if step.action == "pick" and step.blind:
+        issues.append(_error(f"{path}.blind", "pick_blind", "a blind hero pick has no collision rule yet"))
+    if spec.character_uniqueness != "match":
+        issues.append(
+            _error(
+                f"{path}.action",
+                "pick_uniqueness_unsupported",
+                f"{spec.name} may field a hero twice in a match; hero picks need a game that does not",
+            )
+        )
+    if owner != "mix" and (step.member is not None or step.action == "assign"):
+        issues.append(_error(path, "mix_only", "member picks and assignments run in pickup mixes only"))
 
 
 # ── condition trees ─────────────────────────────────────────────────────────

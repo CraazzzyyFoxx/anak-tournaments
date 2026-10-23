@@ -16,6 +16,7 @@ import type {
   PickBanEntry,
   PickBanEntryStatus,
   PickBanGame,
+  PickBanMember,
   PickBanResolvedStep,
   PickBanSession,
   PickBanState,
@@ -27,6 +28,9 @@ import type {
 
 import { duelSeats, type Duel } from "@/lib/encounter/seats";
 import type { EncounterTeam } from "@/types/encounter.types";
+
+/** How long a draft edit waits before it is saved, so five quick clicks are one request. */
+export const DRAFT_SAVE_DELAY_MS = 300;
 
 /**
  * One participation of the room as its components name it: `id` is the
@@ -49,6 +53,11 @@ export function pickBanSeats(teams: readonly PickBanSeat[]): PickBanSeat[] {
 /** A participation's display name; empty string for one the room does not know. */
 export function seatName(seats: readonly PickBanSeat[], teamId: number | null | undefined): string {
   return seats.find((seat) => seat.id === teamId)?.name ?? "";
+}
+
+/** A mix player's name (`state.members`); empty string for one the room does not know. */
+export function memberName(members: readonly PickBanMember[], memberId: number): string {
+  return members.find((member) => member.id === memberId)?.name ?? "";
 }
 
 /**
@@ -370,13 +379,18 @@ export function stepSubmissions(
   return rows.filter((row) => row.attempt === attempt);
 }
 
-/** The viewer's own submission on the step in play, or null (no step, spectator, nothing sent). */
-export function viewerSubmission(state: PickBanState): PickBanSubmission | null {
-  if (state.current_step_index == null || state.viewer_team_id == null) return null;
+/**
+ * The viewer's own submission on the step in play, or null (no step, spectator, nothing sent). On a member step it is
+ * the answer of `memberId`, the player being picked for: a teammate's lock is not theirs. A team step never reads a
+ * member's row.
+ */
+export function viewerSubmission(state: PickBanState, memberId: number | null = null): PickBanSubmission | null {
+  if (state.current_step_index == null) return null;
+  const rows = stepSubmissions(state.submissions, state.current_step_index);
+  if (memberId != null) return rows.find((row) => row.team_member_id === memberId) ?? null;
+  if (state.viewer_team_id == null) return null;
   return (
-    stepSubmissions(state.submissions, state.current_step_index).find(
-      (submission) => submission.encounter_team_id === state.viewer_team_id
-    ) ?? null
+    rows.find((row) => row.encounter_team_id === state.viewer_team_id && row.team_member_id == null) ?? null
   );
 }
 

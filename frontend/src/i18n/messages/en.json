@@ -4037,7 +4037,8 @@
   "pickBan": {
     "mixBans": {
       "none": "No bans",
-      "label": "Hero bans"
+      "label": "Hero bans",
+      "fearless": "Fearless"
     },
     "room": {
       "playerHeroes": {
@@ -4141,22 +4142,29 @@
           "pick": "Both teams pick",
           "protect": "Both teams protect",
           "decider": "Decider",
-          "side_pick": "Both teams choose sides"
+          "side_pick": "Both teams choose sides",
+          "assign": "Both captains assign heroes"
         },
         "side": {
           "ban": "{team} bans",
           "pick": "{team} picks",
           "protect": "{team} protects",
           "decider": "Decider",
-          "side_pick": "{team} chooses a side"
+          "side_pick": "{team} chooses a side",
+          "assign": "{team} assigns heroes"
         },
         "system": {
           "ban": "Random ban",
           "pick": "Random pick",
           "protect": "Random protect",
           "decider": "Decider",
-          "side_pick": "Side chosen at random"
-        }
+          "side_pick": "Side chosen at random",
+          "assign": "Heroes assigned at random"
+        },
+        "member": {
+          "pick": "{member} picks"
+        },
+        "eachPlayer": "each player"
       },
       "carried": {
         "badge": "from map {n}",
@@ -4201,13 +4209,15 @@
       },
       "turn": "Turn: {team} — {action}",
       "turnBoth": "Both teams — {action}",
+      "turnMembers": "Picking: {names}",
       "turnRevealing": "Revealing both drafts",
       "action": {
         "ban": "ban",
         "pick": "pick",
         "protect": "protect",
         "decider": "decide",
-        "side_pick": "choose a side"
+        "side_pick": "choose a side",
+        "assign": "assign heroes"
       },
       "deciderResolving": "Decider is being resolved",
       "completedBanner": "Sequence completed",
@@ -4224,7 +4234,18 @@
         "sending": "Sending...",
         "actionFailed": "Action failed",
         "confirmSide": "Choose {side}",
-        "chooseSideHint": "Choose the side your team starts on"
+        "chooseSideHint": "Choose the side your team starts on",
+        "confirmPickFor": "Pick {item} for {member}"
+      },
+      "member": {
+        "pickFor": "Pick for"
+      },
+      "assign": {
+        "title": "Give each player a hero",
+        "give": "Give {hero} to {member}",
+        "lock": "Lock assignment",
+        "waiting": "The captains are assigning heroes.",
+        "failed": "Assignment failed"
       },
       "draft": {
         "title": "Your draft",
@@ -4405,7 +4426,8 @@
         "technicalLossReason": "Reason for the technical loss",
         "technicalLossAction": "Award the technical loss",
         "technicalLossSuccess": "Technical loss recorded",
-        "technicalLossFailed": "Failed to record the technical loss"
+        "technicalLossFailed": "Failed to record the technical loss",
+        "actOnBoard": "Player picks and assignments are made on the board."
       },
       "history": {
         "toggle": "History",
@@ -4674,7 +4696,8 @@
         "pick": "Pick",
         "protect": "Protect",
         "decider": "Decider",
-        "side_pick": "Side pick"
+        "side_pick": "Side pick",
+        "assign": "Hero assignment"
       },
       "actors": {
         "first": "Opener",
@@ -4885,7 +4908,10 @@
         "map_slot_veto": "Veto per map group",
         "lol_side_selection": "Side selection: higher seed, then previous loser",
         "deadlock_hero_bans": "Two bans each, A-B-A-B",
-        "valorant_vct_bo1": "VCT Bo1: six bans, side, decider"
+        "valorant_vct_bo1": "VCT Bo1: six bans, side, decider",
+        "lol_draft": "Draft: bans and picks by position",
+        "lol_captains": "Draft: captains pick, then assign",
+        "deadlock_bans_pick": "Two bans each, then everyone picks"
       },
       "preview": {
         "title": "Over the series",
@@ -7851,6 +7877,7 @@
       "tabsLabel": "Lobbies",
       "tab": "Lobby {letter}",
       "bans": "Bans",
+      "picks": "Picks",
       "game": "game {number}",
       "rebalanceTitle": "Rebalance this lobby?",
       "rebalanceDescription": "The result of the lineup on screen has not been recorded. Balancing replaces it, and there will be nothing left to record it from.",
@@ -7976,6 +8003,8 @@
       "swapOpener": "Swap who bans first",
       "bansTitle": "Hero bans",
       "yourTurnTitle": "● Your turn to ban",
+      "picksTitle": "Hero bans and picks",
+      "yourPickTitle": "● Your turn to pick",
       "cancelMatch": "Cancel match",
       "cancelTitle": "Cancel this match?",
       "cancelDescription": "Nothing is recorded and no rank moves. The lineup stays, ready to start again.",

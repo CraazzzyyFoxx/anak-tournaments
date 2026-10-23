@@ -50,6 +50,8 @@ SPEC = DisciplineSpec(
     kinds={"character": "Agent", "map": "Map"},
     #: valorant-api agent ``role``, lower-cased.
     character_classes=("duelist", "initiator", "controller", "sentinel"),
+    #: An agent is unique within a team; both teams may field the same agent.
+    character_uniqueness="team",
     catalog_sync=_catalog_sync,
     native_ladder=NATIVE_LADDER,
     dimensions=(AGENT,),

@@ -11,7 +11,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import type { PickBanAction, PickBanKind, PickBanState } from "@/types/tournament.types";
 
-import { stepDeadlineMs, stepSummary } from "./pick-ban-model";
+import { memberName, stepDeadlineMs, stepSummary } from "./pick-ban-model";
 import { PickBanCountdown } from "./PickBanCountdown";
 import type { PickBanItemLike } from "./PickBanGrid";
 import { PickBanItemThumb } from "./PickBanItemThumb";
@@ -37,6 +37,8 @@ interface PickBanCommandBarProps {
   /** Catalog entry behind `selectedItemId` — the confirmation shows its art, not just its name. A side has none. */
   selectedItem: PickBanItemLike | undefined;
   pending: boolean;
+  /** The player a member pick is made for; null on a team step. */
+  forMember?: string | null;
   onConfirm: (itemId: number) => void;
   onCancel: () => void;
 }
@@ -63,6 +65,7 @@ export function PickBanCommandBar({
   selectedItemName,
   selectedItem,
   pending,
+  forMember = null,
   onConfirm,
   onCancel
 }: Readonly<PickBanCommandBarProps>) {
@@ -74,6 +77,9 @@ export function PickBanCommandBar({
   const paused = state.session?.paused_at != null;
   const yourTurn = !paused && (captainAction != null || draftOpen);
 
+  // A member step is a list of players, not one team: say who still picks.
+  const pickers =
+    step?.member != null ? state.acting_member_ids.map((id) => memberName(state.members, id)) : [];
   // The pause outranks whose turn it is: nobody may act until an organizer
   // lifts it, and the bar is the one surface every viewer of the room sees.
   const turnBanner = paused
@@ -84,23 +90,27 @@ export function PickBanCommandBar({
         ? null
         : summary.system
           ? t("deciderResolving")
-          : acting.length === 0
-            ? t("turnRevealing")
-            : acting.length > 1
-              ? t("turnBoth", { action: t(`action.${summary.action}`) })
-              : t("turn", {
-                  team: teamName(acting[0]),
-                  action: t(`action.${summary.action}`)
-                });
+          : pickers.length > 0
+            ? t("turnMembers", { names: pickers.join(", ") })
+            : acting.length === 0
+              ? t("turnRevealing")
+              : acting.length > 1
+                ? t("turnBoth", { action: t(`action.${summary.action}`) })
+                : t("turn", {
+                    team: teamName(acting[0]),
+                    action: t(`action.${summary.action}`)
+                  });
 
   const confirmLabel =
-    captainAction === "ban"
-      ? t("captain.confirmBan", { item: selectedItemName ?? "—" })
-      : captainAction === "protect"
-        ? t("captain.confirmProtect", { item: selectedItemName ?? "—" })
-        : captainAction === "side_pick"
-          ? t("captain.confirmSide", { side: selectedItemName ?? "—" })
-          : t("captain.confirmPick", { item: selectedItemName ?? "—" });
+    captainAction === "pick" && forMember != null
+      ? t("captain.confirmPickFor", { item: selectedItemName ?? "—", member: forMember })
+      : captainAction === "ban"
+        ? t("captain.confirmBan", { item: selectedItemName ?? "—" })
+        : captainAction === "protect"
+          ? t("captain.confirmProtect", { item: selectedItemName ?? "—" })
+          : captainAction === "side_pick"
+            ? t("captain.confirmSide", { side: selectedItemName ?? "—" })
+            : t("captain.confirmPick", { item: selectedItemName ?? "—" });
   const sidePick = captainAction === "side_pick";
 
   return (
@@ -153,7 +163,7 @@ export function PickBanCommandBar({
             ) : null}
             <Button
               size="sm"
-              className="min-h-11 flex-1 sm:flex-initial"
+              className="min-h-11 min-w-0 flex-1 sm:flex-initial"
               variant={captainAction === "ban" ? "destructive" : "default"}
               disabled={selectedItemId == null || pending}
               onClick={() => {
@@ -163,7 +173,8 @@ export function PickBanCommandBar({
               {captainAction === "ban" ? <Ban className="mr-2 h-4 w-4" aria-hidden /> : null}
               {captainAction === "protect" ? <Shield className="mr-2 h-4 w-4" aria-hidden /> : null}
               {pending ? <Spinner className="mr-2" /> : null}
-              {pending ? t("captain.sending") : confirmLabel}
+              {/* Truncated, not overflowing the phone's bar: a hero and a player name can be long. */}
+              <span className="min-w-0 truncate">{pending ? t("captain.sending") : confirmLabel}</span>
             </Button>
           </div>
         ) : draft != null ? (

@@ -19,11 +19,23 @@ HERO_POOL = {"tank": 13, "damage": 20, "support": 15}
 preview_series = partial(pbr.preview_series, discipline="overwatch")
 
 
+def _mix_only(preset: pbr.Preset) -> bool:
+    return any(
+        step.member is not None or step.action == "assign" for phase in preset.ruleset.phases for step in phase.steps
+    )
+
+
 def test_every_preset_validates_clean_for_its_kind_and_modes_in_its_discipline():
     for code in DISCIPLINES:
         for preset in pbr.presets_for(code):
             for mode in preset.modes:
-                issues = pbr.validate_ruleset(preset.ruleset.to_json(), kind=preset.kind, mode=mode, discipline=code)
+                issues = pbr.validate_ruleset(
+                    preset.ruleset.to_json(),
+                    kind=preset.kind,
+                    mode=mode,
+                    discipline=code,
+                    owner="mix" if _mix_only(preset) else "tournament",
+                )
                 assert [issue.to_json() for issue in issues if issue.severity == "error"] == []
 
 
@@ -213,6 +225,45 @@ def test_a_mix_refuses_a_preset_that_bans_a_player_on_map_one() -> None:
 def test_a_mix_refuses_another_games_preset_and_an_unknown_game() -> None:
     assert pbr.mix_ban_preset("overwatch", "deadlock_hero_bans") is None
     assert pbr.mix_ban_preset("not-a-game", "deadlock_hero_bans") is None
+
+
+#: LoL's tournament draft after the side pick (spec §11.6 R4-7).
+_LOL_ORDER = [
+    *(("ban", side) for side in ("blue", "red", "blue", "red", "blue", "red")),
+    *(("pick", side) for side in ("blue", "red", "red", "blue", "blue", "red")),
+    *(("ban", side) for side in ("red", "blue", "red", "blue")),
+    *(("pick", side) for side in ("red", "blue", "blue", "red")),
+]
+
+
+def test_the_mix_pick_presets_play_their_documented_orders() -> None:
+    lol = {preset.id: preset for preset in pbr.presets_for("lol")}
+    for code, member in (("lol_draft", "next"), ("lol_captains", None)):
+        (phase,) = lol[code].ruleset.phases
+        side, *draft = phase.steps
+        assert (side.action, side.actors) == ("side_pick", "first")
+        if code == "lol_captains":
+            *draft, assign = draft
+            assert (assign.action, assign.actors, assign.count) == ("assign", "both", 5)
+        assert [(step.action, step.actors) for step in draft] == [(action, f"side:{s}") for action, s in _LOL_ORDER]
+        assert {step.member for step in draft if step.action == "pick"} == {member}
+    (phase,) = {preset.id: preset for preset in pbr.presets_for("deadlock")}["deadlock_bans_pick"].ruleset.phases
+    assert [(step.action, step.actors, step.member) for step in phase.steps] == [
+        ("ban", "first", None),
+        ("ban", "second", None),
+        ("ban", "first", None),
+        ("ban", "second", None),
+        ("pick", "both", "each"),
+    ]
+    assert not any(_mix_only(preset) for preset in pbr.presets_for("overwatch"))
+
+
+def test_a_mix_plays_the_pick_presets_and_a_tournament_may_not() -> None:
+    for discipline, code in (("lol", "lol_draft"), ("lol", "lol_captains"), ("deadlock", "deadlock_bans_pick")):
+        preset = pbr.mix_ban_preset(discipline, code)
+        assert preset is not None and preset.id == code
+        issues = pbr.validate_ruleset(preset.ruleset.to_json(), kind="hero", mode="pool", discipline=discipline)
+        assert "mix_only" in {issue.code for issue in issues if issue.severity == "error"}
 
 
 # ── preview ─────────────────────────────────────────────────────────────────

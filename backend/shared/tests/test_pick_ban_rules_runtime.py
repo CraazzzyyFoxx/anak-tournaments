@@ -47,6 +47,7 @@ def submission(step_index, actor, items, *, state="revealed", attempt=1):
     return SimpleNamespace(
         step_index=step_index,
         encounter_team_id=actor,
+        team_member_id=None,
         attempt=attempt,
         state=state,
         items_json=[
@@ -68,6 +69,7 @@ def entry(item_id, *, round=None, carried=None):
         action_index=None,
         picked_by_kind=None,
         picked_by_team_id=None,
+        picked_for_member_id=None,
         protected_by_kind=None,
         protected_by_team_id=None,
         status="available",

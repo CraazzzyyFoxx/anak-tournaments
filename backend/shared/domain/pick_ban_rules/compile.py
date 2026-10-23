@@ -240,12 +240,15 @@ def resolve_round(
     best_of: int = 1,
     pool_size: int = 0,
     candidate_count: int = 0,
+    members: Mapping[int, Sequence[int]] | None = None,
 ) -> list[ResolvedStep]:
     """The resolved steps one round of this ruleset adds to the session.
 
     ``round is None`` is flat mode (one sequence settles the whole series); the
     phase is still selected as if it were map 1, and the resolved steps carry
     ``round: null`` exactly as v1 entries do.
+
+    ``members`` is a mix room's seats per participation in pick order; member steps bind to them (:func:`bind_members`).
     """
     ctx = RoundCtx(round=round if round is not None else 1, best_of=max(best_of, 1), kind=kind)
     phase = select_phase(ruleset, ctx)
@@ -299,6 +302,36 @@ def resolve_round(
                 dispute=step.dispute,
                 eligible=step.eligible,
                 constraints=list(step.constraints),
+                member=step.member,
             )
         )
-    return resolved
+    return bind_members(resolved, members or {})
+
+
+def bind_members(steps: Sequence[ResolvedStep], members: Mapping[int, Sequence[int]]) -> list[ResolvedStep]:
+    """Give every member step whose actors are bound its members (spec §11.6 R4-1, R4-2).
+
+    ``members`` is each participation's seats in pick order. ``each``: every member of every acting team. ``next``:
+    the acting team's k-th member, k counting that team's earlier ``next`` steps of the round; a team out of members
+    owes the step nothing, and the cursor passes it. Idempotent: a step already holding its members, or still
+    waiting on its side, is left as it is.
+    """
+    taken: dict[tuple[int | None, int], int] = {}
+    bound: list[ResolvedStep] = []
+    for step in steps:
+        if step.member is None:
+            bound.append(step)
+            continue
+        seats: list[tuple[int, int]] = []
+        for actor in step.acting_actors:
+            roster = list(members.get(actor, ()))
+            if step.member == "each":
+                seats.extend((actor, member) for member in roster)
+                continue
+            position = taken.get((step.round, actor), 0)
+            taken[(step.round, actor)] = position + 1
+            if position < len(roster):
+                seats.append((actor, roster[position]))
+        keep = step.member_seats or step.is_unbound
+        bound.append(step if keep else step.model_copy(update={"member_seats": seats}))
+    return bound

@@ -268,6 +268,46 @@ class CustomGameRoundRepository(BaseRepository[models.CustomGameRound]):
             bans.setdefault(row.encounter_id, []).append({"slot": row.slot, "item_id": row.item_id})
         return bans
 
+    async def hero_picks(
+        self, session: AsyncSession, encounter_ids: Sequence[int]
+    ) -> dict[int, list[dict[str, int | str]]]:
+        """``encounter_id -> [{slot, member_id, name, item_id}, ...]``: whose hero each pick of a round was (spec §11.6
+        R4-11), in pick order. ``member_id`` is the workspace member; the name is the round's snapshot. A team pick
+        nobody was assigned is not listed."""
+        if not encounter_ids:
+            return {}
+        entry = models.PickBanEntry
+        seat = models.EncounterTeamMember
+        rows = await session.execute(
+            sa.select(
+                entry.encounter_id,
+                models.EncounterTeam.slot,
+                seat.workspace_member_id,
+                seat.display_name_snapshot,
+                entry.item_id,
+            )
+            .join(models.PickBanSession, models.PickBanSession.id == entry.session_id)
+            .join(seat, seat.id == entry.picked_for_member_id)
+            .join(models.EncounterTeam, models.EncounterTeam.id == seat.encounter_team_id)
+            .where(
+                entry.encounter_id.in_(encounter_ids),
+                models.PickBanSession.kind == PickBanKind.HERO,
+                entry.status == MapPoolEntryStatus.PICKED,
+            )
+            .order_by(entry.encounter_id, entry.action_index, entry.id)
+        )
+        picks: dict[int, list[dict[str, int | str]]] = {}
+        for row in rows:
+            picks.setdefault(row.encounter_id, []).append(
+                {
+                    "slot": row.slot,
+                    "member_id": row.workspace_member_id,
+                    "name": row.display_name_snapshot,
+                    "item_id": row.item_id,
+                }
+            )
+        return picks
+
     async def delete_round(self, session: AsyncSession, encounter_id: int) -> None:
         """Undo, or Cancel match: the encounter goes, and seats, game, journal and ``mix.round*`` cascade with it."""
         await session.execute(sa.delete(models.Encounter).where(models.Encounter.id == encounter_id))

@@ -97,6 +97,8 @@ type PickupMixHeaderProps = {
   /** Omitted -- the hero ban preset is shown read-only, as it is to every viewer. */
   onSetBanPreset?: (preset: string | null) => void;
   savingBanPreset?: boolean;
+  /** Omitted -- Fearless is shown read-only (only while on), as it is to every viewer. */
+  onSetFearless?: (fearless: boolean) => void;
   /** Omitted -- the formation is shown read-only, as it is to every viewer. */
   onSetDraftSettings?: (settings: { team_formation: MixTeamFormation; draft_pick_seconds: number }) => void;
   savingDraftSettings?: boolean;
@@ -140,6 +142,7 @@ export function PickupMixHeader({
   savingSelfService = false,
   onSetBanPreset,
   savingBanPreset = false,
+  onSetFearless,
   onSetDraftSettings,
   savingDraftSettings = false,
   onPostSignup,
@@ -228,6 +231,19 @@ export function PickupMixHeader({
             <span className="font-semibold text-[color:var(--aqt-fg)]">{banPresetName(game.hero_ban_preset)}</span>
           </span>
         )}
+        {game == null ? null : canWrite && onSetFearless ? (
+          <label className="flex shrink-0 items-center gap-1.5 text-caption text-[color:var(--aqt-fg-dim)]">
+            <Switch
+              checked={game.hero_fearless}
+              disabled={savingBanPreset}
+              aria-label={tb("fearless")}
+              onCheckedChange={onSetFearless}
+            />
+            {tb("fearless")}
+          </label>
+        ) : game.hero_fearless ? (
+          <span className="shrink-0 text-caption font-semibold text-[color:var(--aqt-fg)]">{tb("fearless")}</span>
+        ) : null}
 
         {game == null ? null : canWrite && onSetDraftSettings ? (
           <MixFormationControl

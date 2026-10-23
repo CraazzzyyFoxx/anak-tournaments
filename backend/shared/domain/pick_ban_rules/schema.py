@@ -21,7 +21,10 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 Condition = dict[str, Any]
 
-StepAction = Literal["ban", "pick", "protect", "decider", "side_pick"]
+StepAction = Literal["ban", "pick", "protect", "decider", "side_pick", "assign"]
+#: Who answers a member step (spec §11.6 R4-1): ``next`` -- the acting team's next member in pick order, ``each`` --
+#: every member of every acting team at once.
+MemberMode = Literal["next", "each"]
 TimeoutPolicy = Literal["random_fill", "lock_draft", "wait"]
 StepTarget = Literal["opponent_player"]
 Generator = Literal["bracket", "slot_veto"]
@@ -109,6 +112,9 @@ class Step(BaseModel):
     dispute: DisputeRule = Field(default_factory=DisputeRule)
     eligible: Condition = Field(default_factory=dict)
     constraints: list[Constraint] = Field(default_factory=list)
+    #: A mix room's hero pick made by a member rather than the team (``None``); see :data:`MemberMode`. Stored only
+    #: when set, so a team-only ruleset stays byte-identical for readers that predate it.
+    member: MemberMode | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @field_validator("actors")
     @classmethod
@@ -185,6 +191,11 @@ class ResolvedStep(BaseModel):
     dispute: DisputeRule
     eligible: Condition
     constraints: list[Constraint]
+    #: Like ``member_seats``, stored only when set: a team-only session stays byte-identical for older readers.
+    member: MemberMode | None = Field(default=None, exclude_if=lambda value: value is None)
+    #: ``(participation, encounter.team_member id)`` per member a member step owes an answer from, in pick order --
+    #: bound with the actors (:func:`compile.bind_members`). Empty for a team step and while the actors wait on a side.
+    member_seats: list[tuple[int, int]] = Field(default_factory=list, exclude_if=lambda value: not value)
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> ResolvedStep:
@@ -197,6 +208,14 @@ class ResolvedStep(BaseModel):
     def acting_actors(self) -> list[int]:
         """The participations that owe this step an answer (the engine dropped)."""
         return [actor for actor in self.actors if actor is not None]
+
+    @property
+    def answers(self) -> list[tuple[int | None, int | None]]:
+        """Who owes this step an answer: ``(participation, member)`` per member of a member step, else
+        ``(participation, None)`` per actor -- ``(None, None)`` for the engine. Every submission lookup walks this."""
+        if self.member is not None:
+            return list(self.member_seats)
+        return [(actor, None) for actor in self.actors]
 
     @property
     def is_system(self) -> bool:
@@ -214,9 +233,9 @@ class ResolvedStep(BaseModel):
         return bool(self.actors) and (self.actors_token or "").startswith("side:")
 
     def unbound(self) -> ResolvedStep:
-        """This step with its actors taken back -- what an undo of the
+        """This step with its actors -- and the members bound from them -- taken back: what an undo of the
         ``side_pick`` that assigned its side leaves behind."""
-        return self.model_copy(update={"actors": []})
+        return self.model_copy(update={"actors": [], "member_seats": []})
 
 
 def format_path(loc: tuple[Any, ...]) -> str:

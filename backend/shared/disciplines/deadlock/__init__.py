@@ -138,6 +138,9 @@ SPEC = DisciplineSpec(
     kinds={"character": "Hero", "map": "Map", "mode": "Mode"},
     #: deadlock-api ``hero_type``.
     character_classes=("marksman", "mystic", "brawler", "assassin"),
+    #: Public sources say a Deadlock match never fields one hero twice (spec §11.6 R4-10; the release note carries the
+    #: staging check).
+    character_uniqueness="match",
     catalog_sync=_catalog_sync,
     native_ranks=_native_ranks,
     native_ladder=NATIVE_LADDER,

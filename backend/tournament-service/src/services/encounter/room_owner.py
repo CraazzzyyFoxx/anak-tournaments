@@ -12,6 +12,7 @@ from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from shared import models
 from shared.core import http_status as status
@@ -25,7 +26,13 @@ from shared.rpc.identity import ensure_workspace_permission
 from shared.services.mix_hosts import is_mix_host
 from shared.services.tournament.visibility import ensure_tournament_viewable
 
-__all__ = ("ensure_room_organizer", "ensure_room_viewable", "load_room_encounter", "mix_ban_config")
+__all__ = (
+    "ensure_room_organizer",
+    "ensure_room_viewable",
+    "load_room_encounter",
+    "mix_ban_config",
+    "mix_fearless_exclusions",
+)
 
 _encounters = EncounterRepository()
 
@@ -104,3 +111,28 @@ async def mix_ban_config(session: AsyncSession, encounter: Encounter, kind: Pick
         items=[PickBanConfigItem(item_id=hero_id, sort_order=index) for index, hero_id in enumerate(heroes)],
         slots=[],
     )
+
+
+async def mix_fearless_exclusions(session: AsyncSession, encounter: Encounter) -> dict[int, set[int]]:
+    """``{seat of this match (encounter.team_member id): heroes it may not pick}`` (spec §11.4, §11.6 R4-8): every
+    hero picked for the same player in a recorded round of this mix -- any lobby, any team, since mix teams
+    reshuffle. Empty unless the mix plays Fearless. An undone round's encounter is gone, and its heroes with it."""
+    fearless = await session.scalar(
+        sa.select(models.CustomGame.hero_fearless).where(models.CustomGame.id == encounter.custom_game_id)
+    )
+    if not fearless:
+        return {}
+    now = aliased(models.EncounterTeamMember)
+    then = aliased(models.EncounterTeamMember)
+    rows = await session.execute(
+        sa.select(now.id, models.PickBanEntry.item_id)
+        .join(then, then.workspace_member_id == now.workspace_member_id)
+        .join(models.PickBanEntry, models.PickBanEntry.picked_for_member_id == then.id)
+        .join(models.CustomGameRound, models.CustomGameRound.encounter_id == then.encounter_id)
+        .join(models.Encounter, models.Encounter.id == then.encounter_id)
+        .where(now.encounter_id == encounter.id, models.Encounter.custom_game_id == encounter.custom_game_id)
+    )
+    exclusions: dict[int, set[int]] = {}
+    for member_id, hero_id in rows.all():
+        exclusions.setdefault(member_id, set()).add(hero_id)
+    return exclusions

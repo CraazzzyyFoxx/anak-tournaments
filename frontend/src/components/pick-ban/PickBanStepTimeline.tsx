@@ -53,6 +53,8 @@ interface PickBanStepTimelineProps {
   /** The room's side labels in `state.sides` order: a `side_pick` step's item is an index into them. */
   sideLabels: string[];
   teamName: (teamId: number) => string;
+  /** A mix player's name: a member step names whose pick it is (spec §11.6 R4-11). */
+  memberName: (memberId: number) => string;
   /** Drives the "who goes first" line under the Steps title. */
   session: PickBanSession;
 }
@@ -67,6 +69,7 @@ export function PickBanStepTimeline({
   itemsById,
   sideLabels,
   teamName,
+  memberName,
   session
 }: Readonly<PickBanStepTimelineProps>) {
   const t = useTranslations("pickBan.room");
@@ -89,6 +92,8 @@ export function PickBanStepTimeline({
     // one: "Both teams ban" / "{team} bans" / "Random ban".
     const shape = summary.system ? "system" : summary.actors.length > 1 ? "both" : "side";
     const headlineKey = `step.${shape}.${summary.action}` as const;
+    // A `next` step is one player's pick: name them, not their team.
+    const pickFor = resolved.member === "next" ? resolved.member_seats?.[0]?.[1] : undefined;
 
     const Icon = done
       ? Check
@@ -135,9 +140,11 @@ export function PickBanStepTimeline({
         >
           {summary.action === "ban" ? <Ban className="h-3.5 w-3.5" aria-hidden /> : null}
           {summary.action === "protect" ? <Shield className="h-3.5 w-3.5" aria-hidden /> : null}
-          {t(headlineKey, {
-            team: summary.actors.length === 1 ? teamName(summary.actors[0]) : ""
-          })}
+          {pickFor != null
+            ? t("step.member.pick", { member: memberName(pickFor) })
+            : t(headlineKey, {
+                team: summary.actors.length === 1 ? teamName(summary.actors[0]) : ""
+              })}
           {summary.action === "decider" ? (
             <TooltipProvider delayDuration={150}>
               <Tooltip>
@@ -160,6 +167,9 @@ export function PickBanStepTimeline({
           ) : null}
         </span>
         <StepMeta summary={summary} />
+        {resolved.member === "each" ? (
+          <span className="text-xs text-[color:var(--aqt-fg-muted)]">{t("step.eachPlayer")}</span>
+        ) : null}
         {taken.length > 0 ? (
           <span className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1">
             {taken.map((item, position) => {

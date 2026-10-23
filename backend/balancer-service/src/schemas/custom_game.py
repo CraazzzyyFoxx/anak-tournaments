@@ -262,9 +262,11 @@ class CustomGameSelfServicePatch(_Request):
 
 
 class CustomGameBanPresetPatch(_Request):
-    """The mix's hero ban preset; ``null`` turns bans off."""
+    """The mix's hero room: its ban preset (``null`` turns bans off) and, when sent, Fearless (spec §11.4)."""
 
     hero_ban_preset: str | None = Field(max_length=64)
+    #: Omitted = unchanged. On: a player cannot pick a hero they were recorded on earlier in this mix.
+    hero_fearless: StrictBool | None = None
 
 
 class CustomGameDraftSettingsPatch(_Request):

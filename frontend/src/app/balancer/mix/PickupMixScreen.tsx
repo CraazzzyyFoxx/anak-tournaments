@@ -566,7 +566,10 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
               onRename={(name) => renameMix.mutateAsync(name)}
               onSetSelfService={(patch) => setSelfService.mutate(patch)}
               savingSelfService={setSelfService.isPending}
-              onSetBanPreset={(preset) => setBanPreset.mutate(preset)}
+              onSetBanPreset={(preset) => setBanPreset.mutate({ hero_ban_preset: preset })}
+              onSetFearless={(fearless) => {
+                if (game != null) setBanPreset.mutate({ hero_ban_preset: game.hero_ban_preset, hero_fearless: fearless });
+              }}
               savingBanPreset={setBanPreset.isPending}
               onSetDraftSettings={(settings) => setDraftSettings.mutate(settings)}
               savingDraftSettings={setDraftSettings.isPending}

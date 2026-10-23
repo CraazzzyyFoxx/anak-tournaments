@@ -1,9 +1,12 @@
-"""Deadlock's built-in pick/ban ruleset (``DisciplineSpec.pick_ban_presets``): per-game hero bans.
+"""Deadlock's built-in pick/ban rulesets (``DisciplineSpec.pick_ban_presets``): per-game hero bans.
 
 Each game: 2 bans per team, A-B-A-B, 30 s per turn, a random hero on timeout. The first ban rotates to the previous
 game's loser (``result_loser_first``); game 1 is opened by the higher seed (bracket slot 1 when unseedable). No side
 pick: ``SPEC.sides`` are labels only. Organizers edit count/order in the rules editor. Validates clean for
 ``kind="hero"`` ``mode="pool"``; ``test_pick_ban_rules_presets`` is the guard.
+
+``deadlock_bans_pick`` (pickup mixes only, spec §11.6 R4-7): the same bans, then every player of both teams picks one
+hero at once; a hero taken is gone for everyone.
 """
 
 from __future__ import annotations
@@ -48,6 +51,27 @@ HERO_BANS: dict[str, Any] = {
     ],
 }
 
+#: Model (b): the four bans, then one open pick in which every member of both teams answers at once.
+BANS_PICK: dict[str, Any] = {
+    **HERO_BANS,
+    "phases": [
+        {
+            **HERO_BANS["phases"][0],
+            "steps": [
+                *HERO_BANS["phases"][0]["steps"],
+                {
+                    **_ban("pick", "both"),
+                    "action": "pick",
+                    "lifetime": None,
+                    "timer_seconds": 60,
+                    "member": "each",
+                },
+            ],
+        }
+    ],
+}
+
 PRESETS: tuple[Preset, ...] = (
     Preset("deadlock_hero_bans", "hero", ("pool",), parse_ruleset(HERO_BANS), first_ban_rotation="result_loser_first"),
+    Preset("deadlock_bans_pick", "hero", ("pool",), parse_ruleset(BANS_PICK), first_ban_rotation="result_loser_first"),
 )

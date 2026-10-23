@@ -152,6 +152,7 @@ def _game(**overrides) -> SimpleNamespace:
         "self_signup": "closed",
         "self_role_edit": False,
         "hero_ban_preset": None,
+        "hero_fearless": False,
         "team_formation": "balance",
         "draft_pick_seconds": 30,
         "general_voice_channel_id": None,
@@ -4769,6 +4770,35 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(("draft", 90), (game.team_formation, game.draft_pick_seconds))
+
+    async def test_create_clone_keeps_its_sources_fearless(self) -> None:
+        self.games.get.return_value = _game(id=5, hero_fearless=True)
+        self.roster.list_for_game.return_value = []
+
+        game = await self.service.create(
+            self.session,
+            workspace_id=1,
+            discipline="overwatch",
+            host_user_id=9,
+            name="Rematch",
+            actor_user_id=9,
+            clone_from_game_id=5,
+        )
+
+        self.assertTrue(game.hero_fearless)
+
+    async def test_a_host_turns_fearless_on_and_a_preset_edit_leaves_it_on(self) -> None:
+        self.games.get.return_value = _game()
+
+        game = await self.service.set_ban_preset(
+            self.session, workspace_id=1, custom_game_id=11, hero_ban_preset=None, hero_fearless=True, actor_user_id=9
+        )
+        self.assertTrue(game.hero_fearless)
+
+        game = await self.service.set_ban_preset(
+            self.session, workspace_id=1, custom_game_id=11, hero_ban_preset="hero_classic", actor_user_id=9
+        )
+        self.assertEqual(("hero_classic", True), (game.hero_ban_preset, game.hero_fearless))
 
 
 class _AwaitableSession:

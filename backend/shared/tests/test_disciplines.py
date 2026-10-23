@@ -41,6 +41,15 @@ def test_overwatch_declares_no_sides():
     assert (spec.code, spec.name, spec.sides) == ("overwatch", "Overwatch", ())
 
 
+def test_each_game_declares_whether_a_hero_repeats_in_a_match():
+    assert {code: DISCIPLINES[code].character_uniqueness for code in ("overwatch", "lol", "deadlock")} == {
+        "overwatch": "team",
+        "lol": "match",
+        "deadlock": "match",
+    }
+    assert discipline("starcraft").character_uniqueness == "none"
+
+
 def test_lol_declares_blue_red_sides_and_only_its_minimal_vocabulary():
     spec = DISCIPLINES["lol"]
     # Index 0 = blue, 1 = red: the ``side_pick`` wire index.
@@ -285,6 +294,7 @@ def test_a_side_actor_is_left_unbound_until_its_side_pick_is_played(sided_discip
         SimpleNamespace(
             step_index=0,
             encounter_team_id=SLOT1,
+            team_member_id=None,
             attempt=1,
             state="revealed",
             items_json=[{"item_id": 1, "target_player_id": None}],
@@ -312,6 +322,7 @@ def test_an_unbound_step_stops_the_cursor_rather_than_being_skipped(sided_discip
         SimpleNamespace(
             step_index=0,
             encounter_team_id=SLOT1,
+            team_member_id=None,
             attempt=1,
             state="revealed",
             items_json=[{"item_id": 0, "target_player_id": None}],

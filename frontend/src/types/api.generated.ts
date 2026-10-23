@@ -2283,7 +2283,7 @@ export interface paths {
         put?: never;
         /**
          * Ban, pick or protect
-         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Applies one ban, pick or protect to the encounter's live pick/ban session of the given `kind`, under the session's row lock, and returns the caller's new room state. OPEN steps only: a blind step is a 400 that says to use the submit route. Acting when the caller's side does not owe the current step, sending the wrong action for it, naming an item the step's rules do not allow, or omitting the opponent player a per-player ban must name is a 400, as is a session that is not initialized or no longer active. On a mix match the captain is the roster snapshot's (the lineup's crown).
+         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Applies one ban, pick or protect to the encounter's live pick/ban session of the given `kind`, under the session's row lock, and returns the caller's new room state. OPEN steps only: a blind step is a 400 that says to use the submit route. Acting when the caller's side does not owe the current step, sending the wrong action for it, naming an item the step's rules do not allow, or omitting the opponent player a per-player ban must name is a 400, as is a session that is not initialized or no longer active. On a mix match the captain is the roster snapshot's (the lineup's crown). On a mix match's member pick (spec §11.6) the body names `member_id`, the `encounter.team_member` seat the hero is for: the member themselves or their team's captain may pick (403 otherwise; 422 on a tournament match). An assignment step is answered through captain_pick_ban_submit.
          *
          *     RPC subject: `rpc.tournament.captain_pick_ban_act`
          */
@@ -2347,7 +2347,7 @@ export interface paths {
         };
         /**
          * Get pick-ban room state
-         * @description Permission: public; no authentication required — gated only by the tournament's visibility rule; a mix match's room is public. Returns the live pick/ban room for an encounter and the `kind` path segment ('map' or 'hero', 422 otherwise): the resolved steps, the candidate pool, which sides still owe the current step, both sides' readiness, any open undo request, and for maps the captains' per-map result claims. A captain additionally gets their own side annotated, their eligible items, why their draft cannot be locked yet, and their own unrevealed draft — a blind step never serializes the other side's. When no session can exist yet the payload names why (teams unknown, bracket still a preview, no pick-ban configured, slot count mismatch, sides not ready, waiting on the map round) instead of erroring.
+         * @description Permission: public; no authentication required — gated only by the tournament's visibility rule; a mix match's room is public. Returns the live pick/ban room for an encounter and the `kind` path segment ('map' or 'hero', 422 otherwise): the resolved steps, the candidate pool, which sides still owe the current step, both sides' readiness, any open undo request, and for maps the captains' per-map result claims. A captain additionally gets their own side annotated, their eligible items, why their draft cannot be locked yet, and their own unrevealed draft — a blind step never serializes the other side's. When no session can exist yet the payload names why (teams unknown, bracket still a preview, no pick-ban configured, slot count mismatch, sides not ready, waiting on the map round) instead of erroring. A mix room also lists `members` (seats in pick order), the member step's `acting_member_ids`, whom the viewer may pick for (`viewer_member_ids`; a member owes their own pick, a captain also their team's) and each member's choosable heroes (`member_eligible`, Fearless applied).
          *
          *     RPC subject: `rpc.tournament.captain_pick_ban_state`
          */
@@ -2371,7 +2371,7 @@ export interface paths {
         put?: never;
         /**
          * Submit a blind draft
-         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Replaces the caller's whole draft for the current BLIND step and, with `lock: true`, locks it — a locked submission is final, and once every acting side has locked the step reveals for both. Returns the caller's new room state; while the step is unrevealed it carries the caller's own items and only the opponent's progress counts. 400 when the current step is not blind, when the caller already locked, or when the items break the step's rules (the reasons are also listed in the state's `draft_issues`). On a mix match the captain is the roster snapshot's (the lineup's crown).
+         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Replaces the caller's whole draft for the current BLIND step and, with `lock: true`, locks it — a locked submission is final, and once every acting side has locked the step reveals for both. Returns the caller's new room state; while the step is unrevealed it carries the caller's own items and only the opponent's progress counts. 400 when the current step is not blind, when the caller already locked, or when the items break the step's rules (the reasons are also listed in the state's `draft_issues`). On a mix match the captain is the roster snapshot's (the lineup's crown). It also answers a mix's assignment step (open, not blind): each item names `member_id`, one hero of the team's picks per member, none a member's Fearless excludes (422 on a tournament match).
          *
          *     RPC subject: `rpc.tournament.captain_pick_ban_submit`
          */
@@ -6133,7 +6133,7 @@ export interface paths {
         put?: never;
         /**
          * Act for a side
-         * @description Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Performs one ban, pick or protect on behalf of the given side (admin override of the captain flow) against the current OPEN step, optionally naming the opponent roster player a per-player ban is spent on, and returns the full room state with nothing hidden. 400 when the current step is blind — use admin_pick_ban_submit for those.
+         * @description Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Performs one ban, pick or protect on behalf of the given side (admin override of the captain flow) against the current OPEN step, optionally naming the opponent roster player a per-player ban is spent on, and returns the full room state with nothing hidden. 400 when the current step is blind — use admin_pick_ban_submit for those. On a mix's member pick `member_id` names the member the hero is for (422 on a tournament match).
          *
          *     RPC subject: `rpc.tournament.admin_pick_ban_act`
          */
@@ -9799,7 +9799,7 @@ export interface paths {
         };
         /**
          * Get custom game
-         * @description Permission: public; no authentication required. Returns one mix with its full lineup: each seat's participation state, role order, the ranks the balancer would use and which layer each came from. Resolves ownership from the mix id; an optional workspace_id restricts the read and returns 404 if the mix belongs to another workspace. It carries the mix's hero_ban_preset (null = no bans). Each lobby carries state (idle | ready | pregame | live), live_seats (the live match's participations {id, slot, name}) and opener_index (the lineup team that bans first in the next match, null without bans). A lobby's `state` reads `draft_setup` / `draft_live` while its draft runs, with `draft_session_id`; a drafted lineup's document carries `source: "draft"`. A player in a drafting lobby's pool reads that lobby as `current_lobby`; an unpicked player who stepped away leaves the pool.
+         * @description Permission: public; no authentication required. Returns one mix with its full lineup: each seat's participation state, role order, the ranks the balancer would use and which layer each came from. Resolves ownership from the mix id; an optional workspace_id restricts the read and returns 404 if the mix belongs to another workspace. It carries the mix's hero_ban_preset (null = no bans). It carries hero_fearless (spec §11.4). Each lobby carries state (idle | ready | pregame | live), live_seats (the live match's participations {id, slot, name}) and opener_index (the lineup team that bans first in the next match, null without bans). A lobby's `state` reads `draft_setup` / `draft_live` while its draft runs, with `draft_session_id`; a drafted lineup's document carries `source: "draft"`. A player in a drafting lobby's pool reads that lobby as `current_lobby`; an unpicked player who stepped away leaves the pool.
          *
          *     RPC subject: `rpc.balancer.custom.get`
          */
@@ -10066,7 +10066,7 @@ export interface paths {
         get?: never;
         /**
          * Set custom game ban preset
-         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Sets the hero ban preset the lobbies' next Start opens a room on -- a hero preset of the mix's own game that bans no player on map 1 (deadlock_hero_bans, lol_side_selection, the Overwatch hero presets) -- or null for no bans, and returns the refreshed mix. A live match keeps the room it started with. 422 unknown_ban_preset for any other code.
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Sets the hero ban preset the lobbies' next Start opens a room on -- a hero preset of the mix's own game that bans no player on map 1 (deadlock_hero_bans, deadlock_bans_pick, lol_side_selection, lol_draft, lol_captains, the Overwatch hero presets) -- or null for no bans, and returns the refreshed mix. A live match keeps the room it started with. 422 unknown_ban_preset for any other code. hero_fearless, when sent, turns Fearless on or off for the next room: a player cannot pick a hero they were recorded on earlier in the mix.
          *
          *     RPC subject: `rpc.balancer.custom.set_ban_preset`
          */
@@ -10439,7 +10439,7 @@ export interface paths {
         };
         /**
          * List custom game matches
-         * @description Permission: public; no authentication required. Returns every round recorded for the mix, newest first: its two teams by slot (slot 1 banned first) with name and score, its hero bans {slot, item_id} in order, the winning slot (null for a draw), lobby, map, recorder and the rank points it applied.
+         * @description Permission: public; no authentication required. Returns every round recorded for the mix, newest first: its two teams by slot (slot 1 banned first) with name and score, its hero bans {slot, item_id} in order, whose hero each pick was {slot, member_id, name, item_id} in pick order, the winning slot (null for a draw), lobby, map, recorder and the rank points it applied.
          *
          *     RPC subject: `rpc.balancer.custom.match_history`
          */
@@ -19425,6 +19425,11 @@ export interface components {
             /** Item Id */
             item_id: number;
             /**
+             * Member Id
+             * @default null
+             */
+            member_id: number | null;
+            /**
              * Target Player Id
              * @default null
              */
@@ -19443,6 +19448,11 @@ export interface components {
         "tournament.PickBanSubmissionItemInput": {
             /** Item Id */
             item_id: number;
+            /**
+             * Member Id
+             * @default null
+             */
+            member_id: number | null;
             /**
              * Target Player Id
              * @default null
@@ -23084,11 +23094,16 @@ export interface components {
         };
         /**
          * CustomGameBanPresetPatch
-         * @description The mix's hero ban preset; ``null`` turns bans off.
+         * @description The mix's hero room: its ban preset (``null`` turns bans off) and, when sent, Fearless (spec §11.4).
          */
         "balancer.CustomGameBanPresetPatch": {
             /** Hero Ban Preset */
             hero_ban_preset: string | null;
+            /**
+             * Hero Fearless
+             * @default null
+             */
+            hero_fearless: boolean | null;
         };
         /**
          * CustomGameCaptainPatch
@@ -28897,6 +28912,11 @@ export interface components {
             /** Item Id */
             item_id: number;
             kind: components["schemas"]["tournament.PickBanKind"];
+            /**
+             * Member Id
+             * @default null
+             */
+            member_id: number | null;
             /**
              * Target Player Id
              * @default null

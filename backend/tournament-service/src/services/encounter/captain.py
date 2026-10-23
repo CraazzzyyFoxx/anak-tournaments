@@ -156,12 +156,15 @@ class CaptainService:
 
     async def resolve_participant(
         self, session: AsyncSession, auth_user: models.AuthUser, encounter: Encounter
-    ) -> tuple[EncounterTeam, int, bool]:
-        """``(seat, player id, is_captain)`` of this account in the encounter (spec §7.3).
+    ) -> tuple[EncounterTeam, int, bool, int | None]:
+        """``(seat, player id, is_captain, own seat)`` of this account in the encounter (spec §7.3).
 
         A tournament seat is found through its team's live ``Team.captain_id`` only, so it is always the captain's. A
         mix seat is found through the roster snapshot (``encounter.team_member`` -> workspace member -> player) and
         carries the snapshot's ``is_captain``. 403 without a linked player or a seat.
+
+        The own seat is the mix snapshot's ``encounter.team_member`` id (a member step names it, spec §11.6); ``None``
+        for a tournament seat.
         """
         player = await self.user_repo.get_by_auth_user_id(session, auth_user.id)
         if player is None:
@@ -173,7 +176,11 @@ class CaptainService:
         if encounter.custom_game_id is not None:
             row = (
                 await session.execute(
-                    sa.select(models.EncounterTeamMember.encounter_team_id, models.EncounterTeamMember.is_captain)
+                    sa.select(
+                        models.EncounterTeamMember.encounter_team_id,
+                        models.EncounterTeamMember.is_captain,
+                        models.EncounterTeamMember.id,
+                    )
                     .join(
                         models.WorkspaceMember,
                         models.WorkspaceMember.id == models.EncounterTeamMember.workspace_member_id,
@@ -187,7 +194,7 @@ class CaptainService:
             ).first()
             for seat in seats:
                 if row is not None and seat.id == row.encounter_team_id:
-                    return seat, player.id, bool(row.is_captain)
+                    return seat, player.id, bool(row.is_captain), row.id
         else:
             team_ids = [seat.team_id for seat in seats if seat.team_id is not None]
             if team_ids:
@@ -197,7 +204,7 @@ class CaptainService:
                 captained = set(rows.scalars())
                 for seat in seats:
                     if seat.team_id in captained:
-                        return seat, player.id, True
+                        return seat, player.id, True, None
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not captain any team in this encounter",
@@ -207,13 +214,44 @@ class CaptainService:
         self, session: AsyncSession, auth_user: models.AuthUser, encounter: Encounter
     ) -> tuple[EncounterTeam, int]:
         """The seat this account captains and its player id; 403 otherwise. Every captain-only write goes here."""
-        seat, player_id, is_captain = await self.resolve_participant(session, auth_user, encounter)
+        seat, player_id, is_captain, _member = await self.resolve_participant(session, auth_user, encounter)
         if not is_captain:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not captain any team in this encounter",
             )
         return seat, player_id
+
+    async def acting_seat(
+        self, session: AsyncSession, auth_user: models.AuthUser, encounter: Encounter, member_id: int | None
+    ) -> tuple[EncounterTeam, bool, int | None]:
+        """``(seat, is_captain, own seat)`` this account acts for on a pick-ban step (spec §11.3, §11.6 R4-9): the
+        own seat is ``resolve_participant``'s, which the action's answer reads the room as.
+
+        Without ``member_id`` the step is the team's and only its captain acts. With one -- a mix's member pick --
+        the member themselves or their team's captain acts; anyone else, a member of the other team included, is a
+        403. A tournament seat names no members: its captain is resolved as ever and the action service refuses the
+        ``member_id`` (422), the one check the organizer route shares. Hosts act through the organizer route."""
+        seat, _player_id, is_captain, own = await self.resolve_participant(session, auth_user, encounter)
+        if member_id is None or encounter.custom_game_id is None:
+            if not is_captain:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not captain any team in this encounter",
+                )
+            return seat, True, own
+        team = await session.scalar(
+            sa.select(models.EncounterTeamMember.encounter_team_id).where(
+                models.EncounterTeamMember.id == member_id,
+                models.EncounterTeamMember.encounter_id == encounter.id,
+                models.EncounterTeamMember.active.is_(True),
+            )
+        )
+        if team != seat.id or not (is_captain or own == member_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="You pick for yourself, or as captain for your own team"
+            )
+        return seat, is_captain, own
 
     # -- reads -------------------------------------------------------------
     async def _position_map_ids(self, session: AsyncSession, encounter_id: int) -> dict[int, int]:

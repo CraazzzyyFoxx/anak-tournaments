@@ -203,6 +203,12 @@ class PickBanEntry(db.TimeStampIntegerMixin):
             ondelete="SET NULL (protected_by_team_id)",
             name="fk_pick_ban_entry_protected_by",
         ),
+        ForeignKeyConstraint(
+            ["picked_for_member_id"],
+            ["encounter.team_member.id"],
+            ondelete="SET NULL",
+            name="fk_pick_ban_entry_picked_for",
+        ),
         CheckConstraint(
             "(picked_by_kind = 'team') = (picked_by_team_id IS NOT NULL)", name="ck_pick_ban_entry_picked_by"
         ),
@@ -228,6 +234,9 @@ class PickBanEntry(db.TimeStampIntegerMixin):
     round: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     picked_by_kind: Mapped[enums.PickBanActorKind | None] = mapped_column(PICK_BAN_ACTOR_ENUM, nullable=True)
     picked_by_team_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    #: Whose hero a pick is (spec §11.6 R4-1): the member step's member, or whom an ``assign`` gave it to. NULL for a
+    #: ban, a protect, a map and a team pick not yet assigned.
+    picked_for_member_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     status: Mapped[enums.MapPoolEntryStatus] = mapped_column(
         PICK_BAN_ENTRY_STATUS_ENUM,
         default=enums.MapPoolEntryStatus.AVAILABLE,
@@ -259,7 +268,8 @@ class PickBanSubmission(db.TimeStampIntegerMixin):
 
     ``encounter_team_id`` is NULL for a system-resolved step (a decider, a
     random fill) -- hence ``NULLS NOT DISTINCT``, which keeps the system from
-    answering one step twice.
+    answering one step twice. ``team_member_id`` is set exactly on a member
+    step's answers, one per member (spec §11.6 R4-1), and is part of the key.
     """
 
     __tablename__ = "pick_ban_submission"
@@ -270,6 +280,7 @@ class PickBanSubmission(db.TimeStampIntegerMixin):
             "session_id",
             "step_index",
             "encounter_team_id",
+            "team_member_id",
             "attempt",
             unique=True,
             postgresql_nulls_not_distinct=True,
@@ -288,6 +299,12 @@ class PickBanSubmission(db.TimeStampIntegerMixin):
             deferrable=True,
             initially="DEFERRED",
         ),
+        ForeignKeyConstraint(
+            ["team_member_id"],
+            ["encounter.team_member.id"],
+            ondelete="CASCADE",
+            name="fk_pick_ban_submission_team_member",
+        ),
         {"schema": "encounter"},
     )
 
@@ -297,6 +314,8 @@ class PickBanSubmission(db.TimeStampIntegerMixin):
     step_index: Mapped[int] = mapped_column(Integer())
     #: NULL = the system resolved this step.
     encounter_team_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    #: The member a member step's answer is for (``encounter.team_member``); NULL for a team step and the engine.
+    team_member_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     attempt: Mapped[int] = mapped_column(Integer(), default=1, server_default="1")
     state: Mapped[str] = mapped_column(String(16))
     # ``[{"item_id": int, "target_player_id": int | null}]`` in submission

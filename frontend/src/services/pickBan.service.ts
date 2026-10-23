@@ -22,6 +22,8 @@ export interface PickBanActionInput {
   action: PickBanAction;
   /** Required on a step with a `target`: the opponent player the item is banned for. */
   target_player_id?: number | null;
+  /** A mix's member pick: the player (`PickBanMember.id`) the hero is for -- yourself, or as captain a teammate. */
+  member_id?: number | null;
 }
 
 export interface PickBanSubmitInput {

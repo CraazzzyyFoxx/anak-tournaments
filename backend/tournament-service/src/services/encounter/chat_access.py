@@ -88,7 +88,9 @@ class EncounterChatAccess:
             if await is_mix_host(session, auth_user, encounter.custom_game_id):
                 return ChatMembership(role="staff", display_name=auth_user.username, can_write=True, can_moderate=True)
             try:
-                seat, player_id, is_captain = await captain_service.resolve_participant(session, auth_user, encounter)
+                seat, player_id, is_captain, _member = await captain_service.resolve_participant(
+                    session, auth_user, encounter
+                )
             except HTTPException:
                 seat = None
             if seat is not None:
