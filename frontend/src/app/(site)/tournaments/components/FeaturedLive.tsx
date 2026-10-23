@@ -138,7 +138,7 @@ const FeaturedTournamentCard = ({
           </span>
         </div>
         <div className="right">
-          <Button asChild variant="subtle" size="xs">
+          <Button asChild variant="outline" size="xs">
             <Link href={tournamentHref(tournament, "/bracket")}>
               {t("common.bracket")}
               <ArrowRight aria-hidden />

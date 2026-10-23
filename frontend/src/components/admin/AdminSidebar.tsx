@@ -68,7 +68,7 @@ export function AdminSidebar() {
         {/* Search trigger */}
         <Button
           type="button"
-          variant="subtle"
+          variant="outline"
           size="sm"
           onClick={() => setCommandOpen(true)}
           aria-label={t("commandPalette.search")}

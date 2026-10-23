@@ -121,7 +121,7 @@ export function NextMapStrip({
           </FilterChipGroup>
           <Button
             type="button"
-            variant="subtle"
+            variant="outline"
             size="sm"
             disabled={saving || maps.length === 0}
             onClick={roll}

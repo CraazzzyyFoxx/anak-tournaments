@@ -75,7 +75,7 @@ const UserProfileEmpty = async ({ name }: { name: string }) => {
               {t("users.profile.empty.browseTournaments")}
             </HoverPrefetchLink>
           </Button>
-          <Button asChild variant="subtle">
+          <Button asChild variant="outline">
             <HoverPrefetchLink href="/users">
               <Users aria-hidden />
               {t("users.profile.empty.browsePlayers")}

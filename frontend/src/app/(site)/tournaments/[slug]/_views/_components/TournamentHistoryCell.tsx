@@ -42,7 +42,7 @@ export default function TournamentHistoryCell({
         <TooltipTrigger asChild>
           <Button
             type="button"
-            variant="subtle"
+            variant="outline"
             size="xs"
             aria-label={t("tournamentDetail.previousTournaments", { count: total })}
             className="tabular-nums"

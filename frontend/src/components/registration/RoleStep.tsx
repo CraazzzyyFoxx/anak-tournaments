@@ -243,7 +243,7 @@ export default function RoleStep({
         {!isLocked && named && flexMode === "optional" && (
           <Button
             type="button"
-            variant="subtle"
+            variant="outline"
             size="sm"
             aria-pressed={isFlex}
             onClick={toggleFlex}

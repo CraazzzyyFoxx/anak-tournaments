@@ -187,7 +187,7 @@ export default function TournamentClientLayout({
   // trade is gone, and the formation itself reads in the Format card, beside the
   // roster shape a pill could not show.
   const draftButton = showDraftLink ? (
-    <Button asChild variant="subtle">
+    <Button asChild variant="outline">
       <HoverPrefetchLink href={`/draft/${tournament.slug}`}>
         {t("common.draft")}
         <ExternalLink className="opacity-80" aria-hidden />

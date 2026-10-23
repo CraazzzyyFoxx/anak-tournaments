@@ -36,7 +36,7 @@ export function PickBanMemberChooser({
             key={member.id}
             type="button"
             size="sm"
-            variant={member.id === value ? "default" : "outline"}
+            variant={member.id === value ? "accent" : "outline"}
             aria-pressed={member.id === value}
             onClick={() => onChange(member.id)}
           >
@@ -212,7 +212,7 @@ export function PickBanAssignBoard({
                       type="button"
                       size="sm"
                       disabled={teamLocking}
-                      variant={picks[member.id] === heroId ? "default" : "outline"}
+                      variant={picks[member.id] === heroId ? "accent" : "outline"}
                       aria-pressed={picks[member.id] === heroId}
                       aria-label={t("assign.give", { hero: heroName(heroId), member: member.name })}
                       onClick={() =>

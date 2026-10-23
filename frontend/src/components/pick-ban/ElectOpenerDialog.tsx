@@ -62,7 +62,7 @@ export function ElectOpenerDialog({ kind, encounterId, open, seats, queryKey }: 
           {seats.map((seat) => (
             <Button
               key={seat.id}
-              variant={choice === seat.id ? "default" : "outline"}
+              variant={choice === seat.id ? "accent" : "outline"}
               className="flex-1"
               onClick={() => setChoice(seat.id)}
             >

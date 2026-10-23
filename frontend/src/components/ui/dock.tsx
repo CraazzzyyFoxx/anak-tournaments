@@ -157,7 +157,7 @@ export function Dock({
       <Button
         ref={restoreRef}
         type="button"
-        variant="subtle"
+        variant="outline"
         size="sm"
         onClick={() => toggle(true)}
         className="h-10 rounded-full bg-[color:var(--aqt-card)]/95 px-3.5 shadow-xl backdrop-blur hover:border-[color:var(--aqt-teal)] hover:bg-[color:var(--aqt-card)]/95 hover:text-[color:var(--aqt-teal)]"

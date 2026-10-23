@@ -81,7 +81,7 @@ export function AddStageItemForm({
 
       <Button
         size="sm"
-        variant="secondary"
+        variant="outline"
         disabled={createItemMutation.isPending}
         onClick={() => createItemMutation.mutate()}
       >

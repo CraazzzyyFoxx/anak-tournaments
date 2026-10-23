@@ -69,8 +69,10 @@ Arbitrary Tailwind colours need the `color:` hint:
 | `--aqt-card-2`         | `hsl(222 24% 11%)`       | nested surface, bar track on a card              |
 | `--aqt-overlay-1`      | `hsl(0 0% 100% / 0.015)` | group card fill (`.team-card`)                   |
 | `--aqt-overlay-2`      | `hsl(0 0% 100% / 0.025)` | **row hover**, bar track                         |
-| `--aqt-overlay-3`      | `hsl(0 0% 100% / 0.05)`  | pressed / neutral tint                           |
+| `--aqt-overlay-3`      | `hsl(0 0% 100% / 0.05)`  | pressed / neutral tint, a tonal button at rest   |
+| `--aqt-overlay-4`      | `hsl(0 0% 100% / 0.08)`  | a tonal button under the pointer                 |
 | `--aqt-overlay-border` | `hsl(0 0% 100% / 0.06)`  | group card border, in-card dividers              |
+| `--aqt-sheen`          | `hsl(0 0% 100% / 0.22)`  | the 1px light along a filled button's top edge   |
 | `--aqt-border`         | `hsl(219 19% 15%)`       | hairline, section card border                    |
 | `--aqt-border-2`       | `hsl(217 17% 21%)`       | control border                                   |
 | `--aqt-border-3`       | `hsl(216 16% 26%)`       | hover / focus / active border                    |
@@ -157,6 +159,10 @@ prop picks the row; the text follows the row height:
   `FilterChip`, `ToggleGroupItem`, `TabsTrigger`, date and combobox
   triggers) is 500; what you type into (`Input`, `NumberInput`, `TimeInput`,
   `Textarea`, `SearchField`) is 400.
+- A filled button (`default`, `destructive`, `positive`) speaks in the label
+  voice: uppercase, `tracking-label`, 600, one role below its row (13px at
+  `default`/`lg`, 12px at `sm`/`xs`). The primitive sets it; labels stay
+  sentence case in code and in the accessible name.
 - Text-entry fields stay 16px below `sm`: iOS Safari zooms into any smaller
   focused field. The primitives carry this; do not undo it.
 - No `text-*` or `font-*` on a control, no `h-8`/`h-9` where `size` says it.
@@ -215,6 +221,7 @@ plain fact. That ends here.
 | Section card (`Card`, `.card`) | 12px (`rounded-xl`)     | `--aqt-card` fill, `--aqt-border` border              |
 | Page hero (`HeroFrame`)        | 14px (`--aqt-radius`)   | `--aqt-bg-2`, one teal hairline, one corner glow      |
 | Controls, filter chip          | 8px (`--aqt-radius-sm`) | `--aqt-overlay-2`, `--aqt-border-2`                   |
+| Button (`ui/button.tsx`)       | 8px (`rounded-lg`)      | filled: its tone + `--aqt-sheen` top line; `outline`: `--aqt-overlay-3` + `--aqt-border-2` + an `--aqt-overlay-3` top line |
 | Status pill, `Badge`           | `rounded-md`            | tone tint (`TONE_CLASS`)                              |
 | Bars                           | `rounded-full`          | `--aqt-overlay-2` / `--aqt-card-2` track              |
 
@@ -224,7 +231,12 @@ plain fact. That ends here.
 - **When to frame.** Frame a group of rows that belong together (a team, a
   round, a role column, a day of matches) or a dense data block. A page
   section is open: a heading, then its content.
-- No shadows on dark surfaces; elevation is fill + border.
+- No shadows on dark surfaces; elevation is fill + border. The one exception
+  is a button's inset 1px top line (`--aqt-sheen` on a filled button,
+  `--aqt-overlay-3` on a tonal one): a lit edge, not a drop shadow.
+- A button sits above its surface, never below it: its fill is lighter than
+  the page, card or dialog it is on. A fill darker than the surface reads as
+  a hole, not as something to press.
 - Hover on a row is `bg-[color:var(--aqt-overlay-2)]`; on a card it is the
   border moving to `--aqt-border-3` (or teal for a whole-card link). Never a
   scale or size change.
@@ -276,7 +288,7 @@ the last-resort `global-error`) are listed in the script with their reason.
 | Pagination                  | `ui/data-pagination.tsx` (`leading` slot for the range or rows-per-page)                                                |
 | Data table                  | `components/data-table/DataTable.tsx`                                                                                   |
 | URL state                   | `hooks/useQueryParams.ts`                                                                                               |
-| Button                      | `ui/button.tsx`. Variants `default` · `outline` · `secondary` · `subtle` (overlay fill) · `ghost` · `ghost-destructive` (icon remove) · `accent` (teal row action) · `positive` · `destructive` · `dashed` (add one more) · `link`; sizes `default` · `sm` · `lg` · `xs` · `icon` · `icon-sm` (28px, icon beside text) · `icon-xs` · `inline` (a link in a sentence) · `label` (sortable header). `static={false}` opts into a reduced-motion-safe press |
+| Button                      | `ui/button.tsx`. Filled, in the label voice: `default` (teal, the screen's main action) · `destructive` · `positive` (check in). Tonal: `outline` (the everyday button, raised off any surface). Quiet: `ghost` · `ghost-destructive` (icon remove) · `link`. Tinted: `accent` (teal row action, and the chosen option of a choice, so picking never changes its shape). `dashed` (add one more). Sizes `default` · `sm` · `lg` · `xs` · `icon` · `icon-sm` (28px, icon beside text) · `icon-xs` · `inline` (a link in a sentence) · `label` (sortable header). Every button sinks on press (§10) |
 | Row that is one action      | `RowButton` (`ui/row-button.tsx`): row hover, `aria-current="true"` selected fill, inset focus ring; the caller lays out |
 | Dialog / sheet chrome       | `DialogContent` / `SheetContent` + their headers, `variant="panel"` for the edge-to-edge panel with a bordered header |
 | Range                       | `ui/slider.tsx`, `accent` for a role-tinted track                                                                       |
@@ -386,6 +398,8 @@ system.
   in `kit/SectionNav` plays the same 320ms entrance on the content column,
   from below for a section under the open one, from above for one over it.
 - No hover that changes size or shifts layout.
+- The one press: every `Button` sinks to `scale(0.97)` while pressed (150ms,
+  `motion-safe` only); the `inline` and `label` sizes, which are text, do not.
 - `prefers-reduced-motion` mutes all of it; the static cue (colour, border,
   word) always remains.
 
@@ -576,6 +590,8 @@ Rules on every admin screen:
   `<select>` or `<textarea>` outside `components/ui/`.
 - Hover that scales or shifts layout; entrance animations; perpetual loops
   on anything that is not live.
+- A button filled darker than the surface it sits on (`bg-background` on a
+  card or a dialog); a filled button in sentence case set at the call site.
 - A spinner where a skeleton fits; `empty` shown for a failed load.
 - Hand-rolling a primitive listed in §6.
 

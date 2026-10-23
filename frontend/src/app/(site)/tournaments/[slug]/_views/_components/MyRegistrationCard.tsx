@@ -714,7 +714,6 @@ function MyRegistrationCard({
             <Button
               type="button"
               variant="positive"
-              static={false}
               onClick={onCheckIn}
               disabled={isCheckingIn}
               className="shadow-[0_0_18px_color-mix(in_srgb,var(--aqt-emerald)_40%,transparent)]"
@@ -726,9 +725,8 @@ function MyRegistrationCard({
           {canRecheck ? (
             <Button
               type="button"
-              variant="subtle"
+              variant="outline"
               size="xs"
-              static={false}
               data-registration-recheck="true"
               onClick={() => recheckMutation.mutate()}
               disabled={recheckMutation.isPending || recheckLeft > 0}
@@ -750,9 +748,8 @@ function MyRegistrationCard({
           {canEdit || editLockedReason ? (
             <Button
               type="button"
-              variant="subtle"
+              variant="outline"
               size="xs"
-              static={false}
               data-registration-edit="true"
               onClick={() => setIsEditOpen(true)}
               disabled={!canEdit}
@@ -774,9 +771,8 @@ function MyRegistrationCard({
           {canWithdraw && (
             <Button
               type="button"
-              variant="subtle"
+              variant="outline"
               size="xs"
-              static={false}
               onClick={onWithdraw}
               disabled={isWithdrawing || isCheckingIn}
               className="text-[color:var(--aqt-rose)]"

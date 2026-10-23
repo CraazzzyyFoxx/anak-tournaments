@@ -129,7 +129,7 @@ export function MobileBracket({
                       {editable ? (
                         <Button
                           type="button"
-                          variant="subtle"
+                          variant="outline"
                           size="sm"
                           onClick={() => onEdit(encounter)}
                         >

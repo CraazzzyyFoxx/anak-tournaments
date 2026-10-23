@@ -62,7 +62,7 @@ export function CategorizedColumnPicker<
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button type="button" variant="subtle" size="sm">
+        <Button type="button" variant="outline" size="sm">
           <Settings2 aria-hidden />
           {triggerLabel}
         </Button>

@@ -322,7 +322,7 @@ const CompareUnifiedTable = ({
                     <div className="flex flex-col items-center gap-3">
                       <span>{errorMessage}</span>
                       {onRetry ? (
-                        <Button variant="subtle" size="sm" onClick={onRetry}>
+                        <Button variant="outline" size="sm" onClick={onRetry}>
                           <RefreshCw aria-hidden />
                           {t("users.compare.retry")}
                         </Button>

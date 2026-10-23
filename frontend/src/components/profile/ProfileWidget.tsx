@@ -37,7 +37,7 @@ export default function ProfileWidget<K extends ProfileSlot>({
     return (
       <p role="alert" className="flex items-center gap-2 text-caption text-[color:var(--aqt-rose)]">
         {t("loadError")}
-        <Button variant="subtle" size="sm" disabled={metadata.isFetching} onClick={() => void metadata.refetch()}>
+        <Button variant="outline" size="sm" disabled={metadata.isFetching} onClick={() => void metadata.refetch()}>
           <RotateCw aria-hidden />
           {t("retry")}
         </Button>

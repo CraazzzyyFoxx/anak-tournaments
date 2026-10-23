@@ -157,7 +157,7 @@ const UserMenu = ({ user }: Readonly<{ user: AuthProfile }>) => {
           the button, so it survives the avatar image replacing the fallback. */}
       <PopoverTrigger asChild>
         <Button
-          variant="subtle"
+          variant="outline"
           size="icon"
           aria-label={t("common.openMenu")}
           className="relative shrink-0 overflow-hidden rounded-full border-2 hover:border-[color:var(--aqt-border-3)] data-[state=open]:border-[color:var(--aqt-border-3)]"

@@ -455,7 +455,7 @@ function EncounterEditDialogBody({
           <div className="flex justify-end">
             {isConfirmed ? (
               <Button
-                variant="secondary"
+                variant="outline"
                 onClick={() => reopenMutation.mutate()}
                 disabled={reason.trim().length === 0 || reopenMutation.isPending}
                 size="lg"

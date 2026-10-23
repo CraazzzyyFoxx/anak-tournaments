@@ -19,7 +19,7 @@ export function GameFilterHint({ className, children }: Readonly<{ className?: s
   return (
     <Button
       type="button"
-      variant="subtle"
+      variant="outline"
       size="sm"
       onClick={() => setOpen(true)}
       className={cn(

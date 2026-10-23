@@ -74,7 +74,7 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
       leading={
         <Button
           type="button"
-          variant="subtle"
+          variant="outline"
           size="icon-sm"
           data-card-action
           aria-pressed={isBulkSelected}

@@ -71,7 +71,7 @@ export function PickupGettingStarted({
               hasChannel ? (
                 <Button
                   type="button"
-                  variant="subtle"
+                  variant="outline"
                   size="sm"
                   disabled={posting}
                   onClick={() => onPostSignup(postModeOf(game.self_signup))}

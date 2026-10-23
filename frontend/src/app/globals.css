@@ -778,11 +778,15 @@
      nesting always uses overlays. White alpha composites over ANY parent
      surface (palette is clamped dark), so contrast and brand hue survive at
      every depth. -1 subtle (strips, thead, zebra) · -2 raised (chips, nested
-     surfaces) · -3 lifted (hover/active, track fills). */
+     surfaces) · -3 lifted (hover/active, track fills; a tonal button at rest)
+     · -4 a tonal button under the pointer. */
   --aqt-overlay-1: hsl(0 0% 100% / 0.015);
   --aqt-overlay-2: hsl(0 0% 100% / 0.025);
   --aqt-overlay-3: hsl(0 0% 100% / 0.05);
+  --aqt-overlay-4: hsl(0 0% 100% / 0.08);
   --aqt-overlay-border: hsl(0 0% 100% / 0.06);
+  /* The 1px light along the top edge of a filled button (`ui/button.tsx`). */
+  --aqt-sheen: hsl(0 0% 100% / 0.22);
   /* Achievement rarity accent (HSL triplet so `hsl(var(--rar) / a)` alpha tints
      work). Global fallback = "common" grey; the `.aqt-rar-*` classes override
      it per tier. Kept as a triplet, not a full color, on purpose. */

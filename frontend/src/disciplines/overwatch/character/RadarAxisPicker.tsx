@@ -63,7 +63,7 @@ const RadarAxisPicker = ({ selected, candidates, onToggle }: Props) => {
         <PopoverTrigger asChild>
           <Button
             type="button"
-            variant="subtle"
+            variant="outline"
             size="sm"
             disabled={!canAdd}
             // Pointer events stay on when disabled so the title still says why.

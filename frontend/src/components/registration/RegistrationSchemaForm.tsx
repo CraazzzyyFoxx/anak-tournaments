@@ -772,7 +772,7 @@ function RegistrationSchemaFormBody({
       <div className="flex items-center justify-between border-t border-[color:var(--aqt-border)] pt-4">
         <Button
           type="button"
-          variant="subtle"
+          variant="outline"
           onClick={() => {
             if (!state.canGoBack) {
               onCancel();
@@ -797,7 +797,7 @@ function RegistrationSchemaFormBody({
           {isAdmin && !state.isLast && (
             <Button
               type="button"
-              variant="subtle"
+              variant="outline"
               onClick={() => void advance(state, true)}
               disabled={submitPending}
             >

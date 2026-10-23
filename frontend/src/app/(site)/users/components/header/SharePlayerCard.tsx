@@ -426,7 +426,7 @@ const SharePlayerCard = ({ card }: SharePlayerCardProps) => {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="subtle" size="sm" title={t("users.profile.toolbar.share")}>
+        <Button variant="outline" size="sm" title={t("users.profile.toolbar.share")}>
           <Share2 aria-hidden />
           {t("users.profile.toolbar.share")}
         </Button>
@@ -451,15 +451,15 @@ const SharePlayerCard = ({ card }: SharePlayerCardProps) => {
         />
 
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          <Button variant="subtle" size="sm" onClick={handleCopyImage}>
+          <Button variant="outline" size="sm" onClick={handleCopyImage}>
             {copyState === "img" ? <Check aria-hidden /> : <Copy aria-hidden />}
             {copyState === "img" ? t("users.profile.toolbar.imageCopied") : t("users.profile.toolbar.copyImage")}
           </Button>
-          <Button variant="subtle" size="sm" onClick={handleDownload}>
+          <Button variant="outline" size="sm" onClick={handleDownload}>
             {copyState === "download" ? <Check aria-hidden /> : <Download aria-hidden />}
             {copyState === "download" ? t("users.profile.toolbar.downloaded") : t("users.profile.toolbar.download")}
           </Button>
-          <Button variant="subtle" size="sm" onClick={handleCopyLink} title={t("users.profile.toolbar.copyLink")}>
+          <Button variant="outline" size="sm" onClick={handleCopyLink} title={t("users.profile.toolbar.copyLink")}>
             {copyState === "link" ? <Check aria-hidden /> : <Link2 aria-hidden />}
             {copyState === "link" ? t("users.profile.toolbar.copied") : t("users.profile.toolbar.copyLinkShort")}
           </Button>

@@ -102,7 +102,7 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
         <div className="flex h-[var(--aqt-header-h)] items-center gap-3 rounded-[var(--aqt-radius)] border border-[color:var(--aqt-border-2)] bg-[color:color-mix(in_srgb,var(--aqt-card)_86%,transparent)] pl-3 pr-2 shadow-[0_10px_30px_-18px_rgb(0_0_0/0.7)] backdrop-blur-[20px] backdrop-saturate-[1.4]">
           <Sheet>
             <SheetTrigger asChild>
-              <Button variant="subtle" size="icon" aria-label={t("nav.toggleMenu")} className="shrink-0 lg:hidden">
+              <Button variant="outline" size="icon" aria-label={t("nav.toggleMenu")} className="shrink-0 lg:hidden">
                 <Menu aria-hidden />
               </Button>
             </SheetTrigger>
@@ -234,7 +234,7 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
                 {tenant.name}
               </span>
             </Link>
-              <Button asChild variant="subtle" size="icon" className="hidden shrink-0 sm:inline-flex">
+              <Button asChild variant="outline" size="icon" className="hidden shrink-0 sm:inline-flex">
                 <a
                   href={`https://${PLATFORM_ZONE}`}
                   aria-label={t("nav.platformCommunities")}
@@ -329,7 +329,7 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
               className="hidden w-[clamp(160px,16vw,280px)] md:block"
             />
             <Button
-              variant="subtle"
+              variant="outline"
               size="icon"
               aria-label={t("nav.search.mobileTrigger")}
               aria-expanded={mobileSearchOpen}

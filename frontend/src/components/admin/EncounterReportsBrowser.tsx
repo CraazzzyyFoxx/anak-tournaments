@@ -203,7 +203,7 @@ export function EncounterReportsBrowser({
           openHref={openRow ? `/encounters/${openRow.id}` : undefined}
           actions={
             openRow && canUpdateEncounter ? (
-              <Button type="button" size="sm" variant="secondary" onClick={() => setResolving(openRow)}>
+              <Button type="button" size="sm" variant="outline" onClick={() => setResolving(openRow)}>
                 {openRow.result_status === "confirmed" ? t("review") : t("resolve")}
               </Button>
             ) : null

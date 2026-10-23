@@ -64,7 +64,7 @@ export function HeroPickerCell({
       <PopoverTrigger asChild>
         <Button
           type="button"
-          variant="subtle"
+          variant="outline"
           disabled={disabled}
           aria-label={
             showRole

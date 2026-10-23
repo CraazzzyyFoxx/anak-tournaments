@@ -200,7 +200,7 @@ function ItemPicker({
                 key={option.id}
                 type="button"
                 size="sm"
-                variant={selected ? "default" : "outline"}
+                variant={selected ? "accent" : "outline"}
                 aria-pressed={selected}
                 onClick={() => onToggle(option.id)}
               >

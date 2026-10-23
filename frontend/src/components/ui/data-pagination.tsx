@@ -91,7 +91,7 @@ export function DataPagination({
         <div className="flex flex-wrap items-center gap-1.5">
           <Button
             type="button"
-            variant="subtle"
+            variant="outline"
             size="sm"
             className={PAGE_BUTTON_CLASS}
             disabled={safePage <= 1}
@@ -114,7 +114,7 @@ export function DataPagination({
               <Button
                 key={entry}
                 type="button"
-                variant="subtle"
+                variant="outline"
                 size="sm"
                 aria-current={entry === safePage ? "page" : undefined}
                 aria-label={t("common.pagination.goToPage", { page: entry })}
@@ -128,7 +128,7 @@ export function DataPagination({
 
           <Button
             type="button"
-            variant="subtle"
+            variant="outline"
             size="sm"
             className={PAGE_BUTTON_CLASS}
             disabled={safePage >= totalPages}

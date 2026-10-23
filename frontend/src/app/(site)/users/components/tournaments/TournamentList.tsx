@@ -193,7 +193,7 @@ const TournamentList = ({ groups, selectedKey, onSelect, showGames = false }: Pr
           icon={SearchX}
           className="m-4"
           action={
-            <Button variant="subtle" size="sm" onClick={resetFilters}>
+            <Button variant="outline" size="sm" onClick={resetFilters}>
               {t("users.tournaments.list.resetFilters")}
             </Button>
           }

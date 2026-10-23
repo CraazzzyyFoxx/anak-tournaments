@@ -163,7 +163,7 @@ export function SortableGrip({
   return (
     <Button
       type="button"
-      variant="subtle"
+      variant="outline"
       size="icon-sm"
       disabled={disabled}
       aria-label={label}

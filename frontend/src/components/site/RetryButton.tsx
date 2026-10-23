@@ -19,7 +19,7 @@ export function RetryButton() {
 
   return (
     <Button
-      variant="subtle"
+      variant="outline"
       size="sm"
       disabled={pending}
       aria-busy={pending}

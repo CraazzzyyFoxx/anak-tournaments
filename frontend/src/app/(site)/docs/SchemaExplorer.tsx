@@ -74,7 +74,7 @@ export function SchemaExplorer() {
               ))}
             </ul>
             <Button
-              variant="subtle"
+              variant="outline"
               size="sm"
               className="mt-3"
               aria-expanded={isOpen}

@@ -62,7 +62,7 @@ export function PickupResultControls({
       <Button
         key={team.index}
         type="button"
-        variant="subtle"
+        variant="outline"
         size="lg"
         disabled={saving}
         onClick={() => onRecord({ winner: team.winner })}
@@ -86,7 +86,7 @@ export function PickupResultControls({
       {/* Draw: the neutral `subtle` fill, as solid as the two win buttons, so the row reads as one control. */}
       <Button
         type="button"
-        variant="subtle"
+        variant="outline"
         size="lg"
         disabled={saving}
         onClick={() => onRecord({ winner: null })}

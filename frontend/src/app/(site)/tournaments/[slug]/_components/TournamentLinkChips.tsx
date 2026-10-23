@@ -120,7 +120,7 @@ export function TournamentLinkChips({ links, className }: Readonly<TournamentLin
           const Icon = meta.icon;
           return (
             <li key={link.id}>
-              <Button asChild variant="subtle">
+              <Button asChild variant="outline">
                 <a href={link.url} target="_blank" rel="noopener noreferrer">
                   <Icon className="opacity-80" aria-hidden />
                   {/* `label` is NULL-able with exactly this meaning (see the column

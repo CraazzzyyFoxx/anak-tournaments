@@ -68,7 +68,7 @@ export function TournamentPageState(props: TournamentPageStateProps) {
           <span>
             <strong>{title}</strong> — {description}
           </span>
-          <Button type="button" variant="subtle" size="sm" onClick={props.onRetry}>
+          <Button type="button" variant="outline" size="sm" onClick={props.onRetry}>
             {t("tournamentDetail.pageState.retry")}
           </Button>
         </div>

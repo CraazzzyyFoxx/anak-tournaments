@@ -240,7 +240,7 @@ export function ResolveResultDialog({
               </Button>
               <Button
                 type="button"
-                variant="secondary"
+                variant="outline"
                 disabled={reopenReason.trim() === ""}
                 onClick={() => setReopenOpen(true)}
               >

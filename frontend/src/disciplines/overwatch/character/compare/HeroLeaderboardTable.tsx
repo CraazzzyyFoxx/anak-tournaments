@@ -137,7 +137,7 @@ const HeroLeaderboardTable = ({
         />
         <Button
           type="button"
-          variant="subtle"
+          variant="outline"
           size="sm"
           onClick={onResetColumns}
           title={t("users.heroesCompare.filters.resetColumnsTitle")}

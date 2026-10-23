@@ -172,7 +172,7 @@ export function TemplateMatchCard({
       <div className="flex shrink-0 flex-col items-center justify-center gap-1 border-l border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-1">
         <Button
           type="button"
-          variant="subtle"
+          variant="outline"
           size="icon-xs"
           data-template-port={`${match.id}-winner`}
           aria-pressed={connecting?.source === match.id && connecting.role === "winner"}
@@ -190,7 +190,7 @@ export function TemplateMatchCard({
         {showLoserPort ? (
           <Button
             type="button"
-            variant="subtle"
+            variant="outline"
             size="icon-xs"
             data-template-port={`${match.id}-loser`}
             aria-pressed={connecting?.source === match.id && connecting.role === "loser"}

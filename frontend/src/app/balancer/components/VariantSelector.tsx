@@ -195,7 +195,7 @@ export function VariantSelector({
         </div>
         <Button
           type="button"
-          variant="subtle"
+          variant="outline"
           size="sm"
           onClick={() => setShowAll(true)}
           className="shrink-0 self-center"

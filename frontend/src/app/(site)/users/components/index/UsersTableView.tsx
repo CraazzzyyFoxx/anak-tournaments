@@ -355,7 +355,7 @@ function PlayerRow({
       <td className="pr-3">
         {allGames ? null : (
           <Button
-            variant="subtle"
+            variant="outline"
             size="icon-sm"
             onClick={onToggle}
             aria-expanded={expanded}

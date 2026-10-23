@@ -33,7 +33,7 @@ export function ThresholdPopover({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="subtle" size="sm" className="justify-start">
+        <Button variant="outline" size="sm" className="justify-start">
           <SlidersHorizontal aria-hidden className="opacity-70" />
           {triggerLabel}
         </Button>

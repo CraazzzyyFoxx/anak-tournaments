@@ -42,7 +42,7 @@ const ComparePageHero = ({ gameHint, scope, onScopeChange }: ComparePageHeroProp
       actions={
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="subtle" size="sm">
+            <Button variant="outline" size="sm">
               <CircleHelp aria-hidden />
               {t("users.compare.hero.guideAction")}
             </Button>

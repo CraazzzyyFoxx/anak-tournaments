@@ -69,7 +69,7 @@ export function PregameRoomLink({
   }
 
   return (
-    <Button variant="subtle" size="sm" asChild>
+    <Button variant="outline" size="sm" asChild>
       <Link href={`/tournaments/${tournamentId}/pregame/${encounterId}`}>
         <ListChecks aria-hidden />
         {t("encounters.detail.pregameRoom")}

@@ -97,7 +97,7 @@ export function BalanceStatsRow({ stats }: Readonly<{ stats: VariantStats }>) {
           <PopoverTrigger asChild>
             <Button
               type="button"
-              variant="subtle"
+              variant="outline"
               size="xs"
               aria-label={t("poolAria")}
               className={cn(

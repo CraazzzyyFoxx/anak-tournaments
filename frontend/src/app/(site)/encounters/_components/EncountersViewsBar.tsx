@@ -88,7 +88,7 @@ export function EncountersViewsBar({
           {savedViews.views?.map((view) => (
             <div key={view.id} className="flex shrink-0 items-center">
               <Button
-                variant="subtle"
+                variant="outline"
                 size="sm"
                 onClick={() => onApplyFilters(toSavedFilterState(view))}
               >

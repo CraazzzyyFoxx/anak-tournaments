@@ -217,7 +217,7 @@ export function PickupMySeatPanel({
             </Button>
           ) : null}
           {myTeam != null && seat?.voice_url && !seat.away ? (
-            <Button asChild variant="subtle" size="sm">
+            <Button asChild variant="outline" size="sm">
               <a href={seat.voice_url} target="_blank" rel="noreferrer">
                 <Headphones aria-hidden="true" />
                 {tRoom("voice")}
@@ -227,7 +227,7 @@ export function PickupMySeatPanel({
           {seat != null && policy.can_set_away ? (
             <Button
               type="button"
-              variant={seat.away ? "accent" : "subtle"}
+              variant={seat.away ? "accent" : "outline"}
               size="sm"
               disabled={saving}
               onClick={() => onSetAway(!seat.away)}
@@ -237,7 +237,7 @@ export function PickupMySeatPanel({
             </Button>
           ) : null}
           {policy.can_leave ? (
-            <Button type="button" variant="subtle" size="sm" disabled={saving} onClick={onLeave}>
+            <Button type="button" variant="outline" size="sm" disabled={saving} onClick={onLeave}>
               <LogOut aria-hidden="true" />
               {t("leave")}
             </Button>
@@ -253,7 +253,7 @@ export function PickupMySeatPanel({
           {canLink ? (
             <Button
               type="button"
-              variant="subtle"
+              variant="outline"
               size="sm"
               className="shrink-0"
               onClick={() => openAccountSettings("profile")}

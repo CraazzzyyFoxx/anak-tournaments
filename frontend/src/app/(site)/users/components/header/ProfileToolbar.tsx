@@ -27,7 +27,7 @@ const ProfileToolbar = ({ card, playerId }: ProfileToolbarProps) => {
   return (
     <div className="flex items-center gap-2">
       <SharePlayerCard card={card} />
-      <Button asChild variant="subtle" size="sm">
+      <Button asChild variant="outline" size="sm">
         <HoverPrefetchLink
           href={{ pathname: "/users/compare", query: { user_id: playerId } }}
           aria-label={t("users.profile.toolbar.comparePlayers")}

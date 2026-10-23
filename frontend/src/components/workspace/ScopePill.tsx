@@ -164,7 +164,7 @@ export function ScopePill() {
         <PopoverTrigger asChild>
           <Button
             type="button"
-            variant="subtle"
+            variant="outline"
             size="sm"
             // The visible text leads the accessible name (label-in-name).
             aria-label={`${visible} ${t("common.discipline.scopeSuffix")}`}

@@ -244,7 +244,7 @@ export function PickupTeamsPanel({
 
   // A lobby with no teams yet: Balance (or Draft) is the host's next step, so it is the solid button. Once teams
   // exist it is a re-balance and Start match takes the solid slot.
-  const balanceVariant = variant == null ? "default" : "subtle";
+  const balanceVariant = variant == null ? "default" : "outline";
   // The one Balance (or Draft) control, with its confirms: the footer's, or the checklist's last step while that shows.
   const balanceControl = reshape ? (
     <>
@@ -470,7 +470,7 @@ export function PickupTeamsPanel({
                       <>
                         <Button
                           type="button"
-                          variant="subtle"
+                          variant="outline"
                           size="sm"
                           className="ml-auto"
                           disabled={cancellingMatch}

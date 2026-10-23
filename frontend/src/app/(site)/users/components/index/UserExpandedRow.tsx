@@ -191,19 +191,19 @@ export function UserExpandedRow({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button asChild variant="subtle" size="sm">
+        <Button asChild variant="outline" size="sm">
           <HoverPrefetchLink href={`/users/${slug}`}>{t("users.list.expanded.openProfile")}</HoverPrefetchLink>
         </Button>
-        <Button asChild variant="subtle" size="sm">
+        <Button asChild variant="outline" size="sm">
           <HoverPrefetchLink href={`/users/${slug}?tab=matches`}>{t("common.matches")}</HoverPrefetchLink>
         </Button>
-        <Button asChild variant="subtle" size="sm">
+        <Button asChild variant="outline" size="sm">
           <HoverPrefetchLink href={`/users/${slug}?tab=heroes`}>{t("common.characters")}</HoverPrefetchLink>
         </Button>
         {/* A disabled `Button` takes no pointer events, so the limit hint sits on a wrapper. */}
         <span title={compareDisabled && !compareSelected ? t("users.list.compare.limit") : undefined}>
           <Button
-            variant="subtle"
+            variant="outline"
             size="sm"
             onClick={onToggleCompare}
             disabled={compareDisabled && !compareSelected}

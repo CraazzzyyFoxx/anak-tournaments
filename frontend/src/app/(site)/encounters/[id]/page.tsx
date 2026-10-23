@@ -491,7 +491,7 @@ const FfaLobbyPage = async ({ encounter }: Readonly<{ encounter: Encounter }>) =
         })}
         actions={
           <div className={styles.heroActions}>
-            <Button variant="subtle" size="sm" asChild>
+            <Button variant="outline" size="sm" asChild>
               <Link href={`/tournaments/${encounter.tournament_id}/pregame/${encounter.id}`}>
                 <MessageSquare aria-hidden />
                 {t("ffa.openRoom")}

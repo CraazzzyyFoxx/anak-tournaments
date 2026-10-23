@@ -825,7 +825,7 @@ function ChoiceGroup<TValue extends string>({
             key={option.value}
             type="button"
             size="sm"
-            variant={option.value === value ? "default" : "outline"}
+            variant={option.value === value ? "accent" : "outline"}
             className={cn("capitalize", option.value === value ? "pointer-events-none" : null)}
             onClick={() => onChange(option.value)}
           >

@@ -109,7 +109,7 @@ export function PageStateCard({
         ) : null}
       </div>
       {onAction ? (
-        <Button type="button" variant="subtle" size="sm" className="mt-1" onClick={onAction}>
+        <Button type="button" variant="outline" size="sm" className="mt-1" onClick={onAction}>
           {resolvedActionLabel}
         </Button>
       ) : null}

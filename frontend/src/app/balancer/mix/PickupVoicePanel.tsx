@@ -354,7 +354,7 @@ export function PickupVoicePanel({
                       type="button"
                       size="sm"
                       // With several lobbies the footer's "every lobby" is the main action.
-                      variant={multi ? "subtle" : "accent"}
+                      variant={multi ? "outline" : "accent"}
                       className="shrink-0"
                       disabled={running || !canMove}
                       onClick={() => confirm({ kind: "move", lobbyIndex: lobby.lobby_index })}
@@ -365,7 +365,7 @@ export function PickupVoicePanel({
                     <Button
                       type="button"
                       size="sm"
-                      variant="subtle"
+                      variant="outline"
                       className="shrink-0"
                       disabled={running || !canReturn}
                       onClick={() => confirm({ kind: "return", lobbyIndex: lobby.lobby_index })}
@@ -387,7 +387,7 @@ export function PickupVoicePanel({
               <div className="flex flex-wrap justify-end gap-2">
                 <Button
                   type="button"
-                  variant="subtle"
+                  variant="outline"
                   size="sm"
                   disabled={running || !rows.every((row) => row.canReturn)}
                   onClick={() => confirm({ kind: "return", lobbyIndex: null })}

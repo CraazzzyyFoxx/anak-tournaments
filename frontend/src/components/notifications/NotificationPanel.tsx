@@ -166,7 +166,6 @@ export default function NotificationPanel({
                 <TooltipTrigger asChild>
                   <span className="inline-flex">
                     <Button
-                      static={false}
                       variant="ghost"
                       size="icon"
                       className={TOOL_CLASS}
@@ -202,7 +201,6 @@ export default function NotificationPanel({
             </Tooltip>
             {isPhone && (
               <Button
-                static={false}
                 variant="ghost"
                 size="icon"
                 className={TOOL_CLASS}
@@ -230,7 +228,6 @@ export default function NotificationPanel({
               {!hasData && t("notifications.loadErrorHint")}
               <div className="mt-2.5">
                 <Button
-                  static={false}
                   variant="outline"
                   size="sm"
                   className="border-[color:var(--aqt-border-2)] px-3"
@@ -311,14 +308,14 @@ export default function NotificationPanel({
         </p>
         {markReadStatus === "error" && (
           <div className="px-3 pb-2">
-            <Button static={false} variant="outline" size="sm" onClick={retryMarkRead}>
+            <Button variant="outline" size="sm" onClick={retryMarkRead}>
               {t("notifications.retryMarkRead")}
             </Button>
           </div>
         )}
         {deleteStatus === "error" && (
           <div className="px-3 pb-2">
-            <Button static={false} variant="outline" size="sm" onClick={retryDelete}>
+            <Button variant="outline" size="sm" onClick={retryDelete}>
               {t("notifications.retryDelete")}
             </Button>
           </div>
@@ -332,7 +329,6 @@ export default function NotificationPanel({
           <div className="flex justify-between gap-3 border-t border-[color:var(--aqt-border)] px-2 py-1.5">
             {items.some((item) => item.is_read) ? (
               <Button
-                static={false}
                 variant="ghost"
                 size="sm"
                 className={FOOT_LINK_CLASS}
@@ -347,7 +343,6 @@ export default function NotificationPanel({
             )}
             {hasMore && (
               <Button
-                static={false}
                 variant="ghost"
                 size="sm"
                 className={FOOT_LINK_CLASS}
@@ -555,7 +550,6 @@ function Row({
       <div className="flex flex-col gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
         {!item.is_read && (
           <Button
-            static={false}
             variant="ghost"
             size="icon-sm"
             className={TOOL_CLASS}
@@ -571,7 +565,6 @@ function Row({
           </Button>
         )}
         <Button
-          static={false}
           variant="ghost"
           size="icon-sm"
           className={TOOL_CLASS}

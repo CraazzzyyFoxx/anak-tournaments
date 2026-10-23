@@ -81,7 +81,7 @@ export function UsersCompareBar({ compare }: Readonly<{ compare: CompareSelectio
         ))}
 
         <div className="ml-auto flex items-center gap-2">
-          <Button variant="subtle" size="sm" onClick={compare.clear}>
+          <Button variant="outline" size="sm" onClick={compare.clear}>
             {t("users.list.compare.clear")}
           </Button>
           {ready ? (

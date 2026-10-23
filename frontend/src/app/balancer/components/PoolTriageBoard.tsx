@@ -114,7 +114,7 @@ function TriagePlayerCard({
         state.player.is_in_pool ? (
           <Button
             type="button"
-            variant="subtle"
+            variant="outline"
             size="icon-sm"
             data-card-action
             aria-label={t("drag")}

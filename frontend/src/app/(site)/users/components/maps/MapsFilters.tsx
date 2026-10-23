@@ -96,7 +96,7 @@ const MapsFilters = ({
         </SelectContent>
       </Select>
       <Button
-        variant="subtle"
+        variant="outline"
         size="icon-sm"
         onClick={onOrderToggle}
         aria-label={t("common.sortDirection", {

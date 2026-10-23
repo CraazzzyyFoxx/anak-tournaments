@@ -196,7 +196,7 @@ export function PregameAdminPanel({
                   role="tab"
                   aria-selected={value === kind}
                   size="sm"
-                  variant={value === kind ? "secondary" : "ghost"}
+                  variant={value === kind ? "accent" : "ghost"}
                   onClick={() => setPicked(value)}
                 >
                   {t(`phase.${value}`)}

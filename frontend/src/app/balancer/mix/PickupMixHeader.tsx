@@ -337,7 +337,7 @@ export function PickupMixHeader({
 
           <Button
             type="button"
-            variant="subtle"
+            variant="outline"
             size="sm"
             className="ml-auto shrink-0"
             disabled={game == null}
@@ -402,7 +402,7 @@ export function PickupMixHeader({
 const SettingTrigger = forwardRef<HTMLButtonElement, ComponentPropsWithoutRef<typeof Button> & { label: string }>(
   function SettingTrigger({ label, children, className, ...props }, ref) {
     return (
-      <Button ref={ref} type="button" variant="subtle" size="sm" className={cn("max-w-full shrink-0", className)} {...props}>
+      <Button ref={ref} type="button" variant="outline" size="sm" className={cn("max-w-full shrink-0", className)} {...props}>
         <span className="shrink-0 text-[color:var(--aqt-fg-dim)]">{label}</span>
         {children}
         <ChevronDown className="text-[color:var(--aqt-fg-dim)]" aria-hidden="true" />
@@ -693,7 +693,7 @@ function DiscordMenu({
                   <Button
                     type="button"
                     // Re-posting a card that is up is a repair, not the next step.
-                    variant={!closed && isLive(signupPost) ? "subtle" : "default"}
+                    variant={!closed && isLive(signupPost) ? "outline" : "default"}
                     className="w-full"
                     disabled={posting}
                     onClick={() => onPostSignup(postModeOf(game.self_signup))}

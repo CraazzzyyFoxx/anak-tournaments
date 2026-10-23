@@ -138,7 +138,7 @@ function LobbyCard({ lobby }: Readonly<{ lobby: FfaLobby }>) {
                   <Button
                     type="button"
                     size="sm"
-                    variant={played.has(position) ? "outline" : "secondary"}
+                    variant={played.has(position) ? "outline" : "accent"}
                     onClick={() => setEntering(position)}
                   >
                     {played.has(position) ? t("correct", { position }) : t("enter", { position })}

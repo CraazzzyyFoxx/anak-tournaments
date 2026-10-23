@@ -185,7 +185,7 @@ export function UsersCatalogView({
                 ))}
               </div>
               {bucket.users.length < bucket.count ? (
-                <Button variant="subtle" size="sm" onClick={() => controls.setLetter(bucket.letter)}>
+                <Button variant="outline" size="sm" onClick={() => controls.setLetter(bucket.letter)}>
                   {t("users.list.catalog.showMore", {
                     count: bucket.count - bucket.users.length
                   })}

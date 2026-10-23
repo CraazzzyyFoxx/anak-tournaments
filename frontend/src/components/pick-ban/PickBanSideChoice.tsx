@@ -36,7 +36,7 @@ export function PickBanSideChoice({
           key={index}
           type="button"
           size={size}
-          variant={value === index ? "default" : "outline"}
+          variant={value === index ? "accent" : "outline"}
           className={size === "lg" ? "min-h-11" : undefined}
           aria-pressed={value === index}
           disabled={disabled}

@@ -151,7 +151,7 @@ export function MermaidDiagram({ code, diagramKey }: Readonly<MermaidDiagramProp
     <div className={styles.diagram}>
       <div className={styles.zoomControls}>
         <Button
-          variant="subtle"
+          variant="outline"
           size="icon-sm"
           onClick={zoomOut}
           aria-label={t("zoomOut")}
@@ -161,7 +161,7 @@ export function MermaidDiagram({ code, diagramKey }: Readonly<MermaidDiagramProp
         </Button>
         <span className={styles.zoomLevel}>{Math.round(zoom * 100)}%</span>
         <Button
-          variant="subtle"
+          variant="outline"
           size="icon-sm"
           onClick={zoomIn}
           aria-label={t("zoomIn")}
@@ -169,7 +169,7 @@ export function MermaidDiagram({ code, diagramKey }: Readonly<MermaidDiagramProp
         >
           +
         </Button>
-        <Button variant="subtle" size="icon-sm" onClick={() => setZoom(1)} aria-label={t("zoomReset")}>
+        <Button variant="outline" size="icon-sm" onClick={() => setZoom(1)} aria-label={t("zoomReset")}>
           1:1
         </Button>
       </div>

@@ -832,7 +832,7 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
             {" — "}
             {t("tournamentDetail.pageState.refreshError.description")}
           </span>
-          <Button type="button" variant="subtle" size="sm" onClick={() => void listQuery.refetch()}>
+          <Button type="button" variant="outline" size="sm" onClick={() => void listQuery.refetch()}>
             {t("tournamentDetail.pageState.retry")}
           </Button>
         </div>

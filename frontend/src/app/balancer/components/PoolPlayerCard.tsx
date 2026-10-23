@@ -134,7 +134,7 @@ export const PoolPlayerCard = forwardRef<HTMLDivElement, PoolPlayerCardProps>(
         {player.is_in_pool ? (
           <Button
             type="button"
-            variant="subtle"
+            variant="outline"
             size={isCard ? "xs" : "icon-sm"}
             disabled={actionsDisabled || !onSetPoolMembership}
             aria-label={t("card.excludeLabel", { name: player.identity })}

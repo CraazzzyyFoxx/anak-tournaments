@@ -195,7 +195,6 @@ function AnnouncementCard({
         </Link>
       )}
       <Button
-        static={false}
         variant="ghost"
         size="icon-sm"
         className={CLOSE_CLASS}
@@ -387,7 +386,6 @@ function UrgentCard({
           )}
         </p>
         <Button
-          static={false}
           variant="ghost"
           size="icon-sm"
           className={CLOSE_CLASS}
@@ -409,7 +407,6 @@ function UrgentCard({
           />
           {pending.length > 1 && (
             <Button
-              static={false}
               variant="ghost"
               size="sm"
               onClick={() => setBellOpen(true)}

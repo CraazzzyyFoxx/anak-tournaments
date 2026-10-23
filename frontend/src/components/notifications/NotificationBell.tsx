@@ -54,7 +54,7 @@ function SignedInBell({ authUserId }: Readonly<{ authUserId: number }>) {
   const unread = inbox.unreadCount ?? 0;
   const trigger = (
     <Button
-      variant="subtle"
+      variant="outline"
       size="icon"
       aria-label={unread > 0 ? t("notifications.bellLabel", { count: unread }) : t("notifications.title")}
       className="relative shrink-0"

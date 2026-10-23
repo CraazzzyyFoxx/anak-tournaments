@@ -103,7 +103,7 @@ export function ColumnMappingTab({
                 {visibleGroups.map((group) => (
                   <Button
                     key={group}
-                    variant={safeActive === group ? "default" : "outline"}
+                    variant={safeActive === group ? "accent" : "outline"}
                     size="sm"
                     onClick={() => setActiveGroup(group)}
                     className="relative"

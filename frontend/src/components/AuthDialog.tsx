@@ -24,7 +24,7 @@ const ProviderButton = ({ href, title, icon }: ProviderButtonProps) => {
   return (
     <Button
       asChild
-      variant="subtle"
+      variant="outline"
       size="lg"
       className="w-full justify-start gap-3 rounded-lg px-4 text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
     >

@@ -80,7 +80,7 @@ export function PickupLobbyCards(props: Readonly<PickupLobbyCardsProps>) {
         <div className="flex justify-end">
           <Button
             type="button"
-            variant="subtle"
+            variant="outline"
             size="sm"
             disabled={pending || anyLive}
             onClick={() => (anyUnrecorded ? setShuffleOpen(true) : reform())}
@@ -276,7 +276,7 @@ function LobbyCard({
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
-          <Button asChild variant="subtle" size="sm" className="ml-auto">
+          <Button asChild variant="outline" size="sm" className="ml-auto">
             <Link href={`/balancer/mix/${game.id}/lobby/${letter}`}>
               <DoorOpen className="size-3.5" aria-hidden="true" />
               {t("openRoom")}

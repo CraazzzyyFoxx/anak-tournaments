@@ -93,7 +93,7 @@ export function AdditionalHandleStrip({ additionalHandles, className }: Readonly
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
-            variant="subtle"
+            variant="outline"
             size="xs"
             className="rounded-full border-cyan-300/15 bg-cyan-500/8 text-cyan-100/62 hover:border-cyan-300/30 hover:bg-cyan-500/14 hover:text-cyan-50"
             title={t("showAlts")}

@@ -127,7 +127,7 @@ export default function ExtraHandlesInput({
         endAdornment={
           <Button
             type="button"
-            variant="subtle"
+            variant="outline"
             size="xs"
             onClick={() => addHandle(inputValue, { clearInput: true })}
             disabled={
