@@ -42,7 +42,7 @@ async def load_room_encounter(session: AsyncSession, encounter_id: int, *, for_u
     encounter = (
         await _encounters.get_any_owner_for_update(session, encounter_id)
         if for_update
-        else await session.get(Encounter, encounter_id)
+        else await _encounters.get_any_owner(session, encounter_id)
     )
     if encounter is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
