@@ -325,9 +325,9 @@ class DisciplineMetadataTests(IsolatedAsyncioTestCase):
         self.assertTrue(all(r["workspace_id"] is None and r["parent_id"] is None for r in module_roles))
         self.assertEqual(
             {
-                "tank": {"icon": "/disciplines/overwatch/roles/tank.svg", "color": "#0ea5e9"},
-                "damage": {"icon": "/disciplines/overwatch/roles/damage.svg", "color": "#f97316"},
-                "support": {"icon": "/disciplines/overwatch/roles/support.svg", "color": "#10b981"},
+                "tank": {"icon": "/disciplines/overwatch/roles/tank.svg", "color": "#5da8ef"},
+                "damage": {"icon": "/disciplines/overwatch/roles/damage.svg", "color": "#ef6298"},
+                "support": {"icon": "/disciplines/overwatch/roles/support.svg", "color": "#3fca85"},
             },
             {r["code"]: r["attrs"] for r in module_roles},
         )

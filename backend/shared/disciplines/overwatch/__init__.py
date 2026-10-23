@@ -160,10 +160,11 @@ PLAYER_ROLE = DimensionSpec(
     "Role",
     "single",
     True,
+    # Design-book role hues (tank 209°, damage 337°, support 150°), the same as frontend overwatch/role-hues.css.
     (
-        RoleSpec("tank", "Tank", {"icon": "/disciplines/overwatch/roles/tank.svg", "color": "#0ea5e9"}),
-        RoleSpec("damage", "Damage", {"icon": "/disciplines/overwatch/roles/damage.svg", "color": "#f97316"}),
-        RoleSpec("support", "Support", {"icon": "/disciplines/overwatch/roles/support.svg", "color": "#10b981"}),
+        RoleSpec("tank", "Tank", {"icon": "/disciplines/overwatch/roles/tank.svg", "color": "#5da8ef"}),
+        RoleSpec("damage", "Damage", {"icon": "/disciplines/overwatch/roles/damage.svg", "color": "#ef6298"}),
+        RoleSpec("support", "Support", {"icon": "/disciplines/overwatch/roles/support.svg", "color": "#3fca85"}),
     ),
 )
 

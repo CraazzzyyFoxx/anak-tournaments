@@ -111,9 +111,9 @@ def test_the_installed_declarations_validate_and_overwatch_declares_its_three_ac
                 validate_presentation(role.attrs, discipline=code)
     declared = {role.code: role.attrs for role in DISCIPLINES["overwatch"].rated_dimension.roles}
     assert declared == {
-        "tank": {"icon": "/disciplines/overwatch/roles/tank.svg", "color": "#0ea5e9"},
-        "damage": {"icon": "/disciplines/overwatch/roles/damage.svg", "color": "#f97316"},
-        "support": {"icon": "/disciplines/overwatch/roles/support.svg", "color": "#10b981"},
+        "tank": {"icon": "/disciplines/overwatch/roles/tank.svg", "color": "#5da8ef"},
+        "damage": {"icon": "/disciplines/overwatch/roles/damage.svg", "color": "#ef6298"},
+        "support": {"icon": "/disciplines/overwatch/roles/support.svg", "color": "#3fca85"},
     }
     assert all(not role.attrs for role in DISCIPLINES["lol"].rated_dimension.roles)
 
@@ -179,11 +179,11 @@ class RolePresentationDbTests(IsolatedAsyncioTestCase):
             ontology = await self.roles.ontology(s, discipline="overwatch", workspace_id=None)
             lol = await self.roles.ontology(s, discipline="lol", workspace_id=None)
         tank = ontology.node("player_role", "tank")
-        assert dict(tank.attrs) == {"icon": "/disciplines/overwatch/roles/tank.svg", "color": "#0ea5e9"}
+        assert dict(tank.attrs) == {"icon": "/disciplines/overwatch/roles/tank.svg", "color": "#5da8ef"}
         assert {r.code: r.attrs.get("color") for r in ontology.roots("player_role")} == {
-            "tank": "#0ea5e9",
-            "damage": "#f97316",
-            "support": "#10b981",
+            "tank": "#5da8ef",
+            "damage": "#ef6298",
+            "support": "#3fca85",
         }
         assert all(dict(r.attrs) == {} for r in lol.roots("position"))
 
@@ -206,7 +206,7 @@ class RolePresentationDbTests(IsolatedAsyncioTestCase):
             damage = await self.roles.resolve(
                 s, discipline="overwatch", workspace_id=None, dimension=None, code="damage"
             )
-        assert damage.attrs == {"icon": "/disciplines/overwatch/roles/damage.svg", "color": "#f97316"}
+        assert damage.attrs == {"icon": "/disciplines/overwatch/roles/damage.svg", "color": "#ef6298"}
         assert (await self._row(child.id)).attrs == {"icon": None, "color": "#123456"}
 
     async def test_omitted_keys_inherit_explicit_null_clears_and_unrelated_attrs_survive_updates(self) -> None:
