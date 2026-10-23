@@ -47,6 +47,8 @@ export interface SocialAccount {
   user_id: number;
   provider: SocialProvider;
   username: string;
+  /** The provider's display name where `username` is an opaque id (Steam persona name). */
+  display_name?: string | null;
   url: string | null;
   is_verified: boolean;
   is_primary: boolean;

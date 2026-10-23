@@ -493,6 +493,28 @@ WORKSPACE_MEMBER_CHANGED_DLQ = RabbitQueue(
 )
 
 # ============================================================================
+# Steam account created / re-pointed (any social-account writer -> identity-service)
+# ============================================================================
+# ``SteamAccountChangedEvent`` through the outbox, straight onto the queue:
+# identity fetches the account's persona name into ``social_account.display_name``.
+# Best effort: the daily refresh is the reconciliation for a lost message.
+
+STEAM_ACCOUNT_CHANGED_QUEUE = RabbitQueue(
+    "steam_account_changed",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "steam_account_changed.dlq",
+        "x-message-ttl": 3600000,  # 1 hour
+    },
+)
+
+STEAM_ACCOUNT_CHANGED_DLQ = RabbitQueue(
+    "steam_account_changed.dlq",
+    durable=True,
+)
+
+# ============================================================================
 # Discord guild member changes (discord-service -> stats-worker)
 # ============================================================================
 # ``DiscordMemberChangedEvent``, published straight from the gateway event (the

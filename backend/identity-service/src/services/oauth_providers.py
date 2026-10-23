@@ -22,6 +22,7 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import SocialProvider, steam_account_id
 from src import schemas
 from src.core.config import Settings, settings
+from src.services.steam_profiles import fetch_profiles
 
 _HTTP_LIMITS = httpx.Limits(max_keepalive_connections=20, max_connections=100)
 _HTTP_TIMEOUT = httpx.Timeout(30.0)
@@ -463,7 +464,6 @@ class SteamOpenIDProvider(OAuthProviderBase):
 
     provider_name = SocialProvider.STEAM
     LOGIN_URL = "https://steamcommunity.com/openid/login"
-    PROFILE_URL = "https://api.deadlock-api.com/v1/players/steam"
     _OPENID_NS = "http://specs.openid.net/auth/2.0"
     _IDENTIFIER_SELECT = "http://specs.openid.net/auth/2.0/identifier_select"
     _CLAIMED_ID = re.compile(r"https://steamcommunity\.com/openid/id/(\d{17})")
@@ -520,19 +520,8 @@ class SteamOpenIDProvider(OAuthProviderBase):
         )
 
     async def _profile(self, account_id: str) -> dict[str, Any]:
-        """deadlock-api's cached Steam profile, best effort: any failure leaves only the account id."""
-        try:
-            response = await self.http.client().get(self.PROFILE_URL, params={"account_ids": account_id})
-            if response.status_code != 200:
-                return {}
-            payload = response.json()
-        except (httpx.HTTPError, ValueError):
-            return {}
-        rows = payload if isinstance(payload, list) else []
-        return next(
-            (row for row in rows if isinstance(row, dict) and str(row.get("account_id")) == account_id),
-            {},
-        )
+        """The account's Steam summary, best effort: any failure leaves only the account id."""
+        return (await fetch_profiles(self.http.client(), [account_id])).get(account_id, {})
 
 
 class OAuthProviderRegistry:

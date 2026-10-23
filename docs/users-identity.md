@@ -338,6 +338,7 @@ user_id                 FK players.user CASCADE
 provider                battlenet | riot | steam | discord | twitch | boosty | vk | youtube | …
 username / username_normalized
 url
+display_name            provider display name where the handle is an opaque id (Steam persona name); NULL until fetched
 provider_user_id        NULL until proven by an OAuth subject (Riot Sign-On: the PUUID; Steam OpenID: the account id)
 is_verified             true after a completed OAuth flow
 is_primary
@@ -346,7 +347,10 @@ is_primary
 A `steam` handle is always stored as the decimal SteamID3 account id (1..4294967295, deadlock-api's `account_id`).
 Input may be that id, a 17-digit SteamID64, `[U:1:N]`, `STEAM_X:Y:Z` (account = Z·2 + Y) or
 `https://steamcommunity.com/profiles/<SteamID64>`; all normalize to the account id. A vanity `/id/<name>` link
-cannot be resolved offline and is refused (`identity.steam.format`).
+cannot be resolved offline and is refused (`identity.steam.format`). The persona name is kept beside it in
+`display_name` by identity-service (`src/services/steam_profiles.py`): on OAuth sign-in, on `SteamAccountChangedEvent`
+(a Steam account created or re-pointed by any writer; a re-pointed account drops the old name at once) and daily.
+Profiles show `display_name` and fall back to the id.
 
 Uniqueness:
 

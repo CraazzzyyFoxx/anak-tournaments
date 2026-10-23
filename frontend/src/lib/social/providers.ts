@@ -168,6 +168,11 @@ export function socialProfileUrl(account: SocialAccount): string | null {
   return derived ?? account.url ?? null;
 }
 
+/** What people know an account by: the provider's display name (Steam persona name) over an opaque handle. */
+export function socialAccountLabel(account: SocialAccount): string {
+  return account.display_name || account.username;
+}
+
 /** `\s*#\s*` around a BattleTag's separator, as `shared.core.social` spells it. */
 const BATTLE_TAG_HASH = /\s*#\s*/g;
 

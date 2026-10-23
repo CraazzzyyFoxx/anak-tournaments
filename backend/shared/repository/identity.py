@@ -110,6 +110,20 @@ class SocialAccountRepository(BaseRepository[models.SocialAccount]):
         result = await session.execute(query)
         return result.unique().scalars().all()
 
+    async def list_by_provider(
+        self,
+        session: AsyncSession,
+        provider: str,
+        *,
+        ids: Collection[int] | None = None,
+    ) -> Sequence[models.SocialAccount]:
+        """Every account of one provider, or only the given ones of it."""
+        query = self.select().where(models.SocialAccount.provider == provider)
+        if ids is not None:
+            query = query.where(models.SocialAccount.id.in_(list(ids)))
+        result = await session.execute(query.order_by(models.SocialAccount.id))
+        return result.unique().scalars().all()
+
     async def get_by_provider_subject(
         self,
         session: AsyncSession,

@@ -384,6 +384,21 @@ class WorkspaceMemberChangedEvent(BaseEvent):
     change: str = Field(..., description="added | roles_changed | removed | owner_transferred | merged")
 
 
+class SteamAccountChangedEvent(BaseEvent):
+    """A Steam ``social_account`` was created or its account id changed.
+
+    Published by: ``shared.services.social_identity`` (every social-account
+    writer) in the same transaction as the write, unless the writer already
+    supplied the display name. Consumed by: identity-service
+    ``steam_account_changed``, which fetches the persona name into
+    ``social_account.display_name``. Re-fetching is idempotent, so a redelivery
+    is harmless.
+    """
+
+    event_type: str = Field(default="steam_account_changed", frozen=True)
+    social_account_id: int = Field(..., description="players.social_account id")
+
+
 class DiscordMemberChangedEvent(BaseEvent):
     """A Discord guild member joined, left, or had their roles changed.
 

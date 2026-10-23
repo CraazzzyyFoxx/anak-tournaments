@@ -1497,6 +1497,7 @@ Table players.social_account {
   username VARCHAR(255) [not null]
   username_normalized VARCHAR(255)
   url VARCHAR(500)
+  display_name VARCHAR(255)
   provider_user_id VARCHAR(255)
   is_verified boolean [not null, default: false]
   is_primary boolean [not null, default: false]

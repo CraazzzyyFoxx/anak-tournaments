@@ -16885,6 +16885,18 @@
     "app.SocialAccountRead": {
       "description": "Unified player social identity (battlenet/discord/twitch/boosty/vk/youtube/\u2026).",
       "properties": {
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Display Name"
+        },
         "id": {
           "title": "Id",
           "type": "integer"
@@ -34444,6 +34456,18 @@
     "stats.SocialAccountRead": {
       "description": "Unified player social identity (battlenet/discord/twitch/boosty/vk/youtube/\u2026).",
       "properties": {
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Display Name"
+        },
         "id": {
           "title": "Id",
           "type": "integer"
@@ -54069,6 +54093,18 @@
     "tournament.SocialAccountRead": {
       "description": "Unified player social identity (battlenet/discord/twitch/boosty/vk/youtube/\u2026).",
       "properties": {
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Display Name"
+        },
         "id": {
           "title": "Id",
           "type": "integer"

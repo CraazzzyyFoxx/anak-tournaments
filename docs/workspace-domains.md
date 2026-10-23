@@ -15,8 +15,8 @@ Create a wildcard DNS record that resolves all tenant subdomains to the ingress 
 *.owt.craazzzyyfoxx.me  A  <INGRESS_IP>
 ```
 
-**Where to configure:** Your DNS provider (CloudFlare, Route53, etc.)  
-**TTL:** 300 seconds (or provider default)  
+**Where to configure:** Your DNS provider (CloudFlare, Route53, etc.)\
+**TTL:** 300 seconds (or provider default)\
 **Value:** Replace `<INGRESS_IP>` with the actual IP address of your ingress (the TLS terminator in front of nginx).
 
 ### Apex Record
@@ -120,8 +120,10 @@ Riot ID from. The LoL rank collector's API key is separate: `RIOT_API_KEY` in `s
 Steam sign-in needs **no keys and no registration**: there is no client id or secret. The identity service sends Steam
 `openid.return_to` = `OAUTH_REDIRECT` (with the signed `state`) and `openid.realm` = the scheme and host of
 `OAUTH_REDIRECT` (`https://owt.craazzzyyfoxx.me`); Steam shows the realm on its sign-in page and redirects back to the
-same callback. Set `STEAM_OAUTH_ENABLED=true`. The persona name and avatar come from deadlock-api (best effort), so
-no Steam Web API key is needed either.
+same callback. Set `STEAM_OAUTH_ENABLED=true`. Sign-in needs no Steam Web API key. The persona name and avatar
+(shown on profiles instead of the bare account id) come from the Steam Web API when `STEAM_WEB_API_KEY` is set
+(<https://steamcommunity.com/dev/apikey>), else from deadlock-api's keyless copy, which may lag Steam by months for
+someone who does not play Deadlock.
 
 ### Environment Variables
 

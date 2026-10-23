@@ -1606,6 +1606,7 @@ CREATE TABLE players.social_account (
 	username VARCHAR(255) NOT NULL,
 	username_normalized VARCHAR(255),
 	url VARCHAR(500),
+	display_name VARCHAR(255),
 	provider_user_id VARCHAR(255),
 	is_verified BOOLEAN DEFAULT 'false' NOT NULL,
 	is_primary BOOLEAN DEFAULT 'false' NOT NULL,

@@ -2,7 +2,7 @@ import Image from "@/components/ui/image";
 import { getTranslations } from "next-intl/server";
 import { ArrowDown, ArrowUp, Check } from "lucide-react";
 import { User, UserProfile } from "@/types/user.types";
-import { getSocialProviderConfig, socialProfileUrl, sortSocialAccounts } from "@/lib/social/providers";
+import { getSocialProviderConfig, socialAccountLabel, socialProfileUrl, sortSocialAccounts } from "@/lib/social/providers";
 import { findRole, registrationRoles, roleName, rolePresentation } from "@/lib/roster/ontology";
 import disciplineService from "@/services/discipline.service";
 import { SocialIcon } from "@/components/social/SocialIcon";
@@ -152,7 +152,7 @@ const UserHeader = async ({ profile, user, scope, discipline, axis }: UserHeader
                 const chip = (
                   <>
                     <SocialIcon provider={account.provider} size={12} decorative />
-                    <span className="truncate">{account.username}</span>
+                    <span className="truncate">{socialAccountLabel(account)}</span>
                     {account.is_verified ? (
                       <Check size={12} aria-label={verifiedLabel} className="shrink-0 text-[color:var(--aqt-teal)]" />
                     ) : null}
@@ -161,7 +161,12 @@ const UserHeader = async ({ profile, user, scope, discipline, axis }: UserHeader
                 const chipClass =
                   "inline-flex max-w-[16rem] items-center gap-1.5 rounded-[7px] border border-[color:var(--aqt-border-2)] px-2 py-1 text-caption font-medium text-[color:var(--aqt-fg-muted)]";
                 return (
-                  <li key={account.id} title={account.is_verified ? `${providerLabel} · ${verifiedLabel}` : providerLabel}>
+                  <li
+                    key={account.id}
+                    title={[providerLabel, account.display_name ? account.username : null, account.is_verified ? verifiedLabel : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  >
                     {url ? (
                       <a
                         href={url}

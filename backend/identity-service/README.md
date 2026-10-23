@@ -78,14 +78,21 @@ bearer `access_token` (injected by the gateway) and resolve the active user befo
 The full method list with request/response schemas is published at `/api/docs`, generated from
 `src/openapi_schemas.py` (`OPERATIONS`) and `src/openapi_docs.py` (`DOCS`).
 
-Besides its own RPC queues it consumes one event queue, `workspace_member_changed`
-(`src/rpc/workspace_member_events.py`, DLQ `workspace_member_changed.dlq`): app-service's
-`WorkspaceMemberChangedEvent`, on which it drops the cached RBAC payload of every listed user.
-app-service also sends the same event as the internal RPC `rpc.identity.workspace_member_changed`
-(no gateway route) right after committing and waits for it, so the actor's very next request
-already sees the change; the queued copy is the durable fallback.
+Besides its own RPC queues it consumes two event queues:
 
-It publishes no domain events or outbox rows. Its one Redis realtime topic is
+- `workspace_member_changed` (`src/rpc/workspace_member_events.py`, DLQ `workspace_member_changed.dlq`):
+  app-service's `WorkspaceMemberChangedEvent`, on which it drops the cached RBAC payload of every listed user.
+  app-service also sends the same event as the internal RPC `rpc.identity.workspace_member_changed` (no gateway
+  route) right after committing and waits for it, so the actor's very next request already sees the change; the
+  queued copy is the durable fallback.
+- `steam_account_changed` (`src/rpc/steam_names.py`, DLQ `steam_account_changed.dlq`): `SteamAccountChangedEvent`,
+  staged by `shared.services.social_identity` when any service creates a Steam `players.social_account` or changes its
+  account id. It writes the account's persona name into `display_name` (`src/services/steam_profiles.py`). The same
+  refresh runs over every Steam account at startup and then daily (`serve.py`, `steam_display_names`).
+
+It publishes no domain events. The one outbox row it can write is that same `SteamAccountChangedEvent`, when an OAuth
+sign-in creates a Steam account without a persona name; the other services' drains relay it. Its one Redis realtime
+topic is
 `user:{id}:rbac` (`rbac.changed`, ephemeral): every RBAC-cache drop — membership events, role,
 permission and deny edits, account deletion, profile merge, `invalidate_session` — announces it
 after the entry is gone, and the gateway evicts every token and workspace membership it cached
@@ -99,8 +106,9 @@ Writes the whole `auth` schema: `user`, `refresh_token`, `oauth_connections`, `a
 `user_permission_deny`.
 
 Also writes parts of `players`: `players.user` (a player row is provisioned at registration and
-its `auth_user_id` is set/cleared by linking) and `players.social_account` when an OAuth
-identity is claimed or released. Appends to `public.audit_log` for administrative mutations.
+its `auth_user_id` is set/cleared by linking), `players.social_account` when an OAuth
+identity is claimed or released, and `players.social_account.display_name` (Steam persona names).
+Appends to `public.audit_log` for administrative mutations.
 
 Reads only: `public.workspace` and `public.workspace_member` for tenancy and membership
 resolution.
@@ -120,8 +128,9 @@ diagram.
 - **S3** — avatar object storage.
 - **External APIs** — Discord, Twitch, Battle.net and Riot (`auth.riotgames.com`, account-v1 on
   `https://{RIOT_ACCOUNT_CLUSTER}.api.riotgames.com`) OAuth token/userinfo endpoints, Steam OpenID
-  (`steamcommunity.com/openid/login`) and the deadlock-api Steam profile
-  (`api.deadlock-api.com/v1/players/steam`), reached
+  (`steamcommunity.com/openid/login`) and Steam profiles: the Steam Web API
+  (`api.steampowered.com/ISteamUser/GetPlayerSummaries/v2`) when `STEAM_WEB_API_KEY` is set, else
+  deadlock-api (`api.deadlock-api.com/v1/players/steam`), reached
   through the outbound `proxy` container when the shared `PROXY_TYPE` / `PROXY_*` settings are
   configured; the production compose block `depends_on` it.
 
@@ -142,7 +151,8 @@ only the service-specific overrides:
 Settings that change behaviour elsewhere: `DISCORD_/TWITCH_/BATTLENET_/RIOT_/STEAM_OAUTH_ENABLED` gate which
 providers are advertised; Riot also needs `RIOT_CLIENT_ID` / `RIOT_CLIENT_SECRET` and reads the
 Riot ID from account-v1 on `RIOT_ACCOUNT_CLUSTER` (default `europe`); Steam needs no credentials (its
-OpenID realm is the scheme and host of `OAUTH_REDIRECT`). `SERVICE_CLIENTS` defines which
+OpenID realm is the scheme and host of `OAUTH_REDIRECT`). `STEAM_WEB_API_KEY` (optional) switches Steam persona names
+and avatars from deadlock-api's keyless copy to the Steam Web API. `SERVICE_CLIENTS` defines which
 machine callers may mint service tokens, and `RPC_PREFETCH_COUNT` bounds in-flight requests per process.
 
 ## Running

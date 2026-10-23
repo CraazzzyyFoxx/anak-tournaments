@@ -30,7 +30,12 @@ import { Switch } from "@/components/ui/switch";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { getApiErrorMessage } from "@/lib/api/error";
 import { notify } from "@/lib/notify";
-import { getSocialProviderConfig, SOCIAL_PROVIDER_ORDER, socialAccountsForProvider } from "@/lib/social/providers";
+import {
+  getSocialProviderConfig,
+  SOCIAL_PROVIDER_ORDER,
+  socialAccountLabel,
+  socialAccountsForProvider
+} from "@/lib/social/providers";
 import adminService from "@/services/admin.service";
 import type { SocialAccount, SocialProvider, User } from "@/types/user.types";
 
@@ -224,8 +229,11 @@ function AccountRow({
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2.5 @lg:flex-nowrap">
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <span className="truncate text-body font-medium" title={account.username}>
-          {account.username}
+          {socialAccountLabel(account)}
         </span>
+        {account.display_name ? (
+          <span className="shrink-0 text-caption text-muted-foreground tabular-nums">{account.username}</span>
+        ) : null}
         {account.is_verified ? <StatusIcon icon={Check} label={t("verified")} variant="success" /> : null}
         {account.is_primary ? (
           <StatusIcon icon={Star} label={t("primary")} variant="warning" className="fill-current" />

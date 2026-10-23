@@ -15,6 +15,8 @@ class SocialAccountRead(BaseRead):
     user_id: int
     provider: str
     username: str
+    # The provider's display name where ``username`` is an opaque id (Steam persona name).
+    display_name: str | None = None
     url: str | None = None
     is_verified: bool = False
     is_primary: bool = False

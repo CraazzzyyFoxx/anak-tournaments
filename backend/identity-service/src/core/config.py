@@ -75,6 +75,9 @@ class Settings(BaseServiceSettings):
     # Steam OpenID 2.0. No client credentials: Steam verifies its own assertion (``check_authentication``), the
     # claimed SteamID64 is the subject. Only the return URL (``OAUTH_REDIRECT``) is needed.
     STEAM_OAUTH_ENABLED: bool = False
+    # Steam Web API key (``GetPlayerSummaries``) for persona names and avatars. Unset, the same summaries come from
+    # deadlock-api's keyless cache, which may lag Steam by months for someone who does not play Deadlock.
+    STEAM_WEB_API_KEY: str | None = None
 
     # The one OAuth callback URL registered with every provider: always the
     # platform apex, never derived from the request host, because providers only

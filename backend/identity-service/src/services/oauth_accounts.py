@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.core.social import normalize_social_handle, social_provider_for_oauth
+from shared.core.social import SocialProvider, normalize_social_handle, social_provider_for_oauth
 from shared.repository import (
     AuthUserRepository,
     OAuthConnectionRepository,
@@ -252,6 +252,13 @@ class OAuthAccountService:
                 if player is None:
                     return
 
+        # Steam's handle is a bare account id: keep the persona name beside it. ``display_name`` falls back to the
+        # handle itself when the profile fetch failed, which is no name at all.
+        steam_name = (
+            oauth_info.display_name
+            if provider == SocialProvider.STEAM and oauth_info.display_name != oauth_info.handle
+            else None
+        )
         try:
             await socials_writer.upsert(
                 session,
@@ -260,6 +267,7 @@ class OAuthAccountService:
                 username=oauth_info.handle,
                 provider_user_id=oauth_info.provider_user_id,
                 is_verified=True,
+                display_name=steam_name,
             )
         except SocialHandleConflict:
             # LOGIN path: this provider_user_id is verified on a different player

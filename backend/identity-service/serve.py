@@ -17,7 +17,7 @@ from datetime import timedelta
 
 from faststream import FastStream
 
-from shared.messaging.config import WORKSPACE_MEMBER_CHANGED_DLQ
+from shared.messaging.config import STEAM_ACCOUNT_CHANGED_DLQ, WORKSPACE_MEMBER_CHANGED_DLQ
 from shared.messaging.topology import declare_dead_letter_queue
 from shared.observability import (
     make_rabbit_broker,
@@ -34,9 +34,10 @@ from src.core import db
 from src.core.config import settings
 from src.core.redis import close_redis, init_redis
 from src.core.s3 import s3_client
-from src.rpc import api_keys, auth, avatars, oauth, players, rbac, tokens, workspace_member_events
-from src.services.oauth_providers import close_http_client
+from src.rpc import api_keys, auth, avatars, oauth, players, rbac, steam_names, tokens, workspace_member_events
+from src.services.oauth_providers import close_http_client, oauth_providers
 from src.services.sessions import refresh_tokens
+from src.services.steam_profiles import refresh_display_names
 
 # Rotation writes a refresh-token row per refresh and revocation only flags it,
 # so the table grows for as long as nobody deletes. Nothing authenticates
@@ -77,10 +78,13 @@ configure_quota(
     edge_workspace_metering=settings.quota_edge_workspace_metering,
 )
 
-for _module in (tokens, auth, oauth, api_keys, rbac, players, avatars, workspace_member_events):
+for _module in (tokens, auth, oauth, api_keys, rbac, players, avatars, workspace_member_events, steam_names):
     _module.register(broker, logger)
 
 _purge_scheduler = IntervalScheduler(job_id="refresh_token_purge", label="Refresh-token purge", logger=logger)
+_steam_names_scheduler = IntervalScheduler(
+    job_id="steam_display_names", label="Steam display-name refresh", logger=logger
+)
 
 
 async def purge_expired_refresh_tokens() -> None:
@@ -91,10 +95,19 @@ async def purge_expired_refresh_tokens() -> None:
         logger.info("Refresh-token purge: dropped {} rows expired before {}", deleted, REFRESH_TOKEN_RETENTION)
 
 
+async def refresh_steam_display_names() -> None:
+    """Every Steam account's persona name; the event-driven fetch (``steam_names``) covers new accounts between runs."""
+    async with observe_scheduled_job("steam_display_names"), db.async_session_maker() as session:
+        changed = await refresh_display_names(session, oauth_providers.http.client())
+        await session.commit()
+    logger.info("Steam display-name refresh: {} names changed", changed)
+
+
 @app.on_startup
 async def setup_worker() -> None:
     await broker.connect()
     await declare_dead_letter_queue(broker, WORKSPACE_MEMBER_CHANGED_DLQ)
+    await declare_dead_letter_queue(broker, STEAM_ACCOUNT_CHANGED_DLQ)
     setup_sentry(
         dsn=settings.sentry_dsn,
         traces_sample_rate=settings.sentry_traces_sample_rate,
@@ -123,12 +136,16 @@ async def setup_worker() -> None:
     await init_redis()
     await s3_client.start()
     _purge_scheduler.start(purge_expired_refresh_tokens, seconds=24 * 60 * 60)
+    # ponytail: unlocked, every replica refreshes (idempotent writes, ~1 request per 100 accounts each); add a leader
+    # lock if identity scales out far.
+    _steam_names_scheduler.start(refresh_steam_display_names, seconds=24 * 60 * 60, run_now=True)
     logger.info("identity-svc started")
 
 
 @app.on_shutdown
 async def teardown_worker() -> None:
     _purge_scheduler.shutdown()
+    _steam_names_scheduler.shutdown()
     await s3_client.close()
     await close_http_client()
     await close_redis()

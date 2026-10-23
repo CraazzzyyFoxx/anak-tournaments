@@ -13,7 +13,7 @@ baselines and Discord channels live in `stats/`. `catalog/` writes only to `cata
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`mixpick01`** (146 revisions in `backend/migrations/versions/`).
+Alembic head: **`socdn01`** (147 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -328,6 +328,7 @@ erDiagram
         varchar(255) username
         varchar(255) username_normalized "nullable"
         varchar(500) url "nullable"
+        varchar(255) display_name "nullable"
         varchar(255) provider_user_id "nullable"
         boolean is_verified
         boolean is_primary

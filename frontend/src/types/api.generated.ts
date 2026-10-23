@@ -13340,6 +13340,11 @@ export interface components {
          * @description Unified player social identity (battlenet/discord/twitch/boosty/vk/youtube/…).
          */
         "app.SocialAccountRead": {
+            /**
+             * Display Name
+             * @default null
+             */
+            display_name: string | null;
             /** Id */
             id: number;
             /**
@@ -17081,6 +17086,11 @@ export interface components {
          * @description Unified player social identity (battlenet/discord/twitch/boosty/vk/youtube/…).
          */
         "stats.SocialAccountRead": {
+            /**
+             * Display Name
+             * @default null
+             */
+            display_name: string | null;
             /** Id */
             id: number;
             /**
@@ -20508,6 +20518,11 @@ export interface components {
          * @description Unified player social identity (battlenet/discord/twitch/boosty/vk/youtube/…).
          */
         "tournament.SocialAccountRead": {
+            /**
+             * Display Name
+             * @default null
+             */
+            display_name: string | null;
             /** Id */
             id: number;
             /**

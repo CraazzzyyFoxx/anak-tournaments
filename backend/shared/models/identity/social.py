@@ -20,6 +20,8 @@ class SocialAccount(db.TimeStampIntegerMixin):
     Consolidates the former ``battle_tag``/``discord``/``twitch``/``external_account``
     tables. ``provider_user_id`` + ``is_verified`` are set when the account is
     proven via OAuth; visibility is layered through ``SocialAccountVisibility``.
+    ``display_name`` is the provider's current display name where the handle is
+    an opaque id (Steam's persona name); identity-service keeps it fresh.
     """
 
     __tablename__ = "social_account"
@@ -64,6 +66,7 @@ class SocialAccount(db.TimeStampIntegerMixin):
     username: Mapped[str] = mapped_column(String(255))
     username_normalized: Mapped[str | None] = mapped_column(String(255), nullable=True)
     url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     provider_user_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_verified: Mapped[bool] = mapped_column(Boolean(), server_default="false")
     is_primary: Mapped[bool] = mapped_column(Boolean(), server_default="false")

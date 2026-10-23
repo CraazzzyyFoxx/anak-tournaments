@@ -18,13 +18,16 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
-from shared.core.social import VERIFIABLE_PROVIDERS, normalize_social_handle, oauth_handle_candidates
+from shared.core.social import VERIFIABLE_PROVIDERS, SocialProvider, normalize_social_handle, oauth_handle_candidates
+from shared.messaging.config import STEAM_ACCOUNT_CHANGED_QUEUE
+from shared.messaging.outbox import enqueue_outbox_event
 from shared.repository import (
     OAuthConnectionRepository,
     SocialAccountRepository,
     SocialAccountVisibilityRepository,
     UserRepository,
 )
+from shared.schemas.events import SteamAccountChangedEvent
 
 __all__ = (
     "SocialAccountNotOAuthLinked",
@@ -94,6 +97,7 @@ class SocialIdentityService:
         url: str | None = None,
         provider_user_id: str | None = None,
         is_verified: bool | None = None,
+        display_name: str | None = None,
         ensure_global_visibility: bool = True,
     ) -> models.SocialAccount:
         """Create or update a player's social identity (idempotent on (user, provider, handle)).
@@ -111,6 +115,11 @@ class SocialIdentityService:
         Raises ``SocialHandleConflict`` if that ``provider_user_id`` is already
         linked to a *different* user rather than silently retargeting someone
         else's account.
+
+        ``display_name`` is the provider's display name when the caller has it
+        (OAuth). Re-pointing an account to another handle drops the old handle's
+        name, and a Steam account created or re-pointed without one asks
+        identity-service to fetch it (``SteamAccountChangedEvent``).
         """
         normalized = normalize_social_handle(provider, username)
 
@@ -127,6 +136,7 @@ class SocialIdentityService:
             )
 
         if account is None:
+            repointed = True
             is_first = not await self.accounts.has_any_for_provider(session, user_id=user_id, provider=provider)
             account = await self.accounts.create(
                 session,
@@ -136,16 +146,22 @@ class SocialIdentityService:
                     username=username,
                     username_normalized=normalized,
                     url=url,
+                    display_name=display_name,
                     provider_user_id=provider_user_id,
                     is_verified=bool(is_verified) if is_verified is not None else False,
                     is_primary=is_first,
                 ),
             )
         else:
+            repointed = normalized != account.username_normalized
             changes: dict[str, object] = {
                 "username": username,  # refresh display casing
                 "username_normalized": normalized,
             }
+            if repointed:
+                changes["display_name"] = None
+            if display_name is not None:
+                changes["display_name"] = display_name
             if url is not None:
                 changes["url"] = url
             if provider_user_id is not None:
@@ -153,6 +169,9 @@ class SocialIdentityService:
             if is_verified is not None:
                 changes["is_verified"] = is_verified
             await self.accounts.update_fields(session, account, changes)
+
+        if repointed and display_name is None:
+            await self._request_display_name(session, account)
 
         if ensure_global_visibility:
             await self.set_visibility(session, account_id=account.id, workspace_id=None, visible=True)
@@ -169,15 +188,16 @@ class SocialIdentityService:
     ) -> models.SocialAccount | None:
         """Update an account's display handle / url. Returns None if not found.
 
-        Changing the handle recomputes ``username_normalized``; raises
-        ``SocialHandleConflict`` if it would collide with another of the user's
-        accounts for the same provider.
+        Changing the handle recomputes ``username_normalized`` and drops the old
+        handle's ``display_name``; raises ``SocialHandleConflict`` if it would
+        collide with another of the user's accounts for the same provider.
         """
         account = await self.accounts.get_owned(session, account_id=account_id, user_id=user_id)
         if account is None:
             return None
 
         changes: dict[str, object] = {}
+        repointed = False
         if username is not None:
             normalized = normalize_social_handle(account.provider, username)
             if normalized != account.username_normalized:
@@ -190,11 +210,16 @@ class SocialIdentityService:
                 )
                 if clash is not None:
                     raise SocialHandleConflict(f"{account.provider} handle '{username}' already exists for this user")
+                changes["display_name"] = None
+                repointed = True
             changes["username"] = username
             changes["username_normalized"] = normalized
         if url is not None:
             changes["url"] = url
-        return await self.accounts.update_fields(session, account, changes)
+        account = await self.accounts.update_fields(session, account, changes)
+        if repointed:
+            await self._request_display_name(session, account)
+        return account
 
     async def delete(self, session: AsyncSession, *, account_id: int, user_id: int) -> models.SocialAccount | None:
         """Delete an account (visibility rows cascade). Promotes a new primary if needed.
@@ -301,6 +326,16 @@ class SocialIdentityService:
             )
         elif not visible and existing is not None:
             await self.visibilities.delete(session, existing)
+
+    async def _request_display_name(self, session: AsyncSession, account: models.SocialAccount) -> None:
+        """Have identity-service fetch a Steam account's persona name (outbox, in the caller's transaction)."""
+        if account.provider == SocialProvider.STEAM:
+            await enqueue_outbox_event(
+                session,
+                SteamAccountChangedEvent(social_account_id=account.id),
+                exchange="",
+                routing_key=STEAM_ACCOUNT_CHANGED_QUEUE.name,
+            )
 
 
 social_identity_service = SocialIdentityService()
