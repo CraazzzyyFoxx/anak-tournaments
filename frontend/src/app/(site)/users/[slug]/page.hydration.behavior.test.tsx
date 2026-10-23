@@ -37,7 +37,7 @@ const { profile, dossier } = vi.hoisted(() => {
     games: [
       {
         discipline: "overwatch",
-        roles: [{ role: support, division: 5, division_grid_version: null }],
+        roles: [{ role: support, division: 5 }],
         tournaments_count: 1,
         tournaments_won: 0
       },
@@ -92,7 +92,7 @@ vi.mock("@/services/user.service", () => ({
     getUserProfile: async (_id: number, game: string | null) => profile(game),
     getUserTournament: async () => dossier,
     getUserTournamentEncounters: async () => [],
-    getUserTournaments: async () => [],
+    getUserTournaments: async () => ({ results: [], division_grid_versions: [] }),
     getUserCharacters: async () => null,
     getUserMaps: async () => null,
     getUserEncounters: async () => ({ results: [], total: 0 }),

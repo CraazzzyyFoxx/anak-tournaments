@@ -7,7 +7,7 @@ import sqlalchemy as sa
 from pydantic import BaseModel, BeforeValidator, Field
 
 from shared.core import enums, pagination
-from shared.schemas.catalog import CatalogEntityRead
+from shared.schemas.catalog import CatalogEntityRead, CatalogEntityRef
 from shared.schemas.match import MatchRead, NativeFact
 from shared.schemas.role import RoleRef
 from src import schemas
@@ -25,9 +25,11 @@ __all__ = (
     "UserDraftCardRole",
     "UserDraftCardTournament",
     "UserRole",
+    "UserRoleSummary",
     "UserGameSummary",
     "UserTournamentWithStats",
     "UserTournament",
+    "UserTournamentList",
     "UserTournamentSummary",
     "UserTournamentPlayer",
     "UserEncounterTournament",
@@ -85,12 +87,17 @@ __all__ = (
 )
 
 
-class UserRole(BaseModel):
+class UserRoleSummary(BaseModel):
     role: RoleRef | None = None
     tournaments: int
     maps_won: int
     maps: int
     division: int
+
+
+class UserRole(UserRoleSummary):
+    """A profile role with the grid its division is a tier of (the crest is drawn on it)."""
+
     division_grid_version: DivisionGridVersionRead | None = None
 
 
@@ -98,7 +105,7 @@ class UserGameSummary(BaseModel):
     """One game of a cross-game profile: the player's roles on that game's grid, tournaments and wins in it."""
 
     discipline: str
-    roles: list[UserRole]
+    roles: list[UserRoleSummary]
     tournaments_count: int
     tournaments_won: int
 
@@ -117,7 +124,6 @@ class UserTournamentSummary(BaseModel):
     is_league: bool
     is_finished: bool = False
     status: enums.TournamentStatus | None = None
-    division_grid_version: DivisionGridVersionRead | None = None
 
 
 class UserTournamentPlayer(BaseModel):
@@ -143,9 +149,8 @@ class UserTournamentPlayer(BaseModel):
     # COALESCE(ImpactRank, Performance). `None` when the player has no such stat
     # rows.
     avg_mvp: float | None = None
-    # This player's top characters by playtime in THIS tournament (the catalog's entity
-    # shape). Empty when none recorded.
-    characters: list[CatalogEntityRead] = Field(default_factory=list)
+    # This player's top characters by playtime in THIS tournament, named and drawn. Empty when none recorded.
+    characters: list[CatalogEntityRef] = Field(default_factory=list)
 
 
 class UserEncounterTournament(BaseModel):
@@ -216,11 +221,12 @@ class UserMatchViewer(BaseModel):
 
 
 class MatchReadWithUserStats(MatchRead):
-    """Match within a user-scoped encounter: the native header, the viewer's totals and every observed member's.
+    """Match within a user-scoped encounter: the native header, the viewer's totals and the members' ranked totals.
 
-    A discipline's renderer derives its per-match badges from ``viewer.facts`` against ``member_totals`` (every
-    member's segment-0, NULL-entity facts); no derived value rides on the wire. ``viewer`` is ``None`` for a match
-    the viewer's seat was a participant of without being observed.
+    A discipline's renderer derives its per-match badges from ``viewer.facts`` against ``member_totals``; no derived
+    value rides on the wire. ``member_totals`` carries every observed member's segment-0, NULL-entity facts of the
+    game's ``DisciplineSpec.member_total_stats`` only (empty for a game that ranks none). ``viewer`` is ``None`` for a
+    match the viewer's seat was a participant of without being observed.
     """
 
     #: Always expanded with its catalog ``parent``; the match's own mode is ``mode``.
@@ -274,12 +280,16 @@ class UserTournament(BaseModel):
     # (e.g. teams returned for adjacency aggregates have no resolved role).
     role: RoleRef | None = None
     division: int | None = None
-    division_grid_version: DivisionGridVersionRead | None = None
-    # Populated only by `get_tournament_encounters` (the lazy per-tournament
-    # dossier detail); `get_tournaments` (the list endpoint) leaves this `[]`
-    # so the list response doesn't ship every tournament's full encounter/
-    # match history up front — see services/user/service.py::get_tournaments.
-    encounters: list[EncounterReadWithUserStats] = Field(default_factory=list)
+    #: The id of the grid version ``division`` and the roster divisions are tiers of; the version itself is in
+    #: ``UserTournamentList.division_grid_versions``.
+    division_grid_version_id: int | None = None
+
+
+class UserTournamentList(BaseModel):
+    """A player's tournament history, plus each grid version its rows refer to, once (ordered by id)."""
+
+    results: list[UserTournament]
+    division_grid_versions: list[DivisionGridVersionRead]
 
 
 class UserTournamentStat(BaseModel):

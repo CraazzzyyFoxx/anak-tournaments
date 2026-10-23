@@ -212,6 +212,7 @@ def _get_encounters(rpc: RpcHarness, user_id: int, workspace_id: int) -> dict:
                     "order": "desc",
                     "workspace_id": workspace_id,
                     "discipline": "overwatch",
+                    "entities": ["matches"],
                 }
             ),
         },
@@ -233,7 +234,8 @@ def _badge(match: dict) -> bool:
 
 def test_get_user_encounters_carry_viewer_facts_and_every_members_totals(rpc: RpcHarness, db: Session) -> None:
     """MVP impact inputs on user match reads: the wire ships the viewer's whole-match facts and every observed
-    member's totals; the badge is the renderer's rule over them, never a derived field.
+    member's ranked totals (Overwatch's ``member_total_stats``: overperformance only); the badge is the renderer's
+    rule over them, never a derived field.
 
     - top-1 OverperformanceScore in the match, score >= BADGE_THRESHOLD -> badge True
     - present but not top-1 in the match -> badge False
@@ -259,7 +261,9 @@ def test_get_user_encounters_carry_viewer_facts_and_every_members_totals(rpc: Rp
         ids["workspace_member_a"],
         ids["workspace_member_b"],
     }
-    assert {(fact["segment"], fact["entity_id"]) for fact in with_impact_a["member_totals"]} == {(0, None)}
+    assert {(fact["segment"], fact["entity_id"], fact["stat_code"]) for fact in with_impact_a["member_totals"]} == {
+        (0, None, "overperformance_score")
+    }
     assert _badge(with_impact_a) is True
 
     without_impact_a = _find_match(matches_a, ids["match_without_impact"])

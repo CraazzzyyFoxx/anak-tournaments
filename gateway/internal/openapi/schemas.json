@@ -5002,7 +5002,7 @@
       "summary": "List achievements"
     },
     "rpc.stats.achievements.user": {
-      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's earned (and optionally locked) achievements, scoped by tournament or without-tournament and workspace, and optionally to one game's rules (`discipline`; unknown code 404 discipline_not_installed); rejects combining tournament_id with without_tournament=true.",
+      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's earned (and optionally locked) achievements, scoped by tournament or without-tournament and workspace, and optionally to one game's rules (`discipline`; unknown code 404 discipline_not_installed); rejects combining tournament_id with without_tournament=true. `tournaments` and `matches` (where each was earned) are filled only when `entities` names them; otherwise they are empty and not read.",
       "query_params": [
         {
           "name": "tournament_id",
@@ -6518,7 +6518,7 @@
       "summary": "User draft card"
     },
     "rpc.stats.users.encounters": {
-      "description": "Permission: public; no authentication required. Returns a player's paginated encounters \u2014 every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code), each naming its own `discipline` \u2014 filterable by result, stage, MVP (`mvp1` needs `discipline`, else 422), log availability, and opponent. Each match carries its `map` and its own `mode` (null when none).",
+      "description": "Permission: public; no authentication required. Returns a player's paginated encounters \u2014 every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code), each naming its own `discipline` \u2014 filterable by result, stage, MVP (`mvp1` needs `discipline`, else 422), log availability, and opponent. Expansions are opt-in through `entities` (repeatable): `tournament`, `stage`, `stage_item`, `teams`, `teams.players` (implies `teams`; `user_team_id` is resolved from the rosters, else null) and `matches` (`matches.map` is the same: a match always carries its `map` and its own `mode`, null when none). An entity not requested is null/empty and not read. Each match carries the viewer's facts and `member_totals` limited to the stats the game's match renderer ranks the viewer against.",
       "query_params": [
         {
           "name": "page",
@@ -6636,7 +6636,7 @@
       "summary": "User encounters"
     },
     "rpc.stats.users.get_profile": {
-      "description": "Permission: public; no authentication required. Returns a player's profile resolved against the workspace context. With `discipline` it is that game's profile (its tournaments, roles and characters on that game's division grid) and `games` is empty. Without it the header aggregates span every game, `roles`/`character_statistics` are empty, `most_played_character` is null, and `games` lists one summary per game played (`discipline`, that game's `roles`, `tournaments_count`, `tournaments_won`), most tournaments first, ties in installed order. Every `tournaments[]` entry carries its `discipline`.",
+      "description": "Permission: public; no authentication required. Returns a player's profile resolved against the workspace context. With `discipline` it is that game's profile (its tournaments, roles and characters on that game's division grid) and `games` is empty. Without it the header aggregates span every game, `roles`/`character_statistics` are empty, `most_played_character` is null, and `games` lists one summary per game played (`discipline`, that game's `roles` without their grid version, `tournaments_count`, `tournaments_won`), most tournaments first, ties in installed order. Every `tournaments[]` entry carries its `discipline`; only `roles[]` carry a `division_grid_version`.",
       "query_params": [
         {
           "name": "discipline",
@@ -7397,7 +7397,7 @@
       "summary": "User tournament stats"
     },
     "rpc.stats.users.tournament_encounters": {
-      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's encounters (with per-match stats) within one tournament \u2014 the lazy detail behind the Tournaments-tab dossier, fetched only for the tournament currently open in the UI. Each match carries its `map` and its own `mode` (null when none).",
+      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's encounters (with per-match stats) within one tournament \u2014 the lazy detail behind the Tournaments-tab dossier, fetched only for the tournament currently open in the UI. Each match carries its `map` and its own `mode` (null when none), the viewer's facts, and `member_totals` limited to the stats the game's match renderer ranks the viewer against.",
       "response": {
         "array": true,
         "ref": "stats.EncounterReadWithUserStats"
@@ -7422,7 +7422,7 @@
       "summary": "Tournament stat leaderboard"
     },
     "rpc.stats.users.tournaments": {
-      "description": "Permission: public; no authentication required. Returns the tournaments a player participated in \u2014 every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code) \u2014 scoped to the workspace context and grid; each row names its own `discipline`.",
+      "description": "Permission: public; no authentication required. Returns the tournaments a player participated in \u2014 every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code) \u2014 scoped to the workspace context and grid, as `results`; each row names its own `discipline` and the `division_grid_version_id` its divisions are tiers of, and `division_grid_versions` carries each of those versions once (ordered by id). A roster player's `characters` are references (`id`, `slug`, `name`, `image_path`).",
       "query_params": [
         {
           "name": "discipline",
@@ -7441,8 +7441,8 @@
         }
       ],
       "response": {
-        "array": true,
-        "ref": "stats.UserTournament"
+        "array": false,
+        "ref": "stats.UserTournamentList"
       },
       "summary": "User tournaments"
     },
@@ -29715,6 +29715,42 @@
       "title": "CatalogEntityRead",
       "type": "object"
     },
+    "stats.CatalogEntityRef": {
+      "description": "A ``catalog.entity`` named and drawn, nothing more: what a compact strip of characters renders.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "image_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Image Path"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "slug",
+        "name",
+        "image_path"
+      ],
+      "title": "CatalogEntityRef",
+      "type": "object"
+    },
     "stats.CatalogSyncError": {
       "properties": {
         "code": {
@@ -32721,7 +32757,7 @@
       "type": "object"
     },
     "stats.MatchReadWithUserStats": {
-      "description": "Match within a user-scoped encounter: the native header, the viewer's totals and every observed member's.\n\nA discipline's renderer derives its per-match badges from ``viewer.facts`` against ``member_totals`` (every\nmember's segment-0, NULL-entity facts); no derived value rides on the wire. ``viewer`` is ``None`` for a match\nthe viewer's seat was a participant of without being observed.",
+      "description": "Match within a user-scoped encounter: the native header, the viewer's totals and the members' ranked totals.\n\nA discipline's renderer derives its per-match badges from ``viewer.facts`` against ``member_totals``; no derived\nvalue rides on the wire. ``member_totals`` carries every observed member's segment-0, NULL-entity facts of the\ngame's ``DisciplineSpec.member_total_stats`` only (empty for a game that ranks none). ``viewer`` is ``None`` for a\nmatch the viewer's seat was a participant of without being observed.",
       "properties": {
         "created_at": {
           "format": "date-time",
@@ -35277,13 +35313,6 @@
           "title": "Matches",
           "type": "array"
         },
-        "matches_ids": {
-          "items": {
-            "type": "integer"
-          },
-          "title": "Matches Ids",
-          "type": "array"
-        },
         "name": {
           "title": "Name",
           "type": "string"
@@ -35314,13 +35343,6 @@
           },
           "title": "Tournaments",
           "type": "array"
-        },
-        "tournaments_ids": {
-          "items": {
-            "type": "integer"
-          },
-          "title": "Tournaments Ids",
-          "type": "array"
         }
       },
       "required": [
@@ -35335,9 +35357,7 @@
         "rarity",
         "entity",
         "count",
-        "tournaments_ids",
         "tournaments",
-        "matches_ids",
         "matches"
       ],
       "title": "UserAchievementRead",
@@ -36610,7 +36630,7 @@
         },
         "roles": {
           "items": {
-            "$ref": "#/components/schemas/stats.UserRole"
+            "$ref": "#/components/schemas/stats.UserRoleSummary"
           },
           "title": "Roles",
           "type": "array"
@@ -37682,6 +37702,7 @@
       "type": "object"
     },
     "stats.UserRole": {
+      "description": "A profile role with the grid its division is a tier of (the crest is drawn on it).",
       "properties": {
         "division": {
           "title": "Division",
@@ -37731,6 +37752,45 @@
       "title": "UserRole",
       "type": "object"
     },
+    "stats.UserRoleSummary": {
+      "properties": {
+        "division": {
+          "title": "Division",
+          "type": "integer"
+        },
+        "maps": {
+          "title": "Maps",
+          "type": "integer"
+        },
+        "maps_won": {
+          "title": "Maps Won",
+          "type": "integer"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/stats.RoleRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "tournaments": {
+          "title": "Tournaments",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tournaments",
+        "maps_won",
+        "maps",
+        "division"
+      ],
+      "title": "UserRoleSummary",
+      "type": "object"
+    },
     "stats.UserStageRecord": {
       "properties": {
         "l": {
@@ -37775,27 +37835,21 @@
           "default": null,
           "title": "Division"
         },
-        "division_grid_version": {
+        "division_grid_version_id": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/stats.DivisionGridVersionRead"
+              "type": "integer"
             },
             {
               "type": "null"
             }
           ],
-          "default": null
+          "default": null,
+          "title": "Division Grid Version Id"
         },
         "draw": {
           "title": "Draw",
           "type": "integer"
-        },
-        "encounters": {
-          "items": {
-            "$ref": "#/components/schemas/stats.EncounterReadWithUserStats"
-          },
-          "title": "Encounters",
-          "type": "array"
         },
         "id": {
           "title": "Id",
@@ -37888,6 +37942,31 @@
       "title": "UserTournament",
       "type": "object"
     },
+    "stats.UserTournamentList": {
+      "description": "A player's tournament history, plus each grid version its rows refer to, once (ordered by id).",
+      "properties": {
+        "division_grid_versions": {
+          "items": {
+            "$ref": "#/components/schemas/stats.DivisionGridVersionRead"
+          },
+          "title": "Division Grid Versions",
+          "type": "array"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/components/schemas/stats.UserTournament"
+          },
+          "title": "Results",
+          "type": "array"
+        }
+      },
+      "required": [
+        "results",
+        "division_grid_versions"
+      ],
+      "title": "UserTournamentList",
+      "type": "object"
+    },
     "stats.UserTournamentPlayer": {
       "description": "Player card inside `UserTournament.players` (rendered by TournamentTeamTable).\n\nAlso populated inside `UserEncounterTeamSummary.players` when the\nencounter view needs to identify the viewer's row (via `user_id`).",
       "properties": {
@@ -37905,7 +37984,7 @@
         },
         "characters": {
           "items": {
-            "$ref": "#/components/schemas/stats.CatalogEntityRead"
+            "$ref": "#/components/schemas/stats.CatalogEntityRef"
           },
           "title": "Characters",
           "type": "array"
@@ -38020,17 +38099,6 @@
         "discipline": {
           "title": "Discipline",
           "type": "string"
-        },
-        "division_grid_version": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/stats.DivisionGridVersionRead"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
         },
         "id": {
           "title": "Id",

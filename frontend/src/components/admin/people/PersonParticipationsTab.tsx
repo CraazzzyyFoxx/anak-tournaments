@@ -38,7 +38,7 @@ import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
 import userService from "@/services/user.service";
 import type { DivisionGridVersion } from "@/types/workspace.types";
-import type { UserTournament } from "@/types/user.types";
+import type { UserTournamentList } from "@/types/user.types";
 import { formatSubRoleLabel } from "@/lib/player";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
@@ -65,9 +65,10 @@ interface ParticipationRow {
 }
 
 /** Every installed game's career read as one list (module level: a stable `combine` keeps the merged identity). */
-function mergeCareers(results: UseQueryResult<UserTournament[]>[]) {
+function mergeCareers(results: UseQueryResult<UserTournamentList>[]) {
   return {
-    data: results.flatMap((result) => result.data ?? []),
+    data: results.flatMap((result) => result.data?.results ?? []),
+    gridVersions: results.flatMap((result) => result.data?.division_grid_versions ?? []),
     isError: results.some((result) => result.isError),
     isLoading: results.some((result) => result.isLoading),
     refetchFailed: () => {
@@ -201,11 +202,12 @@ export function PersonParticipationsTab({
             discipline: entry.discipline,
             team_id: entry.team_id,
             team_name: entry.team,
-            division_grid_version: entry.division_grid_version
+            division_grid_version:
+              careers.gridVersions.find((version) => version.id === entry.division_grid_version_id) ?? null
           }
         ];
       }),
-    [participations, personId]
+    [participations, careers.gridVersions, personId]
   );
 
   const invalidate = () => {

@@ -17,6 +17,9 @@ export type CatalogEntityRead = Omit<Schema<"app.CatalogEntityRead">, "kind" | "
 /** What a portrait or chip needs of an entity — also what a stand-in for a name the catalog does not know carries. */
 export type CatalogEntityChip = Pick<CatalogEntityRead, "name" | "slug" | "image_path" | "attrs">;
 
+/** An entity reference embedded where a list only draws it (a roster's signature characters): portrait and name. */
+export type CatalogEntityRef = Schema<"stats.CatalogEntityRef">;
+
 export interface CatalogEntityWrite {
   name?: string;
   slug?: string;

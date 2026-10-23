@@ -133,7 +133,7 @@ export function PersonGlance({
   });
   // The tab's rows: a tournament counts when this person has a roster row in it.
   const played = careers
-    .flatMap((career) => career.data ?? [])
+    .flatMap((career) => career.data?.results ?? [])
     .filter((entry) => entry.players.some((player) => player.user_id === personId));
   // The read carries no dates; tournament ids grow with creation.
   const latest = played.reduce<UserTournament | null>(

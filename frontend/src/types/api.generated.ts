@@ -33,7 +33,7 @@ export interface paths {
         };
         /**
          * User achievements
-         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's earned (and optionally locked) achievements, scoped by tournament or without-tournament and workspace, and optionally to one game's rules (`discipline`; unknown code 404 discipline_not_installed); rejects combining tournament_id with without_tournament=true.
+         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's earned (and optionally locked) achievements, scoped by tournament or without-tournament and workspace, and optionally to one game's rules (`discipline`; unknown code 404 discipline_not_installed); rejects combining tournament_id with without_tournament=true. `tournaments` and `matches` (where each was earned) are filled only when `entities` names them; otherwise they are empty and not read.
          *
          *     RPC subject: `rpc.stats.achievements.user`
          */
@@ -4197,7 +4197,7 @@ export interface paths {
         };
         /**
          * User encounters
-         * @description Permission: public; no authentication required. Returns a player's paginated encounters — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code), each naming its own `discipline` — filterable by result, stage, MVP (`mvp1` needs `discipline`, else 422), log availability, and opponent. Each match carries its `map` and its own `mode` (null when none).
+         * @description Permission: public; no authentication required. Returns a player's paginated encounters — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code), each naming its own `discipline` — filterable by result, stage, MVP (`mvp1` needs `discipline`, else 422), log availability, and opponent. Expansions are opt-in through `entities` (repeatable): `tournament`, `stage`, `stage_item`, `teams`, `teams.players` (implies `teams`; `user_team_id` is resolved from the rosters, else null) and `matches` (`matches.map` is the same: a match always carries its `map` and its own `mode`, null when none). An entity not requested is null/empty and not read. Each match carries the viewer's facts and `member_totals` limited to the stats the game's match renderer ranks the viewer against.
          *
          *     RPC subject: `rpc.stats.users.encounters`
          */
@@ -4285,7 +4285,7 @@ export interface paths {
         };
         /**
          * User profile
-         * @description Permission: public; no authentication required. Returns a player's profile resolved against the workspace context. With `discipline` it is that game's profile (its tournaments, roles and characters on that game's division grid) and `games` is empty. Without it the header aggregates span every game, `roles`/`character_statistics` are empty, `most_played_character` is null, and `games` lists one summary per game played (`discipline`, that game's `roles`, `tournaments_count`, `tournaments_won`), most tournaments first, ties in installed order. Every `tournaments[]` entry carries its `discipline`.
+         * @description Permission: public; no authentication required. Returns a player's profile resolved against the workspace context. With `discipline` it is that game's profile (its tournaments, roles and characters on that game's division grid) and `games` is empty. Without it the header aggregates span every game, `roles`/`character_statistics` are empty, `most_played_character` is null, and `games` lists one summary per game played (`discipline`, that game's `roles` without their grid version, `tournaments_count`, `tournaments_won`), most tournaments first, ties in installed order. Every `tournaments[]` entry carries its `discipline`; only `roles[]` carry a `division_grid_version`.
          *
          *     RPC subject: `rpc.stats.users.get_profile`
          */
@@ -4351,7 +4351,7 @@ export interface paths {
         };
         /**
          * User tournaments
-         * @description Permission: public; no authentication required. Returns the tournaments a player participated in — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code) — scoped to the workspace context and grid; each row names its own `discipline`.
+         * @description Permission: public; no authentication required. Returns the tournaments a player participated in — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code) — scoped to the workspace context and grid, as `results`; each row names its own `discipline` and the `division_grid_version_id` its divisions are tiers of, and `division_grid_versions` carries each of those versions once (ordered by id). A roster player's `characters` are references (`id`, `slug`, `name`, `image_path`).
          *
          *     RPC subject: `rpc.stats.users.tournaments`
          */
@@ -4395,7 +4395,7 @@ export interface paths {
         };
         /**
          * User tournament encounters
-         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's encounters (with per-match stats) within one tournament — the lazy detail behind the Tournaments-tab dossier, fetched only for the tournament currently open in the UI. Each match carries its `map` and its own `mode` (null when none).
+         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's encounters (with per-match stats) within one tournament — the lazy detail behind the Tournaments-tab dossier, fetched only for the tournament currently open in the UI. Each match carries its `map` and its own `mode` (null when none), the viewer's facts, and `member_totals` limited to the stats the game's match renderer ranks the viewer against.
          *
          *     RPC subject: `rpc.stats.users.tournament_encounters`
          */
@@ -16090,6 +16090,20 @@ export interface components {
              */
             updated_at: string | null;
         };
+        /**
+         * CatalogEntityRef
+         * @description A ``catalog.entity`` named and drawn, nothing more: what a compact strip of characters renders.
+         */
+        "stats.CatalogEntityRef": {
+            /** Id */
+            id: number;
+            /** Image Path */
+            image_path: string | null;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        };
         /** CharacterLeaderboardEntry */
         "stats.CharacterLeaderboardEntry": {
             /** Avg Crit Accuracy */
@@ -16731,11 +16745,12 @@ export interface components {
         };
         /**
          * MatchReadWithUserStats
-         * @description Match within a user-scoped encounter: the native header, the viewer's totals and every observed member's.
+         * @description Match within a user-scoped encounter: the native header, the viewer's totals and the members' ranked totals.
          *
-         *     A discipline's renderer derives its per-match badges from ``viewer.facts`` against ``member_totals`` (every
-         *     member's segment-0, NULL-entity facts); no derived value rides on the wire. ``viewer`` is ``None`` for a match
-         *     the viewer's seat was a participant of without being observed.
+         *     A discipline's renderer derives its per-match badges from ``viewer.facts`` against ``member_totals``; no derived
+         *     value rides on the wire. ``member_totals`` carries every observed member's segment-0, NULL-entity facts of the
+         *     game's ``DisciplineSpec.member_total_stats`` only (empty for a game that ranks none). ``viewer`` is ``None`` for a
+         *     match the viewer's seat was a participant of without being observed.
          */
         "stats.MatchReadWithUserStats": {
             /**
@@ -17224,8 +17239,6 @@ export interface components {
             image_url: string | null;
             /** Matches */
             matches: components["schemas"]["stats.AchievementMatchLink"][];
-            /** Matches Ids */
-            matches_ids: number[];
             /** Name */
             name: string;
             /** Rarity */
@@ -17239,8 +17252,6 @@ export interface components {
             slug: string;
             /** Tournaments */
             tournaments: components["schemas"]["stats.AchievementTournamentLink"][];
-            /** Tournaments Ids */
-            tournaments_ids: number[];
         };
         /** UserBestTeammate */
         "stats.UserBestTeammate": {
@@ -17588,7 +17599,7 @@ export interface components {
             /** Discipline */
             discipline: string;
             /** Roles */
-            roles: components["schemas"]["stats.UserRole"][];
+            roles: components["schemas"]["stats.UserRoleSummary"][];
             /** Tournaments Count */
             tournaments_count: number;
             /** Tournaments Won */
@@ -17874,12 +17885,28 @@ export interface components {
              */
             stream_visible: boolean;
         };
-        /** UserRole */
+        /**
+         * UserRole
+         * @description A profile role with the grid its division is a tier of (the crest is drawn on it).
+         */
         "stats.UserRole": {
             /** Division */
             division: number;
             /** @default null */
             division_grid_version: components["schemas"]["stats.DivisionGridVersionRead"] | null;
+            /** Maps */
+            maps: number;
+            /** Maps Won */
+            maps_won: number;
+            /** @default null */
+            role: components["schemas"]["stats.RoleRef"] | null;
+            /** Tournaments */
+            tournaments: number;
+        };
+        /** UserRoleSummary */
+        "stats.UserRoleSummary": {
+            /** Division */
+            division: number;
             /** Maps */
             maps: number;
             /** Maps Won */
@@ -17909,12 +17936,13 @@ export interface components {
              * @default null
              */
             division: number | null;
-            /** @default null */
-            division_grid_version: components["schemas"]["stats.DivisionGridVersionRead"] | null;
+            /**
+             * Division Grid Version Id
+             * @default null
+             */
+            division_grid_version_id: number | null;
             /** Draw */
             draw: number;
-            /** Encounters */
-            encounters?: components["schemas"]["stats.EncounterReadWithUserStats"][];
             /** Id */
             id: number;
             /** Is League */
@@ -17943,6 +17971,16 @@ export interface components {
             workspace_id: number;
         };
         /**
+         * UserTournamentList
+         * @description A player's tournament history, plus each grid version its rows refer to, once (ordered by id).
+         */
+        "stats.UserTournamentList": {
+            /** Division Grid Versions */
+            division_grid_versions: components["schemas"]["stats.DivisionGridVersionRead"][];
+            /** Results */
+            results: components["schemas"]["stats.UserTournament"][];
+        };
+        /**
          * UserTournamentPlayer
          * @description Player card inside `UserTournament.players` (rendered by TournamentTeamTable).
          *
@@ -17956,7 +17994,7 @@ export interface components {
              */
             avg_mvp: number | null;
             /** Characters */
-            characters?: components["schemas"]["stats.CatalogEntityRead"][];
+            characters?: components["schemas"]["stats.CatalogEntityRef"][];
             /** Division */
             division: number;
             /** Id */
@@ -18005,8 +18043,6 @@ export interface components {
         "stats.UserTournamentSummary": {
             /** Discipline */
             discipline: string;
-            /** @default null */
-            division_grid_version: components["schemas"]["stats.DivisionGridVersionRead"] | null;
             /** Id */
             id: number;
             /**
@@ -46932,7 +46968,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["stats.UserTournament"][];
+                    "application/json": components["schemas"]["stats.UserTournamentList"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */

@@ -106,13 +106,13 @@ def test_get_achievement_by_user(rpc: RpcHarness, user_id: int) -> None:
 def test_get_achievement_by_user_filter_without_tournament(rpc: RpcHarness, user_id: int) -> None:
     env = rpc.call_sync(
         "rpc.stats.achievements.user",
-        {"id": user_id, "query": build_query({"without_tournament": True})},
+        {"id": user_id, "query": build_query({"without_tournament": True, "entities": ["tournaments"]})},
     )
     assert env["ok"] is True
     content = env["data"]
 
     for achievement in content:
-        assert achievement["tournaments_ids"] == []
+        assert achievement["tournaments"] == []
 
 
 @pytest.mark.parametrize(
@@ -125,14 +125,16 @@ def test_get_achievement_by_user_filter_without_tournament(rpc: RpcHarness, user
     ],
 )
 def test_get_achievement_by_user_filter_tournament(rpc: RpcHarness, user_id: int) -> None:
-    initial_env = rpc.call_sync("rpc.stats.achievements.user", {"id": user_id})
+    initial_env = rpc.call_sync(
+        "rpc.stats.achievements.user", {"id": user_id, "query": build_query({"entities": ["tournaments"]})}
+    )
     assert initial_env["ok"] is True
     initial_content = initial_env["data"]
 
     tournament_id = None
     for achievement in initial_content:
-        if achievement["tournaments_ids"]:
-            tournament_id = achievement["tournaments_ids"][0]
+        if achievement["tournaments"]:
+            tournament_id = achievement["tournaments"][0]["id"]
             break
 
     if tournament_id is None:
@@ -140,13 +142,13 @@ def test_get_achievement_by_user_filter_tournament(rpc: RpcHarness, user_id: int
 
     env = rpc.call_sync(
         "rpc.stats.achievements.user",
-        {"id": user_id, "query": build_query({"tournament_id": tournament_id})},
+        {"id": user_id, "query": build_query({"tournament_id": tournament_id, "entities": ["tournaments"]})},
     )
     assert env["ok"] is True
     content = env["data"]
 
     for achievement in content:
-        assert tournament_id in achievement["tournaments_ids"]
+        assert tournament_id in {tournament["id"] for tournament in achievement["tournaments"]}
 
 
 def test_get_achievement_by_user_filter_conflict(rpc: RpcHarness) -> None:

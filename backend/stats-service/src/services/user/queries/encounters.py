@@ -14,6 +14,7 @@ from sqlalchemy.orm import joinedload
 
 from shared import models
 from shared.core import enums, pagination
+from shared.disciplines import discipline
 from shared.models.catalog.role import leaf_code
 from shared.repository.stats_queries import match_context
 from shared.repository.stats_reads import MatchReadContext, duel_matches, get_match_members, get_match_reads
@@ -161,20 +162,21 @@ class UserEncounterQueries(DisciplineQueries):
         params: pagination.PaginationSortParams,
         workspace_id: int | None = None,
         *,
+        entities: frozenset[str] = _mappers.ENCOUNTER_ENTITIES,
         result: str | None = None,
         stage: str | None = None,
         mvp1: bool = False,
         has_logs: bool | None = None,
         opponent: str | None = None,
     ) -> tuple[typing.Sequence[tuple[models.Encounter, MatchReadContext | None, _mappers.UserMatchStats | None]], int]:
-        """Paginated user encounters with the viewer's per-match totals and every observed member's.
+        """Paginated user encounters with the viewer's per-match totals and the members' ranked ones.
 
-        Loads `Encounter.tournament` and `Match.map`; the seats, rosters and bracket
-        position come from :meth:`get_encounter_contexts`, so the mapper can populate
-        the narrow EncounterReadWithUserStats shape without any further round-trips.
+        Loads `Encounter.tournament` and the matches only when ``entities`` (``_mappers.encounter_entities``) names
+        them; the seats, rosters and bracket position come from :meth:`get_encounter_contexts`, so the mapper can
+        populate the narrow EncounterReadWithUserStats shape without any further round-trips.
 
         Row shape: (encounter, match, stats); ``stats`` is :meth:`get_user_match_stats`'s entry, ``None`` for an
-        encounter without a match.
+        encounter without a match (or read without them).
         """
         seat = Seat()
         history_seats = _user_history_seats(user_id, self._matches)
@@ -319,23 +321,23 @@ class UserEncounterQueries(DisciplineQueries):
             encounters_query = params.apply_pagination_sort(encounters_query)
         encounters_query = encounters_query.subquery()
 
+        with_matches = "matches" in entities
         query = (
-            sa.select(models.Encounter, self._matches.c.id)
+            sa.select(models.Encounter, self._matches.c.id if with_matches else sa.null().label("match_id"))
             .select_from(encounters_query)
-            .options(
-                joinedload(models.Encounter.tournament),
-            )
             .join(models.Encounter, encounters_query.c.id == models.Encounter.id)
-            .join(self._matches, models.Encounter.id == self._matches.c.encounter_id, isouter=True)
         )
+        if "tournament" in entities:
+            query = query.options(joinedload(models.Encounter.tournament))
+        if with_matches:
+            query = query.join(self._matches, models.Encounter.id == self._matches.c.encounter_id, isouter=True)
         if params.sort in ("played_at", "round"):
             descending = params.order == pagination.SortOrder.DESC or params.order == "desc"
             sort_column = encounters_query.c[params.sort]
             query = query.order_by(
                 (sort_column.desc() if descending else sort_column.asc()).nulls_last(),
                 encounters_query.c.id.desc() if descending else encounters_query.c.id.asc(),
-                self._matches.c.position.asc().nulls_last(),
-                self._matches.c.id.asc(),
+                *((self._matches.c.position.asc().nulls_last(), self._matches.c.id.asc()) if with_matches else ()),
             )
         else:
             query = params.apply_sort(query)
@@ -362,11 +364,12 @@ class UserEncounterQueries(DisciplineQueries):
     async def get_user_match_stats(
         self, session: AsyncSession, user_id: int, reads: typing.Sequence[MatchReadContext]
     ) -> dict[int, _mappers.UserMatchStats]:
-        """The viewer's seat and totals, and every observed member's whole-match totals, for a batch of matches.
+        """The viewer's seat and totals, and every observed member's ranked whole-match totals, for a batch of matches.
 
-        Three reads for any number of matches: the observed members, their segment-0 NULL-entity facts (everyone's
-        totals, one query -- the discipline's badge ranks the viewer against the whole match), and the characters
-        the viewer played. A match the viewer was not observed in has totals but no ``viewer``.
+        Three reads for any number of matches: the observed members, the segment-0 NULL-entity facts (one query: the
+        viewer's every stat, and every member's of the game's ``member_total_stats`` -- the badge ranks the viewer
+        against the whole match), and the characters the viewer played. A match the viewer was not observed in has
+        totals but no ``viewer``.
         """
         ids = [read.match.id for read in reads]
         if not ids:
@@ -386,22 +389,26 @@ class UserEncounterQueries(DisciplineQueries):
             .join(wm, sa.and_(wm.id == f.workspace_member_id, wm.workspace_id == m.workspace_id))
             .where(m.discipline == self.discipline, f.match_id.in_(ids), f.segment == 0)
         )
+        ranked = discipline(self.discipline).member_total_stats
         totals: dict[int, list[NativeFact]] = {}
+        facts: dict[tuple[int, int], dict[str, float]] = {}
         for match_id, team_id, member_id, code, value in await session.execute(
             owned.with_only_columns(f.match_id, f.encounter_team_id, f.workspace_member_id, d.code, f.value)
-            .where(f.entity_id.is_(None))
+            .where(f.entity_id.is_(None), sa.or_(wm.player_id == user_id, d.code.in_(ranked)))
             .order_by(f.match_id, f.encounter_team_id, f.workspace_member_id, d.code)
         ):
-            totals.setdefault(match_id, []).append(
-                NativeFact(
-                    encounter_team_id=team_id,
-                    workspace_member_id=member_id,
-                    entity_id=None,
-                    segment=0,
-                    stat_code=code,
-                    value=float(value),
+            facts.setdefault((match_id, member_id), {})[code] = float(value)
+            if code in ranked:
+                totals.setdefault(match_id, []).append(
+                    NativeFact(
+                        encounter_team_id=team_id,
+                        workspace_member_id=member_id,
+                        entity_id=None,
+                        segment=0,
+                        stat_code=code,
+                        value=float(value),
+                    )
                 )
-            )
         # The ``> 60`` playtime eligibility is the OW module's rule for "played this character".
         characters: dict[int, list[CatalogEntityRead]] = {}
         for match_id, entity in await session.execute(
@@ -421,98 +428,103 @@ class UserEncounterQueries(DisciplineQueries):
         output = {}
         for match_id in ids:
             member = viewer_members.get(match_id)
-            member_totals = totals.get(match_id, [])
             viewer = (
                 None
                 if member is None
                 else UserMatchViewer(
                     encounter_team_id=member.encounter_team_id,
                     workspace_member_id=member.workspace_member_id,
-                    facts={
-                        fact.stat_code: fact.value
-                        for fact in member_totals
-                        if fact.workspace_member_id == member.workspace_member_id
-                    },
+                    facts=facts.get((match_id, member.workspace_member_id), {}),
                     characters=characters.get(match_id, []),
                 )
             )
-            output[match_id] = _mappers.UserMatchStats(viewer=viewer, member_totals=member_totals)
+            output[match_id] = _mappers.UserMatchStats(viewer=viewer, member_totals=totals.get(match_id, []))
         return output
 
     async def get_encounter_contexts(
-        self, session: AsyncSession, encounter_ids: typing.Collection[int]
+        self,
+        session: AsyncSession,
+        encounter_ids: typing.Collection[int],
+        entities: frozenset[str] = _mappers.ENCOUNTER_ENTITIES,
     ) -> dict[int, _mappers.EncounterContext]:
         """Live seats (with their roster snapshots) and the bracket position, per encounter.
 
-        Three bulk reads for any number of encounters: the active participations,
-        their roster rows with the account each belongs to, and the bracket
-        coordinate with its stage and stage item. An encounter outside a bracket
-        has no position; one without seats gets an empty list.
+        Up to four bulk reads for any number of encounters: the active participations (``teams``), their roster rows
+        with the account and rated role of each (``teams.players``), and the bracket coordinate with the stage and
+        stage item ``entities`` names. An encounter outside a bracket has no position; one without seats (or read
+        without them) gets an empty list.
         """
         if not encounter_ids:
             return {}
         ids = tuple(encounter_ids)
-        seats = (
-            await session.scalars(
-                sa.select(models.EncounterTeam)
-                .where(models.EncounterTeam.encounter_id.in_(ids), models.EncounterTeam.active.is_(True))
-                .order_by(models.EncounterTeam.encounter_id, models.EncounterTeam.slot)
-            )
-        ).all()
-
-        roles: dict[int, RoleRef | None] = {}
-        for member_id, dimension, role, sub_role in (
-            await session.execute(
-                sa.select(
-                    models.EncounterTeamMemberRole.team_member_id,
-                    models.RoleDimension.code,
-                    leaf_code(models.EncounterTeamMemberRole.role_id, top=True).label("role"),
-                    leaf_code(models.EncounterTeamMemberRole.role_id, top=False).label("sub_role"),
-                )
-                .join(models.RoleDimension, models.RoleDimension.id == models.EncounterTeamMemberRole.dimension_id)
-                .join(
-                    models.EncounterTeamMember,
-                    models.EncounterTeamMember.id == models.EncounterTeamMemberRole.team_member_id,
-                )
-                .join(models.Encounter, models.Encounter.id == models.EncounterTeamMember.encounter_id)
-                .where(
-                    models.EncounterTeamMember.encounter_id.in_(ids),
-                    # Bare ``active``: the (encounter, member) index is partial ``WHERE active``, which ``IS TRUE``
-                    # does not match (a seq scan of team_member per role dimension).
-                    models.EncounterTeamMember.active,
-                    models.RoleDimension.rated.is_(True),
-                    models.RoleDimension.discipline == models.Encounter.discipline,
-                )
-                .order_by(models.EncounterTeamMemberRole.team_member_id, models.EncounterTeamMemberRole.role_id)
-            )
-        ).all():
-            roles[member_id] = RoleRef.of(dimension, role, sub_role)
-        rosters: dict[int, list[_mappers.RosterEntry]] = {}
-        for member, user_id in (
-            await session.execute(
-                sa.select(models.EncounterTeamMember, models.WorkspaceMember.player_id)
-                .join(
-                    models.WorkspaceMember, models.WorkspaceMember.id == models.EncounterTeamMember.workspace_member_id
-                )
-                .where(models.EncounterTeamMember.encounter_id.in_(ids), models.EncounterTeamMember.active)
-                .order_by(models.EncounterTeamMember.id)
-            )
-        ).all():
-            rosters.setdefault(member.encounter_team_id, []).append(
-                _mappers.RosterEntry(member=member, user_id=user_id, role=roles.get(member.id))
-            )
-
-        stage_item = sa.orm.aliased(models.StageItem)
-        positions = {
-            bracket.encounter_id: (bracket, stage, item)
-            for bracket, stage, item in (
-                await session.execute(
-                    sa.select(models.BracketEncounter, models.Stage, stage_item)
-                    .outerjoin(models.Stage, models.Stage.id == models.BracketEncounter.stage_id)
-                    .outerjoin(stage_item, stage_item.id == models.BracketEncounter.stage_item_id)
-                    .where(models.BracketEncounter.encounter_id.in_(ids))
+        seats: typing.Sequence[models.EncounterTeam] = []
+        if "teams" in entities:
+            seats = (
+                await session.scalars(
+                    sa.select(models.EncounterTeam)
+                    .where(models.EncounterTeam.encounter_id.in_(ids), models.EncounterTeam.active.is_(True))
+                    .order_by(models.EncounterTeam.encounter_id, models.EncounterTeam.slot)
                 )
             ).all()
+
+        rosters: dict[int, list[_mappers.RosterEntry]] = {}
+        if "teams.players" in entities:
+            roles: dict[int, RoleRef | None] = {}
+            for member_id, dimension, role, sub_role in (
+                await session.execute(
+                    sa.select(
+                        models.EncounterTeamMemberRole.team_member_id,
+                        models.RoleDimension.code,
+                        leaf_code(models.EncounterTeamMemberRole.role_id, top=True).label("role"),
+                        leaf_code(models.EncounterTeamMemberRole.role_id, top=False).label("sub_role"),
+                    )
+                    .join(models.RoleDimension, models.RoleDimension.id == models.EncounterTeamMemberRole.dimension_id)
+                    .join(
+                        models.EncounterTeamMember,
+                        models.EncounterTeamMember.id == models.EncounterTeamMemberRole.team_member_id,
+                    )
+                    .join(models.Encounter, models.Encounter.id == models.EncounterTeamMember.encounter_id)
+                    .where(
+                        models.EncounterTeamMember.encounter_id.in_(ids),
+                        # Bare ``active``: the (encounter, member) index is partial ``WHERE active``, which ``IS TRUE``
+                        # does not match (a seq scan of team_member per role dimension).
+                        models.EncounterTeamMember.active,
+                        models.RoleDimension.rated.is_(True),
+                        models.RoleDimension.discipline == models.Encounter.discipline,
+                    )
+                    .order_by(models.EncounterTeamMemberRole.team_member_id, models.EncounterTeamMemberRole.role_id)
+                )
+            ).all():
+                roles[member_id] = RoleRef.of(dimension, role, sub_role)
+            for member, user_id in (
+                await session.execute(
+                    sa.select(models.EncounterTeamMember, models.WorkspaceMember.player_id)
+                    .join(
+                        models.WorkspaceMember,
+                        models.WorkspaceMember.id == models.EncounterTeamMember.workspace_member_id,
+                    )
+                    .where(models.EncounterTeamMember.encounter_id.in_(ids), models.EncounterTeamMember.active)
+                    .order_by(models.EncounterTeamMember.id)
+                )
+            ).all():
+                rosters.setdefault(member.encounter_team_id, []).append(
+                    _mappers.RosterEntry(member=member, user_id=user_id, role=roles.get(member.id))
+                )
+
+        # The bracket row always (an encounter's ``round``); its stage and stage item only when asked for.
+        stage_item = sa.orm.aliased(models.StageItem)
+        bracket = sa.select(
+            models.BracketEncounter,
+            models.Stage if "stage" in entities else sa.null().label("stage"),
+            stage_item if "stage_item" in entities else sa.null().label("stage_item"),
+        ).where(models.BracketEncounter.encounter_id.in_(ids))
+        if "stage" in entities:
+            bracket = bracket.outerjoin(models.Stage, models.Stage.id == models.BracketEncounter.stage_id)
+        if "stage_item" in entities:
+            bracket = bracket.outerjoin(stage_item, stage_item.id == models.BracketEncounter.stage_item_id)
+        positions = {
+            position.encounter_id: (position, stage, item)
+            for position, stage, item in (await session.execute(bracket)).all()
         }
 
         grouped: dict[int, list[tuple[models.EncounterTeam, list[_mappers.RosterEntry]]]] = {}

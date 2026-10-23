@@ -67,9 +67,8 @@ class AchievementMatchLink(BaseModel):
 
 class UserAchievementRead(AchievementRead):
     count: int
-    tournaments_ids: list[int]
+    #: Where it was earned; filled only when ``entities`` names ``tournaments`` / ``matches``.
     tournaments: list[AchievementTournamentLink]
-    matches_ids: list[int]
     matches: list[AchievementMatchLink]
 
 

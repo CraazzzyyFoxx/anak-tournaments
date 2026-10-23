@@ -8,8 +8,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
-import type { TournamentGroup } from "@/app/(site)/users/components/tournaments/tournaments-history.helpers";
-import type { UserTournament } from "@/types/user.types";
+import type { UserTournament, UserTournamentEntry, UserTournamentList } from "@/types/user.types";
 
 import TournamentsHistory from "./TournamentsHistory";
 
@@ -30,33 +29,41 @@ vi.mock("@/hooks/useDisciplineMetadata", () => ({
   useDisciplineMetadata: () => ({ data: undefined, isError: false, refetch: vi.fn() })
 }));
 vi.mock("@/app/(site)/users/components/tournaments/TournamentsPlacementTimeline", () => ({ default: () => null }));
-// The dossier as what it is handed: the selected event and its run, or the loading state.
+// The dossier as what it is handed: the selected event, its grid and its run, or the loading state.
 vi.mock("@/app/(site)/users/components/tournaments/TournamentDossier", () => ({
-  default: ({ group, loadingEncounters }: { group: TournamentGroup | null; loadingEncounters: boolean }) => {
-    const event = group as UserTournament | null;
-    return <output>{loadingEncounters ? "loading" : `${event?.name}: ${event?.encounters?.length} encounters`}</output>;
-  }
+  default: ({ group, loadingEncounters }: { group: UserTournamentEntry | null; loadingEncounters: boolean }) => (
+    <output>
+      {loadingEncounters
+        ? "loading"
+        : `${group?.name}: ${group?.encounters.length} encounters on ${group?.division_grid_version?.label ?? "no grid"}`}
+    </output>
+  )
 }));
 
-const tournaments = [3, 2].map(
-  (id) =>
-    ({
-      id,
-      name: `Cup ${id}`,
-      workspace_id: 1,
-      discipline: "overwatch",
-      is_league: false,
-      team: "T",
-      placement: 1,
-      count_teams: 8,
-      won: 1,
-      lost: 0,
-      draw: 0,
-      maps_won: 2,
-      maps_lost: 0,
-      role: null
-    }) as unknown as UserTournament
-);
+// Cup 3 names the list's one grid version; Cup 2 none.
+const tournaments = {
+  results: [3, 2].map(
+    (id) =>
+      ({
+        id,
+        name: `Cup ${id}`,
+        workspace_id: 1,
+        discipline: "overwatch",
+        is_league: false,
+        team: "T",
+        placement: 1,
+        count_teams: 8,
+        won: 1,
+        lost: 0,
+        draw: 0,
+        maps_won: 2,
+        maps_lost: 0,
+        division_grid_version_id: id === 3 ? 8 : null,
+        role: null
+      }) as unknown as UserTournament
+  ),
+  division_grid_versions: [{ id: 8, label: "New Era" }]
+} as unknown as UserTournamentList;
 
 let container: HTMLDivElement;
 let root: Root;
@@ -89,7 +96,7 @@ afterEach(() => {
   container.remove();
 });
 
-it("reads each event's run once, so going back to an event reads nothing", async () => {
+it("reads each event's run once, so going back to an event reads nothing, and draws each on its own grid", async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(
@@ -101,13 +108,13 @@ it("reads each event's run once, so going back to an event reads nothing", async
     );
   });
   await settle();
-  expect(dossier()).toBe("Cup 3: 3 encounters");
+  expect(dossier()).toBe("Cup 3: 3 encounters on New Era");
 
   await select("Cup 2");
-  expect(dossier()).toBe("Cup 2: 2 encounters");
+  expect(dossier()).toBe("Cup 2: 2 encounters on no grid");
 
   await select("Cup 3");
-  expect(dossier()).toBe("Cup 3: 3 encounters");
+  expect(dossier()).toBe("Cup 3: 3 encounters on New Era");
   expect(getUserTournamentEncounters.mock.calls).toEqual([
     [7, 3],
     [7, 2]

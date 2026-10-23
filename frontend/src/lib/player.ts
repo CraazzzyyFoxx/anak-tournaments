@@ -26,8 +26,8 @@ export interface TeamRosterPlayer extends SortableRosterPlayer {
   user_id?: number;
   /** Average MVP placement across the player's matches (1 = MVP/best). */
   avg_mvp?: number | null;
-  /** Player's top signature characters (catalog rows, or chips of a declared pick). */
-  characters?: CatalogEntityChip[];
+  /** Player's top signature characters (catalog refs, or chips of a declared pick): the strip draws name and image. */
+  characters?: Pick<CatalogEntityChip, "name" | "image_path">[];
 }
 
 type PlayerRoleInfo = {

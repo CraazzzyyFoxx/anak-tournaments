@@ -28,7 +28,9 @@ export const resolveMvpPlacement = (
 /**
  * Whether the viewer earned the overperformance badge: the top competition rank (ties share it) by
  * `overperformance_score` among every observed member of the match, and at least `BADGE_THRESHOLD`. The rank
- * counts members, not just the viewer's own rows, so it needs the match's `member_totals`.
+ * counts members, not just the viewer's own rows, so it needs the match's `member_totals` — which carry exactly the
+ * stats Overwatch declares as its `member_total_stats` (backend `disciplines/overwatch`): rank by another stat here
+ * only after declaring it there.
  */
 export const overperformanceBadge = (
   match: Pick<MatchWithUserStats, "viewer" | "member_totals">

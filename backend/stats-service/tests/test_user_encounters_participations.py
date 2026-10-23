@@ -11,7 +11,9 @@ maps. One disposable workspace, dropped again at the end::
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
+from inspect import unwrap
 from typing import Any
 
 import sqlalchemy as sa
@@ -32,6 +34,7 @@ from shared.services.ontology import rated_leaf
 from src.services.user import _mappers
 from src.services.user.queries.encounters import UserEncounterQueries
 from src.services.user.queries.overview import UserOverviewQueries
+from src.services.user.service import UserService
 from tests.encounter_seed import seed_confirmed_games, seed_encounter, seed_scoring_rule
 
 encounter_queries = UserEncounterQueries.of("overwatch")
@@ -311,6 +314,64 @@ def test_the_dossier_context_carries_the_live_seats_roster_and_bracket_position(
         assert read.teams[0].players[0].role == RoleRef(dimension="player_role", role="tank_main", parent="tank")
 
     _run(db_session, body)
+
+
+def test_the_encounter_list_ships_and_reads_only_the_requested_entities(db_session) -> None:
+    """``entities`` is opt-in: an entity not named is null/empty on every row and its table is never read."""
+    service = UserService.of("overwatch")
+    read = unwrap(UserService.get_encounters_by_user)
+    engine = db_session.bind.sync_engine
+    asks = {
+        "nothing": [],
+        "streak": ["teams", "teams.players"],
+        "everything": ["tournament", "stage", "stage_item", "teams", "teams.players", "matches.map"],
+    }
+
+    async def body(seed: _Seed) -> dict[str, tuple[dict[int, Any], str]]:
+        found = {}
+        for label, entities in asks.items():
+            statements: list[str] = []
+
+            def record(_conn, _cursor, statement, *_args, sink=statements) -> None:
+                sink.append(statement)
+
+            sa.event.listen(engine, "before_cursor_execute", record)
+            try:
+                page = await read(
+                    service, db_session, seed.users["alice"], _params(entities=entities), seed.workspace_id
+                )
+            finally:
+                sa.event.remove(engine, "before_cursor_execute", record)
+            found[label] = ({row.id: row for row in page.results}, "\n".join(statements))
+        return found
+
+    seed, found = _run(db_session, body)
+    e1 = seed.encounters["E1"]
+    rows, sql = found["nothing"]
+    assert set(rows) == set(seed.encounters.values())
+    for row in rows.values():
+        assert (row.tournament, row.stage, row.stage_item, row.teams, row.matches, row.user_team_id) == (
+            None,
+            None,
+            None,
+            [],
+            [],
+            None,
+        )
+    # The bracket row is always read: it is the encounter's round, not an expansion.
+    assert rows[e1].round == 3
+    for table in (r"encounter\.team_member\b", r"tournament\.stage\b", r"tournament\.stage_item\b", r"stats\.fact\b"):
+        assert not re.search(table, sql), table
+
+    rows, sql = found["streak"]
+    assert rows[e1].user_team_id == seed.teams["X"]
+    assert [player.user_id for player in rows[e1].teams[0].players] == [seed.users["alice"]]
+    assert (rows[e1].tournament, rows[e1].stage, rows[e1].matches) == (None, None, [])
+    assert re.search(r"encounter\.team_member\b", sql) and not re.search(r"tournament\.stage\b", sql)
+
+    rows, _sql = found["everything"]
+    assert rows[e1].tournament is not None and rows[e1].stage is not None and rows[e1].stage.name == seed.stage_name
+    assert rows[e1].teams == found["streak"][0][e1].teams
 
 
 def test_map_records_count_duels_only(db_session) -> None:

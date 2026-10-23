@@ -236,9 +236,7 @@ OPERATIONS: dict[str, Op] = {
         query=schemas.UserCharacterCompareQueryParams,
         query_params=(_DISCIPLINE,),
     ),
-    "rpc.stats.users.tournaments": Op(
-        response=schemas.UserTournament, response_array=True, query_params=(_OPTIONAL_DISCIPLINE, _WS)
-    ),
+    "rpc.stats.users.tournaments": Op(response=schemas.UserTournamentList, query_params=(_OPTIONAL_DISCIPLINE, _WS)),
     "rpc.stats.users.tournament": Op(response=schemas.UserTournamentWithStats),
     "rpc.stats.users.tournament_encounters": Op(response=schemas.EncounterReadWithUserStats, response_array=True),
     "rpc.stats.users.tournament_leaderboard": Op(response=schemas.LobbyLeaderboard, query_params=(QueryParam("stat"),)),

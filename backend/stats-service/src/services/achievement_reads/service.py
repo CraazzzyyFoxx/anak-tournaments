@@ -128,6 +128,9 @@ class AchievementService:
         # (``workspace_id=None``) folds one game's copies of a rule into one — never
         # another game's rule that happens to reuse the slug.
         cache: dict[tuple[str, str], schemas.UserAchievementRead] = {}
+        # Where each was earned: read only to expand the requested ``tournaments`` / ``matches``.
+        tournament_ids: dict[tuple[str, str], set[int]] = {}
+        match_ids: dict[tuple[str, str], set[int]] = {}
 
         for result_row in results:
             rule = result_row.rule
@@ -137,24 +140,16 @@ class AchievementService:
                 cache[key] = schemas.UserAchievementRead(
                     **rule.to_dict(),
                     rarity=result_row.rarity or 0.0,
-                    count=1,
-                    tournaments_ids=([result_row.tournament_id] if result_row.tournament_id else []),
-                    matches_ids=[result_row.match_id] if result_row.match_id else [],
+                    count=0,
                     tournaments=[],
                     matches=[],
                     entity=None,
                 )
-            else:
-                achievement = cache[key]
-                achievement.count += 1
-                if result_row.tournament_id and result_row.tournament_id not in achievement.tournaments_ids:
-                    achievement.tournaments_ids.append(result_row.tournament_id)
-                if result_row.match_id and result_row.match_id not in achievement.matches_ids:
-                    achievement.matches_ids.append(result_row.match_id)
-
-        for achievement in cache.values():
-            achievement.tournaments_ids.sort()
-            achievement.matches_ids.sort()
+            cache[key].count += 1
+            if result_row.tournament_id:
+                tournament_ids.setdefault(key, set()).add(result_row.tournament_id)
+            if result_row.match_id:
+                match_ids.setdefault(key, set()).add(result_row.match_id)
 
         # Append not-yet-earned rules as locked entries (count=0). Only meaningful for
         # the global view — a per-tournament filter scopes to what was earned there.
@@ -170,8 +165,6 @@ class AchievementService:
                     **rule.to_dict(),
                     rarity=rarity or 0.0,
                     count=0,
-                    tournaments_ids=[],
-                    matches_ids=[],
                     tournaments=[],
                     matches=[],
                     entity=None,
@@ -180,25 +173,19 @@ class AchievementService:
         # Bulk-fetch tournaments and matches in one DB hit each, then map back to
         # achievements: a round trip per (achievement, tid) is O(N*M) on the hot
         # user-achievements endpoint.
-        if "tournaments" in entities:
-            unique_tournament_ids = sorted(
-                {tid for achievement in cache.values() for tid in achievement.tournaments_ids}
+        if "tournaments" in entities and tournament_ids:
+            tournaments = await self.queries.get_tournaments_bulk(
+                session, sorted(set().union(*tournament_ids.values()))
             )
-            if unique_tournament_ids:
-                tournaments = await self.queries.get_tournaments_bulk(session, unique_tournament_ids)
-                tournaments_map = {t.id: _mappers.to_tournament_link(t) for t in tournaments}
-                for achievement in cache.values():
-                    achievement.tournaments = [
-                        tournaments_map[tid] for tid in achievement.tournaments_ids if tid in tournaments_map
-                    ]
+            tournaments_map = {t.id: _mappers.to_tournament_link(t) for t in tournaments}
+            for key, ids in tournament_ids.items():
+                cache[key].tournaments = [tournaments_map[tid] for tid in sorted(ids) if tid in tournaments_map]
 
-        if "matches" in entities:
-            unique_match_ids = sorted({mid for achievement in cache.values() for mid in achievement.matches_ids})
-            if unique_match_ids:
-                matches = await self.queries.get_matches_bulk(session, unique_match_ids)
-                matches_map = {m.match.id: _mappers.to_match_link(m) for m in matches}
-                for achievement in cache.values():
-                    achievement.matches = [matches_map[mid] for mid in achievement.matches_ids if mid in matches_map]
+        if "matches" in entities and match_ids:
+            matches = await self.queries.get_matches_bulk(session, sorted(set().union(*match_ids.values())))
+            matches_map = {m.match.id: _mappers.to_match_link(m) for m in matches}
+            for key, ids in match_ids.items():
+                cache[key].matches = [matches_map[mid] for mid in sorted(ids) if mid in matches_map]
 
         return list(cache.values())
 

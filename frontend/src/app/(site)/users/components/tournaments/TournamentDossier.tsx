@@ -5,7 +5,7 @@ import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { tournamentHref } from "@/lib/tournament/url";
 import { Trophy } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { UserTournament } from "@/types/user.types";
+import type { UserTournamentEntry } from "@/types/user.types";
 import { TournamentTeamTable } from "@/components/TournamentTeamCard";
 import ProfileWidget from "@/components/profile/ProfileWidget";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
@@ -28,7 +28,6 @@ import {
   groupBestPlacement,
   groupDisplayName,
   groupEncountersByStage,
-  groupEntries,
   isLeagueGroup,
   mapsWinratePct,
   placementMedal,
@@ -36,7 +35,7 @@ import {
 } from "@/app/(site)/users/components/tournaments/tournaments-history.helpers";
 
 interface Props {
-  group: TournamentGroup | null;
+  group: TournamentGroup<UserTournamentEntry> | null;
   selfUserId: number;
   /** True while the selected event's encounters are still being fetched
    *  lazily (see TournamentsHistory) — shows a run-section skeleton instead
@@ -119,7 +118,7 @@ const summaryCells = (
 };
 
 /** The game module's own trailing summary cell (Overwatch: average MVP placement), drawn in the entries' game. */
-const ModuleSummaryCell = ({ entries }: { entries: UserTournament[] }) => (
+const ModuleSummaryCell = ({ entries }: { entries: UserTournamentEntry[] }) => (
   <ProfileWidget
     axis={entries[0].workspace_id}
     discipline={entries[0].discipline}
@@ -135,7 +134,7 @@ const EventBody = ({
   selfUserId,
   loadingEncounters
 }: {
-  t: UserTournament;
+  t: UserTournamentEntry;
   selfUserId: number;
   loadingEncounters?: boolean;
 }) => {
@@ -143,7 +142,7 @@ const EventBody = ({
   // The roster is drawn in the tournament's own game, whatever game the profile browses.
   const ontology = useDisciplineMetadata(t.workspace_id, t.discipline).data ?? null;
   const stages = groupEncountersByStage(t, selfUserId);
-  const hasEncounters = (t.encounters ?? []).length > 0;
+  const hasEncounters = t.encounters.length > 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -203,7 +202,7 @@ const SingleDossier = ({
   selfUserId,
   loadingEncounters
 }: {
-  t: UserTournament;
+  t: UserTournamentEntry;
   selfUserId: number;
   loadingEncounters?: boolean;
 }) => {
@@ -263,7 +262,7 @@ const SingleDossier = ({
   );
 };
 
-const DivisionHeader = ({ t }: { t: UserTournament }) => {
+const DivisionHeader = ({ t }: { t: UserTournamentEntry }) => {
   const agg = groupAggregate(t);
   return (
     <div className="flex items-center gap-3 py-2.5">
@@ -290,7 +289,7 @@ const LeagueDossier = ({
   selfUserId,
   loadingEncounters
 }: {
-  entries: UserTournament[];
+  entries: UserTournamentEntry[];
   selfUserId: number;
   loadingEncounters?: boolean;
 }) => {
@@ -378,7 +377,7 @@ const TournamentDossier = ({ group, selfUserId, loadingEncounters }: Props) => {
   if (isLeagueGroup(group)) {
     return (
       <LeagueDossier
-        entries={groupEntries(group)}
+        entries={group}
         selfUserId={selfUserId}
         loadingEncounters={loadingEncounters}
       />

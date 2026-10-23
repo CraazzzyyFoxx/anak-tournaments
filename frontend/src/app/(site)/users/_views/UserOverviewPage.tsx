@@ -14,6 +14,7 @@ import ProfileWidget from "@/components/profile/ProfileWidget";
 import OverviewAchievementsPreview from "@/app/(site)/users/components/overview/OverviewAchievementsPreview";
 import { tournamentMapPips } from "@/app/(site)/users/components/overview/map-results";
 import { tournamentOptions } from "@/app/(site)/users/components/shared/list-utils";
+import { USER_ENCOUNTER_ENTITIES } from "@/app/(site)/users/components/shared/encounter-perspective";
 import { getPlayerSlug } from "@/lib/player";
 import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 import type { StatsScope } from "@/lib/site/stats-scope";
@@ -42,7 +43,10 @@ interface SectionProps {
 // request per render even though each section awaits them from its own
 // Suspense boundary.
 const getTournaments = cache((userId: number, scope: StatsScope, discipline: string) =>
-  userService.getUserTournaments(userId, discipline, scope === "all" ? "all" : undefined).catch(() => [])
+  userService
+    .getUserTournaments(userId, discipline, scope === "all" ? "all" : undefined)
+    .then((list) => list.results)
+    .catch(() => [])
 );
 // One array for every section: the RSC payload writes an object once and refers back to it, so the top characters
 // and the role split's signatures carry a single copy of the list.
@@ -135,17 +139,7 @@ const TopHeroesSection = async ({ user, userSlug, scope, discipline, axis }: Sec
 const RecentEncountersSection = async ({ user, scope, discipline }: SectionProps) => {
   const [encounters, tournaments] = await Promise.all([
     userService
-      .getUserEncounters(
-        user.id,
-        discipline,
-        1,
-        5,
-        "played_at",
-        "desc",
-        ["tournament", "stage", "stage_item", "teams", "matches.map"],
-        undefined,
-        scope
-      )
+      .getUserEncounters(user.id, discipline, 1, 5, "played_at", "desc", USER_ENCOUNTER_ENTITIES, undefined, scope)
       .catch(() => ({ results: [], total: 0 })),
     getTournaments(user.id, scope, discipline)
   ]);
@@ -184,8 +178,9 @@ const AchievementsSection = async ({
   scope,
   discipline
 }: Pick<SectionProps, "user" | "scope" | "discipline"> & { userSlug: string }) => {
+  // The preview draws each tile's own fields: no links to where it was earned.
   const achievements = await userService
-    .getUserAchievements(user.id, { scope, discipline })
+    .getUserAchievements(user.id, { scope, discipline, entities: [] })
     .catch(() => [] as AchievementRarity[]);
   return <OverviewAchievementsPreview achievements={achievements} userSlug={userSlug} />;
 };

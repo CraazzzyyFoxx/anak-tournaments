@@ -6,6 +6,7 @@ only the fields the frontend actually renders on user-scoped pages.
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -14,6 +15,7 @@ import sqlalchemy as sa
 from shared import models
 from shared.division_grid import DivisionGrid
 from shared.repository.stats_reads import MatchReadContext
+from shared.schemas.catalog import CatalogEntityRef
 from shared.schemas.match import NativeFact
 from shared.schemas.role import RoleRef
 from shared.services.division_grid.resolution import resolve_tournament_division
@@ -22,6 +24,20 @@ from src import schemas
 from src.schemas.division_grid import DivisionGridVersionRead
 
 _IDENTITY_ENTITIES = ("social_accounts",)
+
+#: What a user encounter read can expand (``?entities=``).
+ENCOUNTER_ENTITIES = frozenset({"tournament", "stage", "stage_item", "teams", "teams.players", "matches"})
+
+
+def encounter_entities(requested: Collection[str]) -> frozenset[str]:
+    """The expansions ``requested`` names: ``matches.map`` is ``matches`` (a match's map is always expanded) and
+    ``teams.players`` implies ``teams``. An entity left out is null/empty on the row and never queried."""
+    names = set(requested)
+    if "matches.map" in names:
+        names.add("matches")
+    if "teams.players" in names:
+        names.add("teams")
+    return frozenset(names & ENCOUNTER_ENTITIES)
 
 
 def _is_globally_visible(account: models.SocialAccount) -> bool:
@@ -64,17 +80,8 @@ def _division_grid_version(tournament: models.Tournament) -> DivisionGridVersion
     return DivisionGridVersionRead.model_validate(tournament.division_grid_version, from_attributes=True)
 
 
-def to_user_tournament_summary(
-    tournament: models.Tournament,
-    *,
-    division_grid_version: DivisionGridVersionRead | None,
-) -> schemas.UserTournamentSummary:
-    """Narrow tournament card for UserProfile.tournaments + filter lists.
-
-    ``division_grid_version`` is supplied by the caller (resolved in bulk) so
-    an unpinned tournament still reports the grid its divisions are on, which
-    the ORM relationship alone cannot express.
-    """
+def to_user_tournament_summary(tournament: models.Tournament) -> schemas.UserTournamentSummary:
+    """Narrow tournament card for UserProfile.tournaments + filter lists."""
     return schemas.UserTournamentSummary(
         id=tournament.id,
         name=tournament.name,
@@ -82,7 +89,6 @@ def to_user_tournament_summary(
         is_league=tournament.is_league,
         is_finished=tournament.is_finished,
         status=tournament.status,
-        division_grid_version=division_grid_version,
     )
 
 
@@ -114,7 +120,7 @@ def to_user_tournament_player(
         related_player_id=player.related_player_id,
         relative_player=getattr(player, "relative_player", None),
         avg_mvp=avg_mvp,
-        characters=[schemas.CatalogEntityRead.from_entity(entity, with_parent=False) for entity in (characters or [])],
+        characters=[CatalogEntityRef.from_entity(entity) for entity in (characters or [])],
     )
 
 
@@ -232,13 +238,13 @@ def to_encounter_with_user_stats(
     matches: list[schemas.MatchReadWithUserStats],
     *,
     viewer_user_id: int | None = None,
+    entities: frozenset[str] = ENCOUNTER_ENTITIES,
 ) -> schemas.EncounterReadWithUserStats:
     """User-scoped encounter view.
 
-    Populates tournament/team/stage summaries always — the repository loads
-    the tournament, and ``context`` carries the seats and the bracket position.
-    `viewer_user_id` is used to fill the convenience `user_team_id` shortcut so
-    the frontend doesn't have to scan rosters itself.
+    The tournament summary only when ``entities`` names it (the repository then loads it); ``context`` carries the
+    seats and the bracket position it was read with. `viewer_user_id` fills the convenience `user_team_id` shortcut
+    from the seats' rosters (``None`` without them) so the frontend doesn't have to scan rosters itself.
     """
     return schemas.EncounterReadWithUserStats(
         id=encounter.id,
@@ -253,7 +259,11 @@ def to_encounter_with_user_stats(
         has_logs=encounter.has_logs,
         result_status=getattr(encounter, "result_status", "none"),
         user_team_id=_resolve_user_team_id(context, viewer_user_id) if viewer_user_id is not None else None,
-        tournament=to_encounter_tournament_summary(getattr(encounter, "tournament", None)),
+        tournament=(
+            to_encounter_tournament_summary(getattr(encounter, "tournament", None))
+            if "tournament" in entities
+            else None
+        ),
         stage=to_encounter_stage_summary(context.stage),
         stage_item=to_encounter_stage_item_summary(context.stage_item),
         teams=[to_encounter_team_summary(seat, roster) for seat, roster in context.seats],

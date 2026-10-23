@@ -1,4 +1,4 @@
-import type { EncounterWithUserStats, UserTournament } from "@/types/user.types";
+import type { EncounterWithUserStats, UserTournament, UserTournamentEntry } from "@/types/user.types";
 import { encounterPerspective } from "@/app/(site)/users/components/shared/encounter-perspective";
 
 /** League grouping key: the prefix before " | " in the tournament name. */
@@ -11,7 +11,8 @@ export const divisionLabel = (t: UserTournament): string => {
   return parts.length > 1 ? parts.slice(1).join(" | ") : t.name;
 };
 
-export type TournamentGroup = UserTournament | UserTournament[];
+/** A standalone event, or a league's divisions; `T` is what an entry carries (the dossier's: its grid and run). */
+export type TournamentGroup<T extends UserTournament = UserTournament> = T | T[];
 
 /**
  * Group consecutive league tournaments (those with `is_league` sharing the same
@@ -20,9 +21,9 @@ export type TournamentGroup = UserTournament | UserTournament[];
  * contiguous exactly as the API returns them. A cross-game history can put two
  * games' same-named leagues side by side: they stay apart.
  */
-export const groupTournamentsByLeague = (tournaments: UserTournament[]): TournamentGroup[] => {
-  const result: TournamentGroup[] = [];
-  let currentLeague: UserTournament[] = [];
+export const groupTournamentsByLeague = <T extends UserTournament>(tournaments: T[]): TournamentGroup<T>[] => {
+  const result: TournamentGroup<T>[] = [];
+  let currentLeague: T[] = [];
 
   tournaments.forEach((t) => {
     const previous = currentLeague.at(-1);
@@ -49,10 +50,11 @@ export const groupTournamentsByLeague = (tournaments: UserTournament[]): Tournam
 // dossier. Kept here (not in a component) so it stays unit-testable.
 
 /** Entries covered by a list group as a flat array. */
-export const groupEntries = (group: TournamentGroup): UserTournament[] =>
+export const groupEntries = <T extends UserTournament>(group: TournamentGroup<T>): T[] =>
   Array.isArray(group) ? group : [group];
 
-export const isLeagueGroup = (group: TournamentGroup): group is UserTournament[] => Array.isArray(group);
+export const isLeagueGroup = <T extends UserTournament>(group: TournamentGroup<T>): group is T[] =>
+  Array.isArray(group);
 
 /** Stable selection/URL key for a group: the first entry's tournament id. */
 export const groupRepId = (group: TournamentGroup): number => groupEntries(group)[0].id;
@@ -126,10 +128,13 @@ export interface StageGroup {
 
 /** Group a tournament's encounters by stage (first-seen order) with a per-stage
  *  W-D-L series record from the user's perspective. */
-export const groupEncountersByStage = (t: UserTournament, selfUserId: number): StageGroup[] => {
+export const groupEncountersByStage = (
+  t: Pick<UserTournamentEntry, "team_id" | "encounters">,
+  selfUserId: number
+): StageGroup[] => {
   const order: string[] = [];
   const byKey = new Map<string, StageGroup>();
-  for (const enc of t.encounters ?? []) {
+  for (const enc of t.encounters) {
     const name = enc.stage?.name ?? enc.stage_item?.name ?? enc.name ?? "—";
     const key = String(enc.stage?.id ?? name);
     let group = byKey.get(key);

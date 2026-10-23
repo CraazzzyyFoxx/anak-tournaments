@@ -18,6 +18,7 @@ from shared.schemas.role import RoleRef
 
 __all__ = (
     "CatalogEntityRead",
+    "CatalogEntityRef",
     "CharacterLeaderboardEntry",
     "CharacterLeaderboardParams",
     "CharacterLeaderboardQueryParams",
@@ -64,6 +65,19 @@ class CatalogEntityRead(BaseRead):
             active=entity.active,
             parent=None if parent is None else cls.from_entity(parent, with_parent=False),
         )
+
+
+class CatalogEntityRef(BaseModel):
+    """A ``catalog.entity`` named and drawn, nothing more: what a compact strip of characters renders."""
+
+    id: int
+    slug: str
+    name: str
+    image_path: str | None
+
+    @classmethod
+    def from_entity(cls, entity: Any) -> typing.Self:
+        return cls(id=entity.id, slug=entity.slug, name=entity.name, image_path=entity.image_path)
 
 
 class CharacterPlaytime(BaseModel):

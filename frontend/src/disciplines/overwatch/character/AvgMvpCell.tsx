@@ -4,17 +4,17 @@ import { useTranslations } from "next-intl";
 
 import { SummaryCellBox } from "@/components/profile/atoms";
 import type { SlotProps } from "@/disciplines/types";
-import type { UserTournament } from "@/types/user.types";
+import type { UserTournamentEntry } from "@/types/user.types";
 
 import { LogStatsName } from "../stat-names";
 
 /** Mean MVP placement across the user's matches in the entries (impact rank → legacy performance), or null when
  *  nothing is recorded. */
-export const avgMvpPlacement = (entries: UserTournament[]): number | null => {
+export const avgMvpPlacement = (entries: Pick<UserTournamentEntry, "encounters">[]): number | null => {
   let sum = 0;
   let count = 0;
   for (const t of entries) {
-    for (const enc of t.encounters ?? []) {
+    for (const enc of t.encounters) {
       for (const match of enc.matches ?? []) {
         // The viewer's whole-match placement facts: impact rank when computed, legacy performance otherwise.
         const facts = match.viewer?.facts;

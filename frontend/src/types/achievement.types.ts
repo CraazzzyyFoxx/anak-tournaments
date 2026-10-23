@@ -53,9 +53,8 @@ export interface AchievementMatchLink {
 
 export interface AchievementRarity extends Achievement {
   count: number;
-  tournaments_ids: number[];
+  /** Where it was earned: filled only when the read names `tournaments` / `matches` in `entities`. */
   tournaments: AchievementTournamentLink[];
-  matches_ids: number[];
   matches: AchievementMatchLink[];
 }
 

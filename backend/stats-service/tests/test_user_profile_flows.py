@@ -236,10 +236,10 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
                 grid=division_grid.DEFAULT_GRID,
             )
 
-        self.assertEqual(1, len(tournaments))
-        self.assertEqual(9, tournaments[0].division)
-        self.assertIsNotNone(tournaments[0].division_grid_version)
-        self.assertEqual(77, tournaments[0].division_grid_version.id)
+        self.assertEqual(1, len(tournaments.results))
+        self.assertEqual(9, tournaments.results[0].division)
+        self.assertEqual(77, tournaments.results[0].division_grid_version_id)
+        self.assertEqual([77], [version.id for version in tournaments.division_grid_versions])
 
     async def test_get_tournament_with_stats_carries_tournament_division_grid(self) -> None:
         """The overview last-tournament card renders its division icon against the
@@ -406,13 +406,12 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
                 grid=division_grid.DEFAULT_GRID,
             )
 
-        self.assertEqual(1, len(tournaments))
-        self.assertEqual(3, tournaments[0].placement)
+        self.assertEqual(1, len(tournaments.results))
+        self.assertEqual(3, tournaments.results[0].placement)
 
     async def test_get_tournaments_never_calls_encounter_matches_repository(self) -> None:
-        """`get_tournaments` (the list endpoint) must never populate
-        `encounters` — that data now comes from the lazy
-        `get_tournament_encounters` endpoint. Regression guard against
+        """`get_tournaments` (the list endpoint) ships no encounters — that data
+        comes from the lazy `get_tournament_encounters` endpoint. Regression guard against
         reintroducing the per-history encounter/match query that made this
         endpoint's payload exceed 1 MB for veteran players (see
         gateway/internal/respcache maxBodyBytes)."""
@@ -474,10 +473,12 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         ):
             tournaments = await users.get_tournaments(session, 42, workspace_id=5, grid=division_grid.DEFAULT_GRID)
 
-        self.assertEqual(1, len(tournaments))
-        self.assertEqual([], tournaments[0].encounters)
-        self.assertEqual(5, tournaments[0].workspace_id)
-        self.assertEqual("overwatch", tournaments[0].discipline)
+        self.assertEqual(1, len(tournaments.results))
+        self.assertEqual(5, tournaments.results[0].workspace_id)
+        self.assertEqual("overwatch", tournaments.results[0].discipline)
+        # The tournament has no effective grid version: no id on the row, no version shipped.
+        self.assertIsNone(tournaments.results[0].division_grid_version_id)
+        self.assertEqual([], tournaments.division_grid_versions)
 
     async def test_tournament_dossier_lists_observations_once_across_history_seats(self) -> None:
         """Two qualifying seats must not duplicate a user's encounter observations."""

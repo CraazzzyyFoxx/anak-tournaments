@@ -1,6 +1,6 @@
 import type { RoleRef } from "@/lib/roster/role-ref";
 import type { Schema } from "@/types/api";
-import type { CatalogEntityRead } from "@/types/catalog.types";
+import type { CatalogEntityRead, CatalogEntityRef } from "@/types/catalog.types";
 import type { RawSourceStatus } from "@/types/encounter.types";
 import type { PaginatedResponse } from "@/types/pagination.types";
 import { UserTournamentStat } from "@/types/statistics.types";
@@ -70,19 +70,24 @@ export interface User {
   stream_visible?: boolean;
 }
 
-export interface UserRole {
+/** A role's record in one game: maps, tournaments and the division it was last rated at. */
+export interface UserRoleSummary {
   role: RoleRef | null;
   tournaments: number;
   maps_won: number;
   maps: number;
   division: number;
+}
+
+/** A profile role, with the grid its `division` is drawn on. */
+export interface UserRole extends UserRoleSummary {
   division_grid_version: DivisionGridVersion | null;
 }
 
-/** One game of a cross-game profile (spec §6.6): its roles on that game's grid, tournaments and wins. */
+/** One game of a cross-game profile (spec §6.6): its roles, tournaments and wins. */
 export interface UserGameSummary {
   discipline: string;
-  roles: UserRole[];
+  roles: UserRoleSummary[];
   tournaments_count: number;
   tournaments_won: number;
 }
@@ -122,7 +127,6 @@ export interface UserTournamentSummary {
   is_league: boolean;
   is_finished?: boolean;
   status?: string | null;
-  division_grid_version: DivisionGridVersion | null;
 }
 
 interface UserTournamentPlayer {
@@ -139,8 +143,8 @@ interface UserTournamentPlayer {
   relative_player?: number | null;
   /** Average MVP placement across the player's matches (1 = MVP/best). */
   avg_mvp?: number | null;
-  /** Player's top signature characters (same shape as per-match `characters`). */
-  characters?: CatalogEntityRead[];
+  /** Player's top signature characters. */
+  characters?: CatalogEntityRef[];
 }
 
 interface UserEncounterTournament {
@@ -194,8 +198,9 @@ interface UserMatchViewer {
 
 /**
  * A match inside a user-scoped encounter: the native header (participants with official result and observed
- * team facts) plus the viewer's facts and EVERY observed member's whole-match totals. No derived value
- * (placement, badge) rides on the wire: a discipline's renderer derives them from `viewer.facts` against
+ * team facts) plus the viewer's facts and every observed member's whole-match totals of the stats the game's match
+ * renderer ranks the viewer against (its `member_total_stats`; Overwatch: `overperformance_score`). No derived
+ * value (placement, badge) rides on the wire: a discipline's renderer derives them from `viewer.facts` against
  * `member_totals`.
  */
 export interface MatchWithUserStats
@@ -248,14 +253,22 @@ export interface UserTournament {
   maps_won: number;
   maps_lost: number;
   division: number;
-  division_grid_version: DivisionGridVersion | null;
+  /** The grid `division` was resolved against: one of the list's `division_grid_versions`. */
+  division_grid_version_id: number | null;
   role: RoleRef | null;
+}
 
-  /** Only populated after a lazy fetch of `/tournaments/{id}/encounters` for
-   *  the tournament currently open in the dossier — the list endpoint omits
-   *  it so a career-spanning history doesn't ship every event's full
-   *  encounter/match log up front. */
-  encounters?: EncounterWithUserStats[];
+/** `/users/{id}/tournaments`: the rows, and once each the grid versions they name. */
+export interface UserTournamentList {
+  results: UserTournament[];
+  division_grid_versions: DivisionGridVersion[];
+}
+
+/** A history row as the dossier draws it: its grid resolved from the list, and its encounters, read lazily
+ *  (`/tournaments/{id}/encounters`) for the selected event only. */
+export interface UserTournamentEntry extends UserTournament {
+  division_grid_version: DivisionGridVersion | null;
+  encounters: EncounterWithUserStats[];
 }
 
 /** A player's career in one read, shaped for the draft room's player card. */

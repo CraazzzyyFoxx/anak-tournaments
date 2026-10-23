@@ -15,10 +15,7 @@ import { HeroFrame } from "@/components/site/PageHero";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import type { StatsScope } from "@/lib/site/stats-scope";
 import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
-import {
-  encounterPerspective,
-  USER_ENCOUNTER_ENTITIES
-} from "@/app/(site)/users/components/shared/encounter-perspective";
+import { encounterPerspective } from "@/app/(site)/users/components/shared/encounter-perspective";
 
 interface UserHeaderProps {
   profile: UserProfile;
@@ -43,6 +40,7 @@ const deriveFormStreak = async (
   scope: StatsScope
 ): Promise<FormResult[]> => {
   try {
+    // The streak reads each encounter's seats (scores and rosters) only: no matches, no tournament.
     const encounters = await userService.getUserEncounters(
       userId,
       discipline,
@@ -50,7 +48,7 @@ const deriveFormStreak = async (
       10,
       "played_at",
       "desc",
-      USER_ENCOUNTER_ENTITIES,
+      ["teams", "teams.players"],
       undefined,
       scope
     );

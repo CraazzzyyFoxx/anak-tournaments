@@ -36,7 +36,7 @@ from src.services.hero.service import heroes
 from src.services.map.service import maps
 from src.services.statistics.queries import StatisticsQueries
 from src.services.statistics.service import statistics
-from src.services.user.service import UserService, tournament_stats
+from src.services.user.service import UserService, _tournament_grid_versions, tournament_stats
 
 #: Every reader of the frozen capture was the OW-bound one; the native readers take the game explicitly.
 OW = "overwatch"
@@ -47,6 +47,8 @@ hero_queries = HeroQueries.of(OW)
 GOLDEN = Path(__file__).parent / "fixtures" / "stats_reader_parity.json"
 ALL_STATS = list(enums.LogStatsName)
 DAMAGE = RoleRef(dimension="player_role", role="damage")
+#: Every expansion of a user encounter read: the frozen capture shipped them all.
+ALL_ENCOUNTERS = ["tournament", "stage", "stage_item", "teams", "teams.players", "matches"]
 
 
 def _json(value: Any) -> Any:
@@ -82,7 +84,7 @@ def _json(value: Any) -> Any:
             # The games a users-index row/card gained for the cross-game index (spec §8.2); not reader output the frozen
             # capture had.
             del result["disciplines"]
-        if result.keys() == {"id", "name", "discipline", "is_league", "is_finished", "status", "division_grid_version"}:
+        if result.keys() == {"id", "name", "discipline", "is_league", "is_finished", "status"}:
             # The game a profile's tournament card gained for the cross-game profile (spec §6.6); not reader output the
             # frozen capture had.
             del result["discipline"]
@@ -293,13 +295,52 @@ async def _database_session(url: str) -> AsyncIterator[AsyncSession]:
         await engine.dispose()
 
 
+async def _frozen_history(session: AsyncSession, listing: schemas.UserTournamentList) -> list[dict[str, Any]]:
+    """The tournament list in the frozen per-row shape (projection only).
+
+    Each row regains the grid version its ``division_grid_version_id`` names and its always-empty ``encounters``; a
+    roster player's character references become the entities they name, proven equal on every field they carry.
+    """
+    versions = {version.id: _json(version) for version in listing.division_grid_versions}
+    refs = [ref for row in listing.results for player in row.players for ref in player.characters]
+    entities = {
+        entity.id: schemas.CatalogEntityRead.from_entity(entity, with_parent=False)
+        for entity in await session.scalars(
+            sa.select(models.CatalogEntity).where(models.CatalogEntity.id.in_({ref.id for ref in refs}))
+        )
+    }
+    for ref in refs:
+        assert ref.model_dump() == entities[ref.id].model_dump(include=set(ref.model_dump()))
+    history = []
+    for row in listing.results:
+        frozen = _json(row)
+        frozen["division_grid_version"] = versions.get(frozen.pop("division_grid_version_id"))
+        frozen["encounters"] = []
+        for player, native in zip(frozen["players"], row.players, strict=True):
+            player["characters"] = [_json(entities[ref.id]) for ref in native.characters]
+        frozen["players"].sort(key=lambda player: player["id"])
+        history.append(frozen)
+    return history
+
+
+async def _frozen_profile(session: AsyncSession, profile: schemas.UserProfile) -> dict[str, Any]:
+    """The profile with each tournament card's effective grid version, which the frozen capture shipped on it."""
+    frozen = _json(profile)
+    version_by_tournament, reads = await _tournament_grid_versions(session, [card.id for card in profile.tournaments])
+    for card in frozen["tournaments"]:
+        card["division_grid_version"] = _json(reads.get(version_by_tournament.get(card["id"])))
+    return frozen
+
+
 async def _user_outputs(session: AsyncSession, user_id: int, workspace_id: int | None) -> dict[str, Any]:
     hero_rows = await users.profile.get_statistics_by_heroes(session, user_id, workspace_id=workspace_id)
-    history = _json(await users.get_tournaments(session, user_id, workspace_id=workspace_id, grid=DEFAULT_GRID))
-    for tournament in history:
-        tournament["players"].sort(key=lambda player: player["id"])
+    history = await _frozen_history(
+        session, await users.get_tournaments(session, user_id, workspace_id=workspace_id, grid=DEFAULT_GRID)
+    )
     return {
-        "profile": _json(await users.get_profile(session, user_id, workspace_id=workspace_id, grid=DEFAULT_GRID)),
+        "profile": await _frozen_profile(
+            session, await users.get_profile(session, user_id, workspace_id=workspace_id, grid=DEFAULT_GRID)
+        ),
         "draft_card": _json(await users.get_draft_card(session, user_id, workspace_id=workspace_id)),
         "hero_statistics": _hero_stat_rows(hero_rows),
         "heroes": _hero_page(
@@ -317,7 +358,7 @@ async def _user_outputs(session: AsyncSession, user_id: int, workspace_id: int |
             await users.get_encounters_by_user(
                 session,
                 user_id,
-                pagination.PaginationSortParams(per_page=100, sort="played_at", order="desc"),
+                pagination.PaginationSortParams(per_page=100, sort="played_at", order="desc", entities=ALL_ENCOUNTERS),
                 workspace_id=workspace_id,
             )
         ),
@@ -571,7 +612,7 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict[st
                 await users.get_encounters_by_user(
                     session,
                     ids["player"],
-                    pagination.PaginationSortParams(page=page, per_page=1, sort="played_at"),
+                    pagination.PaginationSortParams(page=page, per_page=1, sort="played_at", entities=ALL_ENCOUNTERS),
                     workspace_id=workspace_id,
                 )
             )
@@ -589,7 +630,7 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict[st
                 await users.get_encounters_by_user(
                     session,
                     ids["player"],
-                    pagination.PaginationSortParams(per_page=100, sort="played_at"),
+                    pagination.PaginationSortParams(per_page=100, sort="played_at", entities=ALL_ENCOUNTERS),
                     workspace_id=workspace_id,
                     **filters,
                 )
@@ -1233,7 +1274,7 @@ def test_unbound_history_survives_retired_seats_and_roster_changes(stats_parity_
                 users.get_encounters_by_user,
                 session,
                 ids["player"],
-                pagination.PaginationSortParams(per_page=100, sort="played_at"),
+                pagination.PaginationSortParams(per_page=100, sort="played_at", entities=["matches"]),
                 workspace_id=ids["workspace"],
             )
             historical = [encounter for encounter in page.results if encounter.id == ids["encounter"]]

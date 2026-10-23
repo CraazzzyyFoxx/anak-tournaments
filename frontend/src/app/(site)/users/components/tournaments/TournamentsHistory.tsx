@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQueries } from "@tanstack/react-query";
-import { UserTournament } from "@/types/user.types";
+import type { UserTournamentEntry, UserTournamentList } from "@/types/user.types";
 import userService from "@/services/user.service";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { userQueryKeys } from "@/lib/users/query-keys";
@@ -20,7 +20,7 @@ import TournamentList from "@/app/(site)/users/components/tournaments/Tournament
 import TournamentDossier from "@/app/(site)/users/components/tournaments/TournamentDossier";
 
 interface Props {
-  tournaments: UserTournament[];
+  tournaments: UserTournamentList;
   selfUserId: number;
   /** The career Titles figure of the KPI strip. */
   tournamentsWon: number;
@@ -33,7 +33,7 @@ const TournamentsHistory = ({ tournaments, selfUserId, tournamentsWon, showGames
   const dossierRef = useRef<HTMLDivElement>(null);
   const reduceMotion = usePrefersReducedMotion();
 
-  const groups = useMemo(() => groupTournamentsByLeague(tournaments), [tournaments]);
+  const groups = useMemo(() => groupTournamentsByLeague(tournaments.results), [tournaments.results]);
 
   // Default selection: the deep-linked event (?selectedTournamentId=) if it maps
   // to a group, otherwise the most-recent event.
@@ -62,11 +62,10 @@ const TournamentsHistory = ({ tournaments, selfUserId, tournamentsWon, showGames
   );
   const selectedIds = useMemo(() => (selectedGroup ? groupTournamentIds(selectedGroup) : []), [selectedGroup]);
 
-  // Lazy dossier detail: the list endpoint never populates `encounters` (see
-  // UserTournament.encounters) — read them per tournament in the selected
-  // group only, cached per tournament so re-selecting an event reads nothing,
-  // and merge them in before handing the group to the dossier. A failed read
-  // leaves that tournament's run empty, without a toast.
+  // Lazy dossier detail: the list endpoint never carries encounters — read them per tournament in the selected
+  // group only, cached per tournament so re-selecting an event reads nothing, and merge them in (with each entry's
+  // grid from the list) before handing the group to the dossier. A failed read leaves that tournament's run empty,
+  // without a toast.
   const selectedEntries = selectedGroup ? groupEntries(selectedGroup) : [];
   const encounterQueries = useQueries({
     queries: selectedEntries.map((t) => ({
@@ -78,9 +77,14 @@ const TournamentsHistory = ({ tournaments, selfUserId, tournamentsWon, showGames
   });
   const loadingEncounters = encounterQueries.some((query) => query.isPending);
 
-  let detailedGroup: TournamentGroup | null = null;
+  let detailedGroup: TournamentGroup<UserTournamentEntry> | null = null;
   if (selectedGroup) {
-    const detailed = selectedEntries.map((t, index) => ({ ...t, encounters: encounterQueries[index]?.data ?? [] }));
+    const detailed = selectedEntries.map((t, index) => ({
+      ...t,
+      division_grid_version:
+        tournaments.division_grid_versions.find((version) => version.id === t.division_grid_version_id) ?? null,
+      encounters: encounterQueries[index]?.data ?? []
+    }));
     detailedGroup = isLeagueGroup(selectedGroup) ? detailed : detailed[0];
   }
 
@@ -109,7 +113,7 @@ const TournamentsHistory = ({ tournaments, selfUserId, tournamentsWon, showGames
   return (
     <>
       <TournamentsPlacementTimeline
-        tournaments={tournaments}
+        tournaments={tournaments.results}
         tournamentsWon={tournamentsWon}
         selectedIds={selectedIds}
         onSelect={selectEvent}

@@ -168,15 +168,18 @@ const PARTICIPATIONS = [
     maps_lost: 5,
     division: 9,
     // The tournament's own effective grid: the crest comes from it, never from a fallback ladder.
-    division_grid_version: {
-      id: 1,
-      tiers: [
-        { number: 9, name: "Gold 1", slug: "gold-1", sort_order: 9, rank_min: 1500, rank_max: 1999, icon_url: "/divisions/gold-1.png" }
-      ]
-    },
+    division_grid_version_id: 1,
     role: { dimension: "player_role", role: "support" }
   }
 ];
+const GRID = {
+  id: 1,
+  tiers: [
+    { number: 9, name: "Gold 1", slug: "gold-1", sort_order: 9, rank_min: 1500, rank_max: 1999, icon_url: "/divisions/gold-1.png" }
+  ]
+};
+/** One game's career read: its rows and the grid they name. */
+const career = (results: unknown[]) => ({ results, division_grid_versions: [GRID] });
 
 const mounted: { root: Root; container: HTMLElement }[] = [];
 
@@ -293,7 +296,7 @@ beforeEach(() => {
   getUserTournaments
     .mockReset()
     .mockImplementation(async (_id: number, discipline: string) =>
-      PARTICIPATIONS.filter((row) => row.discipline === discipline)
+      career(PARTICIPATIONS.filter((row) => row.discipline === discipline))
     );
   getUserAchievements.mockReset().mockResolvedValue([]);
   getPlayerSubRoles.mockReset().mockResolvedValue([]);
@@ -417,14 +420,14 @@ describe("person hub", () => {
     const damageMain = { dimension: "player_role", role: "damage_main", parent: "damage" };
     getUserTournaments.mockImplementation(async (_id: number, discipline: string) =>
       discipline === "overwatch"
-        ? [
+        ? career([
             {
               ...PARTICIPATIONS[0],
               role: damageMain,
               players: [{ ...PARTICIPATIONS[0].players[0], name: "Moon#1111", role: damageMain }]
             }
-          ]
-        : []
+          ])
+        : career([])
     );
     window.history.replaceState(null, "", "/admin/people/42?tab=participations");
     const { container } = await mount();
@@ -441,8 +444,8 @@ describe("person hub", () => {
     const mid = { dimension: "position", role: "mid" };
     getUserTournaments.mockImplementation(async (_id: number, discipline: string) =>
       discipline === "lol"
-        ? [{ ...PARTICIPATIONS[0], discipline: "lol", role: mid, players: [{ ...PARTICIPATIONS[0].players[0], role: mid }] }]
-        : []
+        ? career([{ ...PARTICIPATIONS[0], discipline: "lol", role: mid, players: [{ ...PARTICIPATIONS[0].players[0], role: mid }] }])
+        : career([])
     );
     window.history.replaceState(null, "", "/admin/people/42?tab=participations");
     const { container } = await mount();

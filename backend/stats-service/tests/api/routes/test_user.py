@@ -782,7 +782,8 @@ def test_get_user_tournaments(rpc: RpcHarness, user_id: int) -> None:
     env = rpc.call_sync("rpc.stats.users.tournaments", {"id": user_id, "query": _q()})
     assert env["ok"] is True
     content = env["data"]
-    assert content.__len__() >= 0
+    versions = {version["id"] for version in content["division_grid_versions"]}
+    assert {row["division_grid_version_id"] for row in content["results"]} - {None} == versions
 
 
 @pytest.mark.parametrize(
@@ -945,9 +946,12 @@ def test_get_user_encounters(
     assert content["page"] == page
     assert content["per_page"] == per_page
 
-    # Every encounter carries its live seats in slot order; the entity list does not gate them.
+    # The live seats ride only when ``teams`` is asked for, in slot order; nothing else gates them.
     for encounter in content["results"]:
         assert "home_team" not in encounter and "away_team" not in encounter
+        if "teams" not in entities:
+            assert encounter["teams"] == []
+            continue
         assert [team["slot"] for team in encounter["teams"]] == list(range(1, encounter["slot_count"] + 1))
         for team in encounter["teams"]:
             assert team["name"]

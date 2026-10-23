@@ -16,7 +16,7 @@ import {
   UserDraftCard,
   UserProfile,
   MinimizedUser,
-  UserTournament,
+  UserTournamentList,
   UserTournamentWithStats
 } from "@/types/user.types";
 import { PaginatedResponse, SearchPaginationParams } from "@/types/pagination.types";
@@ -108,14 +108,14 @@ export default class userService {
         return null;
       });
   }
-  /** A player's tournaments: one game's, or every game's when `discipline` is `null` (each row names its own).
-   *  `workspaceId` pins the read: a number/`null` behaves as before, `"all"` reads every workspace (platform apex
-   *  only). */
+  /** A player's tournaments: one game's, or every game's when `discipline` is `null` (each row names its own), with
+   *  once each the grid versions the rows name. `workspaceId` pins the read: a number/`null` behaves as before,
+   *  `"all"` reads every workspace (platform apex only). */
   static async getUserTournaments(
     id: number,
     discipline: string | null,
     workspaceId?: number | "all" | null
-  ): Promise<UserTournament[]> {
+  ): Promise<UserTournamentList> {
     const query = { discipline, ...(workspaceId != null ? { workspace_id: workspaceId } : {}) };
     const skipWorkspace = workspaceId === null;
     return apiFetch(`/api/v1/users/${id}/tournaments`, {
@@ -274,7 +274,8 @@ export default class userService {
       withoutTournament,
       includeLocked,
       scope,
-      discipline
+      discipline,
+      entities = ["tournaments", "matches"]
     }: {
       tournamentId?: number;
       withoutTournament?: boolean;
@@ -282,11 +283,13 @@ export default class userService {
       scope?: StatsScope;
       /** One game's rules only (earned and locked); omitted = every game's (the admin person hub). */
       discipline?: string;
+      /** The links each achievement carries (where it was earned); `[]` reads none. */
+      entities?: ("tournaments" | "matches")[];
     } = {}
   ): Promise<AchievementRarity[]> {
     return apiFetch(`/api/v1/achievements/user/${id}`, {
       query: {
-        entities: ["tournaments", "matches"],
+        entities,
         tournament_id: tournamentId,
         without_tournament: withoutTournament,
         include_locked: includeLocked,

@@ -22,7 +22,7 @@ import type {
   BalancerPlayerRecord,
   RegistrationRankAutofillResponse
 } from "@/types/balancer-admin.types";
-import type { User, UserTournament } from "@/types/user.types";
+import type { User, UserTournament, UserTournamentList } from "@/types/user.types";
 import type { DivisionGridVersion, Workspace } from "@/types/workspace.types";
 import { PlayerEditModal } from "./PlayerEditSheet";
 
@@ -318,18 +318,21 @@ describe("owner-grid receiving controls", () => {
     const pinned = version(3, "LoL Pin", [200, 900]);
     vi.spyOn(userService, "getUserByName").mockResolvedValue({ id: 42 } as User);
     vi.spyOn(balancerAdminService, "getUserBalancerRankHistory").mockResolvedValue([]);
-    vi.spyOn(userService, "getUserTournaments").mockResolvedValue([
-      {
-        id: 10,
-        name: "Past pinned tournament",
-        // The wire names the tournament's workspace and game; history of any other game is never read as LoL ranks.
-        workspace_id: 1,
-        discipline: "lol",
-        role: { dimension: "position", role: "support" },
-        division_grid_version: pinned,
-        players: [{ user_id: 42, rank: 250 }]
-      }
-    ] as UserTournament[]);
+    vi.spyOn(userService, "getUserTournaments").mockResolvedValue({
+      results: [
+        {
+          id: 10,
+          name: "Past pinned tournament",
+          // The wire names the tournament's workspace and game; history of any other game is never read as LoL ranks.
+          workspace_id: 1,
+          discipline: "lol",
+          role: { dimension: "position", role: "support" },
+          division_grid_version_id: pinned.id,
+          players: [{ user_id: 42, rank: 250 }]
+        } as UserTournament
+      ],
+      division_grid_versions: [pinned]
+    } as UserTournamentList);
     vi.spyOn(workspaceService, "getDivisionGridMapping").mockResolvedValue({
       id: 9,
       source_version_id: pinned.id,

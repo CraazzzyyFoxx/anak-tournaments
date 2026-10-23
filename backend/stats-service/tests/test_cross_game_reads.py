@@ -135,7 +135,7 @@ def test_profile_tournaments_without_a_game_list_every_games_rows(
             async def history(discipline: str | None) -> dict[int, str]:
                 service = UserService.of(discipline)
                 rows = await _uncached(service.get_tournaments, session, ids["player"], grid=DEFAULT_GRID)
-                return {row.id: row.discipline for row in rows}
+                return {row.id: row.discipline for row in rows.results}
 
             only_ow = await history(OW)
             assert ids["tournament_lol"] not in only_ow
@@ -155,7 +155,7 @@ def test_profile_encounters_without_a_game_list_every_games_rows(
         configure_test_cache()
         async with _session(url) as session:
             await session.run_sync(lambda sync: seed_native_sentinel(sync.connection(), ids))
-            params = pagination.PaginationSortParams(per_page=100, sort="played_at")
+            params = pagination.PaginationSortParams(per_page=100, sort="played_at", entities=["matches"])
 
             async def page(discipline: str | None) -> Any:
                 service = UserService.of(discipline)
@@ -167,10 +167,14 @@ def test_profile_encounters_without_a_game_list_every_games_rows(
             assert every.total == only_ow.total + 1
             league = next(row for row in every.results if row.id == ids["encounter_lol"])
             assert league.discipline == LOL
-            # The match reads its own game's facts: the viewer's League totals.
+            # The match reads its own game's facts: the viewer's League totals. League ranks no member totals.
             (match,) = league.matches
             assert match.viewer is not None
             assert match.viewer.facts["hero_damage_dealt"] == 1_000_000.0
+            assert match.member_totals == []
+            # Overwatch ships every member's ranked stat and nothing else.
+            ow_totals = [fact for row in only_ow.results for match in row.matches for fact in match.member_totals]
+            assert ow_totals and {fact.stat_code for fact in ow_totals} == {"overperformance_score"}
             await session.rollback()
 
     asyncio.run(run())

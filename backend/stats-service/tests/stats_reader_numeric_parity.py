@@ -382,6 +382,7 @@ async def assert_app_golden(session, ids, actual):
     await _prove_comparison_population(session, ids, expected, actual, compare_module, pool, population_witness)
     _accept_observed_history_of_the_event_only_player(ids, expected, actual)
     _accept_p6_achievement_wire(actual)
+    _accept_earned_ids_from_links(actual)
     _accept_canonical_all_workspaces_divisions(expected, actual)
     _strict(expected, actual)
 
@@ -452,6 +453,27 @@ def _accept_p6_achievement_wire(actual):
                         "color": entity["attrs"].get("color", "#ffffff"),
                     }
                 )
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(actual)
+
+
+def _accept_earned_ids_from_links(actual):
+    """The user-achievement wire dropped ``tournaments_ids``/``matches_ids`` (no reader; 2026-10-23).
+
+    Every frozen user read expanded ``tournaments`` and ``matches``, which list exactly those ids in the same sorted
+    order, so the arrays are rebuilt from the links and still compared leaf by leaf.
+    """
+
+    def walk(node):
+        if isinstance(node, dict):
+            if {"tournaments", "matches", "count", "rarity"} <= node.keys() and "tournaments_ids" not in node:
+                node["tournaments_ids"] = [tournament["id"] for tournament in node["tournaments"]]
+                node["matches_ids"] = [match["id"] for match in node["matches"]]
             for value in node.values():
                 walk(value)
         elif isinstance(node, list):

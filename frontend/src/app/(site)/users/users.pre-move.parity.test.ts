@@ -204,7 +204,7 @@ describe("users/components/tournaments/tournaments-history.helpers.ts (+ OW avgM
             const found = ok(records as Captures<EncounterWithUserStats[]>, (key) =>
               key.startsWith(`${prefix}:tournament_encounters:`)
             ).find(([, value]) => value.request.path.endsWith(`/tournaments/${t.id}/encounters`));
-            return found ? { ...t, encounters: found[1].body } : t;
+            return { ...t, encounters: found?.[1].body ?? [] };
           });
           perResponse[label] = {
             groups: history.groupTournamentsByLeague(tournaments).map((group) => ({

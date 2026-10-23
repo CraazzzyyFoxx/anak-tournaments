@@ -240,6 +240,9 @@ class DisciplineSpec:
     #: Projected SMALLINT dictionaries; historical definitions are deactivated, never deleted.
     stat_defs: tuple[StatDefSpec, ...] = ()
     event_types: tuple[EventTypeSpec, ...] = ()
+    #: The whole-match member totals the game's match renderer ranks the viewer against (stat codes of ``stat_defs``);
+    #: user-scoped match reads ship only these.
+    member_total_stats: tuple[str, ...] = ()
     #: Process lifecycle hooks (optional plain callables): ``configure_runtime`` wires the collection handlers (every
     #: process serving them), ``register_jobs`` binds consumers on the worker's broker, ``start_jobs`` declares the
     #: module's dead-letter queues and starts schedules and clients, ``stop_jobs`` stops them. A worker runs only the selected

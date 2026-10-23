@@ -276,7 +276,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.stats.users.get_profile": {
         "summary": "User profile",
-        "description": "Permission: public; no authentication required. Returns a player's profile resolved against the workspace context. With `discipline` it is that game's profile (its tournaments, roles and characters on that game's division grid) and `games` is empty. Without it the header aggregates span every game, `roles`/`character_statistics` are empty, `most_played_character` is null, and `games` lists one summary per game played (`discipline`, that game's `roles`, `tournaments_count`, `tournaments_won`), most tournaments first, ties in installed order. Every `tournaments[]` entry carries its `discipline`.",
+        "description": "Permission: public; no authentication required. Returns a player's profile resolved against the workspace context. With `discipline` it is that game's profile (its tournaments, roles and characters on that game's division grid) and `games` is empty. Without it the header aggregates span every game, `roles`/`character_statistics` are empty, `most_played_character` is null, and `games` lists one summary per game played (`discipline`, that game's `roles` without their grid version, `tournaments_count`, `tournaments_won`), most tournaments first, ties in installed order. Every `tournaments[]` entry carries its `discipline`; only `roles[]` carry a `division_grid_version`.",
     },
     "rpc.stats.users.draft_card": {
         "summary": "User draft card",
@@ -341,7 +341,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.stats.users.tournaments": {
         "summary": "User tournaments",
-        "description": "Permission: public; no authentication required. Returns the tournaments a player participated in — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code) — scoped to the workspace context and grid; each row names its own `discipline`.",
+        "description": "Permission: public; no authentication required. Returns the tournaments a player participated in — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code) — scoped to the workspace context and grid, as `results`; each row names its own `discipline` and the `division_grid_version_id` its divisions are tiers of, and `division_grid_versions` carries each of those versions once (ordered by id). A roster player's `characters` are references (`id`, `slug`, `name`, `image_path`).",
     },
     "rpc.stats.users.tournament": {
         "summary": "User tournament stats",
@@ -349,7 +349,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.stats.users.tournament_encounters": {
         "summary": "User tournament encounters",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's encounters (with per-match stats) within one tournament — the lazy detail behind the Tournaments-tab dossier, fetched only for the tournament currently open in the UI. Each match carries its `map` and its own `mode` (null when none).",
+        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's encounters (with per-match stats) within one tournament — the lazy detail behind the Tournaments-tab dossier, fetched only for the tournament currently open in the UI. Each match carries its `map` and its own `mode` (null when none), the viewer's facts, and `member_totals` limited to the stats the game's match renderer ranks the viewer against.",
     },
     "rpc.stats.users.tournament_leaderboard": {
         "summary": "Tournament stat leaderboard",
@@ -365,7 +365,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.stats.users.encounters": {
         "summary": "User encounters",
-        "description": "Permission: public; no authentication required. Returns a player's paginated encounters — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code), each naming its own `discipline` — filterable by result, stage, MVP (`mvp1` needs `discipline`, else 422), log availability, and opponent. Each match carries its `map` and its own `mode` (null when none).",
+        "description": "Permission: public; no authentication required. Returns a player's paginated encounters — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code), each naming its own `discipline` — filterable by result, stage, MVP (`mvp1` needs `discipline`, else 422), log availability, and opponent. Expansions are opt-in through `entities` (repeatable): `tournament`, `stage`, `stage_item`, `teams`, `teams.players` (implies `teams`; `user_team_id` is resolved from the rosters, else null) and `matches` (`matches.map` is the same: a match always carries its `map` and its own `mode`, null when none). An entity not requested is null/empty and not read. Each match carries the viewer's facts and `member_totals` limited to the stats the game's match renderer ranks the viewer against.",
     },
     "rpc.stats.users.matches_summary": {
         "summary": "User matches summary",
@@ -389,7 +389,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.stats.achievements.user": {
         "summary": "User achievements",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's earned (and optionally locked) achievements, scoped by tournament or without-tournament and workspace, and optionally to one game's rules (`discipline`; unknown code 404 discipline_not_installed); rejects combining tournament_id with without_tournament=true.",
+        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's earned (and optionally locked) achievements, scoped by tournament or without-tournament and workspace, and optionally to one game's rules (`discipline`; unknown code 404 discipline_not_installed); rejects combining tournament_id with without_tournament=true. `tournaments` and `matches` (where each was earned) are filled only when `entities` names them; otherwise they are empty and not read.",
     },
     "rpc.stats.achievements.users": {
         "summary": "Achievement earners",

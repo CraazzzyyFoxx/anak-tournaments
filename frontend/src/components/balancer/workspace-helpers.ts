@@ -602,22 +602,16 @@ export async function fetchPlayerRankHistoryPreview(
     // most recent tournaments first.
     const missingRoles = roleCodes.filter((role) => !latestPerRole.has(role));
     if (missingRoles.length > 0) {
-      // The read is this game's tournaments only.
-      const tournaments = await userService.getUserTournaments(user.id, discipline, workspaceId);
-      if (tournaments?.length) {
-        const sorted = [...tournaments].sort((a, b) => b.id - a.id);
-
-        const sourceVersionsById = new Map<number, DivisionGridVersion>();
-        for (const tournament of sorted) {
-          const v = tournament.division_grid_version;
-          if (v) sourceVersionsById.set(v.id, { ...v, discipline: tournament.discipline });
-        }
+      // The read is this game's tournaments only, so every grid version it names is this game's.
+      const { results, division_grid_versions } = await userService.getUserTournaments(user.id, discipline, workspaceId);
+      if (results.length) {
+        const sorted = [...results].sort((a, b) => b.id - a.id);
 
         let normalizer: DivisionGridNormalizer | null = null;
         if (targetGridVersion) {
           normalizer = await DivisionGridNormalizer.build(
             { ...targetGridVersion, discipline },
-            [...sourceVersionsById.values()]
+            division_grid_versions.map((version) => ({ ...version, discipline }))
           );
         }
 
@@ -631,14 +625,13 @@ export async function fetchPlayerRankHistoryPreview(
           const playerRecord = tournament.players.find((p) => p.user_id === user.id);
           const rankValue = playerRecord?.rank ?? null;
           if (rankValue !== null && rankValue > 0) {
-            const originalDivisionNumber = resolveDivisionFromRank(
-              tournament.division_grid_version ?? grid,
-              rankValue
-            );
+            const sourceVersion =
+              division_grid_versions.find((version) => version.id === tournament.division_grid_version_id) ?? null;
+            const originalDivisionNumber = resolveDivisionFromRank(sourceVersion ?? grid, rankValue);
 
             let divisionNumber: number | null;
-            if (normalizer && tournament.division_grid_version) {
-              divisionNumber = normalizer.safeNormalize(tournament.division_grid_version.id, rankValue);
+            if (normalizer && sourceVersion) {
+              divisionNumber = normalizer.safeNormalize(sourceVersion.id, rankValue);
             } else {
               divisionNumber = originalDivisionNumber;
             }
@@ -651,7 +644,7 @@ export async function fetchPlayerRankHistoryPreview(
               tournament_id: tournament.id,
               tournament_name: tournament.name,
               source_role: roleCode,
-              tournament_grid_version: tournament.division_grid_version ?? null,
+              tournament_grid_version: sourceVersion,
               source: "analytics"
             });
           }

@@ -119,10 +119,19 @@ class RpcHarness:
         return await self.broker.handlers[subject](data or {}, None)
 
     def call_sync(self, subject: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
-        """Drive an async RPC handler from a synchronous pytest test (``asyncio.run`` owns the loop)."""
+        """Drive an async RPC handler from a synchronous pytest test (``asyncio.run`` owns the loop).
+
+        Each call's loop dies with it, so its pooled connections go too (see ``_drop_loop_bound_async_connections``):
+        a test may call twice.
+        """
         import asyncio
 
-        return asyncio.run(self.call(subject, data))
+        from src.core import db as async_db
+
+        try:
+            return asyncio.run(self.call(subject, data))
+        finally:
+            async_db.async_engine.sync_engine.dispose(close=False)
 
 
 @pytest.fixture(autouse=True)

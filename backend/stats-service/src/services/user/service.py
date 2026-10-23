@@ -1079,7 +1079,7 @@ class UserService(DisciplineQueries):
     @versioned(
         generations=user_generations("{id}"),
         ttl=config.settings.user_profile_cache_ttl,
-        key="backend:user_profile:{id}:{self._discipline}:{workspace_id}:native",
+        key="backend:user_profile:v2:{id}:{self._discipline}:{workspace_id}:native",
     )
     async def get_profile(
         self,
@@ -1127,20 +1127,8 @@ class UserService(DisciplineQueries):
         tournaments_count: int = 0
         tournaments_won: int = 0
 
-        # Narrow tournament summary — only fields the frontend renders on the user
-        # overview. Each card carries the grid version its tournament's divisions
-        # are on (effective, so unpinned tournaments report one too).
-        version_by_tournament, tournament_version_reads = await _tournament_grid_versions(
-            session,
-            [team.tournament_id for team in teams],
-        )
-        tournaments: list[schemas.UserTournamentSummary] = [
-            _mappers.to_user_tournament_summary(
-                team.tournament,
-                division_grid_version=tournament_version_reads.get(version_by_tournament.get(team.tournament_id)),
-            )
-            for team in teams
-        ]
+        # Narrow tournament summary — only fields the frontend renders on the user overview.
+        tournaments = [_mappers.to_user_tournament_summary(team.tournament) for team in teams]
 
         for team in teams:
             if team.tournament.is_league:
@@ -1385,20 +1373,21 @@ class UserService(DisciplineQueries):
     @versioned(
         generations=user_generations("{id}"),
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_tournaments:{id}:{self._discipline}:{workspace_id}:native",
+        key="backend:user_tournaments:v2:{id}:{self._discipline}:{workspace_id}:native",
     )
     async def get_tournaments(
         self, session: AsyncSession, id: int, workspace_id: int | None = None, *, grid: DivisionGrid | None
-    ) -> list[schemas.UserTournament]:
+    ) -> schemas.UserTournamentList:
         """
         Retrieves a user's tournament history with per-event stats (record,
-        placement, roster, avg MVP, signature heroes).
+        placement, roster, avg MVP, signature heroes), and each grid version its
+        rows' divisions are on, once.
 
-        Deliberately does NOT populate `UserTournament.encounters`: the Tournaments
-        tab renders one selected tournament's encounters at a time (master-detail
-        dossier), and every tournament's full encounter/match history runs a
-        veteran player's response past 1 MB. Callers that need the per-match run
-        for one tournament call `get_tournament_encounters` lazily instead.
+        Ships no encounters: the Tournaments tab renders one selected tournament's
+        encounters at a time (master-detail dossier), and every tournament's full
+        encounter/match history runs a veteran player's response past 1 MB. Callers
+        that need the per-match run for one tournament call
+        `get_tournament_encounters` lazily instead.
         """
         user = await self.get(session, id, [])
         output: list[schemas.UserTournament] = []
@@ -1465,7 +1454,9 @@ class UserService(DisciplineQueries):
                 lost += standing.lose
                 draw += standing.draw
 
-            division_grid_version = tournament_version_reads.get(effective_version_id)
+            division_grid_version_id = (
+                effective_version_id if effective_version_id in tournament_version_reads else None
+            )
 
             players_read = [
                 _mappers.to_user_tournament_player(
@@ -1500,7 +1491,7 @@ class UserService(DisciplineQueries):
                 placement=placement,
                 role=user_role,
                 division=user_division,
-                division_grid_version=division_grid_version,
+                division_grid_version_id=division_grid_version_id,
                 count_teams=placements[team.tournament_id],
                 won=won,
                 lost=lost,
@@ -1508,12 +1499,17 @@ class UserService(DisciplineQueries):
             )
             output.append(tournament)
 
-        return output
+        return schemas.UserTournamentList(
+            results=output,
+            division_grid_versions=[
+                tournament_version_reads[version_id] for version_id in sorted(tournament_version_reads)
+            ],
+        )
 
     @versioned(
         generations=user_generations("{id}"),
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_tournament_encounters:v7:{id}:{self.discipline}:{tournament_id}",
+        key="backend:user_tournament_encounters:v8:{id}:{self.discipline}:{tournament_id}",
     )
     async def get_tournament_encounters(
         self, session: AsyncSession, id: int, tournament_id: int
@@ -1551,14 +1547,15 @@ class UserService(DisciplineQueries):
         match_rows: list[tuple[typing.Any, ...]],
         *,
         viewer_user_id: int,
+        entities: frozenset[str] = _mappers.ENCOUNTER_ENTITIES,
     ) -> list[schemas.EncounterReadWithUserStats]:
-        """Encounters in the given order, each with its live seats, bracket position and
-        its matches (``match_rows``: ``(encounter_id, match, stats)``) in play order.
+        """Encounters in the given order, each with what ``entities`` expands of its live seats and bracket position,
+        and its matches (``match_rows``: ``(encounter_id, match, stats)``) in play order.
 
         Each match carries its historical game's slots independently of live encounter seats.
         """
         encounter_ids = [encounter.id for encounter in encounters]
-        contexts = await self.encounters.get_encounter_contexts(session, encounter_ids)
+        contexts = await self.encounters.get_encounter_contexts(session, encounter_ids, entities)
         matches: dict[int, list[schemas.MatchReadWithUserStats]] = {encounter_id: [] for encounter_id in encounter_ids}
         seen_matches: set[int] = set()
         for encounter_id, match, stats in match_rows:
@@ -1575,6 +1572,7 @@ class UserService(DisciplineQueries):
                 contexts[encounter.id],
                 matches=_mappers.sort_user_matches(matches[encounter.id]),
                 viewer_user_id=viewer_user_id,
+                entities=entities,
             )
             for encounter in encounters
         ]
@@ -1906,8 +1904,8 @@ class UserService(DisciplineQueries):
         generations=user_generations("{user_id}"),
         ttl=config.settings.users_cache_ttl,
         key=(
-            "backend:user_encounters:v7:{user_id}:{self._discipline}:{workspace_id}:{params.page}:{params.per_page}:"
-            "{params.sort}:{params.order}:{result_filter}:{stage}:{mvp1}:{has_logs}:{opponent}"
+            "backend:user_encounters:v8:{user_id}:{self._discipline}:{workspace_id}:{params.page}:{params.per_page}:"
+            "{params.sort}:{params.order}:{params.entities}:{result_filter}:{stage}:{mvp1}:{has_logs}:{opponent}"
         ),
         lock=True,
     )
@@ -1926,15 +1924,17 @@ class UserService(DisciplineQueries):
     ) -> pagination.Paginated[schemas.EncounterReadWithUserStats]:
         """Paginated encounters involving a specific user, with per-user stats.
 
-        Returns narrow `EncounterReadWithUserStats` objects — the tournament and
-        team summaries are always populated (loaded via joinedload in the repo).
+        Returns narrow `EncounterReadWithUserStats` objects expanding only what ``params.entities`` names
+        (``_mappers.encounter_entities``): an entity left out is null/empty and never queried.
         """
         user = await self.get(session, user_id, [])
+        entities = _mappers.encounter_entities(params.entities)
         encounters, total = await self.encounters.get_user_encounters_paginated(
             session,
             user.id,
             params,
             workspace_id=workspace_id,
+            entities=entities,
             result=result_filter,
             stage=stage,
             mvp1=mvp1,
@@ -1948,7 +1948,7 @@ class UserService(DisciplineQueries):
             if match:
                 match_rows.append((encounter.id, match, *stats))
         encounters_read = await self._map_user_encounters(
-            session, list(encounters_by_id.values()), match_rows, viewer_user_id=user.id
+            session, list(encounters_by_id.values()), match_rows, viewer_user_id=user.id, entities=entities
         )
 
         return pagination.Paginated(

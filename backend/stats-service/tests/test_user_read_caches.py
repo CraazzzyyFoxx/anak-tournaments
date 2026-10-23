@@ -177,7 +177,7 @@ class MatchesSummaryCacheTests(_CacheTestBase):
 class VersionedEncounterFamiliesTests(_CacheTestBase):
     async def test_both_encounter_families_miss_after_both_invalidation_shapes(self) -> None:
         """``user_encounters`` and ``user_tournament_encounters`` embed the native match header of one game, so their
-        keys are versioned (``:v7:``); a subject's edit and a tournament write must both still reach them."""
+        keys are versioned (``:v8:``); a subject's edit and a tournament write must both still reach them."""
         user = SimpleNamespace(id=404, name="Player")
         page = AsyncMock(return_value=([], 0))
         dossier = AsyncMock(return_value=[])
@@ -195,7 +195,7 @@ class VersionedEncounterFamiliesTests(_CacheTestBase):
             await read()
             stored = sorted([key async for key in cache.scan("backend:*")])
             self.assertEqual(
-                ["backend:user_encounters:v7:404:", "backend:user_tournament_encounters:v7:404:"],
+                ["backend:user_encounters:v8:404:", "backend:user_tournament_encounters:v8:404:"],
                 [key[: key.index("404:") + 4] for key in stored],
             )
             await read()

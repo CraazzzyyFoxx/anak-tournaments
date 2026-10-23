@@ -15,7 +15,7 @@ import type {
   MatchWithUserStats,
   UserMapCharacterStats,
   UserMapRead,
-  UserTournament
+  UserTournamentEntry
 } from "@/types/user.types";
 import type { UserTournamentStat } from "@/types/statistics.types";
 
@@ -134,8 +134,9 @@ export type SlotProps = {
     roles: string[];
     metadata: DisciplineMetadata;
   };
-  /** An extra cell of a tournament (or league) dossier's summary strip, over the player's entries (8b addition). */
-  tournamentSummary: { entries: UserTournament[]; metadata: DisciplineMetadata };
+  /** An extra cell of a tournament (or league) dossier's summary strip, over the player's entries and their runs (8b
+   *  addition). */
+  tournamentSummary: { entries: UserTournamentEntry[]; metadata: DisciplineMetadata };
   /**
    * The lobby-rank tiles of the overview's tournament card (slice 11): the game's own selection, order and
    * presentation of the ranked tournament `stats` (keyed by stat code); `onOpen` opens the lobby leaderboard of one.

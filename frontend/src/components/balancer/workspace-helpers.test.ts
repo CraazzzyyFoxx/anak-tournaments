@@ -1036,18 +1036,19 @@ describe("a League roster", () => {
       name: `T${id}`,
       discipline,
       role,
-      division_grid_version: null,
+      division_grid_version_id: null,
       players: [{ user_id: 7, rank }],
     });
     const byName = vi.spyOn(userService, "getUserByName").mockResolvedValue({ id: 7 } as never);
-    const tournaments = vi
-      .spyOn(userService, "getUserTournaments")
-      .mockResolvedValue([
+    const tournaments = vi.spyOn(userService, "getUserTournaments").mockResolvedValue({
+      results: [
         tournament(3, "lol", { dimension: "position", role: "jungle" }, 2400),
         tournament(2, "lol", { dimension: "position", role: "top" }, 1800),
         tournament(1, "lol", null, 3000),
         tournament(4, "overwatch", { dimension: "player_role", role: "tank" }, 4000),
-      ] as never);
+      ],
+      division_grid_versions: [],
+    } as never);
 
     try {
       const preview = await fetchPlayerRankHistoryPreview(
@@ -1086,7 +1087,9 @@ describe("a League roster", () => {
       const history = vi
         .spyOn(balancerAdminService, "getUserBalancerRankHistory")
         .mockResolvedValue([entry(9, "position", "support", 2200), entry(8, "position", "support", 1000)]);
-      const tournaments = vi.spyOn(userService, "getUserTournaments").mockResolvedValue([] as never);
+      const tournaments = vi
+        .spyOn(userService, "getUserTournaments")
+        .mockResolvedValue({ results: [], division_grid_versions: [] } as never);
 
       try {
         const preview = await fetchPlayerRankHistoryPreview(
@@ -1110,9 +1113,12 @@ describe("a League roster", () => {
       const history = vi
         .spyOn(balancerAdminService, "getUserBalancerRankHistory")
         .mockResolvedValue([entry(9, "player_role", "support", 4100)]);
-      const tournaments = vi.spyOn(userService, "getUserTournaments").mockResolvedValue([
-        { id: 5, name: "T5", discipline: "lol", role: { dimension: "position", role: "support" }, division_grid_version: null, players: [{ user_id: 7, rank: 1700 }] },
-      ] as never);
+      const tournaments = vi.spyOn(userService, "getUserTournaments").mockResolvedValue({
+        results: [
+          { id: 5, name: "T5", discipline: "lol", role: { dimension: "position", role: "support" }, division_grid_version_id: null, players: [{ user_id: 7, rank: 1700 }] },
+        ],
+        division_grid_versions: [],
+      } as never);
 
       try {
         const preview = await fetchPlayerRankHistoryPreview(

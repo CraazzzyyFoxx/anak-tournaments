@@ -83,6 +83,7 @@ def test_match_mapper_uses_historical_game_context():
             id=17,
             duration_s=600,
             map_entity_id=31,
+            mode_entity_id=None,
             created_at=stamp,
             updated_at=None,
             played_at=None,
@@ -101,6 +102,7 @@ def test_match_mapper_uses_historical_game_context():
             _participant(23, 3, 2, None),
         ),
         display_filename="observed-match.txt",
+        mode=None,
         map=SimpleNamespace(
             id=31,
             created_at=stamp,
