@@ -118,9 +118,13 @@ export function useUsersIndexParams(
   const [searchInput, setSearchInput] = useState(query);
   const [debouncedSearch] = useDebounce(searchInput, 300);
 
-  useEffect(() => {
+  // The URL's query wins once it changes (Back/Forward, a reset). Adjusted
+  // during render, so the stale text is never painted first.
+  const [syncedQuery, setSyncedQuery] = useState(query);
+  if (query !== syncedQuery) {
+    setSyncedQuery(query);
     setSearchInput(query);
-  }, [query]);
+  }
 
   useEffect(() => {
     const normalizedInput = debouncedSearch.trim();

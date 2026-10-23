@@ -31,8 +31,8 @@ type ResponsiveBracketProps = {
 
 /**
  * The tree at ≥768px, a one-round-at-a-time list below it. `useIsMobile` is
- * `false` until its effect runs, so SSR and the first client render agree on
- * the tree; phones swap to the list one frame later, before paint settles.
+ * `false` while hydrating, so SSR and the hydrating render agree on the tree;
+ * phones swap to the list on the pass right after.
  */
 export function ResponsiveBracket({ interactive = true, ...props }: Readonly<ResponsiveBracketProps>) {
   const isMobile = useIsMobile();

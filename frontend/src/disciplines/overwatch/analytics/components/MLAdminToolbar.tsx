@@ -82,11 +82,11 @@ export default function MLAdminToolbar({ tournamentId, workspaceId }: Readonly<M
     refetchInterval: isLiveJobActive ? false : 30_000
   });
 
-  React.useEffect(() => {
-    if (initialActiveJob && !liveJob) {
-      setLiveJob(initialActiveJob);
-    }
-  }, [initialActiveJob, liveJob]);
+  // Adopted during render rather than in an effect, so a job already running is
+  // never painted as "no job" first.
+  if (initialActiveJob && !liveJob) {
+    setLiveJob(initialActiveJob);
+  }
 
   const { data: refreshedLiveJob } = useQuery({
     queryKey: analyticsQueryKeys.job(liveJob?.id),
@@ -95,13 +95,15 @@ export default function MLAdminToolbar({ tournamentId, workspaceId }: Readonly<M
     refetchInterval: isLiveJobActive ? 1_500 : false
   });
 
-  React.useEffect(() => {
-    if (!refreshedLiveJob) {
-      return;
+  // Each poll result replaces the job it was asked about, once per result; a
+  // different job that took its place in between stays. Adjusted during render.
+  const [adoptedRefresh, setAdoptedRefresh] = React.useState(refreshedLiveJob);
+  if (refreshedLiveJob !== adoptedRefresh) {
+    setAdoptedRefresh(refreshedLiveJob);
+    if (refreshedLiveJob) {
+      setLiveJob((prev) => (prev?.id === refreshedLiveJob.id ? refreshedLiveJob : prev));
     }
-
-    setLiveJob((prev) => (prev?.id === refreshedLiveJob.id ? refreshedLiveJob : prev));
-  }, [refreshedLiveJob]);
+  }
 
   // The domain topic carries the running job: progress frames have no cache to
   // drop, they drive this toolbar's own state. What a finished job stales
