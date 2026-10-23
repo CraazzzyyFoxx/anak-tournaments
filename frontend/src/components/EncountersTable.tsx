@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import {
   getEncounterState,
   getEncounterWinner,
+  isEncounterCompleted,
   isEncounterLive,
   type EncounterState
 } from "@/lib/encounter/status";
@@ -321,14 +322,31 @@ export function EncountersDataTable({
     if (isEncounterLive(encounter)) {
       return { day: t("common.now"), time: t("encounters.state.live"), live: true };
     }
-    const source =
-      encounter.ended_at ?? encounter.started_at ?? encounter.scheduled_at ?? encounter.created_at;
-    if (!source) return { day: t("common.tbd"), time: "", live: false };
-    const date = new Date(source);
-    if (Number.isNaN(date.getTime())) return { day: t("common.tbd"), time: "", live: false };
+    const toDate = (value: Date | string | null | undefined) => {
+      const date = value == null ? null : new Date(value);
+      return date && !Number.isNaN(date.getTime()) ? date : null;
+    };
+    const completed = isEncounterCompleted(encounter);
+    const at = toDate(completed ? encounter.played_at : encounter.scheduled_at);
+    if (at) {
+      return {
+        day: format.dateTime(at, { month: "short", day: "numeric" }),
+        time:
+          completed && now
+            ? format.relativeTime(at, now)
+            : format.dateTime(at, { timeStyle: "short" }),
+        live: false
+      };
+    }
+    if (!completed) return { day: t("encounters.state.upcoming"), time: "", live: false };
+    // No trusted `played_at` (imported history): the tournament's dates, as a
+    // day with its year, since these run years back.
+    const held = toDate(encounter.tournament?.end_date ?? encounter.tournament?.start_date);
     return {
-      day: format.dateTime(date, { month: "short", day: "numeric" }),
-      time: now ? format.relativeTime(date, now) : format.dateTime(date, { timeStyle: "short" }),
+      day: held
+        ? format.dateTime(held, { day: "numeric", month: "short", year: "numeric" })
+        : t("common.tbd"),
+      time: "",
       live: false
     };
   };

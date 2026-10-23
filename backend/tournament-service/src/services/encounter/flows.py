@@ -1,4 +1,5 @@
 import typing
+from datetime import UTC, datetime
 
 from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +27,7 @@ from shared.services.match_reads import match_events_read, match_header_fields, 
 from src import schemas
 from src.core import config
 from src.services.bracket.advancement import SlotSource, resolve_slot_sources
-from src.services.encounter.service import EncounterService, encounter_service
+from src.services.encounter.service import EncounterService, encounter_is_live, encounter_service
 from src.services.map.flows import MapFlowsService, map_to_read
 from src.services.map.flows import flows_service as map_flows_service
 from src.services.team.flows import TeamFlowsService
@@ -37,9 +38,9 @@ from src.services.tournament.flows import flows_service as tournament_flows_serv
 
 # Both families embed ``MatchRead`` (and ``EncounterGameRead.map``/``.mode``). Their values are pickled in a persistent
 # Redis that outlives a deploy and cashews returns an unpickled value as it is, without re-validating its nested models,
-# so a wire change to those models needs a new namespace (``native_``, then ``:v2``), not a TTL wait.
-# The key names EVERY query param that changes the SQL: one without the game served the first game's page to every
-# other game for the whole TTL.
+# so a wire change to those models needs a new namespace (``native_``, then ``:v2``, ``:v3`` for ``played_at`` and
+# ``is_live``), not a TTL wait. The key names EVERY query param that changes the SQL: one without the game served the
+# first game's page to every other game for the whole TTL.
 # ``ENCOUNTERS`` (``tournament/cache_resources.py``) names the writes that miss both;
 # ``tests/test_encounter_cache_namespaces.py`` pins that against the keys cashews renders from these templates.
 _ENCOUNTER_QUERY_KEY = (
@@ -48,8 +49,8 @@ _ENCOUNTER_QUERY_KEY = (
     "{params.best_of}:{params.status}:{params.has_logs}:{params.closeness_min}:{params.closeness_max}:"
     "{params.scope}:{params.discipline}:{params.slot_count}:{viewer_auth_user_id}"
 )
-ENCOUNTERS_CACHE_KEY = f"native_encounters:v2:{_ENCOUNTER_QUERY_KEY}"
-ENCOUNTERS_OVERVIEW_CACHE_KEY = f"native_encounters_overview:v2:{_ENCOUNTER_QUERY_KEY}"
+ENCOUNTERS_CACHE_KEY = f"native_encounters:v3:{_ENCOUNTER_QUERY_KEY}"
+ENCOUNTERS_OVERVIEW_CACHE_KEY = f"native_encounters_overview:v3:{_ENCOUNTER_QUERY_KEY}"
 
 
 def _seats(encounter: models.Encounter) -> list[models.EncounterTeam]:
@@ -145,6 +146,7 @@ class EncounterFlowsService:
         slot_sources: typing.Mapping[int, list[SlotSource]] | None = None,
         tournament_cache: dict[int, schemas.TournamentRead] | None = None,
         team_cache: dict[int, schemas.TeamRead] | None = None,
+        played_at: typing.Mapping[int, datetime | None] | None = None,
     ) -> schemas.EncounterRead:
         """Serialize one encounter to ``EncounterRead`` with the requested ``entities``.
 
@@ -159,6 +161,8 @@ class EncounterFlowsService:
                 advancement edges`` map (see ``resolve_slot_sources``). Populates the
                 ``sources`` field a reader labels an unresolved bracket slot from;
                 omitted → empty, which reads as "the bracket's shape is unknown".
+            played_at: Optional prefetched ``encounter_id -> played_at``
+                (``EncounterService.played_at_by_encounter``); omitted → ``None``.
         """
         stage: schemas.StageSummaryRead | None = None
         stage_item: schemas.StageItemSummaryRead | None = None
@@ -289,6 +293,8 @@ class EncounterFlowsService:
         # Computed properties are not part of the persisted column dictionary.
         encounter_dict["has_logs"] = encounter.has_logs
         encounter_dict["scoring_preset"] = encounter.scoring_preset
+        encounter_dict["is_live"] = encounter_is_live(encounter, datetime.now(UTC))
+        encounter_dict["played_at"] = (played_at or {}).get(encounter.id)
 
         return schemas.EncounterRead(
             **encounter_dict,
@@ -390,6 +396,7 @@ class EncounterFlowsService:
             challonge_match_ids=challonge_match_ids,
             tournament_challonge_refs=tournament_challonge_refs,
             slot_sources=await resolve_slot_sources(session, [encounter.id]),
+            played_at=await self.encounters.played_at_by_encounter(session, [encounter.id]),
         )
 
     @versioned(
@@ -417,6 +424,7 @@ class EncounterFlowsService:
             session, [encounter.tournament_id for encounter in encounters]
         )
         slot_sources = await resolve_slot_sources(session, [encounter.id for encounter in encounters])
+        played_at = await self.encounters.played_at_by_encounter(session, [encounter.id for encounter in encounters])
         tournament_cache: dict[int, schemas.TournamentRead] = {}
         team_cache: dict[int, schemas.TeamRead] = {}
         return pagination.Paginated(
@@ -433,6 +441,7 @@ class EncounterFlowsService:
                     slot_sources=slot_sources,
                     tournament_cache=tournament_cache,
                     team_cache=team_cache,
+                    played_at=played_at,
                 )
                 for encounter in encounters
             ],
@@ -534,6 +543,9 @@ class EncounterFlowsService:
         featured_entities = ["tournament", "stage", "stage_item", "teams", "matches", "matches.map"]
         featured_tournament_cache: dict[int, schemas.TournamentRead] = {}
         featured_team_cache: dict[int, schemas.TeamRead] = {}
+        featured_played_at = await self.encounters.played_at_by_encounter(
+            session, [encounter.id for encounter in featured_encounters]
+        )
 
         return schemas.EncounterOverviewRead(
             kpis=schemas.EncounterKpiRead(
@@ -569,6 +581,7 @@ class EncounterFlowsService:
                         tournament_challonge_refs=featured_tournament_challonge_refs,
                         tournament_cache=featured_tournament_cache,
                         team_cache=featured_team_cache,
+                        played_at=featured_played_at,
                     )
                     for encounter in data["closest"]
                 ],
@@ -581,6 +594,7 @@ class EncounterFlowsService:
                         tournament_challonge_refs=featured_tournament_challonge_refs,
                         tournament_cache=featured_tournament_cache,
                         team_cache=featured_team_cache,
+                        played_at=featured_played_at,
                     )
                     for encounter in data["upcoming"]
                 ],
@@ -593,6 +607,7 @@ class EncounterFlowsService:
                         tournament_challonge_refs=featured_tournament_challonge_refs,
                         tournament_cache=featured_tournament_cache,
                         team_cache=featured_team_cache,
+                        played_at=featured_played_at,
                     )
                     for encounter in data["live"]
                 ],

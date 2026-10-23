@@ -83,8 +83,8 @@ async function EncountersContent({ page, filters, scope, initial, read, game }: 
           filters.query,
           null,
           ENCOUNTERS_PAGE_SIZE,
-          apiFilters.sort ?? "id",
-          "desc",
+          apiFilters.sort,
+          apiFilters.order,
           workspaceId,
           {
             ...apiFilters,

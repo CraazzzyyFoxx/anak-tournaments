@@ -87,6 +87,14 @@ export interface Encounter {
   // Every earlier decision lives in the result audit, not in a single slot
   // that only ever remembered the last writer.
   confirmed_at: Date | string | null;
+  /**
+   * When a completed encounter was played; null for every other one, and when the
+   * stored stamps fall outside the tournament's dates (imported history), so
+   * readers fall back to those dates.
+   */
+  played_at: string | null;
+  /** The server's live definition; never re-derive it from the stamps. */
+  is_live: boolean;
   /** Empty on a bracket whose advancement edges were never recorded. */
   sources?: EncounterSlotSource[];
 

@@ -171,6 +171,11 @@ class EncounterRead(BaseRead):
     ended_at: datetime | None = None
     current_map_index: int | None = None
     confirmed_at: datetime | None = None
+    #: When a decided series was played (``service.played_at_expr``); ``None`` when nothing trustworthy says, where
+    #: readers show the tournament's dates. Imported history's confirmation time is not a play time.
+    played_at: datetime | None = None
+    #: The server's one reading of "in play" (``service._live_condition``); readers never re-derive it from the clocks.
+    is_live: bool = False
 
     stage: StageSummaryRead | None
     stage_item: StageItemSummaryRead | None
@@ -325,11 +330,21 @@ class EncounterSearchParams(pagination.PaginationSortSearchParams):
         return query.where(sa.or_(*criteria))
 
 
+#: The browse's sort keys. ``played_at`` orders by when a series was played (else when it is due, else its
+#: tournament's dates); every key sorts NULLs last and ties by id.
+EncounterSortKey = Literal[
+    "id", "name", "best_of", "status", "scheduled_at", "closeness", "has_logs", "discipline", "played_at"
+]
+
+
 class EncounterSearchQueryParams(pagination.PaginationSortSearchQueryParams):
     tournament_id: int | None = None
     stage_id: int | None = None
     stage_item_id: int | None = None
     best_of: int | None = None
+    sort: EncounterSortKey = "id"
+    #: A stored status (``completed``/``pending``/``open``) or a derived one: ``live``, ``upcoming`` (open or pending,
+    #: not live).
     status: str | None = None
     has_logs: bool | None = None
     closeness_min: float | None = Field(default=None, ge=0.0, le=1.0)

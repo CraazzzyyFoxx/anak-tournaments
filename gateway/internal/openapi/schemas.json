@@ -8945,6 +8945,17 @@
           "required": false,
           "schema": {
             "default": "id",
+            "enum": [
+              "id",
+              "name",
+              "best_of",
+              "status",
+              "scheduled_at",
+              "closeness",
+              "has_logs",
+              "discipline",
+              "played_at"
+            ],
             "title": "Sort",
             "type": "string"
           }
@@ -9645,6 +9656,17 @@
           "required": false,
           "schema": {
             "default": "id",
+            "enum": [
+              "id",
+              "name",
+              "best_of",
+              "status",
+              "scheduled_at",
+              "closeness",
+              "has_logs",
+              "discipline",
+              "played_at"
+            ],
             "title": "Sort",
             "type": "string"
           }
@@ -45894,6 +45916,11 @@
           "title": "Id",
           "type": "integer"
         },
+        "is_live": {
+          "default": false,
+          "title": "Is Live",
+          "type": "boolean"
+        },
         "matches": {
           "items": {
             "$ref": "#/components/schemas/tournament.MatchRead"
@@ -45904,6 +45931,19 @@
         "name": {
           "title": "Name",
           "type": "string"
+        },
+        "played_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Played At"
         },
         "result_source": {
           "anyOf": [
@@ -46830,6 +46870,17 @@
         },
         "sort": {
           "default": "id",
+          "enum": [
+            "id",
+            "name",
+            "best_of",
+            "status",
+            "scheduled_at",
+            "closeness",
+            "has_logs",
+            "discipline",
+            "played_at"
+          ],
           "title": "Sort",
           "type": "string"
         },

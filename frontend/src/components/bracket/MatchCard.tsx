@@ -243,7 +243,7 @@ export const MatchCard = memo(function MatchCard({
 }: Readonly<MatchCardProps>) {
   const t = useTranslations();
   const { data, encounter } = node;
-  const isLive = !data.isCompleted && Boolean(encounter.started_at) && !encounter.ended_at;
+  const isLive = encounter.is_live === true;
   // The series format is always worth reading next to the score. When the
   // match is played is the schedule's business, not the card's.
   const bestOfLabel = encounter.best_of ? `Bo${encounter.best_of}` : null;

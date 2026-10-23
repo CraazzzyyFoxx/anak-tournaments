@@ -140,7 +140,8 @@ export function normalizeEncounterFilters(params: Record<string, string | undefi
     stage_id: parseNumberParam(params.stage_id),
     stage_item_id: parseNumberParam(params.stage_item_id),
     best_of: parseNumberParam(params.best_of),
-    status: params.status || null,
+    // `open` and `pending` were two chips before they merged into "upcoming"; an old link lands on the merged one.
+    status: params.status === "open" || params.status === "pending" ? "upcoming" : params.status || null,
     has_logs: parseBooleanParam(params.has_logs),
     closeness_min: parseNumberParam(params.closeness_min) ?? DEFAULT_FILTERS.closeness_min,
     closeness_max: parseNumberParam(params.closeness_max),
@@ -174,7 +175,16 @@ export function filtersToSearchParams(filters: EncounterFilterState, page: numbe
   return params;
 }
 
-export function filtersToApiFilters(filters: EncounterFilterState): EncounterFilters {
+// "Upcoming" reads soonest first; the other two lead with the newest / tightest.
+const API_SORT: Record<EncounterSortKey, { sort: string; order: "asc" | "desc" }> = {
+  date: { sort: "played_at", order: "desc" },
+  closeness: { sort: "closeness", order: "desc" },
+  upcoming: { sort: "scheduled_at", order: "asc" },
+};
+
+export function filtersToApiFilters(
+  filters: EncounterFilterState
+): EncounterFilters & { sort: string; order: "asc" | "desc" } {
   return {
     tournament_id: filters.tournament_id,
     stage_id: filters.stage_id,
@@ -185,7 +195,7 @@ export function filtersToApiFilters(filters: EncounterFilterState): EncounterFil
     closeness_min: filters.closeness_min,
     closeness_max: filters.closeness_max,
     scope: filters.scope,
-    sort: filters.sort === "closeness" ? "closeness" : filters.sort === "upcoming" ? "scheduled_at" : "id",
+    ...API_SORT[filters.sort],
   };
 }
 

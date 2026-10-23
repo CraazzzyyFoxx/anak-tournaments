@@ -32,12 +32,8 @@ export function isEncounterCompleted(encounter: Pick<Encounter, "status">): bool
   return COMPLETED_STATUSES[encounter.status] === true;
 }
 
-export function isEncounterLive(
-  encounter: Pick<Encounter, "status" | "started_at" | "ended_at">
-): boolean {
-  return (
-    !isEncounterCompleted(encounter) && Boolean(encounter.started_at) && !encounter.ended_at
-  );
+export function isEncounterLive(encounter: Pick<Encounter, "is_live">): boolean {
+  return encounter.is_live;
 }
 
 export function getEncounterState(encounter: Encounter, now = new Date()): EncounterState {

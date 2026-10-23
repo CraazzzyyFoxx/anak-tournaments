@@ -66,7 +66,7 @@ afterEach(async () => {
 });
 
 /** The filter bar beside the site's scope pill, as the page shows them. */
-async function mount(gameBound: boolean) {
+async function mount(gameBound: boolean, props: Partial<ComponentProps<typeof EncountersFilterBar>> = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(
@@ -81,6 +81,7 @@ async function mount(gameBound: boolean) {
             gameBound={gameBound}
             onSearchChange={vi.fn()}
             onPatch={vi.fn()}
+            {...props}
           />
         </QueryClientProvider>
       </NextIntlClientProvider>
@@ -108,5 +109,29 @@ describe("the encounters filter bar's game-bound filters", () => {
     await mount(true);
     expect(tournamentPicker()?.textContent).toBe(en.encounters.filter.tournamentAny);
     expect(hint()).toBeUndefined();
+  });
+});
+
+describe("the encounters filter bar's status chips", () => {
+  it("offers live, upcoming and completed, counts the first two, and toggles one status at a time", async () => {
+    const onPatch = vi.fn();
+    await mount(true, {
+      filters: { ...DEFAULT_FILTERS, status: "upcoming" },
+      kpis: { ...EMPTY_OVERVIEW.kpis, live_now_count: 2, upcoming_count: 5 },
+      onPatch
+    });
+    const chips = [
+      ...container.querySelectorAll<HTMLButtonElement>(`[role="group"][aria-label="${en.common.status}"] button`)
+    ];
+
+    expect(chips.map((chip) => [chip.textContent, chip.getAttribute("aria-pressed")])).toEqual([
+      [`${en.encounters.filter.statusLive}2`, "false"],
+      [`${en.encounters.filter.statusUpcoming}5`, "true"],
+      [en.encounters.filter.statusCompleted, "false"]
+    ]);
+
+    await act(async () => chips[1].click());
+    await act(async () => chips[0].click());
+    expect(onPatch.mock.calls).toEqual([[{ status: null }], [{ status: "live" }]]);
   });
 });

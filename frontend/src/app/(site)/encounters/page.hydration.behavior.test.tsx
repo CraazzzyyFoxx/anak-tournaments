@@ -52,11 +52,14 @@ const { page } = vi.hoisted(() => {
       ended_at: null,
       current_map_index: null,
       confirmed_at: null,
+      // One row stamped, one left to its tournament's dates: both hydrate.
+      played_at: id === 1 ? "2026-05-01T12:00:00Z" : null,
+      is_live: false,
       created_at: null,
       updated_at: null,
       matches: [],
       teams: [],
-      tournament: { id, name: `Cup ${id}` },
+      tournament: { id, name: `Cup ${id}`, start_date: "2019-06-01T00:00:00Z", end_date: "2019-06-08T00:00:00Z" },
       stage: null,
       stage_item: null
     }) as unknown as Encounter;

@@ -646,12 +646,18 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict:
 
 def assert_tournament_golden(actual: dict) -> None:
     def without_post_capture_fields(value):
-        """Fields added after the frozen P4 capture are not reader output: ``TournamentRead.logs_official`` (P5) and
-        the owner context (``workspace_id``/``discipline``) P7 added to ``EncounterRead`` and ``MatchRead``. The
-        golden's nested ``tournament`` objects already carried theirs and keep them."""
+        """Fields added after the frozen P4 capture are not reader output: ``TournamentRead.logs_official`` (P5),
+        the owner context (``workspace_id``/``discipline``) P7 added to ``EncounterRead`` and ``MatchRead``, and the
+        browse's ``played_at``/``is_live`` on ``EncounterRead`` (a match's own ``played_at`` was captured and stays).
+        The golden's nested ``tournament`` objects already carried theirs and keep them."""
         if isinstance(value, dict):
-            owner = value.keys() >= {"scoring_preset", "tournament_id"} or value.keys() >= {"encounter_id", "map_id"}
-            dropped = {"logs_official", *(("workspace_id", "discipline") if owner else ())}
+            encounter = value.keys() >= {"scoring_preset", "tournament_id"}
+            owner = encounter or value.keys() >= {"encounter_id", "map_id"}
+            dropped = {
+                "logs_official",
+                *(("workspace_id", "discipline") if owner else ()),
+                *(("played_at", "is_live") if encounter else ()),
+            }
             return {key: without_post_capture_fields(item) for key, item in value.items() if key not in dropped}
         if isinstance(value, list):
             return [without_post_capture_fields(item) for item in value]

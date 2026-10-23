@@ -75,6 +75,8 @@ function encounter(overrides: Partial<Encounter> = {}): Encounter {
     scheduled_at: null,
     started_at: null,
     ended_at: null,
+    played_at: null,
+    is_live: false,
     current_map_index: null,
     confirmed_at: null,
     result_source: null,
@@ -134,7 +136,8 @@ afterEach(() => {
 
 describe("BracketView live-stream indicator", () => {
   /** The dot is about a match still to be decided; the default fixture is settled. */
-  const inPlay = () => encounter({ status: "open", teams: seatsOf(7, 8, 1, 0), started_at: "2026-01-01T10:00:00Z" });
+  const inPlay = () =>
+    encounter({ status: "open", teams: seatsOf(7, 8, 1, 0), started_at: "2026-01-01T10:00:00Z", is_live: true });
 
   // The admin bracket passes no stream map. A required prop would have broken it,
   // so this is the regression guard for that call site.
@@ -463,6 +466,7 @@ describe("BracketView rearrange mode", () => {
             status: "open",
             result_status: "none",
             started_at: "2026-01-01T10:00:00Z",
+            is_live: true,
             teams: seatsOf(11, 12)
           }),
           encounter({ id: 4, round: 2, status: "open", result_status: "none", teams: seatsOf(null, null) })

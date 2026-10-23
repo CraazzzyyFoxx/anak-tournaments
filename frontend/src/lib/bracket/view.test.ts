@@ -34,6 +34,8 @@ function createEncounter(id: number, round: number, sources?: EncounterSlotSourc
     scheduled_at: null,
     started_at: null,
     ended_at: null,
+    played_at: null,
+    is_live: false,
     current_map_index: null,
     confirmed_at: null,
     result_source: null,

@@ -8,7 +8,7 @@ from sqlalchemy.orm import aliased
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared import models
-from shared.core import enums, utils
+from shared.core import enums, pagination, utils
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import (
@@ -70,13 +70,22 @@ def join_encounter_entities(query: sa.Select, in_entities: list[str]) -> sa.Sele
     return query
 
 
-def _coerce_encounter_status(value: str) -> enums.EncounterStatus:
+#: What ``status`` filters on: a stored status, or one of the two the browse derives (``live``, ``upcoming``).
+_STATUS_FILTERS = (*(item.value for item in enums.EncounterStatus), "live", "upcoming")
+
+
+def _status_predicate(value: str, now: datetime) -> sa.ColumnElement[bool]:
+    """The ``status`` filter: a stored status, or ``live``/``upcoming`` read the way the overview counts them."""
+    if value == "live":
+        return _live_condition(now)
+    if value == "upcoming":
+        return _upcoming_condition(now)
     try:
-        return enums.EncounterStatus(value)
+        return models.Encounter.status == enums.EncounterStatus(value)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid status. Must be one of: {', '.join(item.value for item in enums.EncounterStatus)}",
+            detail=f"Invalid status. Must be one of: {', '.join(_STATUS_FILTERS)}",
         ) from exc
 
 
@@ -119,7 +128,7 @@ def _apply_encounter_filters(
     if params.best_of is not None:
         query = query.where(models.Encounter.best_of == params.best_of)
     if params.status:
-        query = query.where(models.Encounter.status == _coerce_encounter_status(params.status))
+        query = query.where(_status_predicate(params.status, datetime.now(UTC)))
     if params.has_logs is not None:
         query = query.where(models.Encounter.has_logs.is_(params.has_logs))
     if params.closeness_min is not None:
@@ -170,29 +179,137 @@ def _encounter_ids_query(
 
 
 def _live_condition(now: datetime) -> sa.ColumnElement[bool]:
-    return sa.or_(
-        sa.and_(
-            models.Encounter.started_at.isnot(None),
-            models.Encounter.ended_at.is_(None),
-        ),
-        sa.and_(
-            models.Encounter.status == enums.EncounterStatus.PENDING,
-            models.Encounter.current_game_position.isnot(None),
-        ),
-        sa.and_(
-            models.Encounter.status == enums.EncounterStatus.PENDING,
-            models.Encounter.scheduled_at <= now,
-            models.Encounter.ended_at.is_(None),
+    """A series in play: started and not ended, a game position reported, or a pending match past its slot.
+
+    Every branch is NULL-free, so ``NOT`` of it (``_upcoming_condition``) never drops a row. A decided series is
+    never live, whatever its hand-set clock says. :func:`encounter_is_live` is this for one loaded row.
+    """
+    return sa.and_(
+        models.Encounter.status != enums.EncounterStatus.COMPLETED,
+        sa.or_(
+            sa.and_(
+                models.Encounter.started_at.isnot(None),
+                models.Encounter.ended_at.is_(None),
+            ),
+            sa.and_(
+                models.Encounter.status == enums.EncounterStatus.PENDING,
+                models.Encounter.current_game_position.isnot(None),
+            ),
+            sa.and_(
+                models.Encounter.status == enums.EncounterStatus.PENDING,
+                models.Encounter.scheduled_at.isnot(None),
+                models.Encounter.scheduled_at <= now,
+                models.Encounter.ended_at.is_(None),
+            ),
         ),
     )
+
+
+def encounter_is_live(encounter: models.Encounter, now: datetime) -> bool:
+    """:func:`_live_condition` for one loaded row -- the two must agree."""
+    if encounter.status == enums.EncounterStatus.COMPLETED:
+        return False
+    if encounter.started_at is not None and encounter.ended_at is None:
+        return True
+    if encounter.status != enums.EncounterStatus.PENDING:
+        return False
+    if encounter.current_game_position is not None:
+        return True
+    return encounter.scheduled_at is not None and encounter.scheduled_at <= now and encounter.ended_at is None
 
 
 def _upcoming_condition(now: datetime) -> sa.ColumnElement[bool]:
+    """Not decided and not in play: every open or pending series, scheduled or not."""
     return sa.and_(
-        models.Encounter.scheduled_at.isnot(None),
-        models.Encounter.scheduled_at > now,
         models.Encounter.status.in_([enums.EncounterStatus.OPEN, enums.EncounterStatus.PENDING]),
+        sa.not_(_live_condition(now)),
     )
+
+
+# A decided series' own clock is trusted only near its tournament's dates: imported history carries the import's
+# time in ``confirmed_at`` (a 2019 event "confirmed" in 2025), and a late confirmation lands a day or two after.
+_PLAYED_EARLY_GRACE = timedelta(days=1)
+_PLAYED_LATE_GRACE = timedelta(days=3)
+
+
+def _tournament_date(column: sa.Column) -> sa.ScalarSelect:
+    return (
+        sa.select(column)
+        .where(models.Tournament.id == models.Encounter.tournament_id)
+        .correlate(models.Encounter)
+        .scalar_subquery()
+    )
+
+
+def played_at_expr() -> sa.ColumnElement[datetime | None]:
+    """When a decided series was played, or NULL when nothing trustworthy says.
+
+    The first of: the hand-set end, the last parsed map, the result confirmation, the hand-set start -- kept only
+    inside the tournament's ``[start - 1 day, end + 3 days]`` (each bound only when set). Readers fall back to the
+    tournament's dates.
+    """
+    starts = _tournament_date(models.Tournament.start_date)
+    ends = _tournament_date(models.Tournament.end_date)
+    last_map = (
+        sa.select(sa.func.max(models.StatsMatch.played_at))
+        .where(models.StatsMatch.encounter_id == models.Encounter.id)
+        .correlate(models.Encounter)
+        .scalar_subquery()
+    )
+    raw = sa.func.coalesce(
+        models.Encounter.ended_at, last_map, models.Encounter.confirmed_at, models.Encounter.started_at
+    )
+    return sa.case(
+        (
+            sa.and_(
+                models.Encounter.status == enums.EncounterStatus.COMPLETED,
+                raw.isnot(None),
+                sa.or_(starts.is_(None), raw >= starts - _PLAYED_EARLY_GRACE),
+                sa.or_(ends.is_(None), raw <= ends + _PLAYED_LATE_GRACE),
+            ),
+            raw,
+        ),
+        else_=sa.null(),
+    )
+
+
+def _played_at_sort_key() -> sa.ColumnElement[datetime | None]:
+    """The ``played_at`` order: when it was played, else when it is due, else its tournament's dates."""
+    return sa.func.coalesce(
+        played_at_expr(),
+        models.Encounter.scheduled_at,
+        _tournament_date(models.Tournament.end_date),
+        _tournament_date(models.Tournament.start_date),
+        models.Encounter.created_at,
+    )
+
+
+#: The browse's sort keys (``EncounterSearchQueryParams.sort``), each a column of the row.
+_SORT_COLUMNS: dict[str, typing.Any] = {
+    "id": models.Encounter.id,
+    "name": models.Encounter.name,
+    "best_of": models.Encounter.best_of,
+    "status": models.Encounter.status,
+    "scheduled_at": models.Encounter.scheduled_at,
+    "closeness": models.Encounter.closeness,
+    "has_logs": models.Encounter.has_logs,
+    "discipline": models.Encounter.discipline,
+}
+
+
+def _encounter_order(params: schemas.EncounterSearchParams) -> list[sa.UnaryExpression]:
+    """``params.sort`` with NULLs last either way, then the id in the same direction: a page never reshuffles."""
+    if params.sort == "played_at":
+        key = _played_at_sort_key()
+    elif params.sort in _SORT_COLUMNS:
+        key = _SORT_COLUMNS[params.sort]
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid sort: {params.sort}")
+    descending = params.order in (pagination.SortOrder.DESC, "desc")
+    return [
+        (key.desc() if descending else key.asc()).nulls_last(),
+        models.Encounter.id.desc() if descending else models.Encounter.id.asc(),
+    ]
 
 
 class EncounterService:
@@ -265,8 +382,7 @@ class EncounterService:
             joined_tournament="tournament" in params.entities,
         )
 
-        # Model-bound sort uses the native observation EXISTS, not a stored column.
-        query = params.apply_pagination_sort(query, models.Encounter)
+        query = params.apply_pagination(query.order_by(*_encounter_order(params)))
 
         return await execute_page_with_total(
             session,
@@ -276,6 +392,17 @@ class EncounterService:
             page=params.page,
             only_count=params.only_count,
         )
+
+    async def played_at_by_encounter(
+        self, session: AsyncSession, encounter_ids: typing.Sequence[int]
+    ) -> dict[int, datetime | None]:
+        """:func:`played_at_expr` of each encounter, in one statement."""
+        if not encounter_ids:
+            return {}
+        rows = await session.execute(
+            sa.select(models.Encounter.id, played_at_expr()).where(models.Encounter.id.in_(encounter_ids))
+        )
+        return dict(rows.tuples().all())
 
     async def get_saved_views(
         self,
@@ -616,7 +743,7 @@ class EncounterService:
             encounter_base()
             .where(_upcoming_condition(now))
             .options(*encounter_entities(["tournament", "stage", "stage_item", "teams", "matches", "matches.map"]))
-            .order_by(models.Encounter.scheduled_at.asc(), models.Encounter.id.desc())
+            .order_by(models.Encounter.scheduled_at.asc().nulls_last(), models.Encounter.id.asc())
             .limit(4)
         )
         live_rows = await session.execute(

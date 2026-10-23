@@ -41,6 +41,8 @@ function encounter(overrides: Partial<Encounter>): Encounter {
     ended_at: null,
     current_map_index: null,
     confirmed_at: null,
+    played_at: null,
+    is_live: false,
     matches: [],
     games: [],
     teams: seats(0, 0),
@@ -85,16 +87,22 @@ describe("encounters helpers", () => {
     expect(params.toString()).toBe("search=wis&page=3&best_of=5&has_logs=true");
   });
 
-  it("maps UI sort keys to backend sort columns", () => {
-    expect(filtersToApiFilters({ ...DEFAULT_FILTERS, sort: "date" }).sort).toBe("id");
-    expect(filtersToApiFilters({ ...DEFAULT_FILTERS, sort: "closeness" }).sort).toBe("closeness");
-    expect(filtersToApiFilters({ ...DEFAULT_FILTERS, sort: "upcoming" }).sort).toBe("scheduled_at");
+  it("maps UI sort keys to backend sort columns, each in its own direction", () => {
+    const api = (sort: (typeof DEFAULT_FILTERS)["sort"]) => {
+      const { sort: column, order } = filtersToApiFilters({ ...DEFAULT_FILTERS, sort });
+      return [column, order];
+    };
+    expect(api("date")).toEqual(["played_at", "desc"]);
+    expect(api("closeness")).toEqual(["closeness", "desc"]);
+    expect(api("upcoming")).toEqual(["scheduled_at", "asc"]);
   });
 
   it("labels live, upcoming, and final encounters", () => {
     const now = new Date("2026-05-18T12:00:00Z");
 
-    expect(getEncounterState(encounter({ started_at: "2026-05-18T11:00:00Z" }), now)).toBe("Live");
+    expect(getEncounterState(encounter({ is_live: true }), now)).toBe("Live");
+    // Live is the server's call: a start stamp alone does not make one.
+    expect(getEncounterState(encounter({ started_at: "2026-05-18T11:00:00Z" }), now)).toBe("Open");
     expect(getEncounterState(encounter({ scheduled_at: "2026-05-18T13:00:00Z" }), now)).toBe(
       "Upcoming"
     );

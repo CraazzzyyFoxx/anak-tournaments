@@ -266,6 +266,8 @@ function encounter(
     scheduled_at: options.scheduled === true ? ended : null,
     started_at: ended,
     ended_at: ended,
+    played_at: null,
+    is_live: false,
     current_map_index: null,
     confirmed_at: ended,
     sources: [],
@@ -451,6 +453,7 @@ describe("tournament matches", () => {
       status: "in_progress",
       teams: [seat(1, ALPHA, 1), seat(2, BRAVO, 1)],
       ended_at: null,
+      is_live: true,
       confirmed_at: null
     };
     await render([...fixtures(true), live], "view=time");

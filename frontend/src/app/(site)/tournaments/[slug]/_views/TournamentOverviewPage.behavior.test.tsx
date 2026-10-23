@@ -303,6 +303,8 @@ function makeEncounter(
     scheduled_at: null,
     started_at: new Date("2024-08-12T12:00:00Z").toISOString(),
     ended_at: new Date("2024-08-12T13:00:00Z").toISOString(),
+    played_at: null,
+    is_live: false,
     current_map_index: null,
     confirmed_at: null,
     matches: [],
@@ -559,7 +561,8 @@ describe("while it is being played (§3B)", () => {
       results: [
         makeEncounter(1, 1, ALPHA, GAMMA, [1, 1], {
           status: "in_progress",
-          ended_at: null
+          ended_at: null,
+          is_live: true
         }),
         makeEncounter(2, 1, BETA, DELTA, [2, 0])
       ],

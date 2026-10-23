@@ -41,6 +41,8 @@ export interface BracketMatch {
   scheduled_at?: Date | string | null;
   started_at?: Date | string | null;
   ended_at?: Date | string | null;
+  /** The server's reading of "in play"; absent on a generator preview, which never is. */
+  is_live?: boolean;
   stage_item_id?: number | null;
   challonge_id?: number | null;
   /** Empty on a bracket whose advancement edges were never recorded. */

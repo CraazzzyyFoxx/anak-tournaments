@@ -186,7 +186,7 @@ const listRead = (game: string | null, page = 1) =>
     "",
     null,
     15,
-    "id",
+    "played_at",
     "desc",
     "all",
     expect.objectContaining({ discipline: game }),

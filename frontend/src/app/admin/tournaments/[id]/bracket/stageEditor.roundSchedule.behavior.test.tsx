@@ -188,6 +188,8 @@ function encounter(
     scheduled_at: scheduledAt,
     started_at: null,
     ended_at: null,
+    played_at: null,
+    is_live: false,
     current_map_index: null,
     confirmed_at: null,
     matches: [],

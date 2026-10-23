@@ -48,16 +48,11 @@ export function EncountersFilterBar({
 }>) {
   const t = useTranslations();
   const format = useFormatter();
-  const statusChips: Array<{ id: string; label: string; count?: number; value: string }> = [
-    { id: "live", label: t("common.live"), count: kpis.live_now_count, value: "live" },
-    {
-      id: "pending",
-      label: t("encounters.filter.statusPending"),
-      count: kpis.upcoming_count,
-      value: "pending"
-    },
-    { id: "completed", label: t("encounters.filter.statusFinal"), value: "completed" },
-    { id: "open", label: t("encounters.filter.statusOpen"), value: "open" }
+  // `upcoming` is open|pending and not live, server-side; an old `?status=open|pending` URL still filters, no chip lit.
+  const statusChips: Array<{ label: string; count?: number; value: string }> = [
+    { label: t("encounters.filter.statusLive"), count: kpis.live_now_count, value: "live" },
+    { label: t("encounters.filter.statusUpcoming"), count: kpis.upcoming_count, value: "upcoming" },
+    { label: t("encounters.filter.statusCompleted"), value: "completed" }
   ];
 
   return (
@@ -66,7 +61,7 @@ export function EncountersFilterBar({
         <FilterChipGroup label={t("common.status")}>
           {statusChips.map((chip) => (
             <FilterChip
-              key={chip.id}
+              key={chip.value}
               active={filters.status === chip.value}
               count={chip.count == null ? undefined : countLabel(format, chip.count)}
               onClick={() =>
