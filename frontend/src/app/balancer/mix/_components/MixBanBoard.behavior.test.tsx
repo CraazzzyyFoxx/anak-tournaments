@@ -468,6 +468,32 @@ describe("MixBanBoard", () => {
     expect(container.textContent).not.toContain("Pick Hero");
   });
 
+  it("drops a chosen hero when the captain switches to a player who may not take it", async () => {
+    // Fearless: P1 already played Hero 101, so only P0 may take it.
+    getPickBanState.mockResolvedValue(
+      stepState(EACH_PICK, {
+        expected_action: "pick",
+        viewer_team_id: 71,
+        viewer_can_act: true,
+        allowed_actions: ["pick"],
+        acting_team_ids: [71, 72],
+        acting_member_ids: [501, 502, 601],
+        viewer_member_ids: [501, 502],
+        member_eligible: { "501": [101, 102, 103], "502": [102, 103], "601": [101, 102, 103] },
+      }),
+    );
+    await render(() => {}, false);
+
+    await act(async () => tile("Hero 101")?.click());
+    expect(byLabel("Pick Hero 101 for P0")?.disabled).toBe(false);
+    await act(async () => byLabel("P1")?.click());
+
+    const confirmations = [...document.body.querySelectorAll("button")].filter(
+      (button) => button.textContent?.trim().startsWith("Pick ") && !button.disabled,
+    );
+    expect(confirmations).toEqual([]);
+  });
+
   it("alerts a player on each of their picks with the pick title", async () => {
     const vibrate = vi.fn();
     Object.defineProperty(navigator, "vibrate", { value: vibrate, configurable: true });

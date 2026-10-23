@@ -163,7 +163,7 @@ export function PickBanCommandBar({
             ) : null}
             <Button
               size="sm"
-              className="min-h-11 flex-1 sm:flex-initial"
+              className="min-h-11 min-w-0 flex-1 sm:flex-initial"
               variant={captainAction === "ban" ? "destructive" : "default"}
               disabled={selectedItemId == null || pending}
               onClick={() => {
@@ -173,7 +173,8 @@ export function PickBanCommandBar({
               {captainAction === "ban" ? <Ban className="mr-2 h-4 w-4" aria-hidden /> : null}
               {captainAction === "protect" ? <Shield className="mr-2 h-4 w-4" aria-hidden /> : null}
               {pending ? <Spinner className="mr-2" /> : null}
-              {pending ? t("captain.sending") : confirmLabel}
+              {/* Truncated, not overflowing the phone's bar: a hero and a player name can be long. */}
+              <span className="min-w-0 truncate">{pending ? t("captain.sending") : confirmLabel}</span>
             </Button>
           </div>
         ) : draft != null ? (

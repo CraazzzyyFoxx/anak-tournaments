@@ -168,7 +168,9 @@ export function PickBanPanel({
 
   const selectedItemId =
     pickedItemId != null &&
-    state.pool.some((entry) => entry.item_id === pickedItemId && entry.status === "available")
+    state.pool.some((entry) => entry.item_id === pickedItemId && entry.status === "available") &&
+    // A member pick is the chosen player's: switching to one who may not take the hero (Fearless) drops it.
+    (!memberStep || (state.member_eligible?.[String(actingMemberId)] ?? []).includes(pickedItemId))
       ? pickedItemId
       : null;
 
