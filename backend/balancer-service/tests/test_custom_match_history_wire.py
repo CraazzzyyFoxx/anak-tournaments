@@ -37,12 +37,13 @@ def _round(scores: tuple[float, float]) -> SimpleNamespace:
 
 
 def test_a_decided_round_names_its_winning_slot() -> None:
-    assert custom._dump_round(_round((1.0, 0.0)), {3: ("Busan", "/busan.png")}, [{"slot": 1, "item_id": 40}]) == {
+    assert custom._dump_round(_round((1.0, 0.0)), {3: ("Busan", "/busan.png")}, [{"slot": 1, "item_id": 40}], []) == {
         "id": 501,
         "lobby_index": 1,
         "teams": [{"slot": 1, "name": "Alpha", "score": 1}, {"slot": 2, "name": "Bravo", "score": 0}],
         "winner_slot": 1,
         "bans": [{"slot": 1, "item_id": 40}],
+        "picks": [],
         "map_id": 3,
         "map_name": "Busan",
         "map_image_path": "/busan.png",
@@ -53,4 +54,4 @@ def test_a_decided_round_names_its_winning_slot() -> None:
 
 
 def test_a_draw_has_no_winning_slot() -> None:
-    assert custom._dump_round(_round((0.0, 0.0)), {}, [])["winner_slot"] is None
+    assert custom._dump_round(_round((0.0, 0.0)), {}, [], [])["winner_slot"] is None

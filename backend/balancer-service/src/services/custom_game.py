@@ -817,8 +817,8 @@ class CustomGameService:
                 workspace_id=workspace_id, preset="wins", game_formula="win", end_formula=WINS_END_FORMULA
             ),
         )
-        # A clone keeps its source's bans and formation; a new mix starts from its host's defaults for this game
-        # (spec §4.3). A stored ban default the game no longer offers is no default.
+        # A clone keeps its source's bans, Fearless and formation; a new mix starts from its host's defaults for this
+        # game (spec §4.3). A stored ban default the game no longer offers is no default.
         if source is not None:
             ban_preset = source.hero_ban_preset
             team_formation, draft_pick_seconds = source.team_formation, source.draft_pick_seconds
@@ -844,6 +844,7 @@ class CustomGameService:
             # the clone; the matchups played in them do not.
             lobby_count=source.lobby_count if source is not None else 1,
             hero_ban_preset=ban_preset,
+            hero_fearless=source.hero_fearless if source is not None else False,
             team_formation=team_formation,
             draft_pick_seconds=draft_pick_seconds,
         )
@@ -1569,12 +1570,14 @@ class CustomGameService:
         workspace_id: int,
         custom_game_id: int,
         hero_ban_preset: str | None,
+        hero_fearless: bool | None = None,
         actor_user_id: int,
         actor_is_superuser: bool = False,
     ) -> models.CustomGame:
         """The hero ban preset the next Start opens a room on (spec §4.3): a preset of the mix's own game, or ``None``.
 
         A live match keeps the room it started with; the change applies from the next Start. 422 ``unknown_ban_preset``.
+        ``hero_fearless`` (when given) turns Fearless on or off; it too applies from the next room (spec §11.4).
         """
         game = await self._writable(
             session,
@@ -1586,6 +1589,8 @@ class CustomGameService:
         if hero_ban_preset is not None and mix_ban_preset(game.discipline, hero_ban_preset) is None:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="unknown_ban_preset")
         game.hero_ban_preset = hero_ban_preset
+        if hero_fearless is not None:
+            game.hero_fearless = hero_fearless
         await session.flush()
         return game
 

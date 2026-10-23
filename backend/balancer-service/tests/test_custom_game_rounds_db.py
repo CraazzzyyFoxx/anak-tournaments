@@ -992,6 +992,42 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
 
         self.assertEqual([{"slot": 1, "item_id": 42}, {"slot": 2, "item_id": 40}], played["bans"])
 
+    async def test_the_history_lists_whose_hero_each_pick_was(self) -> None:
+        encounter_id = await self._record(self._draft())
+        seats = await self._rows(
+            "SELECT tm.id, tm.workspace_member_id, tm.display_name_snapshot, et.slot, et.id"
+            " FROM encounter.team_member tm JOIN encounter.team et ON et.id = tm.encounter_team_id"
+            " WHERE tm.encounter_id = :id ORDER BY et.slot, tm.id",
+            id=encounter_id,
+        )
+        room = await self._hero_room(encounter_id, MapVetoSessionStatus.COMPLETED)
+        async with self.Session() as s:
+            for index, (seat_id, _member, _name, _slot, team_id) in enumerate(seats):
+                s.add(
+                    models.PickBanEntry(
+                        session_id=room,
+                        encounter_id=encounter_id,
+                        item_id=50 + index,
+                        status=MapPoolEntryStatus.PICKED,
+                        action_index=index,
+                        picked_by_kind=PickBanActorKind.TEAM,
+                        picked_by_team_id=team_id,
+                        picked_for_member_id=seat_id,
+                    )
+                )
+            await s.commit()
+
+        async with self.Session() as s:
+            [played] = await custom._dump_rounds(s, list(await self.rounds.list_for_custom_game(s, self.cg.id)))
+
+        self.assertEqual(
+            [
+                {"slot": slot, "member_id": member, "name": name, "item_id": 50 + index}
+                for index, (_seat, member, name, slot, _team) in enumerate(seats)
+            ],
+            played["picks"],
+        )
+
     async def test_a_side_picked_game_keeps_its_sides_and_takes_its_score(self) -> None:
         match, result = self._draft()
         async with self.Session() as s:

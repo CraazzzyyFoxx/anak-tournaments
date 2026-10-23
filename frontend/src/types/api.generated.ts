@@ -9799,7 +9799,7 @@ export interface paths {
         };
         /**
          * Get custom game
-         * @description Permission: public; no authentication required. Returns one mix with its full lineup: each seat's participation state, role order, the ranks the balancer would use and which layer each came from. Resolves ownership from the mix id; an optional workspace_id restricts the read and returns 404 if the mix belongs to another workspace. It carries the mix's hero_ban_preset (null = no bans). Each lobby carries state (idle | ready | pregame | live), live_seats (the live match's participations {id, slot, name}) and opener_index (the lineup team that bans first in the next match, null without bans). A lobby's `state` reads `draft_setup` / `draft_live` while its draft runs, with `draft_session_id`; a drafted lineup's document carries `source: "draft"`. A player in a drafting lobby's pool reads that lobby as `current_lobby`; an unpicked player who stepped away leaves the pool.
+         * @description Permission: public; no authentication required. Returns one mix with its full lineup: each seat's participation state, role order, the ranks the balancer would use and which layer each came from. Resolves ownership from the mix id; an optional workspace_id restricts the read and returns 404 if the mix belongs to another workspace. It carries the mix's hero_ban_preset (null = no bans). It carries hero_fearless (spec §11.4). Each lobby carries state (idle | ready | pregame | live), live_seats (the live match's participations {id, slot, name}) and opener_index (the lineup team that bans first in the next match, null without bans). A lobby's `state` reads `draft_setup` / `draft_live` while its draft runs, with `draft_session_id`; a drafted lineup's document carries `source: "draft"`. A player in a drafting lobby's pool reads that lobby as `current_lobby`; an unpicked player who stepped away leaves the pool.
          *
          *     RPC subject: `rpc.balancer.custom.get`
          */
@@ -10066,7 +10066,7 @@ export interface paths {
         get?: never;
         /**
          * Set custom game ban preset
-         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Sets the hero ban preset the lobbies' next Start opens a room on -- a hero preset of the mix's own game that bans no player on map 1 (deadlock_hero_bans, lol_side_selection, the Overwatch hero presets) -- or null for no bans, and returns the refreshed mix. A live match keeps the room it started with. 422 unknown_ban_preset for any other code.
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Sets the hero ban preset the lobbies' next Start opens a room on -- a hero preset of the mix's own game that bans no player on map 1 (deadlock_hero_bans, deadlock_bans_pick, lol_side_selection, lol_draft, lol_captains, the Overwatch hero presets) -- or null for no bans, and returns the refreshed mix. A live match keeps the room it started with. 422 unknown_ban_preset for any other code. hero_fearless, when sent, turns Fearless on or off for the next room: a player cannot pick a hero they were recorded on earlier in the mix.
          *
          *     RPC subject: `rpc.balancer.custom.set_ban_preset`
          */
@@ -10439,7 +10439,7 @@ export interface paths {
         };
         /**
          * List custom game matches
-         * @description Permission: public; no authentication required. Returns every round recorded for the mix, newest first: its two teams by slot (slot 1 banned first) with name and score, its hero bans {slot, item_id} in order, the winning slot (null for a draw), lobby, map, recorder and the rank points it applied.
+         * @description Permission: public; no authentication required. Returns every round recorded for the mix, newest first: its two teams by slot (slot 1 banned first) with name and score, its hero bans {slot, item_id} in order, whose hero each pick was {slot, member_id, name, item_id} in pick order, the winning slot (null for a draw), lobby, map, recorder and the rank points it applied.
          *
          *     RPC subject: `rpc.balancer.custom.match_history`
          */
@@ -23094,11 +23094,16 @@ export interface components {
         };
         /**
          * CustomGameBanPresetPatch
-         * @description The mix's hero ban preset; ``null`` turns bans off.
+         * @description The mix's hero room: its ban preset (``null`` turns bans off) and, when sent, Fearless (spec §11.4).
          */
         "balancer.CustomGameBanPresetPatch": {
             /** Hero Ban Preset */
             hero_ban_preset: string | null;
+            /**
+             * Hero Fearless
+             * @default null
+             */
+            hero_fearless: boolean | null;
         };
         /**
          * CustomGameCaptainPatch

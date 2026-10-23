@@ -312,6 +312,7 @@ DOCS: dict[str, dict] = {
             "Resolves ownership from the mix id; an optional workspace_id restricts the read "
             "and returns 404 if the mix belongs to another workspace."
             " It carries the mix's hero_ban_preset (null = no bans)."
+            " It carries hero_fearless (spec §11.4)."
             " Each lobby carries state (idle | ready | pregame | live), live_seats (the live match's participations"
             " {id, slot, name}) and opener_index (the lineup team that bans first in the next match, null without"
             " bans)."
@@ -414,9 +415,11 @@ DOCS: dict[str, dict] = {
         "description": (
             "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
             "Sets the hero ban preset the lobbies' next Start opens a room on -- a hero preset of the mix's own "
-            "game that bans no player on map 1 (deadlock_hero_bans, lol_side_selection, the Overwatch hero "
-            "presets) -- or null for no bans, and returns the refreshed mix. A live match keeps the room it "
-            "started with. 422 unknown_ban_preset for any other code."
+            "game that bans no player on map 1 (deadlock_hero_bans, deadlock_bans_pick, lol_side_selection, "
+            "lol_draft, lol_captains, the Overwatch hero presets) -- or null for no bans, and returns the refreshed "
+            "mix. A live match keeps the room it started with. 422 unknown_ban_preset for any other code."
+            " hero_fearless, when sent, turns Fearless on or off for the next room: a player cannot pick a hero they"
+            " were recorded on earlier in the mix."
         ),
     },
     "rpc.balancer.custom.set_draft_settings": {
@@ -641,6 +644,7 @@ DOCS: dict[str, dict] = {
         "description": (
             "Permission: public; no authentication required. Returns every round recorded for the mix, newest first: "
             "its two teams by slot (slot 1 banned first) with name and score, its hero bans {slot, item_id} in order, "
+            "whose hero each pick was {slot, member_id, name, item_id} in pick order, "
             "the winning slot (null for a draw), lobby, map, recorder and the rank points it applied."
         ),
     },

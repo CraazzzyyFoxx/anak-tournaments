@@ -419,6 +419,8 @@ def _dump_game(
         "self_role_edit": game.self_role_edit,
         # The hero ban preset Start opens a room on; null = no bans (spec §4.3).
         "hero_ban_preset": game.hero_ban_preset,
+        # Fearless (spec §11.4): a player never picks a hero they played earlier in this mix.
+        "hero_fearless": game.hero_fearless,
         # How a lobby forms its teams by default, and the draft's pick clock (spec §4.3).
         "team_formation": game.team_formation,
         "draft_pick_seconds": game.draft_pick_seconds,
@@ -592,8 +594,14 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
     )
 
 
-def _dump_round(round_: Any, map_info: dict[int, tuple[str, str | None]], bans: list[dict[str, int]]) -> dict[str, Any]:
-    """One recorded round as the history wire spells it: the two seats by slot, the winning slot, the hero bans."""
+def _dump_round(
+    round_: Any,
+    map_info: dict[int, tuple[str, str | None]],
+    bans: list[dict[str, int]],
+    picks: list[dict[str, int | str]],
+) -> dict[str, Any]:
+    """One recorded round as the history wire spells it: the two seats by slot, the winning slot, the hero bans and
+    whose hero each pick was."""
     encounter = round_.encounter
     teams = sorted(encounter.teams, key=lambda team: team.slot)
     map_id = encounter.games[0].map_id if encounter.games else None
@@ -608,6 +616,8 @@ def _dump_round(round_: Any, map_info: dict[int, tuple[str, str | None]], bans: 
         "winner_slot": winner_slot(1, teams[0].score, teams[1].score),
         # The hero bans, in the order they were made (spec §8.4).
         "bans": bans,
+        # Each member's hero, in pick order (spec §11.6 R4-11).
+        "picks": picks,
         "map_id": map_id,
         "map_name": map_name,
         "map_image_path": map_image_path,
@@ -622,11 +632,16 @@ def _dump_round(round_: Any, map_info: dict[int, tuple[str, str | None]], bans: 
 
 
 async def _dump_rounds(session: Any, rounds: list[Any]) -> list[dict[str, Any]]:
-    """Dump match history, resolving every round's map name and thumbnail and its hero bans in one read each."""
+    """Dump match history, resolving every round's map name and thumbnail and its hero bans and picks in one read
+    each."""
     map_ids = {round_.encounter.games[0].map_id for round_ in rounds if round_.encounter.games} - {None}
     map_info = await custom_game_service.round_map_info(session, map_ids)
     bans = await custom_game_service.mix_rounds.hero_bans(session, [round_.encounter.id for round_ in rounds])
-    return [_dump_round(round_, map_info, bans.get(round_.encounter.id, [])) for round_ in rounds]
+    picks = await custom_game_service.mix_rounds.hero_picks(session, [round_.encounter.id for round_ in rounds])
+    return [
+        _dump_round(round_, map_info, bans.get(round_.encounter.id, []), picks.get(round_.encounter.id, []))
+        for round_ in rounds
+    ]
 
 
 def _dump_rotation(recommendations: list[Any]) -> list[dict[str, Any]]:
@@ -1007,6 +1022,7 @@ def register(broker: Any, logger: Any) -> None:
                 workspace_id=workspace_id,
                 custom_game_id=_game_id(data),
                 hero_ban_preset=body.hero_ban_preset,
+                hero_fearless=body.hero_fearless,
                 actor_user_id=user.id,
                 actor_is_superuser=user.is_superuser,
             )
