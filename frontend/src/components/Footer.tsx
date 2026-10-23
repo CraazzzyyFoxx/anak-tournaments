@@ -10,9 +10,10 @@ import Github from "@/components/icons/Github";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import Image from "@/components/ui/image";
 import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
-import { APP_VERSION, BRAND_NAME, SITE_URL } from "@/config/site";
+import { APP_VERSION, BRAND_NAME, REPO_URL, SITE_URL } from "@/config/site";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { getAuthProfileHref } from "@/lib/auth/profile-links";
+import { releaseForVersion } from "@/lib/changelog/releases";
 import type { Workspace } from "@/types/workspace.types";
 
 const LINK_CLASS =
@@ -22,12 +23,6 @@ const META_CLASS =
   "text-[color:var(--aqt-fg-dim)] transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 const VERSION_CLASS =
   "rounded-[5px] border border-[color:var(--aqt-border-2)] px-1.5 py-[3px] text-label font-semibold tabular-nums text-[color:var(--aqt-fg-dim)]";
-
-// The repository the app is built from. One constant, because the source link
-// and the version tag link must point at the same repo — they were written out
-// twice and both carried the old `anak-tournaments` name after the rename, so
-// every version chip in the footer 404'd.
-const REPO_URL = "https://github.com/CraazzzyyFoxx/overwatch-tournaments";
 
 /**
  * The footer renders on every page, so its links sit in the viewport of every
@@ -55,8 +50,11 @@ export function Footer({ tenant }: Readonly<{ tenant: Workspace | null }>) {
   const { user } = useAuthProfile();
   const year = new Date().getFullYear();
 
+  // The changelog entry of the running version: a patch release has none of its
+  // own and opens the newest one below it; a version none matches, the page top.
+  const release = releaseForVersion(APP_VERSION);
   const version = APP_VERSION ? (
-    <FooterLink href={`${REPO_URL}/releases/tag/${APP_VERSION}`} className={VERSION_CLASS}>
+    <FooterLink href={release ? `/changelog#v${release.version}` : "/changelog"} className={VERSION_CLASS}>
       {APP_VERSION}
     </FooterLink>
   ) : null;
@@ -142,6 +140,9 @@ export function Footer({ tenant }: Readonly<{ tenant: Workspace | null }>) {
               <FooterLink href="/docs" className={LINK_CLASS}>
                 {t("common.footer.docs")}
               </FooterLink>
+              <FooterLink href="/changelog" className={LINK_CLASS}>
+                {t("common.footer.changelog")}
+              </FooterLink>
             </Column>
           </>
         ) : (
@@ -163,6 +164,9 @@ export function Footer({ tenant }: Readonly<{ tenant: Workspace | null }>) {
             <Column heading={t("common.footer.resourcesHeading")}>
               <FooterLink href="/docs" className={LINK_CLASS}>
                 {t("common.footer.docs")}
+              </FooterLink>
+              <FooterLink href="/changelog" className={LINK_CLASS}>
+                {t("common.footer.changelog")}
               </FooterLink>
               {/* Same host, any tenant: the gateway registers /api/docs
                   unconditionally regardless of which workspace domain served

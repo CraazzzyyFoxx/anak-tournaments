@@ -353,6 +353,7 @@
       "twitch": "Twitch",
       "boosty": "Boosty",
       "docs": "Docs",
+      "changelog": "What's new",
       "apiDocs": "API Docs",
       "poweredBy": "Powered by",
       "legalLabel": "Legal",
@@ -4981,6 +4982,11 @@
         "remove": "Delete"
       }
     }
+  },
+  "changelog": {
+    "title": "What's new",
+    "lede": "OWT changes for players and organizers. Newest first.",
+    "fullLog": "Full list of changes on GitHub"
   },
   "chat": {
     "title": "Room chat",

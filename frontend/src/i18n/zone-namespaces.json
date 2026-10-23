@@ -33,6 +33,7 @@
     "analytics",
     "auth",
     "bracket",
+    "changelog",
     "chat",
     "common",
     "discord",

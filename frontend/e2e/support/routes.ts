@@ -110,6 +110,7 @@ export const ROUTES: PageRoute[] = [
   { file: "(site)/(home)/page.tsx", access: "public", url: () => "/" },
   site("achievements", () => "/achievements"),
   site("achievements/[id]", (d) => `/achievements/${d.achievementId}`),
+  site("changelog", () => "/changelog"),
   site("docs", () => "/docs"),
   site("docs/[section]", () => "/docs/players"),
   site("docs/[section]/[slug]", () => "/docs/players/quickstart"),

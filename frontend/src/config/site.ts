@@ -40,6 +40,12 @@ export const YM_ID = process.env.NEXT_PUBLIC_YM_ID;
 // dev, where the footer then renders no version at all.
 export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION;
 
+// The repository the app is built from: the footer's source link and the
+// changelog's links to each release tag. One constant, because the URL was once
+// written out twice and both copies kept the old `anak-tournaments` name after
+// the rename, so every version chip in the footer 404'd.
+export const REPO_URL = "https://github.com/CraazzzyyFoxx/overwatch-tournaments";
+
 // Discord application id of the platform's bot — the `client_id` of the bot
 // invite link on the workspace Discord settings page. It is the APPLICATION id
 // (same app the bot token belongs to), not the bot user id, and not necessarily

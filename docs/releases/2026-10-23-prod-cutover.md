@@ -157,6 +157,10 @@ arguments. Checked on Moscow (2026-10-23): a container on `owt_app-network` reac
    command older than 5 minutes dead-letters to `discord_commands.dlq` and reads `lost`
    ([mix-discord](./2026-10-23-mix-discord.md)). Pick a window with no tournament stage, draft or registration deadline
    within an hour of it: the `tournament-svc` tick is stopped.
+7. **Changelog date, before the tag of step 1.** Set `date` of the `2.0.0` entry in
+   `frontend/src/lib/changelog/releases.ts` to the window day: `/changelog` prints it, and the release card shows for
+   14 days from it. The switcher screenshot `frontend/public/changelog/2.0.0/games.{ru,en}.webp` was taken on dev,
+   where VALORANT has no icon yet and reads «VAL»; retake it if dev gets the icon before the tag.
 
 ## 2. Window: close and drain
 
