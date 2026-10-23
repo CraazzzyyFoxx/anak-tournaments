@@ -40,6 +40,9 @@ export interface StageForm {
   scoringDraw: string;
   scoringLoss: string;
   swissByePoints: string;
+  /** Swiss thresholds; `null` is the switch turned off, not "inherit". */
+  swissQualifyWins: number | null;
+  swissEliminateLosses: number | null;
   bestOf: StageBestOfConfig;
   /** FFA leagues: what place `i + 1` pays, `[]` for a lobby places do not pay. */
   ffaPlacementPoints: number[];
@@ -74,6 +77,8 @@ export function stageFormFromStage(stage: Stage): StageForm {
     scoringDraw: numberOrEmpty(stage.scoring.draw),
     scoringLoss: numberOrEmpty(stage.scoring.loss),
     swissByePoints: numberOrEmpty(stage.swiss_bye_points),
+    swissQualifyWins: stage.swiss_qualify_wins,
+    swissEliminateLosses: stage.swiss_eliminate_losses,
     bestOf: stage.best_of,
     ffaPlacementPoints: stage.scoring.placement_points ?? defaultRule.placementPoints,
     ffaColumns: ffaColumnsOf(stage),
@@ -83,6 +88,11 @@ export function stageFormFromStage(stage: Stage): StageForm {
 
 export function buildStageUpdatePayload(stage: Stage, form: StageForm): StageUpdateInput {
   const isFfa = FFA_STAGE_TYPES.includes(form.stageType);
+  const isSwiss = form.stageType === "swiss";
+  // A threshold only exists on a Swiss stage, and a decisive match only while
+  // its threshold is on: a switched-off one takes its best-of with it.
+  const qualifyWins = isSwiss ? form.swissQualifyWins : null;
+  const eliminateLosses = isSwiss ? form.swissEliminateLosses : null;
 
   return {
     name: form.name.trim() || stage.name,
@@ -107,6 +117,8 @@ export function buildStageUpdatePayload(stage: Stage, form: StageForm): StageUpd
       ? form.tiebreakOrder
       : ["points", ...form.tiebreakOrder],
     swiss_bye_points: emptyOrNumber(form.swissByePoints),
+    swiss_qualify_wins: qualifyWins,
+    swiss_eliminate_losses: eliminateLosses,
     de_grand_final_type:
       form.stageType === "double_elimination" ? form.deGrandFinalType : "no_reset",
     seed_ranking: BRACKET_STAGE_TYPES.includes(form.stageType) ? form.seedRanking : "slot",
@@ -115,7 +127,14 @@ export function buildStageUpdatePayload(stage: Stage, form: StageForm): StageUpd
     // `default`, and `final` is a bracket's last round. Either one left over from
     // the format this stage used to be would silently beat "Games per lobby",
     // with nothing in the editor that can reach it, so only `default` is kept.
-    best_of: isFfa ? { default: form.bestOf.default, by_round: {}, final: null } : form.bestOf,
+    // `best_of` is replaced whole: a key left out resets to null, so all are sent.
+    best_of: {
+      default: form.bestOf.default,
+      by_round: isFfa ? {} : form.bestOf.by_round,
+      final: isFfa ? null : form.bestOf.final,
+      swiss_qualify: qualifyWins != null ? form.bestOf.swiss_qualify : null,
+      swiss_eliminate: eliminateLosses != null ? form.bestOf.swiss_eliminate : null
+    },
     // Only an FFA league is scored by columns and a formula. A stage that stays
     // another type leaves its stored rule alone (`scoring` is sent whole, so
     // "alone" means sending it back as it was). A stage whose FORMAT changes sends
@@ -165,6 +184,8 @@ const FIELD_LABELS: Record<keyof StageForm, string> = {
   scoringDraw: "drawPoints",
   scoringLoss: "lossPoints",
   swissByePoints: "swissByePoints",
+  swissQualifyWins: "swissQualifyWins",
+  swissEliminateLosses: "swissEliminateLosses",
   bestOf: "bestOf",
   ffaPlacementPoints: "pointsPerPlace",
   ffaColumns: "gameColumns",

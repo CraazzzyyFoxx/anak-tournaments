@@ -126,6 +126,12 @@ function TeamCell({ standing, showGroup }: Readonly<{ standing: Standings; showG
           <span className="sub">{groupDisplayName(groupName, t("common.group"))}</span>
         )}
       </div>
+      {/* A Swiss threshold's verdict, the server's: final, unlike the cut-line. */}
+      {standing.swiss_status === "qualified" ? (
+        <span className="st-status adv">{t("standings.swissQualified")}</span>
+      ) : standing.swiss_status === "eliminated" ? (
+        <span className="st-status out">{t("standings.swissEliminated")}</span>
+      ) : null}
     </div>
   );
 }
@@ -333,7 +339,8 @@ const StandingsTable = ({
                     : undefined;
               const rowClass = cn(
                 crowned ? "crown" : advancing ? "advance" : undefined,
-                tieVerdict ? "tie" : undefined
+                tieVerdict ? "tie" : undefined,
+                standing.swiss_status === "eliminated" ? "swiss-out" : undefined
               );
 
               return (

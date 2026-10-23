@@ -4,7 +4,7 @@ Persisting a skeleton and moving results along its edges take a session, so they
 """
 
 from src.domain.bracket.engine import generate_bracket, placeholder_bracket, placeholder_seeds
-from src.domain.bracket.swiss import SwissPairingImpossibleError, SwissStanding
+from src.domain.bracket.swiss import SwissPairingImpossibleError, SwissStanding, SwissThresholds
 from src.domain.bracket.template import (
     BracketTemplate,
     TemplateMatch,
@@ -23,6 +23,7 @@ __all__ = (
     "Pairing",
     "SwissPairingImpossibleError",
     "SwissStanding",
+    "SwissThresholds",
     "TemplateMatch",
     "TemplateProblem",
     "TemplateSlot",

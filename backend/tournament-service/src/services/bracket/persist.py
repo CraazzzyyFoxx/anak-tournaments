@@ -57,7 +57,8 @@ async def persist_skeleton(
 ) -> list[Encounter]:
     """Insert pairings in skeleton order, seat them, and wire the links.
 
-    ``best_of_for_round(round_number, *, is_final)`` resolves BoN. Negative
+    ``best_of_for_round(round_number, *, is_final)`` resolves BoN for a pairing
+    without its own ``best_of``. Negative
     rounds go to ``lb_stage_item_id`` when that item exists. A team id the
     skeleton seeds but ``teams_by_id`` does not name is seated anyway, under
     the name "TBD", as the display name shows it.
@@ -75,7 +76,9 @@ async def persist_skeleton(
             scoring_rule_id=stage.scoring_rule_id,
             name=build_encounter_name_from_ids(pairing.team_ids, names_by_id),
             slot_count=pairing.slot_count,
-            best_of=best_of_for_round(
+            best_of=pairing.best_of
+            if pairing.best_of is not None
+            else best_of_for_round(
                 pairing.round_number,
                 is_final=is_elimination and pairing.round_number == max_round,
             ),

@@ -41,6 +41,8 @@ class Pairing:
     round_number: int
     name: str = ""
     local_id: int = 0  # Position in the pairings list (bracket-local identity)
+    #: The encounter's own series length; ``None`` = the stage's per-round rule.
+    best_of: int | None = None
 
     @property
     def slot_count(self) -> int:

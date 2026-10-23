@@ -20555,7 +20555,8 @@ export interface components {
         /**
          * StageBestOf
          * @description Series length per encounter: ``final`` (an elimination stage's last round),
-         *     else the round's own ``by_round`` entry, else ``default``.
+         *     a Swiss decisive match's ``swiss_qualify`` / ``swiss_eliminate`` (the larger
+         *     when it is both), else the round's own ``by_round`` entry, else ``default``.
          */
         "tournament.StageBestOf": {
             /** By Round */
@@ -20572,6 +20573,16 @@ export interface components {
              * @default null
              */
             final: number | null;
+            /**
+             * Swiss Eliminate
+             * @default null
+             */
+            swiss_eliminate: number | null;
+            /**
+             * Swiss Qualify
+             * @default null
+             */
+            swiss_qualify: number | null;
         };
         /** StageItemInputRead */
         "tournament.StageItemInputRead": {
@@ -20728,6 +20739,16 @@ export interface components {
              */
             swiss_bye_points: number | null;
             /**
+             * Swiss Eliminate Losses
+             * @default null
+             */
+            swiss_eliminate_losses: number | null;
+            /**
+             * Swiss Qualify Wins
+             * @default null
+             */
+            swiss_qualify_wins: number | null;
+            /**
              * Tiebreak Order
              * @default null
              */
@@ -20861,6 +20882,16 @@ export interface components {
              */
             swiss_bye_points: number | null;
             /**
+             * Swiss Eliminate Losses
+             * @default null
+             */
+            swiss_eliminate_losses: number | null;
+            /**
+             * Swiss Qualify Wins
+             * @default null
+             */
+            swiss_qualify_wins: number | null;
+            /**
              * Tiebreak Order
              * @default null
              */
@@ -20932,6 +20963,11 @@ export interface components {
              * @default null
              */
             stage_item_id: number | null;
+            /**
+             * Swiss Status
+             * @default null
+             */
+            swiss_status: TournamentStandingReadSwiss_statusAnyOf0 | null;
             /** Tb */
             tb: number | null;
             /**
@@ -30044,6 +30080,16 @@ export interface components {
              */
             swiss_bye_points: number | null;
             /**
+             * Swiss Eliminate Losses
+             * @default null
+             */
+            swiss_eliminate_losses: number | null;
+            /**
+             * Swiss Qualify Wins
+             * @default null
+             */
+            swiss_qualify_wins: number | null;
+            /**
              * Tiebreak Order
              * @default null
              */
@@ -30211,6 +30257,16 @@ export interface components {
              * @default null
              */
             swiss_bye_points: number | null;
+            /**
+             * Swiss Eliminate Losses
+             * @default null
+             */
+            swiss_eliminate_losses: number | null;
+            /**
+             * Swiss Qualify Wins
+             * @default null
+             */
+            swiss_qualify_wins: number | null;
             /**
              * Tiebreak Order
              * @default null
@@ -81077,6 +81133,10 @@ export enum TournamentStageType {
     double_elimination = "double_elimination",
     swiss = "swiss",
     ffa_league = "ffa_league"
+}
+export enum TournamentStandingReadSwiss_statusAnyOf0 {
+    qualified = "qualified",
+    eliminated = "eliminated"
 }
 export enum TournamentTournamentLinkReadKind {
     discord = "discord",

@@ -72,6 +72,16 @@ class Stage(db.TimeStampIntegerMixin):
         CheckConstraint("seed_ranking IN ('slot', 'avg_sr', 'total_sr', 'random')", name="ck_stage_seed_ranking"),
         CheckConstraint("best_of_default >= 1", name="ck_stage_best_of_default"),
         CheckConstraint("best_of_final IS NULL OR best_of_final >= 1", name="ck_stage_best_of_final"),
+        CheckConstraint("swiss_qualify_wins IS NULL OR swiss_qualify_wins >= 1", name="ck_stage_swiss_qualify_wins"),
+        CheckConstraint(
+            "swiss_eliminate_losses IS NULL OR swiss_eliminate_losses >= 1", name="ck_stage_swiss_eliminate_losses"
+        ),
+        CheckConstraint(
+            "best_of_swiss_qualify IS NULL OR best_of_swiss_qualify >= 1", name="ck_stage_best_of_swiss_qualify"
+        ),
+        CheckConstraint(
+            "best_of_swiss_eliminate IS NULL OR best_of_swiss_eliminate >= 1", name="ck_stage_best_of_swiss_eliminate"
+        ),
         #: Target of ``tournament.bracket_encounter``'s composite FK.
         UniqueConstraint("id", "tournament_id", name="uq_stage_id_tournament"),
         {"schema": "tournament"},
@@ -119,6 +129,12 @@ class Stage(db.TimeStampIntegerMixin):
     loss_points: Mapped[float | None] = mapped_column(Float(), nullable=True)
     #: What a Swiss bye pays; NULL = the stage's win points.
     swiss_bye_points: Mapped[float | None] = mapped_column(Float(), nullable=True)
+    #: Swiss only: a team with this many wins (byes included) is through and
+    #: paired no more; NULL = it plays on.
+    swiss_qualify_wins: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    #: Swiss only: a team with this many losses is out and paired no more;
+    #: NULL = it plays on.
+    swiss_eliminate_losses: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     #: Double elimination only: ``with_reset`` plays a second Grand Final when
     #: the lower-bracket team wins the first.
     de_grand_final_type: Mapped[str] = mapped_column(String(16), default="no_reset", server_default="no_reset")
@@ -128,6 +144,10 @@ class Stage(db.TimeStampIntegerMixin):
     best_of_default: Mapped[int] = mapped_column(Integer(), default=3, server_default="3")
     #: An elimination stage's last round; NULL = resolved like any other round.
     best_of_final: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    #: Swiss only: a match one of whose teams is one win from ``swiss_qualify_wins``
+    #: / one loss from ``swiss_eliminate_losses``; NULL = resolved like any other.
+    best_of_swiss_qualify: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    best_of_swiss_eliminate: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     #: The Challonge group this stage mirrors (Challonge sync's only link to it).
     challonge_group_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     # A custom bracket drawn in the admin editor (tournament-service ``src.domain.bracket.template``);
@@ -189,6 +209,8 @@ class Stage(db.TimeStampIntegerMixin):
             "default": self.best_of_default,
             "by_round": {row.round: row.best_of for row in self.round_best_of},
             "final": self.best_of_final,
+            "swiss_qualify": self.best_of_swiss_qualify,
+            "swiss_eliminate": self.best_of_swiss_eliminate,
         }
 
 

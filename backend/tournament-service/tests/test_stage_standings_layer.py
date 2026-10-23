@@ -614,6 +614,100 @@ class SwissPairingTests(StageLayerCase):
         self.assertEqual({frozenset({t2, t3}), frozenset({t0, t1})}, pairs, "round 2 pairs the two 1-0 teams")
 
 
+class SwissThresholdTests(StageLayerCase):
+    """Two wins through, two losses out: four teams are settled in three rounds."""
+
+    async def _win(self, encounter_id: int, winner: int) -> None:
+        async with self.Session() as s:
+            encounter = await s.get_one(Encounter, encounter_id)
+            seats = await active_teams(s, encounter.id)
+            await apply_result(
+                s,
+                encounter,
+                source=enums.EncounterResultSource.ADMIN,
+                totals={seat.id: 1.0 if seat.team_id == winner else 0.0 for seat in seats},
+                placements={seat.id: 1 if seat.team_id == winner else 2 for seat in seats},
+                action=enums.EncounterResultAuditAction.CONFIRM,
+                audit_source="admin",
+                actor_user_id=None,
+                reason="test",
+            )
+            await s.commit()
+
+    async def _round(self, encounters) -> dict[frozenset[int], tuple[int, int]]:
+        """``{teams: (encounter_id, best_of)}`` of a round."""
+        async with self.Session() as s:
+            return {
+                frozenset(seat.team_id for seat in await active_teams(s, e.id)): (e.id, e.best_of) for e in encounters
+            }
+
+    async def test_decided_teams_stop_playing_and_the_stage_completes(self) -> None:
+        from src.services.standings.swiss_auto_round import swiss_rounds_service
+
+        t0, t1, t2, t3 = self.team_ids
+        stage = await self.make_stage(enums.StageType.SWISS, teams=self.team_ids)
+        async with self.Session() as s:
+            await stage_service.update_stage(
+                s,
+                stage.id,
+                schemas.StageUpdate(
+                    # Five rounds would be a full circle -- a round robin -- without thresholds.
+                    max_rounds=5,
+                    swiss_qualify_wins=2,
+                    swiss_eliminate_losses=2,
+                    best_of=schemas.StageBestOf(default=1, swiss_qualify=3, swiss_eliminate=5),
+                ),
+            )
+        async with self.Session() as s:
+            row = await s.get_one(Stage, stage.id)
+            row.is_active = True
+            item_id = (await s.scalars(sa.select(StageItem.id).where(StageItem.stage_id == stage.id))).one()
+            await s.commit()
+
+        async def play(encounters, winners) -> dict[frozenset[int], int]:
+            """Play a round (``winners`` picks one team per match); ``{teams: best_of}``."""
+            cards = await self._round(encounters)
+            for teams, (encounter_id, _best_of) in cards.items():
+                await self._win(encounter_id, next(team for team in teams if team in winners))
+            return {teams: best_of for teams, (_id, best_of) in cards.items()}
+
+        async def next_round(expected: int):
+            async with self.Session() as s:
+                cards = await swiss_rounds_service.generate_next_swiss_round(
+                    s,
+                    tournament_id=self.tournament_id,
+                    stage_id=stage.id,
+                    stage_item_id=item_id,
+                    expected_next_round=expected,
+                )
+                await s.commit()
+            return cards
+
+        async with self.Session() as s:
+            round_one = await stage_service.generate_encounters(s, stage.id, notify=False)
+        self.assertEqual({frozenset({t0, t2}): 1, frozenset({t1, t3}): 1}, await play(round_one, {t0, t1}))
+        self.assertEqual(
+            {frozenset({t0, t1}): 3, frozenset({t2, t3}): 5},
+            await play(await next_round(2), {t0, t2}),
+            "1-0 meets 1-0 for a place, 0-1 meets 0-1 to stay in",
+        )
+        self.assertEqual(
+            {frozenset({t1, t2}): 5}, await play(await next_round(3), {t1}), "2-0 and 0-2 sit out; 1-1 decides both"
+        )
+
+        async with self.Session() as s:
+            table = await standings_service.recalculate_for_tournament(s, self.tournament_id)
+        self.assertEqual(
+            {t0: "qualified", t1: "qualified", t2: "eliminated", t3: "eliminated"},
+            {row.team_id: row.swiss_status for row in table},
+        )
+        async with self.Session() as s:
+            self.assertTrue((await s.get_one(Stage, stage.id)).is_completed)
+        self.assertEqual([], await next_round(4))
+        async with self.Session() as s:
+            self.assertEqual(0, await stage_service.apply_best_of_to_existing(s, stage.id), "a replay agrees")
+
+
 class PlayoffWiringTests(StageLayerCase):
     """Wiring a playoff from groups keeps a group's teams apart in round 1."""
 

@@ -95,9 +95,11 @@ function stage(overrides: Partial<Stage> = {}): Stage {
     tiebreak_order: null,
     scoring: { win: null, draw: null, loss: null },
     swiss_bye_points: null,
+    swiss_qualify_wins: null,
+    swiss_eliminate_losses: null,
     de_grand_final_type: "no_reset",
     seed_ranking: "slot",
-    best_of: { default: 3, by_round: {}, final: null },
+    best_of: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
     ffa_scoring: { placement_points: [], score_points: 1, score_label: null },
     challonge_id: null,
     challonge_slug: null,
@@ -376,7 +378,7 @@ describe("the cascade", () => {
 });
 
 describe("scope resolution", () => {
-  const stages = [stage({ id: 10, max_rounds: 3, best_of: { default: 5, by_round: {}, final: null } })];
+  const stages = [stage({ id: 10, max_rounds: 3, best_of: { default: 5, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null } })];
 
   it("takes a stage's rounds from the generated encounters when they exist", () => {
     const rounds = stageRoundOptions(10, [
@@ -411,7 +413,7 @@ describe("scope resolution", () => {
       resolveSeriesLength(
         10,
         null,
-        [stage({ id: 10, best_of: { default: 3, by_round: { "3": 5 }, final: null } })],
+        [stage({ id: 10, best_of: { default: 3, by_round: { "3": 5 }, final: null, swiss_qualify: null, swiss_eliminate: null } })],
         undefined
       ).source
     ).toBe("variesByRound");
@@ -448,7 +450,7 @@ describe("scope resolution", () => {
           })),
         },
       ],
-      best_of: { default: 3, by_round: {}, final: 5 },
+      best_of: { default: 3, by_round: {}, final: 5, swiss_qualify: null, swiss_eliminate: null },
     } as unknown as Partial<Stage>);
 
     expect(resolveSeriesLength(10, 3, [playoffs], [])).toEqual({ bestOf: 5, source: "round" });
@@ -484,7 +486,7 @@ describe("round groups are counted from the bracket", () => {
   });
 
   it("reads the stage's configuration before the bracket exists, final included", () => {
-    const stages = [stage({ id: 10, best_of: { default: 3, by_round: {}, final: 5 } })];
+    const stages = [stage({ id: 10, best_of: { default: 3, by_round: {}, final: 5, swiss_qualify: null, swiss_eliminate: null } })];
 
     expect(resolveSlotCount(10, null, stages, [])).toBe(5);
     expect(resolveSlotCount(10, null, stages, undefined)).toBe(5);

@@ -2,7 +2,7 @@
 
 from collections import Counter, defaultdict
 from collections.abc import Sequence
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from types import SimpleNamespace
 from typing import Any
 
@@ -43,13 +43,14 @@ from shared.repository import (
 from shared.services.encounter.participants import MemberSnapshot, active_teams, place_team, vacate_slot
 from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
 from src import schemas
-from src.domain.admin.best_of import best_of_config, resolve_best_of
+from src.domain.admin.best_of import best_of_config, resolve_best_of, resolve_swiss_best_of
 from src.domain.bracket import (
     BracketSkeleton,
     BracketTemplate,
     Pairing,
     SwissPairingImpossibleError,
     SwissStanding,
+    SwissThresholds,
     generate_bracket,
     placeholder_bracket,
     placeholder_seeds,
@@ -94,6 +95,7 @@ from src.services.admin.stage_common import (
 )
 from src.services.bracket.persist import SeatTeam, persist_skeleton
 from src.services.bracket.swiss_state import (
+    bye_rounds,
     clear_swiss_byes,
     clear_swiss_scope_stopped,
     mark_swiss_scope_stopped,
@@ -148,11 +150,13 @@ def _apply_stage_fields(stage: models.Stage, fields: dict[str, Any]) -> None:
     if "best_of" in fields:
         best_of = fields.pop("best_of") or {}
         # ``model_dump(exclude_unset=True)`` drops a nested default, so a body
-        # of ``{default, by_round}`` has no ``final`` key. Omitted final is the
-        # schema default: no final override.
+        # of ``{default, by_round}`` has no ``final`` key. An omitted override is
+        # the schema default: none.
         if best_of.get("default") is not None:
             stage.best_of_default = best_of["default"]
         stage.best_of_final = best_of.get("final")
+        stage.best_of_swiss_qualify = best_of.get("swiss_qualify")
+        stage.best_of_swiss_eliminate = best_of.get("swiss_eliminate")
         wanted: dict[int, int] = best_of.get("by_round") or {}
         existing = {row.round: row for row in stage.round_best_of}
         for round_number, row in existing.items():
@@ -165,6 +169,29 @@ def _apply_stage_fields(stage: models.Stage, fields: dict[str, Any]) -> None:
                 stage.round_best_of.append(models.StageRoundBestOf(round=round_number, best_of=value))
     for field, value in fields.items():
         setattr(stage, field, value)
+
+
+def _with_decisive_best_of(
+    stage: models.Stage,
+    skeleton: BracketSkeleton,
+    thresholds: SwissThresholds,
+    standings: Sequence[SwissStanding],
+) -> BracketSkeleton:
+    """The Swiss round with every pairing's best-of resolved off what it can decide.
+
+    ``standings`` are the records the teams bring into the round; a team missing
+    from them (round 1) has none yet.
+    """
+    cfg = best_of_config(stage)
+    records = {standing.team_id: (standing.wins, standing.losses) for standing in standings}
+    pairings = []
+    for pairing in skeleton.pairings:
+        qualification, elimination = thresholds.stakes(
+            records.get(team_id, (0, 0)) for team_id in pairing.team_ids if team_id is not None
+        )
+        best_of = resolve_swiss_best_of(cfg, pairing.round_number, qualification=qualification, elimination=elimination)
+        pairings.append(replace(pairing, best_of=best_of))
+    return replace(skeleton, pairings=pairings)
 
 
 def rule_values(stage_type: enums.StageType, block: dict[str, Any]) -> dict[str, Any]:
@@ -703,6 +730,7 @@ class AdminStageService:
         if rule_after != rule_before:
             await self._assert_scoring_editable(session, stage, rule_before, rule_after)
 
+        thresholds_before = SwissThresholds.of(stage)
         _apply_stage_fields(stage, update_data)
         # The rule row is EDITED, never replaced: every encounter of the stage
         # points at its id, and a new row would leave the played ones scored by
@@ -711,8 +739,10 @@ class AdminStageService:
             setattr(stage.scoring_rule, field, value)
         # Points, places and the public table are all derived from the rules, so
         # a changed block has to re-run the standings: nothing else would, and
-        # the same signal drops the gateway's cache of the lobby read.
-        if rule_after != rule_before:
+        # the same signal drops the gateway's cache of the lobby read. A moved
+        # Swiss threshold re-decides who is through / out, and whether the
+        # scope is over or owes another round.
+        if rule_after != rule_before or SwissThresholds.of(stage) != thresholds_before:
             await enqueue_tournament_recalculation(session, tournament_id)
         await self._publish_structure_changed(session, tournament_id)
         await session.commit()
@@ -1605,7 +1635,13 @@ class AdminStageService:
         stage_item = next((item for item in stage.items if item.id == stage_item_id), None)
         byes = Counter(await swiss_bye_team_ids(session, stage_id, stage_item_id))
         swiss_standings = [
-            SwissStanding(team_id=team.team_id, points=team.points, buchholz=team.median_buchholz)
+            SwissStanding(
+                team_id=team.team_id,
+                points=team.points,
+                buchholz=team.median_buchholz,
+                wins=team.wins + byes[team.team_id],
+                losses=team.loses,
+            )
             for team in rank_group(tournament, stage, stage_item, encounters, bye_counts=byes)
         ]
 
@@ -1626,6 +1662,7 @@ class AdminStageService:
         swiss_standings = None
         swiss_played_pairs: set[frozenset[int]] | None = None
         swiss_round = 1
+        thresholds = SwissThresholds()
         if stage.stage_type == enums.StageType.SWISS:
             swiss_standings, swiss_played_pairs, swiss_round = await self._get_swiss_generation_context(
                 session, stage, stage_item_id
@@ -1640,15 +1677,34 @@ class AdminStageService:
                     detail="Swiss stage reached max_rounds",
                 )
 
+            thresholds = SwissThresholds.of(stage)
+            if swiss_standings is not None and thresholds:
+                # A team through or out is paired no more. Fewer than two left
+                # and the scope is over: the standings call it complete.
+                swiss_standings = [
+                    standing
+                    for standing in swiss_standings
+                    if thresholds.status(standing.wins, standing.losses) is None
+                ]
+                if len(swiss_standings) < 2:
+                    logger.info(
+                        "Swiss scope ended because fewer than two teams are still undecided",
+                        stage_id=stage.id,
+                        stage_item_id=stage_item_id,
+                        round=swiss_round,
+                    )
+                    return BracketSkeleton(pairings=[], total_rounds=0)
+
             # A Swiss allowed as many rounds as a full circle IS a round robin.
             # Pairing it one round at a time only invites corners where no
             # rematch-free round is left, and no ordering of the schedule can
             # matter when every team meets every other anyway. An odd field
             # needs ``n`` rounds for that full circle, not ``n - 1``: one team
             # sits out each round, so the shortcut must not fire a round early
-            # and hand out a schedule longer than the configured limit.
+            # and hand out a schedule longer than the configured limit. Not with
+            # thresholds: they take teams out of the circle as it goes.
             rr_rounds = len(team_ids) if len(team_ids) % 2 else len(team_ids) - 1
-            if swiss_standings is None and stage_max_rounds(stage) >= rr_rounds:
+            if swiss_standings is None and not thresholds and stage_max_rounds(stage) >= rr_rounds:
                 await clear_swiss_scope_stopped(session, stage.id, stage_item_id)
                 return round_robin.generate(team_ids)
 
@@ -1679,6 +1735,8 @@ class AdminStageService:
             await clear_swiss_scope_stopped(session, stage.id, stage_item_id)
             if skeleton.bye_team_id is not None:
                 await record_swiss_bye(session, stage.id, stage_item_id, skeleton.bye_team_id, round_number=swiss_round)
+            if thresholds:
+                skeleton = _with_decisive_best_of(stage, skeleton, thresholds, swiss_standings or [])
         return skeleton
 
     async def _seat_teams(self, session: AsyncSession, team_ids: Sequence[int]) -> dict[int, SeatTeam]:
@@ -2815,11 +2873,18 @@ class AdminStageService:
         Reads the stage's best-of config and rewrites each encounter's
         ``best_of`` in place (preserving scores/results). Applies the same
         resolution the generator uses; ``final`` targets the max round among the
-        stage's encounters for elimination stages. Returns the number of rows
-        whose ``best_of`` actually changed.
+        stage's encounters for elimination stages, and a Swiss stage with
+        thresholds judges each encounter on the records its teams brought into
+        its round. Returns the number of rows whose ``best_of`` actually changed.
         """
         stage = await self.get_stage(session, stage_id)
         cfg = best_of_config(stage)
+        thresholds = SwissThresholds.of(stage)
+        stakes = (
+            await self._swiss_stakes(session, stage, thresholds)
+            if stage.stage_type == enums.StageType.SWISS and thresholds
+            else {}
+        )
         is_elimination = stage.stage_type in BRACKET_STAGE_TYPES
 
         # ``EncounterRepository.list_by_stage`` also predicates on tournament_id
@@ -2834,10 +2899,11 @@ class AdminStageService:
 
         changed = 0
         for encounter, round_number in rows:
-            target = resolve_best_of(
-                cfg,
-                round_number,
-                is_final=is_elimination and round_number == max_round,
+            at_stake = stakes.get(encounter.id)
+            target = (
+                resolve_swiss_best_of(cfg, round_number, qualification=at_stake[0], elimination=at_stake[1])
+                if at_stake is not None
+                else resolve_best_of(cfg, round_number, is_final=is_elimination and round_number == max_round)
             )
             if encounter.best_of == target:
                 continue
@@ -2853,6 +2919,45 @@ class AdminStageService:
             await self._publish_structure_changed(session, stage.tournament_id)
         await session.commit()
         return changed
+
+    async def _swiss_stakes(
+        self, session: AsyncSession, stage: models.Stage, thresholds: SwissThresholds
+    ) -> dict[int, tuple[bool, bool]]:
+        """``encounter_id -> (qualification, elimination)`` for every Swiss encounter.
+
+        Replayed per round off the results and byes of the rounds before it --
+        what the teams brought into the round, as the generator saw them. A bye
+        stored without a round predates round tracking and counts everywhere.
+        """
+        tournament = await session.get_one(models.Tournament, stage.tournament_id)
+        items = {item.id: item for item in stage.items}
+        byes = await bye_rounds(session, stage.id)
+        by_scope: defaultdict[int | None, list] = defaultdict(list)
+        for encounter in await standings_service.load_stage_encounters(session, stage.id):
+            by_scope[encounter.stage_item_id].append(encounter)
+
+        stakes: dict[int, tuple[bool, bool]] = {}
+        for stage_item_id, encounters in by_scope.items():
+            for round_number in {encounter.round for encounter in encounters}:
+                bye_counts = Counter(
+                    team_id
+                    for team_id, bye_round in byes.get(stage_item_id, ())
+                    if bye_round is None or bye_round < round_number
+                )
+                ranked = rank_group(
+                    tournament,
+                    stage,
+                    items.get(stage_item_id),
+                    [encounter for encounter in encounters if encounter.round < round_number],
+                    bye_counts=bye_counts,
+                )
+                records = {team.team_id: (team.wins + bye_counts[team.team_id], team.loses) for team in ranked}
+                for encounter in encounters:
+                    if encounter.round == round_number:
+                        stakes[encounter.id] = thresholds.stakes(
+                            records.get(seat.team_id, (0, 0)) for seat in encounter.seats
+                        )
+        return stakes
 
 
 stage_service = AdminStageService()

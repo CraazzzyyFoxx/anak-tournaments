@@ -126,9 +126,9 @@ class ApplyBestOfToExistingTests(TestCase):
             by_round={1: 1},
         )
         encounters = [
-            (SimpleNamespace(best_of=3, slot_count=2, scoring_preset="wins"), 1),  # by_round -> 1
-            (SimpleNamespace(best_of=3, slot_count=2, scoring_preset="wins"), 2),  # default (not max round)
-            (SimpleNamespace(best_of=3, slot_count=2, scoring_preset="wins"), 3),  # max round + elimination -> final 5
+            (SimpleNamespace(id=1, best_of=3, slot_count=2, scoring_preset="wins"), 1),  # by_round -> 1
+            (SimpleNamespace(id=2, best_of=3, slot_count=2, scoring_preset="wins"), 2),  # default (not max round)
+            (SimpleNamespace(id=3, best_of=3, slot_count=2, scoring_preset="wins"), 3),  # max round + elim -> final 5
         ]
         changed, session, published = self._run_backfill(stage, encounters)
 
@@ -146,9 +146,9 @@ class ApplyBestOfToExistingTests(TestCase):
             best_of_final=5,
         )
         encounters = [
-            (SimpleNamespace(best_of=3, slot_count=2, scoring_preset="wins"), 1),
+            (SimpleNamespace(id=1, best_of=3, slot_count=2, scoring_preset="wins"), 1),
             # Highest round, but not elimination.
-            (SimpleNamespace(best_of=3, slot_count=2, scoring_preset="wins"), 2),
+            (SimpleNamespace(id=2, best_of=3, slot_count=2, scoring_preset="wins"), 2),
         ]
         changed, session, _ = self._run_backfill(stage, encounters)
 
@@ -158,7 +158,7 @@ class ApplyBestOfToExistingTests(TestCase):
     def test_no_changes_leaves_commit_but_no_publish(self) -> None:
         # Nothing configured -> everything resolves to the default 3.
         stage = _stage(id=12, tournament_id=3, stage_type=enums.StageType.SINGLE_ELIMINATION)
-        encounters = [(SimpleNamespace(best_of=3, slot_count=2, scoring_preset="wins"), 1)]
+        encounters = [(SimpleNamespace(id=1, best_of=3, slot_count=2, scoring_preset="wins"), 1)]
         changed, session, published = self._run_backfill(stage, encounters)
 
         self.assertEqual(changed, 0)

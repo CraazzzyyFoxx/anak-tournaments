@@ -63,6 +63,7 @@ import { StageItemsSection } from "./StageItemsSection";
 import { BestOfSection } from "./stage-settings/BestOfSection";
 import { GeneralSection } from "./stage-settings/GeneralSection";
 import { SeedingSection } from "./stage-settings/SeedingSection";
+import { SwissSection } from "./stage-settings/SwissSection";
 import { TiebreakersSection } from "./stage-settings/TiebreakersSection";
 import { tabFallback } from "../../hubQueries";
 import { useStageOperations } from "./stage-editor/useStageOperations";
@@ -441,6 +442,11 @@ export function StageEditor({
 
             {isFfaForm ? (
               <FfaScoringSection form={form} onChange={patchForm} saveError={saveError} />
+            ) : null}
+
+            {/* Under the advance count it checks, over the Points group's bye. */}
+            {form.stageType === "swiss" ? (
+              <SwissSection stage={stage} form={form} onChange={patchForm} />
             ) : null}
 
             {ranksTable ? (

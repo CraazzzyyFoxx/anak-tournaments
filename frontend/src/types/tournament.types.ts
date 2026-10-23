@@ -79,11 +79,18 @@ export type SeedRanking = "slot" | "avg_sr" | "total_sr" | "random";
  * A stage's series lengths. Precedence: `final` (an elimination stage's last
  * round) -> `by_round[round]` -> `default`. `by_round` keys are round numbers;
  * lower-bracket rounds are negative.
+ *
+ * Swiss only, over all of the above: `swiss_qualify` is a match where a team is
+ * one win from `swiss_qualify_wins`, `swiss_eliminate` one where a team is one
+ * loss from `swiss_eliminate_losses`; when both apply the longer one is played.
+ * `null` = the regular rule. The server decides which matches they are.
  */
 export interface StageBestOfConfig {
   default: number;
   by_round: Record<string, number>;
   final: number | null;
+  swiss_qualify: number | null;
+  swiss_eliminate: number | null;
 }
 
 /** One column a stage's games record per team. Mirrors `FfaColumn` of
@@ -129,6 +136,10 @@ export interface StageRegulation {
   scoring: StageScoring;
   /** `null` = a bye pays the win points. */
   swiss_bye_points: number | null;
+  /** Swiss: match wins + byes that qualify a team and stop pairing it; `null` = off. */
+  swiss_qualify_wins: number | null;
+  /** Swiss: losses that eliminate a team and stop pairing it; `null` = off. */
+  swiss_eliminate_losses: number | null;
   de_grand_final_type: "no_reset" | "with_reset";
   seed_ranking: SeedRanking;
   best_of: StageBestOfConfig;
@@ -336,6 +347,9 @@ export interface Standings {
   /** The organizer pinned this row's `position`; it holds through any later
    *  result or recalculation. A pinned row is never part of a `tie_group`. */
   is_pinned: boolean;
+  /** A Swiss threshold's verdict, computed by the server (it counts byes, which
+   *  `win` does not); `null` = undecided or no threshold. Never derive it here. */
+  swiss_status: "qualified" | "eliminated" | null;
   tb: number | null;
   score_differential: number | null;
   ranking_context: Record<string, string | number | null> | null;

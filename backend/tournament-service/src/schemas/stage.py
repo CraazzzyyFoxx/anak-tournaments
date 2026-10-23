@@ -160,7 +160,8 @@ class StageScoring(BaseModel):
 
 class StageBestOf(BaseModel):
     """Series length per encounter: ``final`` (an elimination stage's last round),
-    else the round's own ``by_round`` entry, else ``default``."""
+    a Swiss decisive match's ``swiss_qualify`` / ``swiss_eliminate`` (the larger
+    when it is both), else the round's own ``by_round`` entry, else ``default``."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -168,6 +169,10 @@ class StageBestOf(BaseModel):
     #: Round number (negative in a lower bracket) -> best-of.
     by_round: dict[int, int] = Field(default_factory=dict)
     final: int | None = Field(default=None, ge=1)
+    #: A Swiss match one of whose teams is one win from ``swiss_qualify_wins``.
+    swiss_qualify: int | None = Field(default=None, ge=1)
+    #: A Swiss match one of whose teams is one loss from ``swiss_eliminate_losses``.
+    swiss_eliminate: int | None = Field(default=None, ge=1)
 
     @field_validator("by_round")
     @classmethod
@@ -187,6 +192,10 @@ class _StageRegulationRead(BaseModel):
     scoring: StageScoring = Field(default_factory=StageScoring)
     #: ``None`` = a bye pays the win points.
     swiss_bye_points: float | None = None
+    #: Swiss: wins (byes included) that put a team through; ``None`` = never.
+    swiss_qualify_wins: int | None = None
+    #: Swiss: losses that put a team out; ``None`` = never.
+    swiss_eliminate_losses: int | None = None
     de_grand_final_type: GrandFinalType = "no_reset"
     seed_ranking: SeedRankingValue = "slot"
     best_of: StageBestOf = Field(default_factory=StageBestOf)

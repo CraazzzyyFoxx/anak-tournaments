@@ -173,7 +173,7 @@ const STAGES = [
     order: 1,
     is_active: true,
     is_completed: false,
-    best_of: { default: 3, by_round: {}, final: null },
+    best_of: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
     challonge_id: null,
     challonge_slug: null,
     items: []
@@ -190,7 +190,7 @@ const STAGES = [
     order: 2,
     is_active: false,
     is_completed: false,
-    best_of: { default: 5, by_round: {}, final: null },
+    best_of: { default: 5, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
     challonge_id: null,
     challonge_slug: null,
     items: []

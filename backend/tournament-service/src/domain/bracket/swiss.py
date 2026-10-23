@@ -14,9 +14,10 @@ leaving anyone idle -- a full field is worth more than a first meeting.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from itertools import islice
+from typing import Any, Literal
 
 from .types import BracketSkeleton, Pairing
 
@@ -55,6 +56,49 @@ class SwissStanding:
     team_id: int
     points: float
     buchholz: float = 0.0
+    #: Match wins plus byes, and losses: what :class:`SwissThresholds` reads.
+    wins: int = 0
+    losses: int = 0
+
+
+SwissStatus = Literal["qualified", "eliminated"]
+
+
+@dataclass(frozen=True)
+class SwissThresholds:
+    """When a team's Swiss ends before the stage does (``Stage.swiss_*``).
+
+    ``qualify_wins`` wins -- a bye counts as one -- put a team through,
+    ``eliminate_losses`` losses put it out; a draw is neither. A decided team is
+    paired no more. ``None`` = that end never closes; both ``None`` is falsy.
+    """
+
+    qualify_wins: int | None = None
+    eliminate_losses: int | None = None
+
+    @classmethod
+    def of(cls, stage: Any) -> SwissThresholds:
+        return cls(stage.swiss_qualify_wins, stage.swiss_eliminate_losses)
+
+    def __bool__(self) -> bool:
+        return self.qualify_wins is not None or self.eliminate_losses is not None
+
+    def status(self, wins: int, losses: int) -> SwissStatus | None:
+        # Both only after the thresholds were lowered mid-stage; through wins.
+        if self.qualify_wins is not None and wins >= self.qualify_wins:
+            return "qualified"
+        if self.eliminate_losses is not None and losses >= self.eliminate_losses:
+            return "eliminated"
+        return None
+
+    def stakes(self, records: Iterable[tuple[int, int]]) -> tuple[bool, bool]:
+        """``(qualification, elimination)``: can a match between teams with these
+        ``(wins, losses)`` put one of them through / out?"""
+        records = list(records)
+        return (
+            self.qualify_wins is not None and any(wins + 1 >= self.qualify_wins for wins, _ in records),
+            self.eliminate_losses is not None and any(losses + 1 >= self.eliminate_losses for _, losses in records),
+        )
 
 
 @dataclass(frozen=True)

@@ -79,9 +79,11 @@ function stage(overrides: Partial<Stage> & { id: number; stage_type: StageType }
     tiebreak_order: null,
     scoring: { win: null, draw: null, loss: null },
     swiss_bye_points: null,
+    swiss_qualify_wins: null,
+    swiss_eliminate_losses: null,
     de_grand_final_type: "no_reset",
     seed_ranking: "slot",
-    best_of: { default: 3, by_round: {}, final: null },
+    best_of: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
     ffa_scoring: { placement_points: [], score_points: 1, score_label: null },
     challonge_id: null,
     challonge_slug: null,
@@ -422,7 +424,7 @@ describe("projectStage", () => {
       stages: [playoff],
       stageType: "double_elimination",
       maxRounds: 5,
-      bestOf: { default: 3, by_round: {}, final: null }
+      bestOf: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null }
     });
 
     expect(projection.rounds.map((round) => [round.section, round.label, round.round])).toEqual([
@@ -444,7 +446,7 @@ describe("projectStage", () => {
       stages: [playoff],
       stageType: "double_elimination",
       maxRounds: 5,
-      bestOf: { default: 3, by_round: {}, final: null },
+      bestOf: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
       plannedRounds: [-5, -4, -3, -2, -1, 1, 2, 3]
     });
 
@@ -463,7 +465,7 @@ describe("projectStage", () => {
       stageType: "double_elimination",
       maxRounds: 5,
       // `final` targets the grand final and outranks a `by_round` key on it.
-      bestOf: { default: 3, by_round: { "1": 1, "4": 3 }, final: 7 }
+      bestOf: { default: 3, by_round: { "1": 1, "4": 3 }, final: 7, swiss_qualify: null, swiss_eliminate: null }
     });
     const bestOfByLabel = Object.fromEntries(
       projection.rounds.map((round) => [round.label, round.bestOf])
@@ -494,7 +496,7 @@ describe("projectStage", () => {
       stages: [bracket],
       stageType: "single_elimination",
       maxRounds: 5,
-      bestOf: { default: 3, by_round: {}, final: 5 }
+      bestOf: { default: 3, by_round: {}, final: 5, swiss_qualify: null, swiss_eliminate: null }
     });
 
     expect(projection.rounds.map((round) => round.label)).toEqual([
@@ -518,7 +520,7 @@ describe("projectStage", () => {
       stages: [groups],
       stageType: "round_robin",
       maxRounds: 3,
-      bestOf: { default: 3, by_round: {}, final: null }
+      bestOf: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null }
     });
 
     expect(projection).toMatchObject({
@@ -545,7 +547,7 @@ describe("projectStage", () => {
       stages: [groups],
       stageType: "round_robin",
       maxRounds: 3,
-      bestOf: { default: 3, by_round: {}, final: null }
+      bestOf: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null }
     });
 
     expect(projection.advancingTotal).toBe(5);

@@ -13,7 +13,7 @@ baselines and Discord channels live in `stats/`. `catalog/` writes only to `cata
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`socdn01`** (147 revisions in `backend/migrations/versions/`).
+Alembic head: **`swissth01`** (149 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -1174,7 +1174,7 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at "nullable"
         varchar name
-        int rank
+        int rank "nullable"
         boolean is_substitution
         bigint related_player_id FK "nullable"
         bigint tournament_id FK
@@ -1237,10 +1237,14 @@ erDiagram
         float draw_points "nullable"
         float loss_points "nullable"
         float swiss_bye_points "nullable"
+        int swiss_qualify_wins "nullable"
+        int swiss_eliminate_losses "nullable"
         varchar(16) de_grand_final_type
         varchar(16) seed_ranking
         int best_of_default
         int best_of_final "nullable"
+        int best_of_swiss_qualify "nullable"
+        int best_of_swiss_eliminate "nullable"
         bigint challonge_group_id "nullable"
         jsonb bracket_template "nullable"
     }
@@ -1292,6 +1296,7 @@ erDiagram
         int tb "nullable"
         int score_differential "nullable"
         boolean is_pinned
+        varchar(16) swiss_status "nullable"
     }
     TOURNAMENT_STANDING_PIN {
         bigint id PK

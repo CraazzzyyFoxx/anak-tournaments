@@ -1322,6 +1322,12 @@
   color: var(--amber);
 }
 
+/* A team a Swiss threshold eliminated keeps its place in the table, read as done. */
+.aqt-tn table.st tr.swiss-out .st-rank,
+.aqt-tn table.st tr.swiss-out .st-team .nm {
+  color: var(--fg-dim);
+}
+
 .aqt-tn .st-cut {
   height: 0;
   position: relative;

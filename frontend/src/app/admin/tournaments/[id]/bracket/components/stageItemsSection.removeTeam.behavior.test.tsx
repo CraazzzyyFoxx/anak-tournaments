@@ -85,9 +85,11 @@ function groupStage(items: StageItem[]): Stage {
     tiebreak_order: null,
     scoring: { win: null, draw: null, loss: null, preset: null, columns: null, placement_points: null, formula: null },
     swiss_bye_points: null,
+    swiss_qualify_wins: null,
+    swiss_eliminate_losses: null,
     de_grand_final_type: "no_reset",
     seed_ranking: "slot",
-    best_of: { default: 3, by_round: {}, final: null },
+    best_of: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
     challonge_id: null,
     challonge_slug: null,
     items

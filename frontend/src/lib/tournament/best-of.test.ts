@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   hasPerRoundBestOf,
+  maxBestOf,
   resolveBestOf,
   stageBestOfRoundSections,
   type BestOfRoundSection
@@ -16,31 +17,38 @@ import {
 
 describe("resolveBestOf", () => {
   it("falls back to the default", () => {
-    expect(resolveBestOf({ default: 2, by_round: {}, final: null }, 4)).toBe(2);
+    expect(resolveBestOf({ default: 2, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null }, 4)).toBe(2);
   });
 
   it("prefers a by_round override over the default", () => {
-    const config = { default: 3, by_round: { "1": 2 }, final: null };
+    const config = { default: 3, by_round: { "1": 2 }, final: null, swiss_qualify: null, swiss_eliminate: null };
     expect(resolveBestOf(config, 1)).toBe(2);
     expect(resolveBestOf(config, 2)).toBe(3);
   });
 
   it("lets final win only when the round is flagged final", () => {
-    const config = { default: 3, by_round: { "2": 3 }, final: 5 };
+    const config = { default: 3, by_round: { "2": 3 }, final: 5, swiss_qualify: null, swiss_eliminate: null };
     expect(resolveBestOf(config, 2, { isFinal: true })).toBe(5);
     expect(resolveBestOf(config, 2, { isFinal: false })).toBe(3);
   });
 
   it("ignores an unset final on a final round", () => {
-    expect(resolveBestOf({ default: 3, by_round: {}, final: null }, 9, { isFinal: true })).toBe(3);
+    expect(resolveBestOf({ default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null }, 9, { isFinal: true })).toBe(3);
   });
 });
 
 describe("hasPerRoundBestOf", () => {
   it("is true only when some round differs from the default", () => {
-    expect(hasPerRoundBestOf({ default: 3, by_round: {}, final: null })).toBe(false);
-    expect(hasPerRoundBestOf({ default: 3, by_round: { "1": 2 }, final: null })).toBe(true);
-    expect(hasPerRoundBestOf({ default: 3, by_round: {}, final: 5 })).toBe(true);
+    expect(hasPerRoundBestOf({ default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null })).toBe(false);
+    expect(hasPerRoundBestOf({ default: 3, by_round: { "1": 2 }, final: null, swiss_qualify: null, swiss_eliminate: null })).toBe(true);
+    expect(hasPerRoundBestOf({ default: 3, by_round: {}, final: 5, swiss_qualify: null, swiss_eliminate: null })).toBe(true);
+    expect(hasPerRoundBestOf({ default: 3, by_round: {}, final: null, swiss_qualify: 5, swiss_eliminate: null })).toBe(true);
+  });
+});
+
+describe("maxBestOf", () => {
+  it("covers a Swiss decisive match longer than every round", () => {
+    expect(maxBestOf({ default: 1, by_round: { "2": 3 }, final: null, swiss_qualify: null, swiss_eliminate: 5 })).toBe(5);
   });
 });
 

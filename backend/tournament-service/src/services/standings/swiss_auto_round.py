@@ -216,7 +216,7 @@ class SwissRoundsService:
         if not skeleton.pairings:
             await session.flush()
             logger.info(
-                "Swiss auto-round: scope completed because no non-rematch pairing exists",
+                "Swiss auto-round: scope completed, no round left to pair",
                 stage_id=stage_id,
                 stage_item_id=stage_item_id,
             )

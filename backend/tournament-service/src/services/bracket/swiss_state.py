@@ -26,6 +26,7 @@ from shared.repository import SwissByeRepository, SwissStoppedScopeRepository
 
 __all__ = (
     "bye_counts_by_scope",
+    "bye_rounds",
     "clear_swiss_byes",
     "clear_swiss_scope_stopped",
     "mark_swiss_scope_stopped",
@@ -81,6 +82,17 @@ async def bye_counts_by_scope(session: AsyncSession, stage_ids: Collection[int])
     for stage_id, stage_item_id, team_id in result.all():
         counts[(stage_id, stage_item_id)][team_id] += 1
     return {scope: dict(counter) for scope, counter in counts.items()}
+
+
+async def bye_rounds(session: AsyncSession, stage_id: int) -> dict[int | None, list[tuple[int, int | None]]]:
+    """``stage_item_id -> [(team_id, round)]`` for every bye of the stage."""
+    result = await session.execute(
+        sa.select(SwissBye.stage_item_id, SwissBye.team_id, SwissBye.round).where(SwissBye.stage_id == stage_id)
+    )
+    rounds: defaultdict[int | None, list[tuple[int, int | None]]] = defaultdict(list)
+    for stage_item_id, team_id, round_number in result.all():
+        rounds[stage_item_id].append((team_id, round_number))
+    return dict(rounds)
 
 
 async def record_swiss_bye(

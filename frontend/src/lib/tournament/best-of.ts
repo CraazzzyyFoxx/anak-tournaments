@@ -41,9 +41,14 @@ export function resolveBestOf(
   return config.default;
 }
 
-/** True when a stage's rounds do not all play the same series length. */
+/** True when a stage's matches do not all play the same series length. */
 export function hasPerRoundBestOf(config: StageBestOfConfig): boolean {
-  return Object.keys(config.by_round).length > 0 || config.final != null;
+  return (
+    Object.keys(config.by_round).length > 0 ||
+    config.final != null ||
+    config.swiss_qualify != null ||
+    config.swiss_eliminate != null
+  );
 }
 
 /**
@@ -55,7 +60,13 @@ export function hasPerRoundBestOf(config: StageBestOfConfig): boolean {
  * `REASON_SLOT_COUNT_MISMATCH`), so the final's Bo5 decides the count.
  */
 export function maxBestOf(config: StageBestOfConfig): number {
-  return Math.max(config.default, config.final ?? 0, ...Object.values(config.by_round));
+  return Math.max(
+    config.default,
+    config.final ?? 0,
+    config.swiss_qualify ?? 0,
+    config.swiss_eliminate ?? 0,
+    ...Object.values(config.by_round)
+  );
 }
 
 /** A round the best-of editor can target, identified by its `by_round` key. */

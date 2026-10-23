@@ -339,6 +339,7 @@ Generation (`backend/shared/services/bracket/engine.py`):
 - SE/DE: skeleton + `EncounterLink` (the team in position *k* of the source encounter fills a numbered slot of the target). The bracket **is** those edges, not an implied tree.
 - DE: optional lower-bracket seeds (group runners-up). Grand Final Reset is **lazy**: only if the LB champion wins the GF.
 - Swiss: Monrad, sort `(points, buchholz)`. Rematch-free first; rematch only if the alternative is idle teams. Bye not to a team that already had one. Unpairable field → error.
+- Swiss thresholds (`swiss_qualify_wins` / `swiss_eliminate_losses`, `SwissThresholds`): a team with that many wins (byes count) / losses is decided and paired no more; fewer than two undecided → no round, scope complete before `max_rounds`; a threshold disables the full-circle round-robin shortcut. A match that can decide a team takes `best_of_swiss_qualify` / `best_of_swiss_eliminate` (the larger when both) over the round's best-of; the best-of backfill replays each round's records to agree.
 
 **Advancement** (`advance_after_result`): reads the final positions the result writer materialised on the participations and fills only empty seats; a position two teams share (a draw) blocks and nobody advances out of it until an admin breaks the tie. A changed result is reopen → `reset_downstream` (retires the seats it filled and cancels the games they had not played, recursively) → write the new result → advance.
 

@@ -30,6 +30,8 @@ class StageCreate(BaseModel):
     tiebreak_order: list[str] | None = None
     scoring: StageScoring = Field(default_factory=StageScoring)
     swiss_bye_points: float | None = None
+    swiss_qualify_wins: int | None = Field(default=None, ge=1)
+    swiss_eliminate_losses: int | None = Field(default=None, ge=1)
     de_grand_final_type: GrandFinalType = "no_reset"
     seed_ranking: SeedRankingValue = "slot"
     best_of: StageBestOf = Field(default_factory=StageBestOf)
@@ -54,6 +56,8 @@ class StageUpdate(BaseModel):
     tiebreak_order: list[str] | None = None
     scoring: StageScoring = Field(default_factory=StageScoring)
     swiss_bye_points: float | None = None
+    swiss_qualify_wins: int | None = Field(default=None, ge=1)
+    swiss_eliminate_losses: int | None = Field(default=None, ge=1)
     de_grand_final_type: GrandFinalType = "no_reset"
     seed_ranking: SeedRankingValue = "slot"
     best_of: StageBestOf = Field(default_factory=StageBestOf)

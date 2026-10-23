@@ -6,8 +6,10 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Lock, Pencil, Trash2 } from "lucide-react";
 
 import { createKebabColumn } from "@/components/data-table";
+import { Badge } from "@/components/ui/badge";
 import { PlaceBadge } from "@/components/ui/place-badge";
 import TeamName from "@/components/TeamName";
+import { cn } from "@/lib/utils";
 import type { Stage, Standings } from "@/types/tournament.types";
 
 import { standingScopeLabel } from "./model";
@@ -57,10 +59,25 @@ export function useStandingsColumns({
         accessorKey: "team",
         header: t("columns.team"),
         enableSorting: false,
-        cell: ({ row }) =>
-          row.original.team ? (
-            <TeamName team={row.original.team} size="xs" nameClassName="font-medium" />
-          ) : null
+        cell: ({ row }) => {
+          const status = row.original.swiss_status;
+          return (
+            <div className="flex min-w-0 items-center gap-2">
+              {row.original.team ? (
+                <TeamName
+                  team={row.original.team}
+                  size="xs"
+                  nameClassName={cn("font-medium", status === "eliminated" && "text-muted-foreground")}
+                />
+              ) : null}
+              {status === "qualified" ? (
+                <Badge tone="success" size="sm">{t("swissQualified")}</Badge>
+              ) : status === "eliminated" ? (
+                <Badge tone="neutral" size="sm">{t("swissEliminated")}</Badge>
+              ) : null}
+            </div>
+          );
+        }
       },
       // Scoped to one stage, the stage itself is the pinned chip: the column only
       // earns its place when the stage has groups to tell apart.

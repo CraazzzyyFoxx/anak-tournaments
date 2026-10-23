@@ -80,6 +80,8 @@ class SwissRoundRobinShortcutTests(IsolatedAsyncioTestCase):
             tournament_id=99,
             stage_type=enums.StageType.SWISS,
             max_rounds=max_rounds,
+            swiss_qualify_wins=None,
+            swiss_eliminate_losses=None,
         )
 
     async def _skeleton(self, *, teams: int, max_rounds: int):

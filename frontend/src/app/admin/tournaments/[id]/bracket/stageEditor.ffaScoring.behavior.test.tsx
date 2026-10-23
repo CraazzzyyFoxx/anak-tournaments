@@ -145,9 +145,11 @@ function stage(stageType: StageType, regulation: Partial<StageRegulation> = {}):
       formula: "score"
     },
     swiss_bye_points: null,
+    swiss_qualify_wins: null,
+    swiss_eliminate_losses: null,
     de_grand_final_type: "no_reset",
     seed_ranking: "slot",
-    best_of: { default: 3, by_round: {}, final: null },
+    best_of: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
     ...regulation,
     challonge_id: null,
     challonge_slug: null,
@@ -542,7 +544,7 @@ describe("Stage editor, FFA league scoring", () => {
     await choose("5 games");
     await save();
 
-    expect(payload().best_of).toEqual({ default: 5, by_round: {}, final: null });
+    expect(payload().best_of).toEqual({ default: 5, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null });
   });
 
   it("drops a per-round override the lobby would silently obey", async () => {
@@ -550,12 +552,12 @@ describe("Stage editor, FFA league scoring", () => {
     // games count as round 1 — which outranks the default. Left in the payload,
     // a leftover "5" from the generic grid decides the lobby instead of the
     // knob above, and no FFA control can reach it to clear it.
-    await mount(stage("ffa_league", { best_of: { default: 3, by_round: { "1": 5 }, final: 7 } }));
+    await mount(stage("ffa_league", { best_of: { default: 3, by_round: { "1": 5 }, final: 7, swiss_qualify: null, swiss_eliminate: null } }));
 
     await click(select("Games per lobby"));
     await choose("7 games");
     await save();
 
-    expect(payload().best_of).toEqual({ default: 7, by_round: {}, final: null });
+    expect(payload().best_of).toEqual({ default: 7, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null });
   });
 });

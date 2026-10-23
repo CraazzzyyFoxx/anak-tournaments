@@ -20,6 +20,7 @@ from shared.domain.tournament_utils import (
 from shared.domain.tournament_utils import is_completed_encounter, sort_bracket_matches
 from shared.repository import EncounterRepository, StandingRepository, TeamRepository, TournamentRepository
 from src import schemas
+from src.domain.bracket.swiss import SwissThresholds
 from src.services.bracket.swiss_state import bye_counts_by_scope, stopped_scopes
 from src.services.encounter.ffa import ffa_encounter_service
 
@@ -844,6 +845,7 @@ def _build_group_stage_standings(
         return []
 
     tiebreak_order = _tiebreak_order(stage)
+    thresholds = SwissThresholds.of(stage) if stage.stage_type == StageType.SWISS else SwissThresholds()
     teams = rank_group(tournament, stage, stage_item, encounters, bye_counts=bye_counts)
     # Pinned after ranking, never inside ``rank_group``: that one also feeds the
     # Swiss pairing, which must pair on real results.
@@ -869,6 +871,7 @@ def _build_group_stage_standings(
                 tie_group=team.tie_group,
                 tb=team.head_to_head,
                 is_pinned=team.team_id in pinned,
+                swiss_status=thresholds.status(team.wins + bye_counts.get(team.team_id, 0), team.loses),
                 score_differential=team.score_differential,
                 stage=stage,
                 stage_item=stage_item,
@@ -1304,7 +1307,12 @@ class StandingsService:
             return []
         return await self.calculate_for_tournament(session, tournament, commit=commit)
 
-    async def _update_stage_completion_flags(self, session: AsyncSession, tournament: models.Tournament) -> None:
+    async def _update_stage_completion_flags(
+        self,
+        session: AsyncSession,
+        tournament: models.Tournament,
+        standings: typing.Sequence[models.Standing],
+    ) -> None:
         """After recalc, flip ``Stage.is_completed`` to match reality.
 
         A stage is considered completed when every encounter that belongs to it
@@ -1313,6 +1321,10 @@ class StandingsService:
 
         This powers the admin UI's "Group A — 10/10 done" badge and the
         activate-and-generate warning for downstream playoff stages.
+
+        A Swiss scope is done once its rounds are played and either
+        ``max_rounds`` is reached, it ran out of pairings, or its thresholds
+        left fewer than two teams undecided (read off ``standings``).
         """
         stages = getattr(tournament, "stages", []) or []
         if not stages:
@@ -1350,6 +1362,10 @@ class StandingsService:
                 )
             )
         stopped = await stopped_scopes(session, [stage.id for stage in stages if stage.stage_type == StageType.SWISS])
+        undecided: defaultdict[tuple[int | None, int | None], int] = defaultdict(int)
+        for row in standings:
+            if row.swiss_status is None:
+                undecided[(row.stage_id, row.stage_item_id)] += 1
 
         for stage in stages:
             stage_rows = rows_by_stage.get(stage.id, [])
@@ -1367,9 +1383,16 @@ class StandingsService:
                     if stage_item_id is None
                 ]
                 scopes = item_scopes or extra_scopes
+                thresholds = SwissThresholds.of(stage)
                 should_be_completed = bool(scopes) and all(
                     (stage.id, stage_item_id) in stopped
                     or _swiss_scope_completed(total, completed, max_round, _stage_max_rounds(stage))
+                    or (
+                        bool(thresholds)
+                        and total > 0
+                        and completed == total
+                        and undecided[(stage.id, stage_item_id)] < 2
+                    )
                     for stage_item_id, total, completed, max_round in scopes
                 )
                 if stage.is_completed != should_be_completed:
@@ -1470,7 +1493,7 @@ class StandingsService:
         final_standings = calculate_overall_positions(all_standings, stages)
         await self.standing_repo.create_many(session, final_standings)
         # Flip Stage.is_completed in the same transaction as the standings write.
-        await self._update_stage_completion_flags(session, tournament)
+        await self._update_stage_completion_flags(session, tournament, final_standings)
         if commit:
             await session.commit()
         else:

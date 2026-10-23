@@ -54228,7 +54228,7 @@
     },
     "tournament.StageBestOf": {
       "additionalProperties": false,
-      "description": "Series length per encounter: ``final`` (an elimination stage's last round),\nelse the round's own ``by_round`` entry, else ``default``.",
+      "description": "Series length per encounter: ``final`` (an elimination stage's last round),\na Swiss decisive match's ``swiss_qualify`` / ``swiss_eliminate`` (the larger\nwhen it is both), else the round's own ``by_round`` entry, else ``default``.",
       "properties": {
         "by_round": {
           "additionalProperties": {
@@ -54255,6 +54255,32 @@
           ],
           "default": null,
           "title": "Final"
+        },
+        "swiss_eliminate": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Swiss Eliminate"
+        },
+        "swiss_qualify": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Swiss Qualify"
         }
       },
       "title": "StageBestOf",
@@ -54391,6 +54417,32 @@
           ],
           "default": null,
           "title": "Swiss Bye Points"
+        },
+        "swiss_eliminate_losses": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Swiss Eliminate Losses"
+        },
+        "swiss_qualify_wins": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Swiss Qualify Wins"
         },
         "tiebreak_order": {
           "anyOf": [
@@ -55022,6 +55074,30 @@
           "default": null,
           "title": "Swiss Bye Points"
         },
+        "swiss_eliminate_losses": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Swiss Eliminate Losses"
+        },
+        "swiss_qualify_wins": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Swiss Qualify Wins"
+        },
         "tiebreak_order": {
           "anyOf": [
             {
@@ -55309,6 +55385,30 @@
           "default": null,
           "title": "Swiss Bye Points"
         },
+        "swiss_eliminate_losses": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Swiss Eliminate Losses"
+        },
+        "swiss_qualify_wins": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Swiss Qualify Wins"
+        },
         "tiebreak_order": {
           "anyOf": [
             {
@@ -55491,6 +55591,32 @@
           ],
           "default": null,
           "title": "Swiss Bye Points"
+        },
+        "swiss_eliminate_losses": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Swiss Eliminate Losses"
+        },
+        "swiss_qualify_wins": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Swiss Qualify Wins"
         },
         "tiebreak_order": {
           "anyOf": [
@@ -55716,6 +55842,22 @@
           ],
           "default": null,
           "title": "Stage Item Id"
+        },
+        "swiss_status": {
+          "anyOf": [
+            {
+              "enum": [
+                "qualified",
+                "eliminated"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Swiss Status"
         },
         "tb": {
           "anyOf": [

@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 
 import TeamName from "@/components/TeamName";
+import { Badge } from "@/components/ui/badge";
 import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import type { BracketRoundShape } from "@/lib/bracket/round-name";
@@ -142,12 +143,30 @@ export function OverviewGroupTable({
             </thead>
             <tbody>
               {group.rows.map((row) => (
-                <tr key={row.id}>
+                // A team a Swiss threshold eliminated keeps its place, read as done.
+                <tr key={row.id} className={cn(row.swiss_status === "eliminated" && "opacity-60")}>
                   <td className="aqt-tnum py-1.5 pr-2 text-[color:var(--aqt-fg-muted)]">
                     {row.position}
                   </td>
                   <td className="py-1.5 pr-2">
-                    <TeamName team={row.team ?? { name: t("common.tbd") }} size="xs" />
+                    <span className="flex min-w-0 items-center gap-2">
+                      <TeamName team={row.team ?? { name: t("common.tbd") }} size="xs" />
+                      {row.swiss_status ? (
+                        <Badge
+                          palette="aqt"
+                          size="sm"
+                          voice="label"
+                          tone={row.swiss_status === "qualified" ? "accent" : "neutral"}
+                          className="shrink-0"
+                        >
+                          {t(
+                            row.swiss_status === "qualified"
+                              ? "standings.swissQualified"
+                              : "standings.swissEliminated"
+                          )}
+                        </Badge>
+                      ) : null}
+                    </span>
                   </td>
                   {/* W·D·L, not W–L: these stages draw, and a "3–0" printed
                       for a 3W-2D-0L run contradicts both the matches played

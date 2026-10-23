@@ -127,9 +127,11 @@ function singleBracketStage(seededTeams = 8): Stage {
       formula: "score"
     },
     swiss_bye_points: null,
+    swiss_qualify_wins: null,
+    swiss_eliminate_losses: null,
     de_grand_final_type: "no_reset",
     seed_ranking: "slot",
-    best_of: { default: 3, by_round: {}, final: null },
+    best_of: { default: 3, by_round: {}, final: null, swiss_qualify: null, swiss_eliminate: null },
     challonge_id: null,
     challonge_slug: null,
     items: [
@@ -320,7 +322,7 @@ describe("Stage editor best-of, double elimination", () => {
     expect(stageId).toBe(10);
     // Upper rounds 2 and 3 by number; the grand final via `final`, which the
     // server resolves to the max round and which outranks `by_round`.
-    expect(payload.best_of).toEqual({ default: 3, by_round: { "2": 5, "3": 5 }, final: 5 });
+    expect(payload.best_of).toEqual({ default: 3, by_round: { "2": 5, "3": 5 }, final: 5, swiss_qualify: null, swiss_eliminate: null });
     // Nothing negative: every lower-bracket round keeps the stage default.
     expect(Object.keys(payload.best_of.by_round).filter((key) => Number(key) < 0)).toEqual([]);
   });

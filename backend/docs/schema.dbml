@@ -3077,10 +3077,14 @@ Table tournament.stage {
   draw_points float
   loss_points float
   swiss_bye_points float
+  swiss_qualify_wins int
+  swiss_eliminate_losses int
   de_grand_final_type VARCHAR(16) [not null, default: `no_reset`]
   seed_ranking VARCHAR(16) [not null, default: `slot`]
   best_of_default int [not null, default: 3]
   best_of_final int
+  best_of_swiss_qualify int
+  best_of_swiss_eliminate int
   challonge_group_id bigint
   bracket_template jsonb
   indexes {
@@ -3149,6 +3153,7 @@ Table tournament.standing {
   tb int
   score_differential int
   is_pinned boolean [not null, default: false]
+  swiss_status VARCHAR(16)
   indexes {
     (stage_id, stage_item_id, team_id) [name: "ix_standing_stage_stage_item_team"]
     (tournament_id, overall_position) [name: "ix_standing_tournament_position"]
