@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import re
 
+from shared.division_grid import DEFAULT_GRID, ladder_grid
+
 __all__ = (
     "AMBER",
     "BLUE",
@@ -26,6 +28,7 @@ __all__ = (
     "ROLE_EMOJI",
     "SHORTCODE",
     "TEAL",
+    "art_drawn_for",
     "division_emoji",
     "emoji",
 )
@@ -82,7 +85,7 @@ EMOJI: dict[str, str] = {
     "bell_off": "🔕",
 }
 
-#: Role code -> emoji name; the same three codes ``REGISTRATION_ROLE_CODES`` holds, plus flex.
+#: Role code -> emoji name: Overwatch's three roles, and Full flex in any game that has it.
 ROLE_EMOJI: dict[str, str] = {"tank": "tank", "damage": "damage", "support": "support", "flex": "flex"}
 
 #: A shortcode as it sits in card text. Discord caps an emoji name at 32
@@ -105,3 +108,9 @@ def division_emoji(slug: str | None) -> str:
         return ""
     name = "div_" + _DIVISION.sub("_", slug.lower()).strip("_")
     return emoji(name[:28])
+
+
+def art_drawn_for(discipline: str) -> bool:
+    """Whether the bot's ``div_*`` badges and role emoji were drawn for ``discipline``: Overwatch, told by the
+    registry rather than by its code -- the game whose own ladder is the grid (``DEFAULT_GRID``) (spec §12.1 R3-5)."""
+    return ladder_grid(discipline) is DEFAULT_GRID

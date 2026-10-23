@@ -18,12 +18,12 @@ from typing import Any
 
 import discord
 
-from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
+from shared.disciplines import DISCIPLINES, RoleSpec
 from src.interactions import copy
-from src.interactions.actions import ALL_ROLES, NO_ROLE, custom_id, parse_custom_id
+from src.interactions.actions import ALL_ROLES, NO_ROLE, custom_id, parse_custom_id, seat_set_target, seat_slots
 from src.interactions.emoji import registry
 from src.render.card import DiscordActionButton, DiscordButton, DiscordCard
-from src.ui import EMOJI, ROLE_EMOJI
+from src.ui import EMOJI, ROLE_EMOJI, art_drawn_for
 
 __all__ = ("card_view", "modal_fields", "seat_modal", "settle")
 
@@ -80,22 +80,25 @@ def card_view(card: DiscordCard) -> discord.ui.LayoutView:
     return _detached(view)
 
 
-def _role_options(locale: copy.Locale, chosen: str, *, first_slot: bool) -> list[discord.RadioGroupOption]:
-    """One radio per role, plus the slot's own escape hatch, current pick preselected.
+def _role_options(
+    locale: copy.Locale, roles: Sequence[RoleSpec], chosen: str, *, first_slot: bool, overwatch: bool
+) -> list[discord.RadioGroupOption]:
+    """One radio per role of the game, plus the slot's own escape hatch, current pick preselected.
 
-    ``RadioGroupOption`` has no emoji field (unlike ``SelectOption``), so the
-    role's Unicode emoji rides in the label: a custom application emoji would
-    show as raw ``<:owt_tank:1234>`` text inside a form, where Discord renders
-    no markdown at all.
+    ``RadioGroupOption`` has no emoji field (unlike ``SelectOption``), so an
+    Overwatch role's Unicode emoji rides in the label: a custom application
+    emoji would show as raw ``<:owt_tank:1234>`` text inside a form, where
+    Discord renders no markdown at all. Another game's role is its name.
     """
     words = copy.seat_modal_text(locale)
     options = [
         discord.RadioGroupOption(
-            label=f"{EMOJI[ROLE_EMOJI[role]]} {copy.role_label(locale, role)}",
-            value=role,
-            default=chosen == role,
+            label=(f"{EMOJI[ROLE_EMOJI[role.code]]} " if overwatch else "")
+            + copy.role_label(locale, role.code, role.name),
+            value=role.code,
+            default=chosen == role.code,
         )
-        for role in REGISTRATION_ROLE_CODES
+        for role in roles
     ]
     # The first slot alone can mean "all of them"; the others can only be empty,
     # and a radio cannot be unticked without an option that says so.
@@ -105,38 +108,54 @@ def _role_options(locale: copy.Locale, chosen: str, *, first_slot: bool) -> list
     return options
 
 
-def seat_modal(locale: copy.Locale, game_id: int, roles: Sequence[str] | None, is_flex: bool) -> discord.ui.Modal:
+def seat_modal(
+    locale: copy.Locale, game_id: int, discipline: str, roles: Sequence[str] | None, is_flex: bool
+) -> discord.ui.Modal:
     """The seat form a ``mix.setup`` click opens, filled in with the seat as it is.
 
-    Its ``custom_id`` is the ``mix.seat_set`` button id (``owt:mix.seat_set:42``)
-    and its fields are named ``role1``..``role3`` and ``flex``: the submit is
-    then routed and answered exactly like a button click, with no view kept in
-    memory and nothing to lose across a restart.
+    The game's top ``min(3, role count)`` roles in order, one radio group per
+    slot, and a Full flex checkbox when the game has Full flex (spec §12.1
+    R3-1). A game with more roles than slots (LoL's five positions) says on
+    the first slot that the full order is set on the site. Its ``custom_id`` is the
+    ``mix.seat_set`` button id (``owt:mix.seat_set:42-overwatch``) and its
+    fields are named ``role1``.. and ``flex``: the submit is then routed and
+    answered exactly like a button click, with no view kept in memory and
+    nothing to lose across a restart.
     """
+    spec = DISCIPLINES[discipline]
+    game_roles = spec.rated_dimension.roles
+    slots = seat_slots(discipline)
+    overwatch = art_drawn_for(discipline)
     words = copy.seat_modal_text(locale)
+    first_hint = (
+        words["role1_hint"] if len(game_roles) <= slots else words["role1_hint_long"].format(count=len(game_roles))
+    )
     picked = list(roles) if roles is not None else []
-    modal = discord.ui.Modal(title=words["title"], custom_id=custom_id("mix.seat_set", str(game_id)), timeout=None)
-    for slot in (1, 2, 3):
+    modal = discord.ui.Modal(
+        title=words["title"], custom_id=custom_id("mix.seat_set", seat_set_target(game_id, discipline)), timeout=None
+    )
+    for slot in range(1, slots + 1):
         first = slot == 1
         chosen = ALL_ROLES if first and roles is None else (picked[slot - 1] if len(picked) >= slot else NO_ROLE)
         modal.add_item(
             discord.ui.Label(
                 text=words[f"role{slot}"],
-                description=words["role1_hint"] if first else words["role_hint"],
+                description=first_hint if first else words["role_hint"],
                 component=discord.ui.RadioGroup(
                     custom_id=f"role{slot}",
                     required=first,
-                    options=_role_options(locale, chosen, first_slot=first),
+                    options=_role_options(locale, game_roles, chosen, first_slot=first, overwatch=overwatch),
                 ),
             )
         )
-    modal.add_item(
-        discord.ui.Label(
-            text=words["flex"],
-            description=words["flex_hint"],
-            component=discord.ui.Checkbox(custom_id="flex", default=is_flex),
+    if spec.flex:
+        modal.add_item(
+            discord.ui.Label(
+                text=words["flex"],
+                description=words["flex_hint"],
+                component=discord.ui.Checkbox(custom_id="flex", default=is_flex),
+            )
         )
-    )
     return modal
 
 

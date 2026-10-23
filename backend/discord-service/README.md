@@ -78,7 +78,7 @@ The other outbound RPCs are the ones a card button makes (see *User-facing surfa
 | Queue / exchange | Direction | Purpose |
 | --- | --- | --- |
 | `discord_commands` | consumes | `DiscordCommandEvent` — `{action: send \| delete, message_ref}` and nothing else. `message_ref` is the `discord_message` row a publisher claimed (`shared/services/discord_messages.py`); the row says where the message goes (`channel` + `target`) and what it is about (`kind`, `subject`, `slot`, `payload_json`). `send` renders the row (`src/render/`) and posts it to the channel or DMs the user; `delete` removes the posted message. The bot writes back what Discord answered, so no publisher ever handles a Discord message id or a card, and one delete path serves DMs and channel posts alike. Edits are never commands: see `pickup_mix_changed`. |
-| `pickup_mix_changed` | consumes | `PickupMixChangedEvent` from balancer-service's outbox: re-render the live cards of that mix (or of every mix of the workspace) — `src/services/mix_projector.py`. |
+| `pickup_mix_changed` | consumes | `PickupMixChangedEvent` from balancer-service's and tournament-service's outboxes: re-render the live cards of that mix (or of every mix of the workspace) — `src/services/mix_projector.py`. |
 | `rpc.balancer.custom.discord_view` | requests | The view a mix card is rendered from: signup state and roster, and each requested lineup with its seats, map, team names, Discord ids to ping and whether it is still `current` (5 s timeout; `not_found` = the mix is gone). |
 | `rpc.identity.discord_identity` | requests | The linked account's identity payload for a clicking Discord user (`not_found` = not linked). A successful answer is cached for 30 s (see *Operational notes*). |
 | action subjects | requests | `rpc.tournament.regteam_accept` / `regteam_decline` / `reg_pub_check_in` / `reg_pub_get_me`, `rpc.app.notification_preferences_update`, `rpc.balancer.custom.self_*` — each called with that identity, exactly as the gateway would for the same person on the site. |
@@ -184,14 +184,19 @@ ephemeral messages only as an answer to a click, hence the trigger rather than a
 | `mix.roles` | `rpc.balancer.custom.self_get` | mix signup post («My seat») |
 | `mix.setup` | — (the bot alone: opens the seat form) | seat panel |
 | `mix.seat_set` | `rpc.balancer.custom.self_update` | the seat form's submit |
+| `mix.away` / `mix.back` | `rpc.balancer.custom.self_away` (`away: true` / `false`) | mix signup post |
 | `voice.move` / `voice.return` | — (the bot alone: a confirm prompt) | the lobby's newest lineup card |
 | `voice.move_confirm` / `voice.return_confirm` | `rpc.balancer.custom.voice_move` / `…voice_return` | that prompt |
 
 **Mix self-signup.** A host opens signup for a pickup mix; balancer-service claims a
 `mix.signup` row (`subject='mix:<id>'`, `slot='signup'`, no payload) and queues `send`, and the bot
 renders one **live** card into the workspace's channel from `rpc.balancer.custom.discord_view`: who
-hosts, how many lobbies, where a new player lands, the roster by first role with rank badges,
-«Join» / «My seat» / «Leave». Any mutation that changes what the card shows — a click here, an edit
+hosts, how many lobbies, where a new player lands, each lobby's stage (`signup.lobbies`, with a running
+match's or live draft's clock), the roster by first role in the mix's own game (`discipline_roles`:
+Overwatch roles and Full flex by emoji, other games' roles by name, none in a one-role game; a rank
+badge only for Overwatch), away players marked and out of the role counters, a footer naming the
+game's identity provider (`DISCIPLINES[d].identity_provider`: Battle.net, Riot ID, Steam), and
+«Join» / «My seat» / «Leave» / «Away» / «Back». Any mutation that changes what the card shows — a click here, an edit
 on the site, a host closing signup — emits `pickup_mix.changed`, and the bot's projector re-renders
 the mix's newest live signup card and every live lineup card of it (an event naming no mix — a
 renamed player — re-renders every mix's signup card in the workspace). Re-renders of one message
@@ -201,17 +206,26 @@ loses its buttons when the mix ends. A host removing a post (or the whole mix) q
 its row, which is how the card leaves the channel.
 
 Every `mix.*` action answers with the same self-state, rendered into the **seat panel**, an
-ephemeral card: participation and lobby, the role order with rank and division badge, the roles not
-played, flex, and notes (unranked roles, role edits locked by the host). Its «Edit roles»
-(`mix.setup`) opens a form — three radio groups («1st/2nd/3rd role», the first also offering «any
-ranked role») and a flex checkbox, prefilled from the button's own target
-(`<game>-<order>-<flex>`, e.g. `42-ts-1`; `a` = any ranked role, `x` = none), so the bot keeps no
-state. The submit (`owt:mix.seat_set:<game>`, fields `role1`..`role3`, `flex`) becomes one
-`self_update`; a value the bot never minted is refused before any platform call, and the panel is
+ephemeral card: participation and lobby, the role order with rank (and, for Overwatch, the division
+badge), the roles not played, flex, an «away» line, and notes (unranked roles, role edits locked by
+the host). The panel names the game's roles from the self state's `discipline_roles`; a one-role game
+shows its rank alone. Its «Edit roles» (`mix.setup`, never offered for a one-role game such as
+Deadlock) opens a form — `min(3, role count)` radio groups over the mix game's rated roles («1st/2nd/3rd
+role», the first also offering «any ranked role»; for a game with more roles, LoL's five positions,
+the first says the full order is set on the site) and a flex checkbox when the game has Full flex —
+prefilled from the button's own target (`<game>-<discipline>-<order>-<flex>`, e.g. `42-overwatch-ts-1`,
+`42-lol-mts-0`; one letter per role, its code's first, unique per game; `a` = any ranked role,
+`x` = none), so the bot keeps no state. The submit (`owt:mix.seat_set:<game>-<discipline>`, fields
+`role1`.., `flex`) becomes one `self_update` whose order is the form's picks, so a LoL order of five
+comes back as three; a value the bot never minted is refused before any platform call, and the panel is
 replaced in place. Refusals are worded from the mix's own blocker codes (`signup_closed`,
 `roster_full`, `role_edit_off`, …); the link blockers add a profile link: `discord_not_linked`,
 the mix game's provider (`battlenet_not_linked` for Overwatch, `riot_not_linked` for League of
 Legends, `steam_not_linked` for Deadlock) and the provider-neutral `player_not_linked`.
+
+A lobby captain's DMs (`mix.ban_room_opened`, `mix.draft_started`) are ordinary notifications
+rendered by `src/render/notifications.py`, with a «Lobby room» link to
+`/balancer/mix/<game>/lobby/<letter>`.
 
 **`/mix`** (guild-only) shows the same seat panel for the newest open mix of the workspace bound to
 that guild (`workspace.discord_guild_id` → `rpc.balancer.custom.self_current`), so a player never

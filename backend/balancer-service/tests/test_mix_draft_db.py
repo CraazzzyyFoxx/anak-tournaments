@@ -113,6 +113,15 @@ class MixDraftTests(EncounterWriterCase):
             await s.execute(
                 sa.text("DELETE FROM event_outbox WHERE payload_json->>'custom_game_id' = :id"), {"id": str(self.cg_id)}
             )
+            await s.execute(
+                sa.text(
+                    "DELETE FROM event_outbox WHERE routing_key = 'notification.created'"
+                    " AND (payload_json->>'notification_id')::bigint IN"
+                    " (SELECT id FROM notification WHERE source_workspace_id = :ws)"
+                ),
+                {"ws": self.ids["ws"]},
+            )
+            await s.execute(sa.text("DELETE FROM notification WHERE source_workspace_id = :ws"), {"ws": self.ids["ws"]})
             await s.execute(sa.delete(models.AuthUser).where(models.AuthUser.id.in_(self.auth_user_ids)))
             await s.commit()
         await super().asyncTearDown()
@@ -784,6 +793,80 @@ class MixDraftTests(EncounterWriterCase):
             await s.commit()
 
         self.assertIn((f"draft:{draft_id}:chat", "chat.visibility_changed", {"spectators_can_read": True}), staged)
+
+    async def _draft_dms(self) -> list[tuple[int, str, bool]]:
+        """``mix.draft_started`` rows of this workspace: ``(recipient, dedupe key, its delivery event is in the
+        outbox)``."""
+        async with self.Session() as s:
+            rows = await s.execute(
+                sa.text(
+                    "SELECT n.recipient_auth_user_id, n.dedupe_key, EXISTS (SELECT 1 FROM event_outbox o"
+                    " WHERE o.routing_key = 'notification.created'"
+                    " AND (o.payload_json->>'notification_id')::bigint = n.id)"
+                    " FROM notification n WHERE n.kind = 'mix.draft_started' AND n.source_workspace_id = :ws"
+                ),
+                {"ws": self.ids["ws"]},
+            )
+        return sorted(tuple(row) for row in rows)
+
+    async def _move(self, draft_id: int, host: int, move, event_type: str) -> None:
+        async with self.Session() as s:
+            await lifecycle.lifecycle_service.transition(
+                s, draft_id, move, event_type=event_type, audit_action="moved", actor_auth_user_id=host
+            )
+            await s.commit()
+
+    async def test_start_draft_dms_both_captains_and_a_live_replacement_but_not_a_seed_or_a_resume(self) -> None:
+        """R3-3: one DM per captain when the clock starts, one for a captain handed the running draft, none at the
+        seed (captains are only proposed), per pick or on resume."""
+        host, _ = await self._host()
+        accounts = {
+            member: (await self._account(self.users[index])).id for index, member in enumerate(("m0", "m1", "m2"))
+        }
+        m0, m1, m2 = (self.ids[member] for member in ("m0", "m1", "m2"))
+        draft_id = await self._seed_lobby(host)
+        self.assertEqual([], await self._draft_dms())
+
+        await self._start(draft_id, host)
+        started = sorted(
+            [(accounts["m1"], f"mix_draft:{draft_id}:{m1}", True), (accounts["m0"], f"mix_draft:{draft_id}:{m0}", True)]
+        )
+        self.assertEqual(started, await self._draft_dms())
+
+        await self._autopick(draft_id)  # team 1 (m1) takes m2
+        [first, _] = await self._teams(draft_id)
+        async with self.Session() as s:
+            m2_seat = await self._seat(s, draft_id, "m2")
+            await mix_draft_service.replace_captain(
+                s, **self._as_host(host, lobby_index=0, team_id=first.id, player_id=m2_seat)
+            )
+            await s.commit()
+        await self._move(draft_id, host, lifecycle.lifecycle_service.pause, "draft.paused")
+        await self._move(draft_id, host, lifecycle.lifecycle_service.resume, "draft.resumed")
+
+        self.assertEqual(
+            sorted([*started, (accounts["m2"], f"mix_draft:{draft_id}:{m2}", True)]), await self._draft_dms()
+        )
+
+    async def test_a_captain_crowned_while_the_draft_is_paused_gets_the_draft_dm(self) -> None:
+        """R3-3's live draft is a started one, paused included: the resume sends nothing, so the crowning is the new
+        captain's one DM. The seeded captains have no site account here, so the start itself DMs nobody."""
+        host, _ = await self._host()
+        m2_account = (await self._account(self.users[2])).id
+        draft_id = await self._seed_lobby(host)
+        await self._start(draft_id, host)
+        await self._autopick(draft_id)  # team 1 (m1) takes m2
+        await self._move(draft_id, host, lifecycle.lifecycle_service.pause, "draft.paused")
+        self.assertEqual(DraftStatus.PAUSED.value, await self._status(draft_id))
+        [first, _] = await self._teams(draft_id)
+        async with self.Session() as s:
+            m2_seat = await self._seat(s, draft_id, "m2")
+            await mix_draft_service.replace_captain(
+                s, **self._as_host(host, lobby_index=0, team_id=first.id, player_id=m2_seat)
+            )
+            await s.commit()
+
+        self.assertEqual([(m2_account, f"mix_draft:{draft_id}:{self.ids['m2']}", True)], await self._draft_dms())
 
     async def test_rolling_back_the_pick_that_seated_a_replacement_captain_is_refused(self) -> None:
         """The rollback would free the team's captain into the pool: refused until the host crowns a player who stays

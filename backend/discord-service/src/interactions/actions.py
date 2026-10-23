@@ -20,22 +20,26 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
+from shared.disciplines import DISCIPLINES
 from shared.services.notifications import NOTIFICATION_GROUPS
-from src.interactions.copy import OW_ROLE_DIMENSION
 
 __all__ = (
     "ACTIONS",
     "ALL_ROLES",
+    "SEAT_SLOTS",
     "VOICE_TIMEOUT",
     "Action",
     "NO_ROLE",
     "custom_id",
     "is_ours",
     "parse_custom_id",
+    "parse_seat_set_target",
     "parse_setup_target",
-    "setup_target",
     "parse_voice_target",
+    "role_letters",
+    "seat_set_target",
+    "seat_slots",
+    "setup_target",
     "voice_target",
 )
 
@@ -66,49 +70,98 @@ def _everything(target: str) -> bool:
 #: (``cards.seat_modal``): "every role I have a rank in" and "this slot is empty".
 ALL_ROLES = "all"
 NO_ROLE = "none"
+#: The seat form asks for at most this many roles, in order (spec §12.1 R3-1); a longer order is set on the site.
+SEAT_SLOTS = 3
 
-#: ``tank`` -> ``t``: the three codes start with three different letters, so the
-#: role order fits a ``mix.setup`` target as plain letters (``42-ts-1``).
-_ROLE_LETTER: dict[str, str] = {role: role[0] for role in REGISTRATION_ROLE_CODES}
-_LETTER_ROLE: dict[str, str] = {letter: role for role, letter in _ROLE_LETTER.items()}
-_SETUP_TARGET = re.compile(r"^(?P<game>\d+)-(?P<order>[a-z]{1,3})-(?P<flex>[01])$")
+_SETUP_TARGET = re.compile(r"^(?P<game>\d+)-(?P<discipline>[a-z0-9_]+)-(?P<order>[a-z]{1,3})-(?P<flex>[01])$")
+_SEAT_SET_TARGET = re.compile(r"^(?P<game>\d+)-(?P<discipline>[a-z0-9_]+)$")
 
 
-def setup_target(game_id: Any, roles: Sequence[str] | None, is_flex: bool) -> str:
-    """``<game id>-<order>-<flex>``: what the seat modal must open pre-filled with.
+def role_letters(discipline: str) -> dict[str, str] | None:
+    """``{role code: its first letter}`` for a game the seat form serves, else ``None``.
+
+    The form serves a game with more than one rated role whose codes start with different letters, none of them
+    the ``a`` ("every ranked role") or ``x`` ("none yet") a target already spends (spec §12.1 R3-1): ``tank`` ->
+    ``t``, ``mid`` -> ``m``. A one-role game (Deadlock) has no form at all.
+    """
+    spec = DISCIPLINES.get(discipline)
+    if spec is None:
+        return None
+    letters = {role.code: role.code[0] for role in spec.rated_dimension.roles}
+    used = set(letters.values())
+    return letters if len(letters) > 1 and len(used) == len(letters) and not used & {"a", "x"} else None
+
+
+def seat_slots(discipline: str) -> int:
+    """How many ordered role slots ``discipline``'s seat form has: its role count, at most :data:`SEAT_SLOTS`."""
+    return min(SEAT_SLOTS, len(DISCIPLINES[discipline].rated_dimension.roles))
+
+
+def setup_target(game_id: Any, discipline: str, roles: Sequence[str] | None, is_flex: bool) -> str:
+    """``<game id>-<discipline>-<order>-<flex>``: what the seat modal must open pre-filled with.
 
     ``mix.setup`` is answered by the bot alone, so the target is the whole
     state the modal needs -- no lookup between the click and the form, which
-    matters because a modal must be the *first* answer to a click.
-    ``a`` is "every role I have a rank in" (``roles`` is ``None``) and ``x`` is
-    "none picked yet"; neither is a letter any role owns.
+    matters because a modal must be the *first* answer to a click. ``a`` is
+    "every role I have a rank in" (``roles`` is ``None``) and ``x`` is "none
+    picked yet"; only the first :func:`seat_slots` roles travel, the form has
+    no more slots. Raises for a game the form does not serve.
     """
+    letters = role_letters(discipline)
+    if letters is None:
+        raise ValueError(f"no seat form for {discipline!r}")
     if roles is None:
         order = "a"
     else:
-        order = "".join(_ROLE_LETTER[role] for role in roles if role in _ROLE_LETTER) or "x"
-    return f"{game_id}-{order}-{'1' if is_flex else '0'}"
+        order = "".join(letters[role] for role in roles if role in letters)[: seat_slots(discipline)] or "x"
+    return f"{game_id}-{discipline}-{order}-{'1' if is_flex else '0'}"
 
 
-def parse_setup_target(target: str) -> tuple[int, list[str] | None, bool]:
-    """``(game id, roles, is_flex)`` from a ``mix.setup`` target; raises on anything else."""
+def parse_setup_target(target: str) -> tuple[int, str, list[str] | None, bool]:
+    """``(game id, discipline, roles, is_flex)`` from a ``mix.setup`` target; raises on anything else."""
     match = _SETUP_TARGET.match(target)
-    if match is None or not _setup_order(match["order"]):
+    letters = role_letters(match["discipline"]) if match is not None else None
+    if match is None or letters is None or not _setup_order(match["order"], letters):
         raise ValueError(f"not a seat setup target: {target!r}")
     order = match["order"]
-    roles = None if order == "a" else [] if order == "x" else [_LETTER_ROLE[letter] for letter in order]
-    return int(match["game"]), roles, match["flex"] == "1"
+    by_letter = {letter: role for role, letter in letters.items()}
+    roles = None if order == "a" else [] if order == "x" else [by_letter[letter] for letter in order]
+    return int(match["game"]), match["discipline"], roles, match["flex"] == "1"
 
 
-def _setup_order(order: str) -> bool:
+def _setup_order(order: str, letters: Mapping[str, str]) -> bool:
     if order in ("a", "x"):
         return True
-    return len(set(order)) == len(order) and all(letter in _LETTER_ROLE for letter in order)
+    return len(set(order)) == len(order) and set(order) <= set(letters.values())
 
 
 def _setup(target: str) -> bool:
-    match = _SETUP_TARGET.match(target)
-    return match is not None and _setup_order(match["order"])
+    try:
+        parse_setup_target(target)
+    except ValueError:
+        return False
+    return True
+
+
+def seat_set_target(game_id: Any, discipline: str) -> str:
+    """``<game id>-<discipline>``: the seat form's own id, so its submit knows the game's roles without a lookup."""
+    return f"{game_id}-{discipline}"
+
+
+def parse_seat_set_target(target: str) -> tuple[int, str]:
+    """``(game id, discipline)`` from a seat form's id; raises for a game the form does not serve."""
+    match = _SEAT_SET_TARGET.match(target)
+    if match is None or role_letters(match["discipline"]) is None:
+        raise ValueError(f"not a seat form target: {target!r}")
+    return int(match["game"]), match["discipline"]
+
+
+def _seat_set(target: str) -> bool:
+    try:
+        parse_seat_set_target(target)
+    except ValueError:
+        return False
+    return True
 
 
 def _mix(target: str, fields: Mapping[str, str]) -> dict[str, Any]:
@@ -120,13 +173,17 @@ def _mix(target: str, fields: Mapping[str, str]) -> dict[str, Any]:
 def _mix_seat_set(target: str, fields: Mapping[str, str]) -> dict[str, Any]:
     """The seat modal's answer as a ``self_update`` body.
 
-    The three role slots are an ordered pick, so the order *is* the priority;
-    a role named twice (two slots, same radio) is kept once, at its first
+    The role slots are an ordered pick, so the order *is* the priority; a
+    role named twice (two slots, same radio) is kept once, at its first
     place. ``all`` in the first slot means "every role I have a rank in" and
     the rest of the form stops mattering. Anything else in a slot is a value
-    this bot never minted: refused here, before any platform call.
+    this bot never minted for this game: refused here, before any platform
+    call. ``is_flex`` is sent only for a game that has Full flex.
     """
-    picks = [fields.get(f"role{slot}", "").strip() for slot in (1, 2, 3)]
+    game_id, discipline = parse_seat_set_target(target)
+    spec = DISCIPLINES[discipline]
+    codes = [role.code for role in spec.rated_dimension.roles]
+    picks = [fields.get(f"role{slot}", "").strip() for slot in range(1, seat_slots(discipline) + 1)]
     if picks[0] == ALL_ROLES:
         roles: list[str] | None = None
     else:
@@ -134,17 +191,18 @@ def _mix_seat_set(target: str, fields: Mapping[str, str]) -> dict[str, Any]:
         for pick in picks:
             if pick in ("", NO_ROLE):
                 continue
-            if pick not in REGISTRATION_ROLE_CODES:
+            if pick not in codes:
                 raise ValueError(f"not a role this bot minted: {pick!r}")
             if pick not in roles:
                 roles.append(pick)
-    return {
-        "custom_game_id": int(target),
-        "payload": {
-            "roles": [{"dimension": OW_ROLE_DIMENSION, "role": code} for code in roles] if roles is not None else None,
-            "is_flex": fields.get("flex") == "1",
-        },
+    payload: dict[str, Any] = {
+        "roles": [{"dimension": spec.rated_dimension.code, "role": code} for code in roles]
+        if roles is not None
+        else None
     }
+    if spec.flex:
+        payload["is_flex"] = fields.get("flex") == "1"
+    return {"custom_game_id": game_id, "payload": payload}
 
 
 #: The voice buttons and ``/mix move|return``: ``<game>-<lobby index>`` or ``<game>-all``.
@@ -228,7 +286,17 @@ ACTIONS: dict[str, Action] = {
     # Answered by the bot alone: the click opens the seat modal, and the modal
     # it opens is spelled out by the target (``cards.seat_modal``).
     "mix.setup": Action(None, accepts=_setup),
-    "mix.seat_set": Action("rpc.balancer.custom.self_update", _mix_seat_set),
+    "mix.seat_set": Action("rpc.balancer.custom.self_update", _mix_seat_set, accepts=_seat_set),
+    # The signup card's break switch (spec §7.4): two buttons because one shared
+    # card cannot know whether its reader is away.
+    "mix.away": Action(
+        "rpc.balancer.custom.self_away",
+        lambda target, _fields: {"custom_game_id": int(target), "payload": {"away": True}},
+    ),
+    "mix.back": Action(
+        "rpc.balancer.custom.self_away",
+        lambda target, _fields: {"custom_game_id": int(target), "payload": {"away": False}},
+    ),
     # The host's voice controls: the lineup card's buttons and ``/mix move|return``.
     # The first click only asks (answered by the bot alone); the ``*_confirm``
     # button on that private prompt is what moves people. The RPC re-checks

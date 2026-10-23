@@ -300,6 +300,21 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
             )
         ).all()
 
+    async def auth_user_ids(self, session: AsyncSession, member_ids: Sequence[int]) -> dict[int, int]:
+        """``{member_id: auth_user_id}`` for each of ``member_ids`` with a site account behind its player.
+
+        The identity chain of :meth:`discord_ids`, one step shorter; a shadow player (no account) is left out.
+        """
+        if not member_ids:
+            return {}
+        rows = await session.execute(
+            sa.select(models.WorkspaceMember.id, models.User.auth_user_id)
+            .select_from(models.WorkspaceMember)
+            .join(models.User, models.User.id == models.WorkspaceMember.player_id)
+            .where(models.WorkspaceMember.id.in_(member_ids), models.User.auth_user_id.is_not(None))
+        )
+        return {int(member_id): int(auth_user_id) for member_id, auth_user_id in rows.all()}
+
     async def list_memberships_for_auth_user(
         self,
         session: AsyncSession,

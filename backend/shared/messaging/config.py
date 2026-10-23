@@ -575,7 +575,7 @@ NOTIFICATION_DELIVERY_DLQ = RabbitQueue(
 )
 
 # ============================================================================
-# Pickup mix changes (balancer-service -> discord-service)
+# Pickup mix changes (balancer-service, tournament-service -> discord-service)
 # ============================================================================
 # ``PickupMixChangedEvent`` through the outbox, straight onto the queue (default
 # exchange): the one consumer, the bot's mix projector, re-renders the mix's

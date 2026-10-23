@@ -4,7 +4,7 @@ One listener for every button the bot ever sent, keyed by ``custom_id``
 rather than by a per-message view: cards outlive restarts and deploys, and a
 DM fan-out would otherwise leave a view in memory for every message. A modal
 is routed the same way -- its ``custom_id`` is the action it submits
-(``owt:mix.seat_set:42``), so no ``discord.ui.Modal`` has to stay in memory
+(``owt:mix.seat_set:42-overwatch``), so no ``discord.ui.Modal`` has to stay in memory
 between opening the form and reading it back.
 """
 

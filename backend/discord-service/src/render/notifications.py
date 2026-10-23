@@ -40,6 +40,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
+from shared.domain.mix_lobby import LOBBY_LETTERS
 from shared.services.notifications import NOTIFICATION_KINDS
 from src.render.card import DiscordActionButton, DiscordButton, DiscordCard, DiscordLinkButton
 from src.ui import AMBER, BLUE, GREEN, RED, TEAL, emoji
@@ -64,6 +65,8 @@ _COLORS: dict[str, int] = {
     "registration.opened": TEAL,
     "check_in.opened": AMBER,
     "encounter.scheduled": BLUE,
+    "mix.ban_room_opened": AMBER,
+    "mix.draft_started": AMBER,
 }
 _ANSWER_COLORS = {"accepted": GREEN, "declined": RED}
 
@@ -185,6 +188,16 @@ TEMPLATES: dict[str, dict[str, tuple[str, str, tuple[str, ...]]]] = {
             "{teams} на **{tournament_name}**.",
             ("**Начало:** {scheduled_at}",),
         ),
+        "mix.ban_room_opened": (
+            "Баны героев в миксе",
+            "Вы капитан в лобби {lobby} микса **{mix_name}**: открылась комната банов героев.",
+            (),
+        ),
+        "mix.draft_started": (
+            "Драфт начался",
+            "Вы капитан в лобби {lobby} микса **{mix_name}**: драфт начался, выбирайте в свой ход.",
+            (),
+        ),
     },
     "en": {
         "team_invite.received": (
@@ -239,6 +252,16 @@ TEMPLATES: dict[str, dict[str, tuple[str, str, tuple[str, ...]]]] = {
             "{teams} in **{tournament_name}**.",
             ("**Starts:** {scheduled_at}",),
         ),
+        "mix.ban_room_opened": (
+            "Mix hero bans",
+            "You captain lobby {lobby} of **{mix_name}**: the hero ban room is open.",
+            (),
+        ),
+        "mix.draft_started": (
+            "Draft started",
+            "You captain lobby {lobby} of **{mix_name}**: the draft has started — pick on your turn.",
+            (),
+        ),
     },
 }
 
@@ -260,6 +283,8 @@ _HEADING_EMOJI: dict[str, str] = {
     "registration.opened": "join",
     "check_in.opened": "clock",
     "encounter.scheduled": "vs",
+    "mix.ban_room_opened": "lock",
+    "mix.draft_started": "players",
 }
 
 #: ``team_invite.answered`` is the one kind whose news is only known from the
@@ -281,6 +306,7 @@ _LINK_LABELS: dict[str, dict[str, str]] = {
         "match_room": "Комната матча",
         "pick_ban": "Бан-пик",
         "match": "Матч",
+        "mix_room": "Комната лобби",
     },
     "en": {
         "participants": "View participants",
@@ -289,6 +315,7 @@ _LINK_LABELS: dict[str, dict[str, str]] = {
         "match_room": "Match room",
         "pick_ban": "Pick-ban",
         "match": "Match",
+        "mix_room": "Lobby room",
     },
 }
 
@@ -335,6 +362,8 @@ _PARTICIPANTS_KINDS = frozenset(
 )
 _PREGAME_KINDS = frozenset({"encounter.report_disputed", "encounter.dispute_review", "encounter.scheduled"})
 _TOURNAMENT_KINDS = frozenset({"registration.opened", "check_in.opened"})
+#: A mix captain's room: the lobby's own page, not a tournament's.
+_MIX_ROOM_KINDS = frozenset({"mix.ban_room_opened", "mix.draft_started"})
 
 
 def deep_link_path(kind: str, payload: Mapping[str, Any]) -> str | None:
@@ -345,6 +374,11 @@ def deep_link_path(kind: str, payload: Mapping[str, Any]) -> str | None:
     on the same screen, and there is no shared route manifest to read them
     from. Upgrade path is that manifest, when a third consumer appears.
     """
+    if kind in _MIX_ROOM_KINDS:
+        custom_game_id, lobby = payload.get("custom_game_id"), payload.get("lobby")
+        if isinstance(custom_game_id, int) and isinstance(lobby, str) and lobby in tuple(LOBBY_LETTERS):
+            return f"/balancer/mix/{custom_game_id}/lobby/{lobby}"
+        return None
     tournament_id = payload.get("tournament_id")
     if not isinstance(tournament_id, int):
         return None
@@ -360,6 +394,8 @@ def deep_link_path(kind: str, payload: Mapping[str, Any]) -> str | None:
 
 
 def _destination(kind: str) -> str:
+    if kind in _MIX_ROOM_KINDS:
+        return "mix_room"
     if kind in _PARTICIPANTS_KINDS:
         return "participants"
     return "pregame" if kind in _PREGAME_KINDS else "tournament"

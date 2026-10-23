@@ -45,7 +45,9 @@ type NotificationMessageKey =
   | "inviteAnswered"
   | "removedFromTeam"
   | "teamDisbanded"
-  | "teamRejected";
+  | "teamRejected"
+  | "mixBanRoom"
+  | "mixDraft";
 
 const KIND_LABELS: Record<string, NotificationMessageKey> = {
   "check_in.opened": "checkInOpened",
@@ -58,7 +60,9 @@ const KIND_LABELS: Record<string, NotificationMessageKey> = {
   "team_invite.answered": "inviteAnswered",
   "team.kicked": "removedFromTeam",
   "team.disbanded": "teamDisbanded",
-  "team.rejected": "teamRejected"
+  "team.rejected": "teamRejected",
+  "mix.ban_room_opened": "mixBanRoom",
+  "mix.draft_started": "mixDraft"
 };
 
 /**

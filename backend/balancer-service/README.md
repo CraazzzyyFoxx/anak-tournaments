@@ -163,6 +163,8 @@ announces nothing:
 - `PickupMixChangedEvent` onto `pickup_mix_changed`, from `emit_pickup_mix_changed` — every mix
   mutation emits it (`custom.*`, the `self_*` seat actions, and `players.upsert`/`players.set_ranks`
   with no mix id, because a renamed player or a corrected rank shows on every mix of the workspace).
+  tournament-service emits the same fact (`change: "pick_ban"`) when a mix match's hero room
+  crosses Pre-game ↔ Live; the emitter lives in `shared/services/pickup_mix_realtime.py`.
   It carries no state, only where to look; discord-service consumes it.
 - `DiscordCommandEvent` (`send` / `delete`, naming the row by `message_ref`, no card) onto
   `discord_commands`: `custom.post_signup` (the delete of the previous card, then the new one),

@@ -82,7 +82,8 @@ class PickupMixChangedEvent(BaseEvent):
     that is not about one mix (a player renamed, a rank corrected), which
     concerns every mix of the workspace.
 
-    Published by: balancer-service ``emit_pickup_mix_changed`` (outbox, same transaction)
+    Published by: ``shared.services.pickup_mix_realtime.emit_pickup_mix_changed`` (outbox, same transaction), from
+    balancer-service's mix writes and tournament-service's mix hero room crossing Pre-game <-> Live
     Consumed by: discord-service's mix projector, which re-renders the mix's live cards
     """
 

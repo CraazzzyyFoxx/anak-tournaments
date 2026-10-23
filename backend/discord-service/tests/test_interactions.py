@@ -8,6 +8,7 @@ that loses its spent buttons while a channel post is never touched.
 """
 
 import sys
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, get_args
 from unittest import IsolatedAsyncioTestCase
@@ -19,12 +20,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import discord  # noqa: E402
 
+from shared.disciplines import DISCIPLINES  # noqa: E402
 from shared.schemas.rpc import parse_rpc, rpc_error, rpc_ok  # noqa: E402
 from src.cogs.interactions import InteractionsCog, SlashTranslator  # noqa: E402
 from src.interactions import copy  # noqa: E402
 from src.interactions import dispatcher as dispatcher_module  # noqa: E402
-from src.interactions.actions import ACTIONS, parse_custom_id, parse_setup_target, setup_target  # noqa: E402
-from src.interactions.cards import card_view, settle  # noqa: E402
+from src.interactions.actions import (  # noqa: E402
+    ACTIONS,
+    parse_custom_id,
+    parse_setup_target,
+    role_letters,
+    setup_target,
+)
+from src.interactions.cards import card_view, seat_modal, settle  # noqa: E402
 from src.interactions.dispatcher import (  # noqa: E402
     IDENTITY_SUBJECT,
     MIX_CURRENT_SUBJECT,
@@ -57,6 +65,46 @@ class _Rpc:
 
     def subjects(self) -> list[str]:
         return [queue for queue, _ in self.calls]
+
+
+class _SeatService:
+    """Stands in for balancer's self-service: one player's seat, changed the way ``self_update``/``self_away`` do.
+
+    A body is checked as strictly as the real schemas check it (``extra="forbid"``, strict booleans, the mix
+    game's own rated dimension and roles) and the answer is the state the change left behind -- so a test proves
+    a click by what the seat became and what the panel then shows, never by the arguments it was sent.
+    """
+
+    def __init__(self, state: dict[str, Any]) -> None:
+        self.state = state
+
+    @property
+    def seat(self) -> dict[str, Any]:
+        return self.state["seat"]
+
+    async def __call__(self, broker: Any, payload: dict[str, Any], queue: str, *, timeout: float) -> Any:
+        if queue == IDENTITY_SUBJECT:
+            return parse_rpc(rpc_ok(IDENTITY))
+        body = payload.get("payload")
+        if payload.get("custom_game_id") != self.state["custom_game_id"] or not isinstance(body, dict):
+            return parse_rpc(rpc_error("not_found", "no such mix"))
+        if queue == "rpc.balancer.custom.self_away" and set(body) == {"away"} and isinstance(body["away"], bool):
+            self.seat["away"] = body["away"]
+        elif queue == "rpc.balancer.custom.self_update" and self._valid_update(body):
+            self.seat.update(body)
+        else:
+            return parse_rpc(rpc_error("validation_error", f"{queue} refused {body!r}"))
+        return parse_rpc(rpc_ok(deepcopy(self.state)))
+
+    def _valid_update(self, body: dict[str, Any]) -> bool:
+        dimension = DISCIPLINES[self.state["discipline"]].rated_dimension
+        allowed = [{"dimension": dimension.code, "role": role.code} for role in dimension.roles]
+        roles = body.get("roles")
+        return (
+            set(body) <= {"roles", "is_flex"}
+            and isinstance(body.get("is_flex", False), bool)
+            and (roles is None or isinstance(roles, list) and all(role in allowed for role in roles))
+        )
 
 
 def _session_maker() -> MagicMock:
@@ -107,6 +155,9 @@ def _mix_state(**overrides: Any) -> dict[str, Any]:
         "status": "balanced",
         "self_signup": "pool",
         "self_role_edit": True,
+        "discipline": "overwatch",
+        "discipline_roles": [{"code": code, "label": code.title()} for code in ("tank", "damage", "support")],
+        "discipline_flex": True,
         "seat": {
             "participation": "pool",
             "roles": [{"dimension": "player_role", "role": code} for code in ("tank", "support")],
@@ -124,6 +175,15 @@ def _mix_state(**overrides: Any) -> dict[str, Any]:
         },
     }
     state.update(overrides)
+    return state
+
+
+def _lol_state() -> dict[str, Any]:
+    """A LoL seat with no order picked yet and flex off; ranked on jungle alone."""
+    positions = ("top", "jungle", "mid", "bot", "support")
+    state = _mix_state(discipline="lol", discipline_roles=[{"code": code, "label": code.title()} for code in positions])
+    state["seat"] = {**state["seat"], "roles": [], "is_flex": False, "ranks": {"jungle": 2450}, "divisions": {}}
+    state["unranked_roles"] = []
     return state
 
 
@@ -346,7 +406,8 @@ class SeatFormTests(IsolatedAsyncioTestCase):
 
     def test_the_setup_target_carries_the_whole_form_both_ways(self) -> None:
         """A modal must be the first answer to a click, so the form is opened
-        from the target alone -- it has to survive the round trip exactly."""
+        from the target alone -- game, roles, order and flex -- and has to
+        survive the round trip exactly."""
         for roles, is_flex in (
             (["tank", "support"], True),
             (["damage"], False),
@@ -354,15 +415,25 @@ class SeatFormTests(IsolatedAsyncioTestCase):
             (None, False),  # every ranked role
             ([], True),  # nothing picked yet
         ):
-            target = setup_target(42, roles, is_flex)
-            self.assertEqual(parse_setup_target(target), (42, roles, is_flex), target)
+            target = setup_target(42, "overwatch", roles, is_flex)
+            self.assertEqual(parse_setup_target(target), (42, "overwatch", roles, is_flex), target)
             self.assertEqual(parse_custom_id(f"owt:mix.setup:{target}"), ("mix.setup", target))
-        self.assertEqual(setup_target(42, ["tank", "support"], True), "42-ts-1")
-        self.assertEqual(setup_target(42, None, False), "42-a-0")
-        self.assertEqual(setup_target(42, [], False), "42-x-0")
+        self.assertEqual(setup_target(42, "overwatch", ["tank", "support"], True), "42-overwatch-ts-1")
+        self.assertEqual(setup_target(42, "overwatch", None, False), "42-overwatch-a-0")
+        self.assertEqual(setup_target(42, "overwatch", [], False), "42-overwatch-x-0")
 
     def test_a_forged_setup_target_never_reaches_an_action(self) -> None:
-        for refused in ("owt:mix.setup:42-tt-1", "owt:mix.setup:42-tz-1", "owt:mix.setup:42", "owt:mix.setup:42-ts-2"):
+        for refused in (
+            "owt:mix.setup:42-overwatch-tt-1",  # a role twice
+            "owt:mix.setup:42-overwatch-tz-1",  # a letter no role owns
+            "owt:mix.setup:42",
+            "owt:mix.setup:42-overwatch-ts-2",
+            "owt:mix.setup:42-ts-1",  # the pre-П3 format: no game
+            "owt:mix.setup:42-deadlock-a-0",  # one role: no form
+            "owt:mix.setup:42-chess-a-0",  # no such game
+            "owt:mix.seat_set:42",
+            "owt:mix.seat_set:42-deadlock",
+        ):
             self.assertIsNone(parse_custom_id(refused), refused)
 
     async def test_the_form_opens_on_the_click_itself_and_calls_nothing(self) -> None:
@@ -370,7 +441,7 @@ class SeatFormTests(IsolatedAsyncioTestCase):
         cog = InteractionsCog(MagicMock(action_dispatcher=_dispatcher()))
         click = _interaction(ephemeral=True)
         click.type = discord.InteractionType.component
-        click.data = {"custom_id": "owt:mix.setup:42-ts-1"}
+        click.data = {"custom_id": "owt:mix.setup:42-overwatch-ts-1"}
 
         with patch.object(dispatcher_module, "request_rpc", rpc):
             await cog.on_interaction(click)
@@ -380,7 +451,7 @@ class SeatFormTests(IsolatedAsyncioTestCase):
         click.response.defer.assert_not_awaited()
         (modal,) = click.response.send_modal.await_args.args
         form = modal.to_dict()
-        self.assertEqual(form["custom_id"], "owt:mix.seat_set:42")
+        self.assertEqual(form["custom_id"], "owt:mix.seat_set:42-overwatch")
         self.assertEqual(form["title"], "Моё место")
         fields = {label["component"]["custom_id"]: label["component"] for label in form["components"]}
         self.assertEqual(list(fields), ["role1", "role2", "role3", "flex"])
@@ -401,7 +472,7 @@ class SeatFormTests(IsolatedAsyncioTestCase):
         submit = _interaction(ephemeral=True)
         submit.type = discord.InteractionType.modal_submit
         submit.data = {
-            "custom_id": "owt:mix.seat_set:42",
+            "custom_id": "owt:mix.seat_set:42-overwatch",
             "components": [
                 {"type": 18, "component": {"type": 21, "custom_id": "role1", "value": "support"}},
                 {"type": 18, "component": {"type": 21, "custom_id": "role2", "value": "tank"}},
@@ -433,7 +504,7 @@ class SeatFormTests(IsolatedAsyncioTestCase):
 
         with patch.object(dispatcher_module, "request_rpc", rpc):
             outcome = await _dispatcher().perform(
-                4242, "mix.seat_set", "42", {"role1": "all", "role2": "none", "role3": "none", "flex": "0"}
+                4242, "mix.seat_set", "42-overwatch", {"role1": "all", "role2": "none", "role3": "none", "flex": "0"}
             )
 
         self.assertEqual(outcome.status, "ok")
@@ -444,11 +515,64 @@ class SeatFormTests(IsolatedAsyncioTestCase):
         dispatcher = _dispatcher()
 
         with patch.object(dispatcher_module, "request_rpc", rpc):
-            outcome = await dispatcher.perform(4242, "mix.seat_set", "42", {"role1": "healer", "flex": "1"})
+            outcome = await dispatcher.perform(4242, "mix.seat_set", "42-overwatch", {"role1": "healer", "flex": "1"})
 
         self.assertEqual((outcome.status, outcome.code), ("failed", "bad_values"))
         self.assertEqual(rpc.calls, [])
         self.assertIn("разобрать выбор ролей", _reply_text(dispatcher.reply(outcome, "mix.seat_set", "ru")))
+
+    def test_every_game_with_roles_to_order_fits_the_seat_form(self) -> None:
+        """R3-1: an order travels as first letters, so every game with more than one rated role needs them unique
+        (and never ``a``/``x``, which the target spends); a one-role game has no form."""
+        for code, spec in DISCIPLINES.items():
+            with self.subTest(code):
+                self.assertEqual(len(spec.rated_dimension.roles) > 1, role_letters(code) is not None)
+
+    async def test_lol_asks_three_positions_and_flex_and_saves_that_order(self) -> None:
+        """R3-1: the top three of LoL's five positions, in order, plus Full flex; the full order is the site's."""
+        target = setup_target(42, "lol", ["mid", "top", "support", "bot"], False)
+        self.assertEqual("42-lol-mts-0", target)
+        self.assertEqual((42, "lol", ["mid", "top", "support"], False), parse_setup_target(target))
+
+        form = seat_modal("en", 42, "lol", ["mid", "top", "support"], False).to_dict()
+        fields = {label["component"]["custom_id"]: label["component"] for label in form["components"]}
+        self.assertEqual("owt:mix.seat_set:42-lol", form["custom_id"])
+        self.assertEqual(["role1", "role2", "role3", "flex"], list(fields))
+        self.assertEqual(
+            ["top", "jungle", "mid", "bot", "support", "all"],
+            [option["value"] for option in fields["role1"]["options"]],
+        )
+
+        service = _SeatService(_lol_state())
+        dispatcher = _dispatcher()
+        with patch.object(dispatcher_module, "request_rpc", service):
+            outcome = await dispatcher.perform(
+                4242, "mix.seat_set", "42-lol", {"role1": "jungle", "role2": "mid", "role3": "none", "flex": "1"}
+            )
+
+        self.assertEqual("ok", outcome.status)
+        self.assertEqual(["jungle", "mid"], [role["role"] for role in service.seat["roles"]])
+        self.assertIs(True, service.seat["is_flex"])
+        panel = dispatcher.reply(outcome, "mix.seat_set", "ru")
+        text = _reply_text(panel)
+        self.assertIn("① Jungle — 2450", text)
+        self.assertIn("② Mid — без ранга", text)
+        self.assertIn("   Top — не играете", text)
+        self.assertIn("Флекс: вкл", text)
+        # The panel's own button reopens the form on exactly what was saved.
+        _container, buttons = panel.to_components()
+        self.assertEqual("owt:mix.setup:42-lol-jm-1", buttons["components"][0]["custom_id"])
+
+    def test_the_lol_form_says_the_full_order_is_set_on_the_site(self) -> None:
+        """Q5: three slots for five positions, so the first one says where the whole order lives (≤ 100 chars)."""
+        for locale, site in (("ru", "сайте"), ("en", "site")):
+            with self.subTest(locale):
+                lol = seat_modal(locale, 42, "lol", ["mid"], False).to_dict()["components"][0]["description"]
+                overwatch = seat_modal(locale, 42, "overwatch", ["tank"], False).to_dict()["components"][0]
+                self.assertIn("5", lol)
+                self.assertIn(site, lol)
+                self.assertNotIn(site, overwatch["description"])
+                self.assertLessEqual(len(lol), 100)
 
 
 class MixSelfSignupTests(IsolatedAsyncioTestCase):
@@ -462,7 +586,7 @@ class MixSelfSignupTests(IsolatedAsyncioTestCase):
         _container, buttons = editable.to_components()
         self.assertEqual(
             [button["custom_id"] for button in buttons["components"]],
-            ["owt:mix.setup:42-ts-0", "owt:mix.leave:42"],
+            ["owt:mix.setup:42-overwatch-ts-0", "owt:mix.leave:42"],
         )
 
         locked = dispatcher.reply(
@@ -592,6 +716,79 @@ class MixSelfSignupTests(IsolatedAsyncioTestCase):
         view = dispatcher.reply(outcome, "mix.join", "ru")
         self.assertEqual(len(view.to_components()), 1)
         self.assertIn("Запись на этот микс закрыта", _reply_text(view))
+
+    async def test_a_one_role_game_offers_no_role_form_and_shows_only_the_rank(self) -> None:
+        """R3-1: Deadlock has one role -- no form, no role lines, no flex; R3-5: its rank is a bare number."""
+        state = _mix_state(
+            discipline="deadlock", discipline_roles=[{"code": "agent", "label": "Agent"}], discipline_flex=False
+        )
+        state["seat"] = {
+            **state["seat"],
+            "roles": None,
+            "ranks": {"agent": 4100},
+            "divisions": {"agent": {"name": "Grandmaster", "slug": "grandmaster"}},
+        }
+        state["unranked_roles"] = []
+
+        _container, buttons = _dispatcher().reply(Outcome("ok", state), "mix.roles", "ru").to_components()
+        _head, details = copy.mix_text("ru", state)
+
+        self.assertEqual(["owt:mix.leave:42"], [button["custom_id"] for button in buttons["components"]])
+        self.assertEqual("Ранг: 4100", details)
+
+    def test_only_an_overwatch_seat_wears_a_division_badge(self) -> None:
+        """R3-5: a LoL seat names its position and its number, never an Overwatch badge."""
+        state = _mix_state(
+            discipline="lol",
+            discipline_roles=[
+                {"code": code, "label": code.title()} for code in ("top", "jungle", "mid", "bot", "support")
+            ],
+        )
+        state["seat"] = {
+            **state["seat"],
+            "roles": [{"dimension": "position", "role": "mid"}],
+            "ranks": {"mid": 3100},
+            "divisions": {"mid": {"name": "Grandmaster", "slug": "grandmaster"}},
+        }
+        state["unranked_roles"] = []
+
+        _head, details = copy.mix_text("ru", state)
+
+        self.assertIn("① Mid — 3100", details)
+        self.assertIn("   Top — не играете", details)
+        self.assertNotIn("owt_div_", details)
+
+    def test_the_panel_says_when_the_player_is_away(self) -> None:
+        away = _mix_state()
+        away["seat"]["away"] = True
+
+        _head, details = copy.mix_text("en", away)
+        _head, present = copy.mix_text("en", _mix_state())
+
+        self.assertIn(":owt_clock: You're away: no balance seats you until you're back", details)
+        self.assertNotIn("You're away", present)
+
+    async def test_away_and_back_from_the_shared_card_flip_the_seat_and_the_panel_says_so(self) -> None:
+        """R3-2: the switch is the button, not the target -- one shared card serves every reader."""
+        service = _SeatService(_mix_state())
+        service.seat["away"] = False
+        dispatcher = _dispatcher()
+        away_click, back_click = _interaction(guild_id=555), _interaction(guild_id=555)
+
+        with patch.object(dispatcher_module, "request_rpc", service):
+            await dispatcher.handle(away_click, "mix.away", "42")
+            stepped_away = service.seat["away"]
+            await dispatcher.handle(back_click, "mix.back", "42")
+
+        self.assertIs(True, stepped_away)
+        self.assertIs(False, service.seat["away"])
+        # Each click answers the clicker alone, with their own panel as it now is.
+        away_reply, back_reply = (click.followup.send.await_args.kwargs for click in (away_click, back_click))
+        self.assertTrue(away_reply["ephemeral"] and back_reply["ephemeral"])
+        self.assertIn("Вы отошли", _reply_text(away_reply["view"]))
+        self.assertNotIn("Вы отошли", _reply_text(back_reply["view"]))
+        self.assertEqual(("mix.away", "42"), parse_custom_id("owt:mix.away:42"))
+        self.assertIsNone(parse_custom_id("owt:mix.back:all"))
 
 
 class CurrentMixCommandTests(IsolatedAsyncioTestCase):

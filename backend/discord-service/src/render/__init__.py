@@ -32,7 +32,7 @@ from shared.repository.notification import NotificationWorkspaceConfigRepository
 from shared.services import discord_messages
 from src.core.config import settings
 from src.render.card import DiscordCard
-from src.render.mix import SignupPlayer, lineup_card, lineup_picture, signup_card
+from src.render.mix import SignupLobby, SignupPlayer, lineup_card, lineup_picture, signup_card
 from src.render.mix_lineup_image import LineupPicture, render_png
 from src.render.notifications import DELIVERABLE_KINDS, render_discord
 
@@ -188,10 +188,22 @@ async def _signup(row: models.DiscordMessage, broker: Any) -> Rendered | None:
                 role=player.get("role"),
                 benched=bool(player.get("benched")),
                 rank=player.get("rank"),
+                away=bool(player.get("away")),
             )
             for player in signup["players"]
         ],
         updated_at=datetime.fromisoformat(signup["updated_at"]),
+        discipline=str(view.get("discipline") or ""),
+        roles=[(str(role["code"]), str(role["label"])) for role in view.get("discipline_roles") or ()],
+        flex=bool(view.get("discipline_flex")),
+        lobbies=[
+            SignupLobby(
+                index=int(lobby["lobby_index"]),
+                state=str(lobby["state"]),
+                since=datetime.fromisoformat(lobby["live_started_at"]) if lobby.get("live_started_at") else None,
+            )
+            for lobby in signup.get("lobbies") or ()
+        ],
     )
     return Rendered(card)
 
@@ -246,6 +258,7 @@ async def _lineup(session: AsyncSession, row: models.DiscordMessage, broker: Any
         points_per_win=lineup.get("points_per_win"),
         board_url=view["board_url"],
         lobby_label=lineup.get("lobby_label"),
+        discipline=str(view.get("discipline") or ""),
     )
     card = lineup_card(
         mix_name=mix_name,

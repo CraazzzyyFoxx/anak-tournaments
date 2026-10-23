@@ -132,11 +132,12 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
   (the Challonge push of a confirmed result, retried by the queue instead of swallowed in the
   request); `cache.invalidation` fans `cache.invalidated.*` out to one queue per caching
   service; `notifications` feeds app-service's Discord delivery (it claims `discord_message`
-  rows, the bot renders them); `pickup_mix_changed` is balancer → the bot (re-render a mix's
-  live cards); `match.ingested` is stats → tournament's match layer; `workspace_member_changed`
-  is app → identity (drop the cached RBAC payload); `discord_member_changed` is the bot → stats
-  (re-resolve a Boosty entitlement). `backend/tests/test_messaging_config.py` fails on a queue
-  nobody consumes or a DLQ nobody declares.
+  rows, the bot renders them); `pickup_mix_changed` is balancer (and tournament, when a mix
+  match's hero room settles) → the bot (re-render a mix's live cards); `match.ingested` is stats
+  → tournament's match layer; `workspace_member_changed` is app → identity (drop the cached RBAC
+  payload); `discord_member_changed` is the bot → stats (re-resolve a Boosty entitlement).
+  `backend/tests/test_messaging_config.py` fails on a queue nobody consumes or a DLQ nobody
+  declares.
 - **Long jobs.** Durable queues decouple minutes-long compute: `balancer_jobs`,
   `analytics_job`. Status/results live in Redis
   (balancer) or the `AnalyticsJob` table (analytics).

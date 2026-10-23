@@ -21,12 +21,14 @@ from shared import models  # noqa: E402
 from shared.schemas.rpc import RpcReply  # noqa: E402
 from shared.services import discord_messages  # noqa: E402
 from src.render import KEEP, render  # noqa: E402
-from src.render.mix import SignupPlayer, lineup_card, lineup_picture, signup_card  # noqa: E402
+from src.render.mix import SignupLobby, SignupPlayer, lineup_card, lineup_picture, signup_card  # noqa: E402
 from src.render.mix_lineup_image import render_png  # noqa: E402
 from src.ui import SHORTCODE  # noqa: E402
 
 BOARD_URL = "https://owt.example/balancer/mix/42"
 NOW = datetime(2026, 10, 6, 18, 0, tzinfo=UTC)
+OW_ROLES = (("tank", "Tank"), ("damage", "Damage"), ("support", "Support"))
+LOL_ROLES = (("top", "Top"), ("jungle", "Jungle"), ("mid", "Mid"), ("bot", "Bot"), ("support", "Support"))
 
 
 def _document(*rosters: dict[str, list[tuple[str, int]]]) -> dict:
@@ -64,6 +66,10 @@ def _signup(**overrides):
         "status": "draft",
         "lobby_count": 1,
         "players": [],
+        "discipline": "overwatch",
+        "roles": OW_ROLES,
+        "flex": True,
+        "lobbies": [],
         "updated_at": NOW,
     }
     kwargs.update(overrides)
@@ -71,9 +77,14 @@ def _signup(**overrides):
 
 
 def _player(
-    role: str | None = None, name: str = "P", *, benched: bool = False, rank: int | None = None
+    role: str | None = None,
+    name: str = "P",
+    *,
+    benched: bool = False,
+    rank: int | None = None,
+    away: bool = False,
 ) -> SignupPlayer:
-    return SignupPlayer(name=name, role=role, benched=benched, rank=rank)
+    return SignupPlayer(name=name, role=role, benched=benched, rank=rank, away=away)
 
 
 # ── the signup card ────────────────────────────────────────────────────────
@@ -113,13 +124,14 @@ def test_an_open_card_explains_the_two_clicks_and_stamps_when_it_was_rendered() 
     assert f"<t:{int(NOW.timestamp())}:R>" in details
 
 
-def test_an_open_card_carries_the_three_actions_with_their_emoji_and_the_board_link() -> None:
+def test_an_open_card_carries_the_five_actions_with_their_emoji_and_the_board_link() -> None:
+    """R3-2: join, my seat, leave, away, back -- every answer slot a card has."""
     card = _signup()
 
-    assert [button.action for button in card.answers] == ["mix.join", "mix.roles", "mix.leave"]
+    assert [button.action for button in card.answers] == ["mix.join", "mix.roles", "mix.leave", "mix.away", "mix.back"]
     assert {button.target for button in card.answers} == {"42"}
-    assert [button.style for button in card.answers] == ["success", "secondary", "danger"]
-    assert [button.emoji for button in card.answers] == ["join", "edit", "leave"]
+    assert [button.style for button in card.answers] == ["success", "secondary", "danger", "secondary", "secondary"]
+    assert [button.emoji for button in card.answers] == ["join", "edit", "leave", "clock", "ok"]
     assert all(button.disabled is False for button in card.answers)
     [[link]] = card.rows
     assert (link.url, link.emoji) == (BOARD_URL, "link")
@@ -130,9 +142,10 @@ def test_a_closed_card_greys_out_joining_but_still_lets_the_seated_leave() -> No
     card = _signup(self_signup="closed", players=[_player("tank")])
 
     assert card.text.startswith("## :owt_lock: Запись на микс «Friday Scrim» закрыта")
-    join, seat, leave = card.answers
+    join, *others = card.answers
     assert join.disabled is True
-    assert (seat.disabled, leave.disabled) == (False, False)
+    # Whoever is in can still check their seat, leave, step away and come back.
+    assert [button.disabled for button in others] == [False, False, False, False]
     assert "Нажмите «Записаться»" not in (card.details or "")
     assert ":owt_players: **1** записано" in (card.details or "")
 
@@ -219,6 +232,80 @@ def test_a_full_roster_is_cut_at_what_discord_renders_and_counted_not_refused() 
     assert shown + hidden == 10
 
 
+def test_six_running_lobbies_and_a_full_roster_still_fit_what_discord_renders() -> None:
+    """R-B1: every lobby line, the header and the footer are reserved first; the lists take what is left."""
+    card = _signup(
+        mix_name="*" * 100,
+        lobby_count=6,
+        lobbies=[SignupLobby(index, "live", NOW) for index in range(6)],
+        players=[_player("tank", "*" * 32, rank=2500) for _ in range(90)]
+        + [_player("flex", "x", benched=True, rank=2500) for _ in range(10)],
+    )
+
+    details = card.details or ""
+    assert len(card.text) + len(details) + 21 * len(SHORTCODE.findall(card.text + details)) <= 4000
+    assert [line for line in details.splitlines() if line.startswith(":owt_lobby_")] == [
+        f":owt_lobby_{letter}: Лобби {letter.upper()} — Идёт матч · начат <t:{int(NOW.timestamp())}:R>"
+        for letter in "abcdef"
+    ]
+
+
+def test_a_one_role_game_counts_heads_marks_no_role_and_asks_only_to_join() -> None:
+    """R3-1: Deadlock has one role -- no role counters, no role mark, nothing to set up; R3-5: its rank is a
+    number; Q3: the account it asks to link is the game's own."""
+    card = _signup(
+        discipline="deadlock", roles=(("agent", "Agent"),), flex=False, players=[_player("agent", "Ana", rank=4100)]
+    )
+
+    lines = (card.details or "").splitlines()
+    assert lines[0] == ":owt_players: **1** записано"
+    assert "Ana · 4100" in lines
+    assert "Нажмите «Записаться»" in lines
+    assert not any("Настройте роли" in line for line in lines)
+    assert lines[-1] == f"-# Нужны привязанные Discord и Steam · обновлено <t:{int(NOW.timestamp())}:R>"
+
+
+def test_lol_counts_its_positions_by_name_and_full_flex_by_its_icon() -> None:
+    card = _signup(discipline="lol", roles=LOL_ROLES, players=[_player(role) for role in ("mid", "mid", "top", "flex")])
+
+    assert (card.details or "").splitlines()[0] == (
+        ":owt_players: **4** записано · Top 1 · Jungle 0 · Mid 2 · Bot 0 · Support 0 · :owt_flex: 1"
+    )
+
+
+def test_only_overwatch_rows_wear_a_division_badge() -> None:
+    """R3-5: the badge is the Overwatch ladder's; a LoL row shows its position and its number."""
+    card = _signup(discipline="lol", roles=LOL_ROLES, players=[_player("mid", "Ana", rank=2450)])
+
+    assert "Mid Ana · 2450" in (card.details or "").splitlines()
+
+
+def test_an_away_player_is_marked_and_leaves_the_role_counters() -> None:
+    """R3-2: still on the roster (and in the head count), but no longer a tank the lobby can count on."""
+    card = _signup(players=[_player("tank", "Ana", rank=2450, away=True), _player("tank", "Bob")])
+
+    lines = (card.details or "").splitlines()
+    assert lines[0] == ":owt_players: **2** записано · :owt_tank: 1 · :owt_damage: 0 · :owt_support: 0 · :owt_flex: 0"
+    assert ":owt_tank: :owt_div_platinum_1: Ana · 2450 · отошёл" in lines
+
+
+def test_each_lobby_shows_its_stage_and_a_running_match_or_draft_its_clock() -> None:
+    """R3-4: the site's stage words; Discord renders the clock per reader. A finished mix shows no stages."""
+    since = datetime(2026, 10, 6, 17, 30, tzinfo=UTC)
+    clock = f"<t:{int(since.timestamp())}:R>"
+    card = _signup(
+        lobby_count=3,
+        lobbies=[SignupLobby(0, "live", since), SignupLobby(1, "draft_live", since), SignupLobby(2, "pregame", since)],
+    )
+
+    assert (card.details or "").splitlines()[1:4] == [
+        f":owt_lobby_a: Лобби A — Идёт матч · начат {clock}",
+        f":owt_lobby_b: Лобби B — Драфт · начат {clock}",
+        ":owt_lobby_c: Лобби C — Пре-гейм",
+    ]
+    assert "Лобби A" not in (_signup(status="completed", lobbies=[SignupLobby(0, "ready")]).details or "")
+
+
 # ── the lineup card ────────────────────────────────────────────────────────
 
 
@@ -258,6 +345,7 @@ def _picture(document: dict, **overrides):
         "map_image": None,
         "points_per_win": None,
         "board_url": BOARD_URL,
+        "discipline": "overwatch",
     }
     kwargs.update(overrides)
     return lineup_picture(**kwargs)
@@ -300,6 +388,16 @@ def test_the_picture_carries_the_gap_the_points_and_the_maps_art() -> None:
     }
     # Art for a map nobody rolled is not drawn.
     assert _picture(document, map_image="https://s3.example/busan.jpg").map_image is None
+
+
+def test_only_an_overwatch_lineup_picture_carries_division_badges() -> None:
+    """R3-5: a LoL or Deadlock seat is drawn with its number alone, so nothing is fetched for a badge."""
+    document = _document({"Mid": [("Ana", 3000)]}, {"Mid": [("Bob", 2900)]})
+
+    picture = _picture(document, discipline="lol")
+
+    assert all(seat.division_icon is None for team in picture.teams for seat in team.seats)
+    assert picture.image_urls == set()
 
 
 def test_the_picture_names_the_same_lineup_the_same_file_and_a_swap_a_new_one() -> None:
@@ -364,13 +462,17 @@ def _view(**lineup: Any) -> dict:
         "workspace_id": 7,
         "status": "draft",
         "board_url": BOARD_URL,
+        "discipline": "overwatch",
+        "discipline_roles": [{"code": code, "label": label} for code, label in OW_ROLES],
+        "discipline_flex": True,
         "signup": {
             "mix_name": "Friday Scrim",
             "host_name": "Foxx",
             "self_signup": "pool",
             "status": "draft",
             "lobby_count": 1,
-            "players": [{"name": "Ana", "role": "damage", "benched": False, "rank": 2450}],
+            "players": [{"name": "Ana", "role": "damage", "benched": False, "rank": 2450, "away": False}],
+            "lobbies": [],
             "updated_at": NOW.isoformat(),
         },
         "lineups": [
@@ -434,6 +536,25 @@ class RenderMixRowTests(IsolatedAsyncioTestCase):
         self.assertEqual(result.card.rows[0][0].url, BOARD_URL)
         self.assertIsNone(result.file)
         self.assertEqual(result.allowed_mentions.to_dict(), discord.AllowedMentions.none().to_dict())
+
+    async def test_a_signup_row_reads_the_games_roles_lobbies_and_away_marks_from_the_view(self) -> None:
+        view = _view()
+        view.update(
+            discipline="lol",
+            discipline_roles=[{"code": code, "label": label} for code, label in LOL_ROLES],
+            discipline_flex=True,
+        )
+        view["signup"]["players"] = [{"name": "Ana", "role": "mid", "benched": False, "rank": 2450, "away": True}]
+        view["signup"]["lobbies"] = [{"lobby_index": 0, "state": "live", "live_started_at": NOW.isoformat()}]
+
+        result, _, _ = await self._render(_message(1, "signup"), RpcReply(ok=True, data=view))
+
+        lines = result.card.details.splitlines()
+        self.assertEqual(
+            ":owt_players: **1** записано · Top 0 · Jungle 0 · Mid 0 · Bot 0 · Support 0 · :owt_flex: 0", lines[0]
+        )
+        self.assertEqual(f":owt_lobby_a: Лобби A — Идёт матч · начат <t:{int(NOW.timestamp())}:R>", lines[1])
+        self.assertIn("Mid Ana · 2450 · отошёл", lines)
 
     async def test_a_mix_balancer_no_longer_knows_has_nothing_to_show(self) -> None:
         missing = RpcReply(ok=False, error={"code": "not_found", "message": "gone"})

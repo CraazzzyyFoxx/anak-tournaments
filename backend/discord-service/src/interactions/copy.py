@@ -7,24 +7,21 @@ client answers in English. Russian for ``ru``, English for everything else.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
 import discord
 from discord.utils import escape_markdown
 
-from shared.disciplines import DISCIPLINES
 from shared.domain.mix_lobby import LOBBY_LETTERS, MAX_LOBBIES
-from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
-from src.ui import ROLE_EMOJI, division_emoji, emoji
-
-OW_ROLE_DIMENSION = DISCIPLINES["overwatch"].rated_dimension.code
+from src.ui import ROLE_EMOJI, art_drawn_for, division_emoji, emoji
 
 __all__ = (
     "LINK_BLOCKERS",
     "Locale",
     "MIX_BLOCKERS",
     "VOICE_REFUSALS",
+    "discipline_roles",
     "error_text",
     "locale_of",
     "mix_blocker_text",
@@ -252,6 +249,8 @@ _MIX: dict[Locale, dict[str, str]] = {
         "unranked": "Нет ранга: {roles} — хост проставит",
         "in_lobby": "Лобби {letter}",
         "waiting_seat": "Ждёте места",
+        "rank": "Ранг",
+        "away": "Вы отошли: пока не вернётесь, баланс вас не сажает",
     },
     "en": {
         "heading": "Mix “{name}”",
@@ -268,6 +267,8 @@ _MIX: dict[Locale, dict[str, str]] = {
         "unranked": "No rank yet: {roles} — the host will fill it in",
         "in_lobby": "Lobby {letter}",
         "waiting_seat": "Waiting for a seat",
+        "rank": "Rank",
+        "away": "You're away: no balance seats you until you're back",
     },
 }
 
@@ -280,6 +281,8 @@ _MODAL: dict[Locale, dict[str, str]] = {
         "role2": "2-я роль",
         "role3": "3-я роль",
         "role1_hint": "Главная роль — её хост ставит первой",
+        # Q5: a game with more roles than slots (LoL's five positions); its whole order is the site's.
+        "role1_hint_long": "Главная роль. Полный порядок всех {count} ролей задаётся на сайте",
         "role_hint": "Необязательно",
         "any_ranked": "Любая с рангом",
         "none": "—",
@@ -292,6 +295,7 @@ _MODAL: dict[Locale, dict[str, str]] = {
         "role2": "2nd role",
         "role3": "3rd role",
         "role1_hint": "Your main role — the host seats you there first",
+        "role1_hint_long": "Your main role. The full order of all {count} is set on the site",
         "role_hint": "Optional",
         "any_ranked": "Any ranked role",
         "none": "—",
@@ -409,11 +413,11 @@ def error_text(locale: Locale, code: str | None, message: str) -> str:
     return known or text(locale, "failed", message=escape_markdown(message or code or "error"))
 
 
-def _role(locale: Locale, code: Any) -> str:
-    # ``.get(default)`` would escape every known code too, for nothing: a seat
-    # panel names each of the three roles on a line of its own.
+def _role(locale: Locale, code: Any, label: str | None = None) -> str:
+    # The platform's own word for a known code; otherwise the game's own name
+    # for it (a LoL position) or, failing both, the code itself -- escaped.
     known = _ROLES[locale].get(str(code))
-    return known if known is not None else escape_markdown(str(code))
+    return known if known is not None else escape_markdown(label or str(code))
 
 
 def registration_text(locale: Locale, registration: Mapping[str, Any]) -> str:
@@ -462,7 +466,7 @@ def mix_blocker_text(locale: Locale, code: str) -> str:
 
 #: One per role slot of the seat form: the host reads the pick as a priority,
 #: so the panel numbers it rather than spelling "first, then".
-_SLOT_NUMBERS = ("①", "②", "③")
+_SLOT_NUMBERS = ("①", "②", "③", "④", "⑤")
 
 
 def _role_emoji(code: Any) -> str:
@@ -470,12 +474,13 @@ def _role_emoji(code: Any) -> str:
     return f"{emoji(name)} " if name else ""
 
 
-def _rank_text(locale: Locale, seat: Mapping[str, Any], role: str) -> str:
+def _rank_text(locale: Locale, seat: Mapping[str, Any], role: str, overwatch: bool) -> str:
     """``:owt_div_gold_3: Gold 3 · 3200`` -- the division badge, its name and the SR.
 
-    ``divisions`` is the workspace grid's answer and may be missing entirely
-    (an older balancer, or a workspace with no grid); then the SR alone is the
-    rank, and a role with neither is simply unranked.
+    Only an Overwatch seat names a division (spec §12.1 R3-5): another game's
+    rank is its number. ``divisions`` may be missing entirely (an older
+    balancer, or a workspace with no grid); then the SR alone is the rank,
+    and a role with neither is simply unranked.
     """
     ranks = seat.get("ranks")
     rank = ranks.get(role) if isinstance(ranks, Mapping) else None
@@ -483,7 +488,7 @@ def _rank_text(locale: Locale, seat: Mapping[str, Any], role: str) -> str:
     division = divisions.get(role) if isinstance(divisions, Mapping) else None
 
     parts: list[str] = []
-    if isinstance(division, Mapping) and division.get("name"):
+    if overwatch and isinstance(division, Mapping) and division.get("name"):
         badge = division_emoji(division.get("slug"))
         parts.append(f"{badge} {escape_markdown(str(division['name']))}".strip())
     if rank is not None:
@@ -499,40 +504,59 @@ def _has_rank(seat: Mapping[str, Any], role: str) -> bool:
     )
 
 
-def _roles_block(locale: Locale, seat: Mapping[str, Any]) -> list[str]:
-    """The seat's roles, one line each: the picked ones in order, the rest greyed out."""
+def _roles_block(
+    locale: Locale, seat: Mapping[str, Any], roles: Sequence[tuple[str, str]], overwatch: bool
+) -> list[str]:
+    """The seat's roles, one line each: the picked ones in order, the rest of the game's greyed out."""
     words = _MIX[locale]
-    roles = seat.get("roles")
-    if not isinstance(roles, list):
+    labels = dict(roles)
+
+    def line(prefix: str, role: str, tail: str) -> str:
+        mark = _role_emoji(role) if overwatch else ""
+        return f"{prefix}{mark}{_role(locale, role, labels.get(role))} — {tail}"
+
+    chosen = seat.get("roles")
+    if not isinstance(chosen, list):
         # "Every role I have a rank in": no order to show, so no numbers --
         # just which roles that turns out to be right now.
-        ranked = [role for role in REGISTRATION_ROLE_CODES if _has_rank(seat, role)]
-        lines = [f"{emoji('ok')} {words['all_ranked']}"]
-        lines += [f"{_role_emoji(role)}{_role(locale, role)} — {_rank_text(locale, seat, role)}" for role in ranked]
-        return lines
+        ranked = [code for code, _label in roles if _has_rank(seat, code)]
+        return [
+            f"{emoji('ok')} {words['all_ranked']}",
+            *(line("", role, _rank_text(locale, seat, role, overwatch)) for role in ranked),
+        ]
 
-    picked = [role["role"] for role in roles]
+    picked = [role["role"] for role in chosen]
     lines = [
-        f"{_SLOT_NUMBERS[index]} {_role_emoji(role)}{_role(locale, role)} — {_rank_text(locale, seat, role)}"
+        line(f"{_SLOT_NUMBERS[index]} ", role, _rank_text(locale, seat, role, overwatch))
         for index, role in enumerate(picked[: len(_SLOT_NUMBERS)])
     ]
     # Three indent spaces, not a number: these are the roles the host must not
     # seat them in, and they are here so the panel answers "and the others?".
-    lines += [
-        f"   {_role_emoji(role)}{_role(locale, role)} — {words['not_playing']}"
-        for role in REGISTRATION_ROLE_CODES
-        if role not in picked
-    ]
+    lines += [line("   ", code, words["not_playing"]) for code, _label in roles if code not in picked]
     return lines
+
+
+def discipline_roles(state: Mapping[str, Any]) -> list[tuple[str, str]]:
+    """The mix game's rated roles as ``(code, label)`` -- the self state's ``discipline_roles`` (spec §12.1 R3-1)."""
+    return [
+        (str(role["code"]), str(role.get("label") or role["code"]))
+        for role in state.get("discipline_roles") or ()
+        if isinstance(role, Mapping) and role.get("code")
+    ]
 
 
 def mix_text(locale: Locale, state: Mapping[str, Any]) -> tuple[str, str]:
     """The caller's own seat in a mix (the ``self_*`` answer): ``(heading, details)``.
 
     Two halves because the card draws a divider between them: above it the one
-    line that answers "am I in?", below it the roles the host will seat by.
+    line that answers "am I in?", below it the roles the host will seat by --
+    the game's own, none at all in a one-role game, which shows the rank alone
+    (spec §12.1 R3-1) -- and whether the player is away.
     """
     words = _MIX[locale]
+    roles = discipline_roles(state)
+    labels = dict(roles)
+    overwatch = art_drawn_for(str(state.get("discipline") or ""))
     head = [f"### {words['heading'].format(name=escape_markdown(str(state.get('name') or '')))}"]
     raw_seat = state.get("seat")
     seat: Mapping[str, Any] | None = raw_seat if isinstance(raw_seat, Mapping) else None
@@ -557,14 +581,20 @@ def mix_text(locale: Locale, state: Mapping[str, Any]) -> tuple[str, str]:
                 else f"{emoji('clock')} {words['waiting_seat']}"
             )
         head.append(" · ".join(status))
-        details += _roles_block(locale, seat)
-        details.append(
-            f"{emoji('flex')} {words['flex']}: {words['flex_on'] if seat.get('is_flex') else words['flex_off']}"
-        )
+        if len(roles) > 1:
+            details += _roles_block(locale, seat, roles, overwatch)
+            if state.get("discipline_flex"):
+                details.append(
+                    f"{emoji('flex')} {words['flex']}: {words['flex_on'] if seat.get('is_flex') else words['flex_off']}"
+                )
+        elif roles:
+            details.append(f"{words['rank']}: {_rank_text(locale, seat, roles[0][0], overwatch)}")
+        if seat.get("away"):
+            details.append(f"{emoji('clock')} {words['away']}")
 
     unranked = list(state.get("unranked_roles") or [])
     if unranked:
-        named = ", ".join(_role(locale, role) for role in unranked)
+        named = ", ".join(_role(locale, role, labels.get(role)) for role in unranked)
         details.append(f"-# {emoji('warn')} " + words["unranked"].format(roles=named))
 
     policy = state.get("policy")
@@ -606,5 +636,5 @@ def seat_modal_text(locale: Locale) -> Mapping[str, str]:
     return _MODAL[locale]
 
 
-def role_label(locale: Locale, code: Any) -> str:
-    return _role(locale, code)
+def role_label(locale: Locale, code: Any, label: str | None = None) -> str:
+    return _role(locale, code, label)

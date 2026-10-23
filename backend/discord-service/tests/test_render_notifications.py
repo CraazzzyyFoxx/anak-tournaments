@@ -113,6 +113,9 @@ class RenderDiscordTests(TestCase):
             "closes_at": DEADLINE,
             "scheduled_at": DEADLINE,
             "team_names": ["A", "B"],
+            "custom_game_id": 12,
+            "mix_name": "Friday",
+            "lobby": "B",
         }
 
         for locale in ("ru", "en"):
@@ -247,6 +250,25 @@ class RenderDiscordTests(TestCase):
 
         for kind, expected in cases.items():
             self.assertEqual(deep_link_path(kind, payload), expected, kind)
+
+    def test_a_mix_captains_dm_links_the_lobby_room(self) -> None:
+        """R3-3: one sentence for the captain and one button, the lobby's own room -- the inbox's href."""
+        payload = {"custom_game_id": 12, "mix_name": "Friday *mix*", "lobby": "B"}
+
+        ban_ru = render_discord("mix.ban_room_opened", payload, locale="ru", site_url=SITE, personal=True)
+        draft_en = render_discord("mix.draft_started", payload, locale="en", site_url=SITE)
+
+        self.assertIn("Вы капитан в лобби B микса **Friday \\*mix\\***: открылась комната банов героев.", ban_ru.text)
+        self.assertIn(
+            "You captain lobby B of **Friday \\*mix\\***: the draft has started — pick on your turn.", draft_en.text
+        )
+        self.assertEqual(
+            [("Комната лобби", f"{SITE}/balancer/mix/12/lobby/B")],
+            [(button.label, button.url) for button in ban_ru.rows[-1] if button.type == "link"],
+        )
+        self.assertEqual("/balancer/mix/12/lobby/B", deep_link_path("mix.draft_started", payload))
+        for broken in ({"custom_game_id": 12, "lobby": "AB"}, {"lobby": "B"}, {"custom_game_id": 12}):
+            self.assertIsNone(deep_link_path("mix.ban_room_opened", broken), broken)
 
     def test_links_are_absolute_and_only_a_dm_offers_the_way_out(self) -> None:
         """A channel post has no single reader whose DMs could be switched off."""

@@ -1,4 +1,5 @@
 import {
+  Ban,
   Bell,
   CalendarClock,
   CalendarPlus,
@@ -7,6 +8,7 @@ import {
   ClipboardCheck,
   Gavel,
   Megaphone,
+  Swords,
   TriangleAlert,
   UserPlus,
   type LucideIcon
@@ -36,6 +38,9 @@ export const KIND_VISUAL: Record<string, readonly [LucideIcon, string]> = {
   // than the neutral one of "registration is open".
   "check_in.opened": [ClipboardCheck, "var(--aqt-amber)"],
   "encounter.scheduled": [CalendarClock, "var(--aqt-blue)"],
+  // A mix captain's room just opened: their turn is coming, so the alert tone.
+  "mix.ban_room_opened": [Ban, "var(--aqt-amber)"],
+  "mix.draft_started": [Swords, "var(--aqt-amber)"],
   "announcement.published": [Megaphone, "var(--aqt-teal)"]
 };
 

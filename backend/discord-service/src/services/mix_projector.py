@@ -1,7 +1,7 @@
 """A mix's live Discord cards as a projection of ``pickup_mix.changed``.
 
 No mutation knows about Discord: a mix write emits the fact
-(balancer-service ``emit_pickup_mix_changed``), the outbox hands it to
+(``shared.services.pickup_mix_realtime.emit_pickup_mix_changed``), the outbox hands it to
 ``pickup_mix_changed``, and this consumer re-renders every live card the fact
 affects from the mix as it stands NOW (:func:`src.render.render`). A
 redelivered, late or duplicated event is therefore harmless -- it renders the

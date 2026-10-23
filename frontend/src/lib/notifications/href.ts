@@ -1,3 +1,4 @@
+import { SITE_URL_OBJ } from "@/config/site";
 import { announcementHref } from "@/lib/notifications/announcement-text";
 import { tournamentHref } from "@/lib/tournament/url";
 import type { NotificationItem } from "@/types/notification.types";
@@ -33,6 +34,16 @@ export function notificationHref(item: NotificationItem): string | null {
     case "registration.opened":
     case "check_in.opened":
       return isId(payload.tournament_id) ? tournamentHref(payload.tournament_id) : null;
+    // A mix captain's room: the lobby's own page, whose route takes the letter. On the platform host, like the
+    // Discord DM's `PUBLIC_SITE_URL` link: the bell is read on any community's host, and a mix answers 404 on
+    // another community's.
+    case "mix.ban_room_opened":
+    case "mix.draft_started":
+      return isId(payload.custom_game_id) &&
+        typeof payload.lobby === "string" &&
+        /^[A-F]$/.test(payload.lobby)
+        ? new URL(`/balancer/mix/${payload.custom_game_id}/lobby/${payload.lobby}`, SITE_URL_OBJ).toString()
+        : null;
     // An answered invite has only a pre-formation team ID, not a tournament
     // reference. It cannot link to the unrelated post-balancer team routes.
     case "team_invite.answered":

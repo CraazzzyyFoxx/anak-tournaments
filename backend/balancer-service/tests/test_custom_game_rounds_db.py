@@ -28,6 +28,7 @@ from shared.core.enums import (  # noqa: E402
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.disciplines import DISCIPLINES  # noqa: E402
 from shared.domain.custom_game_round import winner_slot  # noqa: E402
+from shared.models.platform.notification import Notification  # noqa: E402
 from shared.repository import CatalogRoleRepository, CustomGamePlayerRepository, CustomGameRoundRepository  # noqa: E402
 from shared.services.discord_messages import mix_subject  # noqa: E402
 from shared.tests.encounter_writer_case import EncounterWriterCase  # noqa: E402
@@ -69,6 +70,7 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
         self.rounds = CustomGameRoundRepository()
         #: Every live match a test saw: a Start with bans leaves its room request in the outbox.
         self.started: set[int] = set()
+        self.accounts: list[int] = []
 
     async def asyncTearDown(self) -> None:
         # Nothing drains the outbox here, and the encounter a room request names goes with the workspace.
@@ -78,6 +80,17 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
                     models.EventOutbox.event_id.in_([f"pick_ban_room_open:{live}" for live in self.started])
                 )
             )
+            # Notification rows carry no FK, and their delivery events name only the row.
+            await s.execute(
+                sa.text(
+                    "DELETE FROM event_outbox WHERE routing_key = 'notification.created'"
+                    " AND (payload_json->>'notification_id')::bigint IN"
+                    " (SELECT id FROM notification WHERE source_workspace_id = :ws)"
+                ),
+                {"ws": self.ids["ws"]},
+            )
+            await s.execute(sa.delete(Notification).where(Notification.source_workspace_id == self.ids["ws"]))
+            await s.execute(sa.delete(models.AuthUser).where(models.AuthUser.id.in_(self.accounts)))
             await s.commit()
         await super().asyncTearDown()
 
@@ -895,6 +908,60 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
         self.assertEqual([("tournament.encounter.pick_ban_room_open_requested", live)], await self._room_requests(live))
         self.assertEqual("hero_classic", await self._frozen_preset())
         self.assertEqual(frozenset({live}), await self._pregame(live))
+
+    async def _captain_accounts(self) -> dict[str, int]:
+        """A login behind m0 and m1 -- this lobby's two captains -- so a DM has an inbox to land in."""
+        accounts: dict[str, int] = {}
+        async with self.Session() as s:
+            for index in (0, 1):
+                account = models.AuthUser(
+                    username=f"cap{index}-{self.cg.id}", email=f"cap{index}-{self.cg.id}@example.test"
+                )
+                s.add(account)
+                await s.flush()
+                (await s.get_one(models.User, self.users[index])).auth_user_id = account.id
+                accounts[f"m{index}"] = account.id
+            await s.commit()
+        self.accounts.extend(accounts.values())
+        return accounts
+
+    async def _dms(self, kind: str) -> list[tuple[int, str, dict, bool]]:
+        """``kind`` rows of this workspace: ``(recipient, dedupe key, payload, its delivery event is in the outbox)``."""
+        rows = await self._rows(
+            "SELECT n.recipient_auth_user_id, n.dedupe_key, n.payload_json, EXISTS (SELECT 1 FROM event_outbox o"
+            " WHERE o.routing_key = 'notification.created' AND (o.payload_json->>'notification_id')::bigint = n.id)"
+            " FROM notification n WHERE n.kind = :kind AND n.source_workspace_id = :ws"
+            " ORDER BY n.recipient_auth_user_id",
+            kind=kind,
+            ws=self.ids["ws"],
+        )
+        return [tuple(row) for row in rows]
+
+    async def test_a_start_with_bans_dms_each_captain_once_and_a_start_without_dms_nobody(self) -> None:
+        """R3-3: the ban room opens on this very start, so each captain hears it now, linked to lobby A's room."""
+        accounts = await self._captain_accounts()
+        await self._rated_lobby(3000, 2000)
+
+        await self._write(CustomGameService().start_match, 0)
+
+        [live] = await self._live_ids()
+        m0, m1 = self.ids["m0"], self.ids["m1"]
+        room = {"custom_game_id": self.cg.id, "mix_name": "Mix", "lobby": "A"}
+        self.assertEqual(
+            sorted(
+                [
+                    (accounts["m0"], f"mix_ban_room:{live}:{m0}", room, True),
+                    (accounts["m1"], f"mix_ban_room:{live}:{m1}", room, True),
+                ]
+            ),
+            await self._dms("mix.ban_room_opened"),
+        )
+
+        await self._write(CustomGameService().cancel_match, 0)
+        await self._set_preset(None)
+        await self._write(CustomGameService().start_match, 0)
+
+        self.assertEqual(2, len(await self._dms("mix.ban_room_opened")))
 
     async def test_the_host_flips_the_opener_and_a_mix_without_bans_keeps_the_lineup_order(self) -> None:
         await self._rated_lobby(3000, 2000)
