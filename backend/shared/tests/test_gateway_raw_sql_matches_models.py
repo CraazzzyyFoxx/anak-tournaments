@@ -48,6 +48,7 @@ _GATEWAY_COLUMN_DEPENDENCIES: tuple[tuple[str | None, str, str], ...] = (
     ("draft", "team", "session_id"),
     ("draft", "team", "captain_auth_user_id"),
     ("draft", "session", "tournament_id"),
+    ("draft", "session", "custom_game_id"),
 )
 
 
@@ -115,7 +116,7 @@ class GatewayRawSQLMatchesModelsTests(TestCase):
         """The WS draft-room ACL reads the ``draft`` schema (moved out of ``balancer`` by schemasplit01)."""
         for const, table in (
             ("isDraftSessionCaptainSQL", "draft.team"),
-            ("draftSessionTournamentSQL", "draft.session"),
+            ("draftSessionOwnerSQL", "draft.session"),
         ):
             with self.subTest(query=const):
                 query = " ".join(self.sql.split(const, 1)[1].split("`", 2)[1].split())
