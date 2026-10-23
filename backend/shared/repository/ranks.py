@@ -82,12 +82,21 @@ class RankSnapshotRepository(BaseRepository[models.UserRankSnapshot]):
     def __init__(self) -> None:
         super().__init__(models.UserRankSnapshot)
 
+    def add_many(self, session: AsyncSession, rows: Sequence[models.UserRankSnapshot]) -> None:
+        """Stage snapshots. No flush: they ride the collector's single write transaction."""
+        session.add_all(rows)
+
 
 class RankFetchLogRepository(BaseRepository[models.RankFetchLog]):
     """``rank.fetch_log`` — append-only worker fetch-attempt history."""
 
     def __init__(self) -> None:
         super().__init__(models.RankFetchLog)
+
+    def add(self, session: AsyncSession, row: models.RankFetchLog) -> models.RankFetchLog:
+        """Stage one journal row. No flush — rides the caller's transaction."""
+        session.add(row)
+        return row
 
     async def delete_older_than(self, session: AsyncSession, cutoff: datetime, *, discipline: str) -> int:
         """Drop rows created before ``cutoff``; returns how many went.
@@ -347,6 +356,16 @@ class RankAccountStateRepository(BaseRepository[models.RankAccountState]):
         await session.execute(
             sa.update(self.model)
             .where(self.model.social_account_id == social_account_id)
+            .values(next_eligible_at=now + timedelta(seconds=delay_seconds))
+        )
+
+    async def defer_many(
+        self, session: AsyncSession, social_account_ids: Sequence[int], *, delay_seconds: float, now: datetime
+    ) -> None:
+        """:meth:`defer` for a whole batch: no failure count, no status change."""
+        await session.execute(
+            sa.update(self.model)
+            .where(self.model.social_account_id.in_(list(social_account_ids)))
             .values(next_eligible_at=now + timedelta(seconds=delay_seconds))
         )
 
