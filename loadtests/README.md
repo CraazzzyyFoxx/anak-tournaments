@@ -84,7 +84,7 @@ derivations of the board after every pick.
 | `DraftViewer` | the rest | One draft team each. Wakes on that counter, waits out the room's 250 ms coalescing window, then re-reads **fit + queue** for its team once per burst (never once per event); the first `OWT_DRAFT_ORGANIZERS` of them also re-read **feasibility**. Board polled every 120 s |
 
 The counter stands in for the `pick_made` + `pick_started` burst the server
-publishes on `tournament:{id}:draft`: locust runs every user as a greenlet in
+publishes on `draft:{session_id}:board`: locust runs every user as a greenlet in
 one process, so a shared counter is the whole WS feed without a websocket
 client. The read pattern itself mirrors `frontend/src/hooks/useDraftData.ts`
 (`DERIVED_FLUSH_MS`, `BOARD_POLL_CONNECTED_MS`, `draftDerivedScope`).
