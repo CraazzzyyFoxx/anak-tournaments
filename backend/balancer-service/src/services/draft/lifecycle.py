@@ -882,7 +882,10 @@ class DraftLifecycleService:
         await self.delete_session(session, draft)
 
     async def rollback(self, session: AsyncSession, draft_session: DraftSession) -> DraftSession:
-        """Rollback the last resolved pick, resetting player/pick states and pausing the draft."""
+        """Rollback the last resolved pick, resetting player/pick states and pausing the draft.
+
+        409 ``rollback_frees_captain`` when the pick seated the player a mix host has since crowned (Replace captain):
+        freed, they would captain the team from the pool. The host crowns a player who stays on the team first."""
         draft_state.validate_transition(DraftStatus(draft_session.status), DraftStatus.PAUSED)
 
         last_resolved = await self.picks_repo.last_resolved(session, draft_session.id)
@@ -894,6 +897,16 @@ class DraftLifecycleService:
         player_ids_to_free = [p.picked_player_id for p in picks_to_revert if p.picked_player_id is not None]
         if player_ids_to_free:
             players = await self.players_repo.bulk_get(session, player_ids_to_free)
+            if draft_session.custom_game_id is not None:
+                captains = {
+                    team.captain_workspace_member_id
+                    for team in await self.teams_repo.list_by_session(session, draft_session.id)
+                }
+                if any(player.workspace_member_id in captains for player in players):
+                    raise _err(
+                        "rollback_frees_captain",
+                        "This pick seated the team's captain: replace the captain with a player who stays, then roll back",
+                    )
             for player in players:
                 player.status = DraftPlayerStatus.AVAILABLE.value
                 player.drafted_by_team_id = None

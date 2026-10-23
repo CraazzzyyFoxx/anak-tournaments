@@ -736,6 +736,40 @@ class MixDraftTests(EncounterWriterCase):
 
         self.assertIn((f"draft:{draft_id}:chat", "chat.visibility_changed", {"spectators_can_read": True}), staged)
 
+    async def test_rolling_back_the_pick_that_seated_a_replacement_captain_is_refused(self) -> None:
+        """The rollback would free the team's captain into the pool: refused until the host crowns a player who stays
+        on the team. A rollback that frees no captain still runs
+        (``test_a_host_rolls_a_pick_back_and_the_player_is_draftable_again``)."""
+        host, _ = await self._host()
+        draft_id = await self._seed_lobby(host)
+        await self._start(draft_id, host)
+        await self._autopick(draft_id)  # team 1 (m1) takes m2
+        [first, _] = await self._teams(draft_id)
+        async with self.Session() as s:
+            await mix_draft_service.replace_captain(
+                s,
+                **self._as_host(host, lobby_index=0, team_id=first.id, player_id=await self._seat(s, draft_id, "m2")),
+            )
+            await s.commit()
+        async with self.Session() as s:
+            with self.assertRaises(ApiHTTPException) as caught:
+                await lifecycle.lifecycle_service.transition(
+                    s,
+                    draft_id,
+                    lifecycle.lifecycle_service.rollback,
+                    event_type="draft.rollback",
+                    audit_action="rollback",
+                    actor_auth_user_id=host,
+                )
+        async with self.Session() as s:
+            seat = await s.get_one(models.DraftPlayer, await self._seat(s, draft_id, "m2"))
+
+        self.assertEqual(
+            (409, "rollback_frees_captain"), (caught.exception.status_code, caught.exception.detail[0]["code"])
+        )
+        self.assertEqual("live", await self._status(draft_id))
+        self.assertEqual((DraftPlayerStatus.PICKED.value, first.id), (seat.status, seat.drafted_by_team_id))
+
     async def test_a_picked_player_going_away_pauses_the_draft(self) -> None:
         host, _ = await self._host()
         draft_id = await self._seed_lobby(host)

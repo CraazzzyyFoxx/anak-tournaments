@@ -1525,7 +1525,7 @@ export interface paths {
         put?: never;
         /**
          * Rollback draft pick
-         * @description Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Rolls back the most recent draft action and publishes a rollback realtime event.
+         * @description Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Rolls back the most recent draft action and publishes a rollback realtime event. A mix draft refuses to roll back the pick that seated its team's current captain (409 rollback_frees_captain): the host replaces the captain with a player who stays first.
          *
          *     RPC subject: `rpc.balancer.draft.rollback`
          */
