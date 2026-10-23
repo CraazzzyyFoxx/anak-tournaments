@@ -38,13 +38,15 @@ from src.services.tournament.flows import flows_service as tournament_flows_serv
 # Both families embed ``MatchRead`` (and ``EncounterGameRead.map``/``.mode``). Their values are pickled in a persistent
 # Redis that outlives a deploy and cashews returns an unpickled value as it is, without re-validating its nested models,
 # so a wire change to those models needs a new namespace (``native_``, then ``:v2``), not a TTL wait.
+# The key names EVERY query param that changes the SQL: one without the game served the first game's page to every
+# other game for the whole TTL.
 # ``ENCOUNTERS`` (``tournament/cache_resources.py``) names the writes that miss both;
 # ``tests/test_encounter_cache_namespaces.py`` pins that against the keys cashews renders from these templates.
 _ENCOUNTER_QUERY_KEY = (
     "{workspace_id}:{params.tournament_id}:{params.page}:{params.per_page}:{params.sort}:{params.order}:"
     "{params.entities}:{params.only_count}:{params.query}:{params.fields}:{params.stage_id}:{params.stage_item_id}:"
     "{params.best_of}:{params.status}:{params.has_logs}:{params.closeness_min}:{params.closeness_max}:"
-    "{params.scope}:{viewer_auth_user_id}"
+    "{params.scope}:{params.discipline}:{params.slot_count}:{viewer_auth_user_id}"
 )
 ENCOUNTERS_CACHE_KEY = f"native_encounters:v2:{_ENCOUNTER_QUERY_KEY}"
 ENCOUNTERS_OVERVIEW_CACHE_KEY = f"native_encounters_overview:v2:{_ENCOUNTER_QUERY_KEY}"

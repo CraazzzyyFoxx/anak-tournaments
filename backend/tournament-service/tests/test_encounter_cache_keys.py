@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
+
+from cashews.key import get_cache_key
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
@@ -35,3 +38,28 @@ class EncounterCacheKeyTests(IsolatedAsyncioTestCase):
             await encounter_flows.flows_service.get_all_encounters(SimpleNamespace(), second)
 
         self.assertEqual(load_encounters.await_count, 2)
+
+    def test_every_sql_changing_param_reaches_both_keys(self) -> None:
+        # The key once left the game out: whichever game asked first had its page served to every other game.
+        variants = [
+            encounter_schemas.EncounterSearchParams(discipline="overwatch"),
+            encounter_schemas.EncounterSearchParams(discipline="deadlock"),
+            encounter_schemas.EncounterSearchParams(),
+            encounter_schemas.EncounterSearchParams(slot_count=8),
+        ]
+        for template, function in (
+            (encounter_flows.ENCOUNTERS_CACHE_KEY, encounter_flows.EncounterFlowsService.get_all_encounters),
+            (
+                encounter_flows.ENCOUNTERS_OVERVIEW_CACHE_KEY,
+                encounter_flows.EncounterFlowsService.get_encounters_overview,
+            ),
+        ):
+            keys = {
+                get_cache_key(
+                    inspect.unwrap(function),
+                    template,
+                    kwargs={"workspace_id": None, "params": params, "viewer_auth_user_id": None},
+                )
+                for params in variants
+            }
+            self.assertEqual(len(variants), len(keys), template)
