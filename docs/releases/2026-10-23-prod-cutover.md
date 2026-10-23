@@ -51,7 +51,9 @@ DB_NAME=$(sed -n 's/^POSTGRES_DB=//p' backend/env/common.env)   # anak_v5
 DB_HOST=$(sed -n 's/^POSTGRES_HOST=//p' backend/env/common.env) DB_PORT=5432
 # Moscow runs statement_timeout = 5min server-wide: discipline01 died on it on the dev copy. Raise it for the
 # cutover's own connections only, as the dev run did; never in postgresql.conf, a role or the database.
-PGOPT='-c statement_timeout=1800000 -c lock_timeout=5000'
+# Moscow also caps temp files at 5GB (temp_file_limit): stats01 overran it on 2026-10-23 after ~24 min. 30GB, disk
+# has 50GB free.
+PGOPT='-c statement_timeout=1800000 -c lock_timeout=5000 -c temp_file_limit=30GB'
 pg()      { docker exec -i -e "PGOPTIONS=$PGOPT" "$CONTAINER" psql -U "$PGSUPER" -d "$DB_NAME" -v ON_ERROR_STOP=1 "$@"; }
 alembic() { $C run --rm --no-deps -T -e "PGOPTIONS=$PGOPT" -e "POSTGRES_HOST=$DB_HOST" -e "POSTGRES_PORT=$DB_PORT" \
               app-svc alembic "$@"; }
@@ -253,7 +255,8 @@ these connections only ([backend/README.md](../../backend/README.md#p4-statistic
 
 ```bash
 alembic current                   # v1.48.1's head
-alembic upgrade discipline01      # commits the catalog remap on its own (dev: 14.5 min)
+alembic upgrade discipline01      # commits the catalog remap on its own (prod 2026-10-23: 11.6 min)
+# here: the historical member stats01's preflight needs, see below
 alembic upgrade rank01            # stats01/stats01a are the long part (dev: 18 min)
 alembic current                   # rank01
 ```
@@ -261,6 +264,16 @@ alembic current                   # rank01
 A failure rolls its transaction back, but earlier commits stay. Read `alembic current` and never stamp past a failed
 data rewrite ([P1](../multi-game-p1-catalog-release.md)). If `enclayer01b` is interrupted, `enclayer01` stays applied,
 and re-running the upgrade resumes at `enclayer01b` ([encounter layer](../encounter-layer-v1-release.md)).
+
+**The historical member, at the `discipline01` checkpoint.** `stats01`'s preflight refuses `2_missing_member` for
+player 513 (BillyButcher#21261) in workspace 2: 16 legacy observations in matches 6689, 6690, 6697 and 6698, and no
+membership. That is the case dev reviewed on 2026-10-16 (manifest `63d1c6f3…`). The remedy is a removed member with no
+access, written through `stats01_prepare.py --apply` with a one-item `members` manifest (`create: {"removed": true}`),
+the snapshot taken by `inspect_member(conn, 513, 2)`, and its fingerprint as `expected`. On the 2026-10-23 run the
+refusal cost one `rank01` attempt: about 12 min, rolled back. Apply the member before `upgrade rank01`. The `--apply`
+commits each item first, then starts a full read-only S3 inventory (`check`) that runs for many minutes and keeps a
+database session open. Once the member row exists, stop that `app-svc-run` container (the report file is lost; the
+manifest and the row are the record). Otherwise its session blocks the migration's locks.
 
 **W5. Freeze the pre-drop state.** The SQL proofs and the P4 receipt run on this dump after the window (§5): it holds
 the legacy tables and the migrated ones exactly as they stand before the drop, writers stopped.
@@ -296,6 +309,8 @@ for spec in 4:backend 5:fastapi 6:backend; do
 done
 $C up -d --no-deps --wait tournament-svc identity-svc   # they declare queues others publish to (mix-bans, steam names)
 make prod-up PROD_SIZE=$PROD_SIZE                       # the rest; --remove-orphans drops parser-svc
+# 2026-10-23: the first --wait failed on "owt-nginx-1 is unhealthy". nginx's healthcheck had seen the gateway
+# down for the whole window and needs ~30 s to turn healthy again. Every service was already started; rerun prod-up.
 make prod-discord-emoji
 $C ps --format '{{.Service}}|{{.State}}|{{.Health}}' | sort
 ```
@@ -322,9 +337,11 @@ Every step here runs with the site open.
    - catalog syncs: `POST /api/v1/admin/catalog-sync/lol`, `/deadlock`, `/valorant`, then set VALORANT
      `in_competitive` per map ([p8-lol](./2026-10-19-multi-game-p8-lol.md), [deadlock](./2026-10-21-deadlock.md),
      [valorant](./2026-10-23-valorant.md));
-   - discipline icons, when not in object storage yet:
-     `$C run --rm --no-deps -T -w /app -v $PWD/frontend/public/disciplines:/d:ro app-svc python scripts/publish_discipline_assets.py --discipline valorant --file /d/valorant/icon.svg --key assets/valorant/icon.svg --publish`.
-     Same for `deadlock` (`icon.png`);
+   - discipline icons: on 2026-10-23 the CDN had none of the four, so the game switcher showed text. The script only
+     accepts files under `frontend/public/disciplines/`, so mount them at that path in the container:
+     `$C run --rm --no-deps -T -w /app -v $PWD/frontend/public/disciplines:/frontend/public/disciplines:ro app-svc python scripts/publish_discipline_assets.py --discipline valorant --file /frontend/public/disciplines/valorant/icon.svg --key assets/valorant/icon.svg --publish`.
+     Same for `overwatch` and `lol` (`icon.svg`) and `deadlock` (`icon.png`). From Moscow its read-back check gets 403
+     from the CDN, though the upload has landed. Compare the CDN bytes with the repo file instead;
    - turn games on: `PATCH /api/v1/workspaces/{id}` with `disciplines_enabled`. LoL rank collection starts off,
      Deadlock on ([riot-lol](./2026-10-21-riot-lol.md), [deadlock](./2026-10-21-deadlock.md)).
 2. **Retired queues:** `$C exec rabbitmq rabbitmqctl delete_queue <name>` for `cache_invalidation_app_service`,
