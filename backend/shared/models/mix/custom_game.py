@@ -114,6 +114,8 @@ class CustomGame(db.TimeStampIntegerMixin):
     team_formation: Mapped[str] = mapped_column(String(16), nullable=False, default="balance", server_default="balance")
     #: A mix draft's pick clock in seconds (10..600, the draft schema's range).
     draft_pick_seconds: Mapped[int] = mapped_column(Integer(), nullable=False, default=30, server_default="30")
+    #: Fearless (spec §11.4): a player cannot pick a hero they were recorded on in an earlier round of this mix.
+    hero_fearless: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False, server_default="false")
 
 
 class CustomGameCoHost(db.Base):

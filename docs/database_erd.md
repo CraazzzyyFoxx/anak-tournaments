@@ -13,7 +13,7 @@ baselines and Discord channels live in `stats/`. `catalog/` writes only to `cata
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`mixdraft02`** (144 revisions in `backend/migrations/versions/`).
+Alembic head: **`mixpick01`** (145 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -1605,6 +1605,7 @@ erDiagram
         int round "nullable"
         pickbanactor picked_by_kind "nullable"
         bigint picked_by_team_id FK "nullable"
+        bigint picked_for_member_id FK "nullable"
         pickbanentrystatus status
         pickbanactor protected_by_kind "nullable"
         bigint protected_by_team_id FK "nullable"
@@ -1639,6 +1640,7 @@ erDiagram
         bigint encounter_id FK
         int step_index
         bigint encounter_team_id FK "nullable"
+        bigint team_member_id FK "nullable"
         int attempt
         varchar(16) state
         json items_json
@@ -1810,6 +1812,8 @@ erDiagram
     ENCOUNTER_TEAM ||--o{ ENCOUNTER_TEAM_REPORT_RESULT : "encounter_id"
     ENCOUNTER_TEAM ||--o| ENCOUNTER_GAME_TEAM : "encounter_team_id"
     ENCOUNTER_TEAM ||--o| ENCOUNTER_TEAM_REPORT_RESULT : "encounter_team_id"
+    ENCOUNTER_TEAM_MEMBER |o--o{ ENCOUNTER_PICK_BAN_ENTRY : "picked_for_member_id"
+    ENCOUNTER_TEAM_MEMBER |o--o{ ENCOUNTER_PICK_BAN_SUBMISSION : "team_member_id"
     ENCOUNTER_TEAM_MEMBER ||--o| ENCOUNTER_TEAM_MEMBER_ROLE : "team_member_id"
     ENCOUNTER_TEAM_REPORT ||--o{ ENCOUNTER_TEAM_REPORT_RESULT : "encounter_id"
     ENCOUNTER_TEAM_REPORT ||--o| ENCOUNTER_TEAM_REPORT_RESULT : "report_id"
@@ -2443,6 +2447,7 @@ erDiagram
         varchar(64) hero_ban_preset "nullable"
         varchar(16) team_formation
         int draft_pick_seconds
+        boolean hero_fearless
     }
     MIX_LOBBY {
         bigint custom_game_id PK,FK

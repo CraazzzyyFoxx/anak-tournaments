@@ -138,6 +138,8 @@ class AppliedItem:
     actor: int | None
     action: str
     item_id: int
+    #: Whose hero a pick or an assignment names (``encounter.team_member``); ``None`` for everything else.
+    member: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

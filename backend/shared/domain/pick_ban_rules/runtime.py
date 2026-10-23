@@ -49,6 +49,8 @@ class SubmissionLike(Protocol):
 
     step_index: int
     encounter_team_id: int | None
+    #: The member a member step's answer is for (``encounter.team_member``); ``None`` for a team step.
+    team_member_id: int | None
     attempt: int
     state: str
     items_json: list[dict[str, Any]]
@@ -65,6 +67,7 @@ class EntryLike(Protocol):
     action_index: int | None
     picked_by_kind: str | None
     picked_by_team_id: int | None
+    picked_for_member_id: int | None
     protected_by_kind: str | None
     protected_by_team_id: int | None
     status: str
@@ -94,12 +97,20 @@ class RuntimeCtx:
     groups: Mapping[int, str | None] = field(default_factory=dict)
     history: History = History()
     targets: Mapping[int, Sequence[TargetPlayer]] = field(default_factory=dict)
+    #: ``{participation: its seated members in pick order}`` -- a mix room's (spec §11.6 R4-2); empty in a tournament.
+    members: Mapping[int, Sequence[int]] = field(default_factory=dict)
+    #: ``{member: heroes they may not pick}`` -- the mix's Fearless snapshot (§11.4); empty without Fearless.
+    exclusions: Mapping[int, frozenset[int]] = field(default_factory=dict)
 
     def group_of(self, item_id: int) -> str | None:
         return normalize_group(self.groups.get(item_id))
 
     def targets_for(self, actor: int | None) -> tuple[TargetPlayer, ...]:
         return tuple(self.targets.get(actor, ())) if actor is not None else ()
+
+    def members_of(self, actor: int | None) -> tuple[int, ...]:
+        """``actor``'s seated members in pick order; ``()`` outside a mix room."""
+        return tuple(self.members.get(actor, ())) if actor is not None else ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,15 +164,16 @@ def current_attempt(submissions: Iterable[SubmissionLike], step_index: int) -> i
 
 
 def actor_submission(
-    submissions: Iterable[SubmissionLike], step_index: int, actor: int | None
+    submissions: Iterable[SubmissionLike], step_index: int, actor: int | None, member: int | None = None
 ) -> SubmissionLike | None:
-    """An actor's live submission for a step: its row at the current attempt,
-    unless that row was voided."""
+    """An actor's -- or, on a member step, one member's -- live submission for a step: its row at the current
+    attempt, unless that row was voided."""
     attempt = current_attempt(submissions, step_index)
     for row in submissions:
         if (
             row.step_index == step_index
             and row.encounter_team_id == actor
+            and row.team_member_id == member
             and row.attempt == attempt
             and row.state != VOIDED
         ):
@@ -181,8 +193,8 @@ def current_step(steps: Sequence[ResolvedStep], submissions: Iterable[Submission
     for step in steps:
         if step.is_unbound:
             return step
-        for actor in step.actors:
-            row = actor_submission(rows, step.index, actor)
+        for actor, member in step.answers:
+            row = actor_submission(rows, step.index, actor, member)
             if row is None or row.state != REVEALED:
                 return step
     return None
@@ -241,13 +253,15 @@ def applied_items(steps: Sequence[ResolvedStep], submissions: Iterable[Submissio
     rows = list(submissions)
     applied: list[AppliedItem] = []
     for step in steps:
-        for actor in step.actors:
-            row = actor_submission(rows, step.index, actor)
+        for actor, member in step.answers:
+            row = actor_submission(rows, step.index, actor, member)
             if row is None:
                 continue
             if row.state != REVEALED and (step.blind or row.state not in (DRAFT, LOCKED)):
                 continue
             for item in _items_of(row):
+                # A member step's hero is its member's; an assignment's item names its member itself.
+                owner = member if step.member is not None else item.get("member_id")
                 applied.append(
                     AppliedItem(
                         step_index=step.index,
@@ -255,6 +269,7 @@ def applied_items(steps: Sequence[ResolvedStep], submissions: Iterable[Submissio
                         actor=actor,
                         action=step.action,
                         item_id=int(item["item_id"]),
+                        member=None if owner is None else int(owner),
                     )
                 )
     return applied
@@ -288,16 +303,16 @@ def visible_submissions(
 
 
 def step_progress(step: ResolvedStep, submissions: Iterable[SubmissionLike]) -> dict[int, dict[str, Any]]:
-    """Per acting participation ``{locked, filled}`` — reported even while a
-    blind draft itself stays hidden."""
+    """Per acting participation ``{locked, filled}`` -- reported even while a blind draft itself stays hidden. A
+    member step's team is locked once every member owing it has answered; ``filled`` counts its members' items."""
     rows = list(submissions)
-    progress: dict[int, dict[str, Any]] = {}
-    for actor in step.acting_actors:
-        row = actor_submission(rows, step.index, actor)
-        progress[actor] = {
-            "locked": row is not None and row.state in (LOCKED, REVEALED),
-            "filled": len(_items_of(row)) if row is not None else 0,
-        }
+    progress: dict[int, dict[str, Any]] = {actor: {"locked": True, "filled": 0} for actor in step.acting_actors}
+    for actor, member in step.answers:
+        if actor is None:
+            continue
+        row = actor_submission(rows, step.index, actor, member)
+        progress[actor]["locked"] = progress[actor]["locked"] and row is not None and row.state in (LOCKED, REVEALED)
+        progress[actor]["filled"] += len(_items_of(row)) if row is not None else 0
     return progress
 
 
@@ -305,8 +320,8 @@ def ready_to_reveal(step: ResolvedStep, submissions: Iterable[SubmissionLike]) -
     """True once every actor of the step has a locked (or already revealed)
     submission — the moment a blind step opens up."""
     rows = list(submissions)
-    for actor in step.actors:
-        row = actor_submission(rows, step.index, actor)
+    for actor, member in step.answers:
+        row = actor_submission(rows, step.index, actor, member)
         if row is None or row.state not in (LOCKED, REVEALED):
             return False
     return True
@@ -328,6 +343,7 @@ def project_entries(
             entry.status = AVAILABLE
             entry.picked_by_kind = None
             entry.picked_by_team_id = None
+            entry.picked_for_member_id = None
             entry.protected_by_kind = None
             entry.protected_by_team_id = None
             entry.action_index = None
@@ -365,6 +381,12 @@ def project_entries(
                     (DECIDER_KIND, None) if applied.action == "decider" else (kind, actor)
                 )
                 entry.order = picked
+                entry.picked_for_member_id = applied.member
+            case "assign":
+                # An assignment names whose hero an already-picked one of the team's is; it moves nothing.
+                if entry.status == PICKED and entry.picked_by_team_id == applied.actor:
+                    entry.picked_for_member_id = applied.member
+                continue
             case _:
                 # ``side_pick`` settles a side, not an item: it applies nothing
                 # to the board.
@@ -433,15 +455,46 @@ def filter_pool(pool_filter: Mapping[str, Any] | None, item_ids: Sequence[int], 
     ]
 
 
-def eligible_items(step: ResolvedStep, actor: int | None, ctx: RuntimeCtx) -> EligibleSet:
-    """What ``actor`` may choose on ``step`` right now. For a target step the
-    answer is per opponent player, and ``item_ids`` is their union."""
+def _team_picks(step: ResolvedStep, actor: int | None, ctx: RuntimeCtx) -> list[int]:
+    """The heroes ``actor`` picked on earlier steps of this round, in pick order."""
+    return [
+        applied.item_id
+        for applied in ctx.history.items
+        if applied.action == "pick"
+        and applied.actor == actor
+        and applied.round == ctx.round
+        and applied.step_index < step.index
+    ]
+
+
+def _assignable(heroes: Sequence[int], members: Sequence[int], ctx: RuntimeCtx) -> dict[int, list[int]]:
+    """``{member: the heroes of ``heroes`` their Fearless allows}`` -- the graph an assignment matches on."""
+    return {
+        member: [hero for hero in heroes if hero not in ctx.exclusions.get(member, frozenset())] for member in members
+    }
+
+
+def eligible_items(step: ResolvedStep, actor: int | None, ctx: RuntimeCtx, member: int | None = None) -> EligibleSet:
+    """What ``actor`` -- on a member step, for ``member`` -- may choose on ``step`` right now. For a target step the
+    answer is per opponent player, and ``item_ids`` is their union. An assignment offers the team's picks, less the
+    member's Fearless; a mix team's own pick only a hero that keeps the team's picks assignable (spec §11.6 R4-8)."""
+    excluded = ctx.exclusions.get(member, frozenset()) if member is not None else frozenset()
+    if step.action == "assign":
+        return EligibleSet(
+            item_ids=tuple(hero for hero in _team_picks(step, actor, ctx) if hero not in excluded), by_target=None
+        )
     if step.target is None:
         items = tuple(
             item_id
             for item_id in ctx.available_item_ids
-            if evaluate(step.eligible, _item_ctx(step, actor, ctx, item_id, None))
+            if item_id not in excluded and evaluate(step.eligible, _item_ctx(step, actor, ctx, item_id, None))
         )
+        roster = ctx.members_of(actor)
+        if step.action == "pick" and step.member is None and roster:
+            picked = _team_picks(step, actor, ctx)
+            items = tuple(
+                item for item in items if len(_matching(_assignable([*picked, item], roster, ctx))) == len(picked) + 1
+            )
         return EligibleSet(item_ids=items, by_target=None)
 
     by_target: dict[int, tuple[int, ...]] = {}
@@ -489,16 +542,20 @@ def validate_items(
     ctx: RuntimeCtx,
     *,
     final: bool = False,
+    member: int | None = None,
 ) -> list[str]:
     """Why this draft is not acceptable. Empty = valid.
 
     ``final=False`` checks everything a partial draft can break (count ceiling,
     duplicates, eligibility, targets, ``one_per_target``, ``max_per_group``);
     ``final=True`` adds what only a complete draft can satisfy (``min``,
-    ``min_per_group``).
+    ``min_per_group``). ``member`` is whom a member step's item is for; an
+    assignment is judged by :func:`_assignment_issues`.
     """
+    if step.action == "assign":
+        return _assignment_issues(step, actor, items, ctx, final=final)
     issues: list[str] = []
-    eligible = eligible_items(step, actor, ctx)
+    eligible = eligible_items(step, actor, ctx, member)
     allowed_targets = {player.player_id for player in ctx.targets_for(actor)}
     available = set(ctx.available_item_ids)
 
@@ -552,7 +609,7 @@ def validate_items(
                     issues.append("max_per_group")
 
     if final:
-        if len(items) < effective_min(step, actor, ctx):
+        if len(items) < effective_min(step, actor, ctx, member):
             issues.append("not_enough_items")
         for constraint in step.constraints:
             if constraint.type != "min_per_group":
@@ -564,38 +621,81 @@ def validate_items(
     return list(dict.fromkeys(issues))
 
 
-def effective_min(step: ResolvedStep, actor: int | None, ctx: RuntimeCtx) -> int:
-    """``min`` capped by what is actually choosable, so an exhausted pool can
-    never deadlock a lock: distinct eligible items, or for a target step with
-    ``one_per_target`` the maximum target/item matching."""
-    eligible = eligible_items(step, actor, ctx)
+def _assignment_issues(
+    step: ResolvedStep, actor: int | None, items: Sequence[Mapping[str, Any]], ctx: RuntimeCtx, *, final: bool
+) -> list[str]:
+    """Why an assignment draft is not acceptable: each of the team's picks to a different member of the team, never
+    a hero that member's Fearless excludes, and never a choice that leaves another pick nobody can play -- a draft
+    must still extend to a complete assignment (spec §11.6 R4-1, R4-8)."""
+    picks = _team_picks(step, actor, ctx)
+    roster = ctx.members_of(actor)
+    issues: list[str] = []
+    if len(items) > step.count:
+        issues.append("too_many_items")
+    seen_items: set[int] = set()
+    seen_members: set[int] = set()
+    for item in items:
+        item_id = int(item["item_id"])
+        raw = item.get("member_id")
+        member = int(raw) if raw is not None else None
+        if item_id in seen_items:
+            issues.append("duplicate_item")
+        seen_items.add(item_id)
+        if member is None or member not in roster:
+            issues.append("member_unknown")
+            continue
+        if member in seen_members:
+            issues.append("duplicate_member")
+        seen_members.add(member)
+        if item_id not in picks:
+            issues.append("item_not_picked")
+        elif item_id in ctx.exclusions.get(member, frozenset()):
+            issues.append("item_not_eligible")
+    if not issues:
+        rest = _assignable(
+            [hero for hero in picks if hero not in seen_items], [m for m in roster if m not in seen_members], ctx
+        )
+        if len(items) + len(_matching(rest)) < len(_matching(_assignable(picks, roster, ctx))):
+            issues.append("item_not_eligible")
+    if final and len(items) < effective_min(step, actor, ctx):
+        issues.append("not_enough_items")
+    return list(dict.fromkeys(issues))
+
+
+def effective_min(step: ResolvedStep, actor: int | None, ctx: RuntimeCtx, member: int | None = None) -> int:
+    """``min`` capped by what is actually choosable, so an exhausted pool can never deadlock a lock: distinct eligible
+    items, for a target step with ``one_per_target`` the maximum target/item matching, and for an assignment the
+    maximum member/hero matching."""
+    if step.action == "assign":
+        roster = ctx.members_of(actor)
+        return min(step.min, len(_matching(_assignable(_team_picks(step, actor, ctx), roster, ctx))))
+    eligible = eligible_items(step, actor, ctx, member)
     if step.target is not None and any(constraint.type == "one_per_target" for constraint in step.constraints):
-        capacity = _max_matching(eligible.by_target or {})
+        capacity = len(_matching(eligible.by_target or {}))
     else:
         capacity = len(eligible.item_ids)
     return min(step.min, capacity)
 
 
-def _max_matching(by_target: Mapping[int, Sequence[int]]) -> int:
-    """Kuhn's algorithm: how many targets can be given a distinct item."""
-    assigned: dict[int, int] = {}  # item_id -> player_id
+def _matching(by_target: Mapping[int, Sequence[int]]) -> dict[int, int]:
+    """Kuhn's algorithm: a maximum matching of targets (players, or members) to distinct items, ``{item: target}``.
+    Keys and lists are tried in their given order, so a shuffled input is a random maximum matching."""
+    assigned: dict[int, int] = {}
 
-    def try_assign(player_id: int, items: Sequence[int], seen: set[int]) -> bool:
+    def try_assign(target: int, items: Sequence[int], seen: set[int]) -> bool:
         for item_id in items:
             if item_id in seen:
                 continue
             seen.add(item_id)
             holder = assigned.get(item_id)
             if holder is None or try_assign(holder, by_target[holder], seen):
-                assigned[item_id] = player_id
+                assigned[item_id] = target
                 return True
         return False
 
-    matched = 0
-    for player_id, items in by_target.items():
-        if try_assign(player_id, items, set()):
-            matched += 1
-    return matched
+    for target, items in by_target.items():
+        try_assign(target, items, set())
+    return assigned
 
 
 # ── filling ─────────────────────────────────────────────────────────────────
@@ -607,15 +707,20 @@ def random_fill(
     items: Sequence[Mapping[str, Any]],
     ctx: RuntimeCtx,
     rng: Random | None = None,
+    *,
+    member: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Extend a draft to ``count`` with random eligible items that keep every
-    constraint satisfiable. CSPRNG by default; a seeded ``Random`` for tests."""
+    """Extend a draft to ``count`` with random eligible items that keep every constraint satisfiable -- on a member
+    step from what ``member`` may take, on an assignment by a random matching (spec §11.6 R4-9). CSPRNG by default;
+    a seeded ``Random`` for tests."""
     chooser = rng or secrets.SystemRandom()
+    if step.action == "assign":
+        return _random_assignment(step, actor, items, ctx, chooser)
     filled = [dict(item) for item in items]
-    eligible = eligible_items(step, actor, ctx)
+    eligible = eligible_items(step, actor, ctx, member)
 
     while len(filled) < step.count:
-        candidates = _fill_candidates(step, actor, ctx, filled, eligible, chooser)
+        candidates = _fill_candidates(step, actor, ctx, filled, eligible, chooser, member)
         if not candidates:
             break
         filled.append(chooser.choice(candidates))
@@ -629,6 +734,7 @@ def _fill_candidates(
     filled: list[dict[str, Any]],
     eligible: EligibleSet,
     chooser: Random,
+    member: int | None,
 ) -> list[dict[str, Any]]:
     """Every single addition that leaves the draft valid, shuffled."""
     used = {int(item["item_id"]) for item in filled}
@@ -643,7 +749,49 @@ def _fill_candidates(
                 {"item_id": item_id, "target_player_id": player_id} for item_id in item_ids if item_id not in used
             )
     chooser.shuffle(options)
-    return [option for option in options if not validate_items(step, actor, [*filled, option], ctx)]
+    return [option for option in options if not validate_items(step, actor, [*filled, option], ctx, member=member)]
+
+
+def _random_assignment(
+    step: ResolvedStep, actor: int | None, items: Sequence[Mapping[str, Any]], ctx: RuntimeCtx, chooser: Random
+) -> list[dict[str, Any]]:
+    """A timed-out assignment: the captain's draft as far as it still extends to a complete assignment, then the rest
+    of the team's picks matched at random to the members still without one, never against a member's Fearless. A
+    draft choice that would leave a pick nobody can play is dropped, and its hero rematched."""
+    kept: list[dict[str, Any]] = []
+    for item in items:
+        if not _assignment_issues(step, actor, [*kept, item], ctx, final=False):
+            kept.append(dict(item))
+    heroes = [hero for hero in _team_picks(step, actor, ctx) if hero not in {int(item["item_id"]) for item in kept}]
+    members = [member for member in ctx.members_of(actor) if member not in {int(item["member_id"]) for item in kept}]
+    chooser.shuffle(heroes)
+    chooser.shuffle(members)
+    matched = _matching(_assignable(heroes, members, ctx))
+    kept.extend({"item_id": hero, "target_player_id": None, "member_id": member} for hero, member in matched.items())
+    return kept[: step.count]
+
+
+def fill_member_answers(
+    step: ResolvedStep, owing: Sequence[tuple[int, int]], ctx: RuntimeCtx, rng: Random | None = None
+) -> dict[tuple[int, int], list[dict[str, Any]]]:
+    """An expired member step's stand-in answers (spec §11.6 R4-9): every still-owing ``(participation, member)``
+    gets a hero they may take, all distinct. Matched jointly rather than one by one -- a hero is the match's once
+    (§11.2), so one member's random hero must never strand another, on either team -- over a shuffled order for
+    randomness. A seat no hero is left for gets ``[]``. ``ctx`` is the step's, so locked answers keep their heroes."""
+    chooser = rng or secrets.SystemRandom()
+    seats = list(owing)
+    chooser.shuffle(seats)
+    options = {
+        index: [
+            int(option["item_id"])
+            for option in _fill_candidates(
+                step, actor, ctx, [], eligible_items(step, actor, ctx, member), chooser, member
+            )
+        ]
+        for index, (actor, member) in enumerate(seats)
+    }
+    heroes = {seats[index]: hero for hero, index in _matching(options).items()}
+    return {seat: [{"item_id": heroes[seat], "target_player_id": None}] if seat in heroes else [] for seat in owing}
 
 
 def resolve_system_step(step: ResolvedStep, ctx: RuntimeCtx, rng: Random | None = None) -> list[dict[str, Any]]:
@@ -670,8 +818,8 @@ def undo_target(steps: Sequence[ResolvedStep], submissions: Iterable[SubmissionL
     for step in steps:
         if step.is_system:
             continue
-        for actor in step.acting_actors:
-            row = actor_submission(rows, step.index, actor)
+        for actor, member in step.answers:
+            row = actor_submission(rows, step.index, actor, member)
             if row is not None and row.state != VOIDED and _items_of(row):
                 target = step.index
                 break
@@ -696,8 +844,8 @@ def dispute_target(
 
     def fully_revealed(step: ResolvedStep) -> bool:
         return all(
-            (row := actor_submission(rows, step.index, member)) is not None and row.state == REVEALED
-            for member in step.actors
+            (row := actor_submission(rows, step.index, actor, member)) is not None and row.state == REVEALED
+            for actor, member in step.answers
         )
 
     revealed = [step for step in steps if fully_revealed(step)]
@@ -706,10 +854,10 @@ def dispute_target(
     latest = revealed[-1]
 
     started_later = any(
-        actor_submission(rows, step.index, member) is not None
+        actor_submission(rows, step.index, actor, member) is not None
         for step in steps
         if step.index > latest.index
-        for member in step.actors
+        for actor, member in step.answers
     )
     if started_later:
         return DisputeState(False, None, current_attempt(rows, latest.index) - 1, latest.dispute.max)
