@@ -32,7 +32,8 @@ project, satisfy `host.ts`, and it works.
   hover/focus; the same actions appear in the right-click / long-press menu, together
   with "Copy “cell”" and "Copy row" (tab-separated).
 - **Toolbar.** Search, screen-owned filter bar slot (`toolbar`), CSV export (selection
-  or current view), saved views (URL + column visibility, per screen), `actions` slot.
+  or current view), saved views (URL + column visibility, per screen), `actions` slot
+  (pass a fragment, not a `flex` row: its items wrap with the table's own controls on a phone).
 
 ## Public API
 

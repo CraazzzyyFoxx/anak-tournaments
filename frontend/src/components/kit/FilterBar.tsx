@@ -328,7 +328,7 @@ export function FilterBar({
         ) : null}
       </div>
 
-      {trailing ? <div className="ml-auto flex items-center gap-2">{trailing}</div> : null}
+      {trailing ? <div className="ml-auto flex flex-wrap items-center gap-2">{trailing}</div> : null}
     </div>
   );
 }
