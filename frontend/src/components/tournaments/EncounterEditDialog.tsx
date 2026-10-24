@@ -13,7 +13,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
@@ -568,16 +567,6 @@ function EncounterEditDialogBody({
           )}
         </TabsContent>
       </Tabs>
-
-      <DialogFooter className="mt-4">
-        <Button
-          variant="outline"
-          onClick={() => onOpenChange(false)}
-          size="lg"
-        >
-          {t("matchEdit.cancel")}
-        </Button>
-      </DialogFooter>
     </DialogContent>
   );
 }
