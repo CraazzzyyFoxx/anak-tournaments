@@ -27,7 +27,8 @@ project, satisfy `host.ts`, and it works.
 - **Sorting.** Click to sort; Shift+click stacks a second sort in client mode.
 - **Rendering.** Sticky header in its own scroll box, virtualised body past 100 rows,
   grouped rows (`groupRows`), expandable details (`renderExpanded`), density toggle,
-  cards below `md` (`renderMobileCard`), search-match highlighting.
+  cards below `md` (`renderMobileCard`), search-match highlighting. The table is its own
+  card; `framed={false}` drops that frame when a card around it already has one.
 - **Row actions.** `createKebabColumn` gives an always-present `⋯` menu that fades in on
   hover/focus; the same actions appear in the right-click / long-press menu, together
   with "Copy “cell”" and "Copy row" (tab-separated).

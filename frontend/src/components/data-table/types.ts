@@ -160,4 +160,11 @@ export interface DataTableProps<TData> {
    * three (F18 ·1).
    */
   renderMobileCard?: (row: Row<TData>) => React.ReactNode;
+
+  /**
+   * `false` when the table is the body of a card that already frames it (a
+   * hub's `SettingGroup flush`): no border, fill or corners of its own, so it
+   * is not a card inside a card.
+   */
+  framed?: boolean;
 }

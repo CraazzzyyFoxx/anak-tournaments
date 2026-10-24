@@ -10605,6 +10605,7 @@
       "enableAchievement": "Enable achievement",
       "editAchievement": "Edit achievement",
       "deleteAchievement": "Delete achievement",
+      "details": "Details",
       "conditionTree": "Condition tree",
       "editTree": "Edit tree",
       "cancelEdit": "Cancel",
@@ -12209,7 +12210,6 @@
       "title": "Earned achievements",
       "times": "×{count}",
       "loadError": "Could not load achievements",
-      "retry": "Try again",
       "search": "Search achievements",
       "empty": "This person has not earned an achievement yet."
     },
@@ -12244,7 +12244,6 @@
       "edit": "Edit participation",
       "remove": "Remove participation",
       "loadError": "Could not load participations",
-      "retry": "Try again",
       "search": "Search tournaments and teams…",
       "empty": "This person has not played a tournament in this workspace yet.",
       "add": "Add participation",

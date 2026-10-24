@@ -4,19 +4,21 @@ import { useMemo, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { SearchX } from "lucide-react";
 
 import { AchievementArt } from "@/components/achievements/AchievementArt";
-import { PersonSection } from "@/components/admin/people/PersonSection";
-import { EmptyNote } from "@/components/kit/EmptyNote";
-import { PageStateCard } from "@/components/ui/page-state-card";
+import { EmptyNote, LoadErrorNote } from "@/components/kit/EmptyNote";
+import { SettingGroup } from "@/components/kit/SettingRow";
+import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/ui/search-field";
 import { Skeleton } from "@/components/ui/skeleton";
 import userService from "@/services/user.service";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 
-const GRID = "grid gap-3 sm:grid-cols-2 xl:grid-cols-3";
-const TILE = "flex min-w-0 items-start gap-3 rounded-xl border border-[color:var(--aqt-overlay-border)] bg-[color:var(--aqt-overlay-1)] p-3";
-/** Up to twenty tiles read at a glance; past that a reader looks one up. */
+/** Open items on the card, apart by whitespace alone: a tile inside the card would be a card inside a card. */
+const GRID = "grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3";
+const ITEM = "flex min-w-0 items-start gap-3";
+/** Up to twenty items read at a glance; past that a reader looks one up. */
 const SEARCH_ABOVE = 20;
 
 /**
@@ -28,6 +30,7 @@ const SEARCH_ABOVE = 20;
  */
 export function PersonAchievementsTab({ personId }: Readonly<{ personId: number }>) {
   const t = useTranslations("adminPeople.achievements");
+  const tCommon = useTranslations("common");
   const tCategory = useTranslations("adminAchievements.common.categoryValues");
   const [search, setSearch] = useState("");
   const achievementsQuery = useQuery({
@@ -53,19 +56,12 @@ export function PersonAchievementsTab({ personId }: Readonly<{ personId: number 
 
   let body: ReactNode;
   if (achievementsQuery.isError) {
-    body = (
-      <PageStateCard
-        state="error"
-        title={t("loadError")}
-        onAction={() => void achievementsQuery.refetch()}
-        actionLabel={t("retry")}
-      />
-    );
+    body = <LoadErrorNote title={t("loadError")} onRetry={() => void achievementsQuery.refetch()} />;
   } else if (achievementsQuery.isLoading) {
     body = (
       <ul aria-hidden className={GRID}>
         {Array.from({ length: 6 }, (_, index) => (
-          <li key={index} className={TILE}>
+          <li key={index} className={ITEM}>
             <Skeleton className="size-10 shrink-0 rounded-lg" />
             <div className="min-w-0 flex-1 space-y-2 py-0.5">
               <Skeleton className="h-4 w-2/3" />
@@ -79,14 +75,26 @@ export function PersonAchievementsTab({ personId }: Readonly<{ personId: number 
   } else if (achievements.length === 0) {
     body = <EmptyNote>{t("empty")}</EmptyNote>;
   } else if (shown.length === 0) {
-    body = <PageStateCard state="filtered-empty" onAction={() => setSearch("")} />;
+    body = (
+      <EmptyNote
+        icon={SearchX}
+        title={tCommon("pageState.filteredEmpty.title")}
+        action={
+          <Button variant="outline" size="sm" onClick={() => setSearch("")}>
+            {tCommon("clearFilters")}
+          </Button>
+        }
+      >
+        {tCommon("pageState.filteredEmpty.description")}
+      </EmptyNote>
+    );
   } else {
     body = (
       <ul className={GRID}>
         {shown.map((achievement) => {
           const tournaments = achievement.tournaments.map((tournament) => tournament.name).join(", ");
           return (
-            <li key={achievement.id} className={TILE}>
+            <li key={achievement.id} className={ITEM}>
               <AchievementArt achievement={achievement} sizes="40px" className="size-10 shrink-0 rounded-lg" />
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
@@ -128,7 +136,8 @@ export function PersonAchievementsTab({ personId }: Readonly<{ personId: number 
   }
 
   return (
-    <PersonSection
+    <SettingGroup
+      id="achievements"
       title={t("title")}
       summary={achievementsQuery.isSuccess && achievements.length > 0 ? achievements.length : null}
       actions={
@@ -143,6 +152,6 @@ export function PersonAchievementsTab({ personId }: Readonly<{ personId: number 
       }
     >
       {body}
-    </PersonSection>
+    </SettingGroup>
   );
 }

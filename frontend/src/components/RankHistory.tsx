@@ -35,6 +35,8 @@ type RankHistoryProps = RankHistoryTarget & {
   discipline?: string | null;
   /** When set, the chart is wrapped in a titled card; otherwise it renders bare. */
   title?: string;
+  /** `false` inside a card that already frames the chart: no tiles, chart box or state box of its own. */
+  framed?: boolean;
   className?: string;
 };
 
@@ -48,6 +50,7 @@ export default function RankHistory({
   battleTag,
   discipline,
   title,
+  framed = true,
   className
 }: Readonly<RankHistoryProps>) {
   const t = useTranslations();
@@ -73,7 +76,7 @@ export default function RankHistory({
 
   let content: ReactNode;
   if (resolve.isLoading || (collector.scope.resolution === null && !collector.scope.isError)) {
-    content = <RankHistorySkeleton className={contentClassName} />;
+    content = <RankHistorySkeleton className={contentClassName} framed={framed} />;
   } else if (resolvedUserId == null) {
     content = (
       <ChartEmptyState
@@ -81,6 +84,7 @@ export default function RankHistory({
         icon={Link2Off}
         title={t("rankHistory.noProfileTitle")}
         body={t("rankHistory.noProfileBody")}
+        framed={framed}
       />
     );
   } else if (collector.scope.isError) {
@@ -91,6 +95,7 @@ export default function RankHistory({
         tone="error"
         title={t("rankHistory.errorTitle")}
         body={t("rankHistory.errorBody")}
+        framed={framed}
       />
     );
   } else {
@@ -108,7 +113,7 @@ export default function RankHistory({
             slot="rankHistory"
             capabilities={descriptor.capabilities}
             requires="native_rank_collection"
-            props={{ userId: resolvedUserId, axis, discipline: descriptor.code }}
+            props={{ userId: resolvedUserId, axis, discipline: descriptor.code, framed }}
             fallback={null}
           />
         ) : (
@@ -116,6 +121,7 @@ export default function RankHistory({
             icon={Radar}
             title={t("rankHistory.unsupportedTitle")}
             body={t("rankHistory.unsupportedBody")}
+            framed={framed}
           />
         )}
       </div>

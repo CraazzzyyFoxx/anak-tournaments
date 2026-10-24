@@ -38,6 +38,7 @@ import { useAdminTable } from "@/components/data-table/useAdminTable";
 import { useTablePreferences } from "@/components/data-table/useTablePreferences";
 import { useTableScrollBox } from "@/components/data-table/useTableScrollBox";
 import { useVirtualBody } from "@/components/data-table/useVirtualBody";
+import { cn } from "@/lib/utils";
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 15, 25, 50, 100];
 
@@ -105,6 +106,7 @@ export function DataTable<TData>({
   inspectorId,
   onPageRowsChange,
   renderMobileCard,
+  framed = true,
 }: Readonly<DataTableProps<TData>>) {
   const t = useTranslations("kitTable.dataTableExtra");
   const tTable = useTranslations("kitTable.table");
@@ -421,7 +423,14 @@ export function DataTable<TData>({
   const offPageSelected = selectedData.length - selectedOnPage;
 
   return (
-    <Card ref={cardRef} variant="flat" className="overflow-hidden border-border/50 bg-card/50">
+    <Card
+      ref={cardRef}
+      variant="flat"
+      className={cn(
+        "overflow-hidden",
+        framed ? "border-border/50 bg-card/50" : "admin-table-unframed rounded-none border-0 bg-transparent"
+      )}
+    >
       <AdminTableToolbar
         compact={isMobile}
         showSearch={showSearch}

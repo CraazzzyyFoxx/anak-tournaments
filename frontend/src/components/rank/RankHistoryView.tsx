@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, Compass, LineChart as ChartIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -67,7 +67,12 @@ type DotArgs = { key: string; index: number; cx: number; cy: number; points: Rea
  * per line (role / queue / the one rank) as an emblem, then those lines over time. Everything game-specific comes
  * from the data: lines from the series' `role`/`queue`, rank names and emblems from the game's native ladder.
  */
-export default function RankHistoryView({ userId, axis, discipline }: Readonly<SlotProps["rankHistory"]>) {
+export default function RankHistoryView({
+  userId,
+  axis,
+  discipline,
+  framed = true
+}: Readonly<SlotProps["rankHistory"]>) {
   const t = useTranslations("rankHistory");
   const [period, setPeriod] = useLocalStorageState<Period>("rank-history-period", "3m");
   const dateFrom = useMemo(() => periodStart(period), [period]);
@@ -79,9 +84,11 @@ export default function RankHistoryView({ userId, axis, discipline }: Readonly<S
   // Daily: Overwatch fills each day from the last known rank; the other collectors return their changes as-is.
   const history = useUserRankHistory(userId, { discipline, granularity: "daily", dateFrom });
 
-  if (metadata.isLoading || current.isLoading || history.isLoading) return <RankHistorySkeleton />;
+  if (metadata.isLoading || current.isLoading || history.isLoading) return <RankHistorySkeleton framed={framed} />;
   if (metadata.isError || current.isError || history.isError) {
-    return <ChartEmptyState icon={AlertCircle} tone="error" title={t("errorTitle")} body={t("errorBody")} />;
+    return (
+      <ChartEmptyState icon={AlertCircle} tone="error" title={t("errorTitle")} body={t("errorBody")} framed={framed} />
+    );
   }
   return (
     <RankHistoryBody
@@ -91,7 +98,20 @@ export default function RankHistoryView({ userId, axis, discipline }: Readonly<S
       series={history.data?.series ?? []}
       period={period}
       onPeriodChange={setPeriod}
+      framed={framed}
     />
+  );
+}
+
+/** The chart's own box and its corner glows; nothing inside a card that already frames the chart. */
+function ChartFrame({ framed, children }: Readonly<{ framed: boolean; children: ReactNode }>) {
+  if (!framed) return children;
+  return (
+    <Card variant="flat" className="relative overflow-hidden p-4 shadow-inner backdrop-blur-xs">
+      <div className="pointer-events-none absolute -left-12 -top-12 -z-10 size-24 rounded-full bg-primary/5 blur-2xl" />
+      <div className="pointer-events-none absolute -bottom-12 -right-12 -z-10 size-24 rounded-full bg-primary/5 blur-2xl" />
+      {children}
+    </Card>
   );
 }
 
@@ -101,7 +121,8 @@ function RankHistoryBody({
   ranks,
   series,
   period,
-  onPeriodChange
+  onPeriodChange,
+  framed
 }: Readonly<{
   ladder: NativeTier[];
   roles: readonly { code: string; name: string }[];
@@ -109,6 +130,7 @@ function RankHistoryBody({
   series: RankSeries[];
   period: Period;
   onPeriodChange: (period: Period) => void;
+  framed: boolean;
 }>) {
   const t = useTranslations("rankHistory");
   const format = useFormatter();
@@ -192,8 +214,8 @@ function RankHistoryBody({
             ranked?.lp != null ? t("lp", { lp: ranked.lp }) : null,
             ranked?.wins != null && ranked.losses != null ? t("record", { wins: ranked.wins, losses: ranked.losses }) : null
           ].filter(Boolean);
-          return (
-            <Card key={key ?? "rank"} variant="flat" className="flex items-center gap-2 px-2.5 py-1.5">
+          const content = (
+            <>
               {tier ? (
                 <Image
                   src={tier.icon_url}
@@ -221,7 +243,16 @@ function RankHistoryBody({
                   <dd className="truncate text-caption text-[color:var(--aqt-fg-dim)]">{ranked.handle}</dd>
                 ) : null}
               </div>
+            </>
+          );
+          return framed ? (
+            <Card key={key ?? "rank"} variant="flat" className="flex items-center gap-2 px-2.5 py-1.5">
+              {content}
             </Card>
+          ) : (
+            <div key={key ?? "rank"} className="flex items-center gap-2">
+              {content}
+            </div>
           );
         })}
       </dl>
@@ -303,13 +334,11 @@ function RankHistoryBody({
       </div>
 
       {series.length === 0 ? (
-        <ChartEmptyState icon={ChartIcon} title={t("emptyTitle")} body={t("emptyBody")} />
+        <ChartEmptyState icon={ChartIcon} title={t("emptyTitle")} body={t("emptyBody")} framed={framed} />
       ) : rows.length === 0 ? (
-        <ChartEmptyState icon={Compass} title={t("noDataTitle")} body={t("noDataBody")} />
+        <ChartEmptyState icon={Compass} title={t("noDataTitle")} body={t("noDataBody")} framed={framed} />
       ) : (
-        <Card variant="flat" className="relative overflow-hidden p-4 shadow-inner backdrop-blur-xs">
-          <div className="pointer-events-none absolute -left-12 -top-12 -z-10 size-24 rounded-full bg-primary/5 blur-2xl" />
-          <div className="pointer-events-none absolute -bottom-12 -right-12 -z-10 size-24 rounded-full bg-primary/5 blur-2xl" />
+        <ChartFrame framed={framed}>
           <section aria-label={t("chartTitle")}>
             <ChartContainer config={config} className="aspect-auto h-[180px] w-full @lg:h-[220px]">
               <LineChart accessibilityLayer data={rows} margin={{ left: 2, right: 2, top: 4, bottom: 0 }}>
@@ -377,7 +406,7 @@ function RankHistoryBody({
               </LineChart>
             </ChartContainer>
           </section>
-        </Card>
+        </ChartFrame>
       )}
     </div>
   );

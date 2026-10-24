@@ -136,14 +136,20 @@ export function SettingRow({
  * A titled group of rows, framed as one card: a settings page is a stack of
  * these, so each group reads as its own unit instead of a stretch of one long
  * form. Rows are separated by hairlines inside the card, never by another
- * frame (DESIGN §5, one level of framing).
+ * frame (DESIGN §5, one level of framing). A hub body (T3) is the same stack.
  *
  * `id` is the group's anchor: stable and locale-free, because it is what a
  * `#fragment` link and the section rail's outline (`SettingsOutline`) point at.
  *
+ * `summary` is a count or a verdict beside the title, in body case; `actions`
+ * are the group's own controls, at the end of the title line.
+ *
  * `immediate` marks a group whose controls act on their own (an upload, a
  * transfer, a DNS check) rather than through the page's save bar, so the two
  * save models never share a group without saying so.
+ *
+ * `flush` drops the body's padding and row hairlines for one block that runs
+ * edge to edge: a table, which brings its own rules between rows.
  *
  * `level` is the title's heading rank: 2 under a page `h1`, deeper inside a
  * dialog whose own title and section heading sit above the group.
@@ -151,15 +157,21 @@ export function SettingRow({
 export function SettingGroup({
   id,
   title,
+  summary,
   description,
+  actions,
   immediate = false,
+  flush = false,
   level = 2,
   children
 }: Readonly<{
   id: string;
   title: string;
+  summary?: ReactNode;
   description?: ReactNode;
+  actions?: ReactNode;
   immediate?: boolean;
+  flush?: boolean;
   level?: 2 | 3 | 4;
   children: ReactNode;
 }>) {
@@ -170,23 +182,39 @@ export function SettingGroup({
   const Heading = `h${level}` as const;
 
   return (
-    // `scroll-mt-16` keeps a jumped-to group clear of the admin top bar.
-    <Card asChild className="scroll-mt-16">
+    // `scroll-mt-16` keeps a jumped-to group clear of the admin top bar; a
+    // flush body is clipped to the card's corners.
+    <Card asChild className={cn("scroll-mt-16", flush && "overflow-hidden")}>
       <section id={id} ref={ref} aria-labelledby={titleId}>
-        <header className="px-5 py-3">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <Heading id={titleId} className="text-ui font-semibold text-foreground">
-              {title}
-            </Heading>
-            {immediate ? (
-              <p className="text-xs text-muted-foreground">{t("appliesImmediately")}</p>
+        {/* `min-w-48`: past that the actions wrap under the title instead of squeezing it. */}
+        <header className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3">
+          <div className="min-w-48 flex-1">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <Heading id={titleId} className="text-ui font-semibold text-foreground">
+                {title}
+                {summary != null && summary !== false ? (
+                  <span className="ml-2 font-normal tabular-nums text-muted-foreground">{summary}</span>
+                ) : null}
+              </Heading>
+              {immediate ? (
+                <p className="text-xs text-muted-foreground">{t("appliesImmediately")}</p>
+              ) : null}
+            </div>
+            {description ? (
+              <p className="mt-0.5 max-w-prose text-xs text-muted-foreground">{description}</p>
             ) : null}
           </div>
-          {description ? (
-            <p className="mt-0.5 max-w-prose text-xs text-muted-foreground">{description}</p>
-          ) : null}
+          {/* Pulled into the header's padding, so a row of buttons does not
+              make a group with actions taller than one without. */}
+          {actions ? <div className="-my-1 flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
         </header>
-        <div className="@container divide-y divide-border/60 border-t border-border px-5 py-3">
+        {/* `empty:hidden`: a collapsed group is its header alone. */}
+        <div
+          className={cn(
+            "@container border-t border-border empty:hidden",
+            !flush && "divide-y divide-border/60 px-5 py-3"
+          )}
+        >
           {children}
         </div>
       </section>

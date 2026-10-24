@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl";
 
 import { AchievementArt } from "@/components/achievements/AchievementArt";
 import { InspectorField } from "@/components/kit/InspectorField";
-import { Card, CardContent } from "@/components/ui/card";
+import { SettingGroup } from "@/components/kit/SettingRow";
 import type { AchievementRule } from "@/types/admin.types";
 
 /** The rule's metadata, in the order an organizer reads it: what it is, then what it says. */
@@ -14,8 +14,8 @@ export function AchievementDetailsCard({
 }: Readonly<{ rule: AchievementRule; minTournamentName?: string }>) {
   const t = useTranslations("adminAchievements");
   return (
-    <Card>
-      <CardContent className="flex gap-6 pt-6">
+    <SettingGroup id="details" title={t("detail.details")}>
+      <div className="flex gap-6">
         <AchievementArt achievement={rule} sizes="64px" className="size-16 shrink-0 rounded-lg border" />
         <div className="grid min-w-0 flex-1 grid-cols-2 gap-4 md:grid-cols-4">
           <InspectorField label={t("common.category")}>{t(`common.categoryValues.${rule.category}`)}</InspectorField>
@@ -35,7 +35,7 @@ export function AchievementDetailsCard({
             {rule.description_en}
           </InspectorField>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </SettingGroup>
   );
 }

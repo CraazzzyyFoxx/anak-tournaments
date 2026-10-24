@@ -41,6 +41,14 @@ th.admin-sticky-col-right {
   background-color: color-mix(in srgb, hsl(var(--muted)) 20%, var(--admin-sticky-bg));
 }
 
+/* `framed={false}`: the table is the body of a solid card, not its own
+   translucent one, so the pinned surface is that card. */
+.admin-table-unframed .admin-sticky-col,
+.admin-table-unframed .admin-sticky-col-right,
+.admin-table-unframed .admin-table-head {
+  --admin-sticky-bg: hsl(var(--card));
+}
+
 /* ── Row state ───────────────────────────────────────────────────────────
    One tint per state, declared once: the row paints it (translucent, over
    whatever the table's surface is) and every pinned cell re-paints the same

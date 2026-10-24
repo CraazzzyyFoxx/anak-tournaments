@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { UserRound } from "lucide-react";
 
 import {
+  AccountBlocksAsCards,
   AccountStatusPills,
   accountEmail,
   invalidateAccount
@@ -16,13 +17,13 @@ import { AccountNotifications } from "@/components/admin/access/AccountNotificat
 import { AccountPermissions } from "@/components/admin/access/AccountPermissions";
 import { AccountRestrictions } from "@/components/admin/access/AccountRestrictions";
 import { AccountRoles } from "@/components/admin/access/AccountRoles";
-import { PersonSection } from "@/components/admin/people/PersonSection";
 import {
   AuthUserSearchCombobox,
   type AuthUserOption
 } from "@/components/kit/ServerSearchCombobox";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { EmptyNote } from "@/components/kit/EmptyNote";
+import { SettingGroup } from "@/components/kit/SettingRow";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -51,10 +52,6 @@ export function useLinkedAccount(personId: number, canReadAuth: boolean) {
     ) ?? null;
   return { accountsQuery, linked };
 }
-
-/** An open column of account blocks, one hairline between neighbours. */
-const COLUMN_CLASS =
-  "min-w-0 divide-y divide-border/60 [&>*]:py-4 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0";
 
 function LinkAccount({ personId }: Readonly<{ personId: number }>) {
   const t = useTranslations("adminPeople.account");
@@ -135,17 +132,14 @@ function UnlinkAccount({
   );
 }
 
-/** First load: the header line, then the two columns. */
+/** First load: the account card, then the two columns of block cards. */
 function AccountTabSkeleton() {
   return (
-    <div aria-hidden className="space-y-8">
-      <div className="space-y-3">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-5 w-72 max-w-full" />
-      </div>
-      <div className="grid items-start gap-8 lg:grid-cols-2">
-        <Skeleton className="h-48 w-full" />
-        <Skeleton className="h-48 w-full" />
+    <div aria-hidden className="space-y-4">
+      <Skeleton className="h-24 w-full rounded-xl" />
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <Skeleton className="h-48 w-full rounded-xl" />
+        <Skeleton className="h-48 w-full rounded-xl" />
       </div>
     </div>
   );
@@ -153,9 +147,9 @@ function AccountTabSkeleton() {
 
 /**
  * The auth account that signs in as this person — the same blocks the Access
- * inspector stacks, in two open columns: how it signs in and what it may do on
- * the left, what reaches it on the right. The player link is not a block here:
- * this page is that player.
+ * inspector stacks, here each its own card, in two columns: how it signs in and
+ * what it may do on the left, what reaches it on the right. The player link is
+ * not a block here: this page is that player.
  */
 export function PersonAccountTab({
   personId,
@@ -223,8 +217,9 @@ export function PersonAccountTab({
   const accessHref = `/admin/access/accounts?search=${encodeURIComponent(linked.username)}&id=${linked.id}`;
 
   return (
-    <div className="space-y-8">
-      <PersonSection
+    <div className="space-y-4">
+      <SettingGroup
+        id="account"
         title={`@${linked.username}`}
         actions={
           <>
@@ -247,19 +242,21 @@ export function PersonAccountTab({
             </span>
           </p>
         </div>
-      </PersonSection>
+      </SettingGroup>
 
-      <div className="grid items-start gap-8 lg:grid-cols-2">
-        <div className={COLUMN_CLASS}>
-          <AccountSignInMethods userId={linked.id} />
-          <AccountRoles userId={linked.id} roles={account.roles} canEdit={canAssignRoles} />
-          <AccountRestrictions userId={linked.id} canEdit={canAssignRoles} />
-          {detail ? <AccountPermissions permissions={detail.effective_permissions} /> : null}
+      <AccountBlocksAsCards>
+        <div className="grid items-start gap-4 lg:grid-cols-2">
+          <div className="flex min-w-0 flex-col gap-4">
+            <AccountSignInMethods userId={linked.id} />
+            <AccountRoles userId={linked.id} roles={account.roles} canEdit={canAssignRoles} />
+            <AccountRestrictions userId={linked.id} canEdit={canAssignRoles} />
+            {detail ? <AccountPermissions permissions={detail.effective_permissions} /> : null}
+          </div>
+          <div className="flex min-w-0 flex-col gap-4">
+            <AccountNotifications userId={linked.id} canEdit={canUpdateAccount} />
+          </div>
         </div>
-        <div className={COLUMN_CLASS}>
-          <AccountNotifications userId={linked.id} canEdit={canUpdateAccount} />
-        </div>
-      </div>
+      </AccountBlocksAsCards>
     </div>
   );
 }

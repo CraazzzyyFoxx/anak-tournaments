@@ -11,9 +11,10 @@ import { useFormatter } from "@/lib/datetime/client";
 import { InlineEditText } from "@/components/kit/InlineEditText";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { EntityHubHeader } from "@/components/kit/EntityHubHeader";
+import { SettingGroup } from "@/components/kit/SettingRow";
 import { TeamRosterEditor } from "@/components/admin/teams/TeamRosterEditor";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { EditableAvatar } from "@/components/ui/editable-avatar";
 import { Label } from "@/components/ui/label";
@@ -179,85 +180,80 @@ export default function AdminTeamWorkspacePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start gap-4">
-        <EditableAvatar
-          src={team.image_url}
-          name={team.name}
-          size={40}
-          shape="rounded"
-          editable={canUpdateTeam}
-          busy={uploadImage.isPending || deleteImage.isPending}
-          onSelectFile={(file) => uploadImage.mutate(file)}
-          onDelete={team.image_url ? () => deleteImage.mutate() : undefined}
-          maxSizeBytes={MAX_AVATAR_BYTES}
-          onError={(message) => notify.error(message)}
-        />
-        <div className="min-w-0 flex-1">
-          <EntityHubHeader
-            // The `<h1>` is the editable name itself: the page is the team
-            // editor, so a read-only heading beside an edit field would print
-            // the same name twice.
-            title={
-              <InlineEditText
-                value={team.name}
-                label={t("teamName")}
-                canEdit={canUpdateTeam}
-                onSave={(name) => updateTeam.mutateAsync({ name })}
-              />
-            }
-            status={team.captain_id > 0 ? undefined : { label: t("noCaptain"), tone: "warning" }}
-            meta={[
-              team.tournament?.name ?? t("noTournament"),
-              team.tournament ? (
-                <span className="tabular-nums">
-                  {formatDateRange(format, team.tournament.start_date, team.tournament.end_date)}
-                </span>
-              ) : null,
-              <span key="avg" className="tabular-nums">{t("avgSrMeta", { value: team.avg_sr.toFixed(0) })}</span>,
-              <span key="total" className="tabular-nums">{t("totalSrMeta", { value: team.total_sr })}</span>,
-              team.group?.name ?? null,
-              team.placement != null ? (
-                <span key="placement" className="tabular-nums">{t("placement", { id: team.placement })}</span>
-              ) : null
-            ]}
-            backHref={
-              team.tournament_id ? `/admin/teams?tournament=${team.tournament_id}` : "/admin/teams"
-            }
-            actions={
-              <>
-                {team.tournament ? (
-                  <Button asChild variant="outline" size="sm">
-                    <Link href={`/admin/tournaments/${team.tournament.id}`}>{t("openTournament")}</Link>
-                  </Button>
-                ) : null}
-                {canDeleteTeam ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-destructive"
-                    onClick={() => setDeleteOpen(true)}
-                  >
-                    {t("delete")}
-                  </Button>
-                ) : null}
-              </>
-            }
+      <EntityHubHeader
+        leading={
+          <EditableAvatar
+            src={team.image_url}
+            name={team.name}
+            size={40}
+            shape="rounded"
+            editable={canUpdateTeam}
+            busy={uploadImage.isPending || deleteImage.isPending}
+            onSelectFile={(file) => uploadImage.mutate(file)}
+            onDelete={team.image_url ? () => deleteImage.mutate() : undefined}
+            maxSizeBytes={MAX_AVATAR_BYTES}
+            onError={(message) => notify.error(message)}
           />
-        </div>
-      </div>
+        }
+        // The `<h1>` is the editable name itself: the page is the team
+        // editor, so a read-only heading beside an edit field would print
+        // the same name twice.
+        title={
+          <InlineEditText
+            value={team.name}
+            label={t("teamName")}
+            canEdit={canUpdateTeam}
+            onSave={(name) => updateTeam.mutateAsync({ name })}
+          />
+        }
+        status={team.captain_id > 0 ? undefined : { label: t("noCaptain"), tone: "warning" }}
+        meta={[
+          team.tournament?.name ?? t("noTournament"),
+          team.tournament ? (
+            <span className="tabular-nums">
+              {formatDateRange(format, team.tournament.start_date, team.tournament.end_date)}
+            </span>
+          ) : null,
+          <span key="avg" className="tabular-nums">{t("avgSrMeta", { value: team.avg_sr.toFixed(0) })}</span>,
+          <span key="total" className="tabular-nums">{t("totalSrMeta", { value: team.total_sr })}</span>,
+          team.group?.name ?? null,
+          team.placement != null ? (
+            <span key="placement" className="tabular-nums">{t("placement", { id: team.placement })}</span>
+          ) : null
+        ]}
+        backHref={
+          team.tournament_id ? `/admin/teams?tournament=${team.tournament_id}` : "/admin/teams"
+        }
+        actions={
+          <>
+            {team.tournament ? (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/admin/tournaments/${team.tournament.id}`}>{t("openTournament")}</Link>
+              </Button>
+            ) : null}
+            {canDeleteTeam ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive"
+                onClick={() => setDeleteOpen(true)}
+              >
+                {t("delete")}
+              </Button>
+            ) : null}
+          </>
+        }
+      />
 
-      <Card>
-        <CardHeader className="flex flex-row flex-wrap items-end justify-between gap-4">
-          <div>
-            <CardTitle asChild>
-              <h2>{t("labels.roster")}</h2>
-            </CardTitle>
-            <CardDescription>
-              {t("rosterDescription")}
-            </CardDescription>
-          </div>
-          <div className="w-full max-w-xs space-y-1.5">
-            <Label htmlFor="team-captain">{t("labels.captain")}</Label>
+      <SettingGroup
+        id="roster"
+        title={t("labels.roster")}
+        description={t("rosterDescription")}
+        actions={
+          <div className="flex items-center gap-2">
+            <Label htmlFor="team-captain" className="text-sm text-muted-foreground">
+              {t("labels.captain")}
+            </Label>
             <Select
               value={team.captain_id > 0 ? String(team.captain_id) : ""}
               disabled={!canUpdateTeam || captainOptions.length === 0}
@@ -265,7 +261,7 @@ export default function AdminTeamWorkspacePage() {
                 updateTeam.mutate({ captain_id: Number.parseInt(value, 10) })
               }
             >
-              <SelectTrigger id="team-captain">
+              <SelectTrigger id="team-captain" size="sm" className="w-56">
                 <SelectValue placeholder={t("captainPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
@@ -277,21 +273,21 @@ export default function AdminTeamWorkspacePage() {
               </SelectContent>
             </Select>
           </div>
-        </CardHeader>
-        <CardContent>
-          <TeamRosterEditor
-            teamId={team.id}
-            tournamentId={team.tournament_id}
-            workspaceId={workspaceId}
-            discipline={team.tournament?.discipline ?? null}
-            players={team.players ?? []}
-            divisionGrid={team.tournament?.division_grid_version ?? null}
-            canCreatePlayer={canCreatePlayer}
-            canUpdatePlayer={canUpdatePlayer}
-            canDeletePlayer={canDeletePlayer}
-          />
-        </CardContent>
-      </Card>
+        }
+        flush
+      >
+        <TeamRosterEditor
+          teamId={team.id}
+          tournamentId={team.tournament_id}
+          workspaceId={workspaceId}
+          discipline={team.tournament?.discipline ?? null}
+          players={team.players ?? []}
+          divisionGrid={team.tournament?.division_grid_version ?? null}
+          canCreatePlayer={canCreatePlayer}
+          canUpdatePlayer={canUpdatePlayer}
+          canDeletePlayer={canDeletePlayer}
+        />
+      </SettingGroup>
 
       {canDeleteTeam ? (
         <ConfirmDialog

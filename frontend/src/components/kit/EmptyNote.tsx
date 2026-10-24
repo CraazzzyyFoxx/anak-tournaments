@@ -1,5 +1,8 @@
 import type { ElementType, ReactNode } from "react";
+import { useTranslations } from "next-intl";
+import { AlertCircle } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { TONE_TEXT, type Tone } from "@/components/ui/tone";
 import { cn } from "@/lib/utils";
 
@@ -61,6 +64,31 @@ export function EmptyNote({
       {title ? <p className={cn("font-medium text-foreground", Icon && "mt-3")}>{title}</p> : null}
       <div className={cn(title && "mt-1", centered && "max-w-prose")}>{children}</div>
       {action ? <div className={cn("mt-4", !centered && "flex")}>{action}</div> : null}
+    </div>
+  );
+}
+
+/**
+ * A read that failed inside a card: the in-card counterpart of
+ * `PageStateCard state="error"`, which is a whole screen's state and would
+ * put a card inside the card. Announced, with the retry under the text.
+ */
+export function LoadErrorNote({ title, onRetry }: Readonly<{ title?: string; onRetry: () => void }>) {
+  const t = useTranslations("common");
+  return (
+    <div role="alert">
+      <EmptyNote
+        tone="danger"
+        icon={AlertCircle}
+        title={title ?? t("pageState.error.title")}
+        action={
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            {t("retry")}
+          </Button>
+        }
+      >
+        {t("pageState.error.description")}
+      </EmptyNote>
     </div>
   );
 }

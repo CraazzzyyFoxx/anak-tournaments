@@ -4,11 +4,10 @@ import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { StatusBadge } from "@/components/admin/collectors/rank-shared";
-import { PersonSection } from "@/components/admin/people/PersonSection";
-import { EmptyNote } from "@/components/kit/EmptyNote";
+import { EmptyNote, LoadErrorNote } from "@/components/kit/EmptyNote";
+import { SettingGroup } from "@/components/kit/SettingRow";
 import { formatDate, formatRelative } from "@/components/kit/format-time";
 import { Button } from "@/components/ui/button";
-import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
@@ -31,9 +30,9 @@ export function PersonRankCollection({
   return supported ? (
     <CollectionList personId={personId} game={game} />
   ) : (
-    <PersonSection title={t("collection")}>
+    <SettingGroup id="collection" title={t("collection")}>
       <EmptyNote>{tGame("widgetUnsupported")}</EmptyNote>
-    </PersonSection>
+    </SettingGroup>
   );
 }
 
@@ -61,7 +60,8 @@ function CollectionList({ personId, game }: Readonly<{ personId: number; game: s
   });
 
   return (
-    <PersonSection
+    <SettingGroup
+      id="collection"
       title={t("collection")}
       actions={
         rows.length > 0 ? (
@@ -78,7 +78,7 @@ function CollectionList({ personId, game }: Readonly<{ personId: number; game: s
           <Skeleton className="h-10 w-full" />
         </div>
       ) : statusQuery.isError ? (
-        <PageStateCard state="error" onAction={() => void statusQuery.refetch()} />
+        <LoadErrorNote onRetry={() => void statusQuery.refetch()} />
       ) : rows.length === 0 ? (
         <EmptyNote size="sm">{t("noTags")}</EmptyNote>
       ) : (
@@ -123,6 +123,6 @@ function CollectionList({ personId, game }: Readonly<{ personId: number; game: s
           ))}
         </ul>
       )}
-    </PersonSection>
+    </SettingGroup>
   );
 }

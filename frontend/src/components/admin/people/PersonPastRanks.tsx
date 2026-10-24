@@ -6,11 +6,10 @@ import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { PersonSection } from "@/components/admin/people/PersonSection";
 import { groupPastRanks, signed, type PastGroup } from "@/components/admin/people/personRanks.model";
-import { EmptyNote } from "@/components/kit/EmptyNote";
+import { EmptyNote, LoadErrorNote } from "@/components/kit/EmptyNote";
+import { SettingGroup } from "@/components/kit/SettingRow";
 import { formatDate } from "@/components/kit/format-time";
-import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
@@ -57,12 +56,11 @@ export function PersonPastRanks({
   );
 
   return (
-    <PersonSection title={t("past")} summary={groups.length || null}>
+    <SettingGroup id="past-ranks" title={t("past")} summary={groups.length || null}>
       {query.isError || metadata.isError ? (
-        <PageStateCard
-          state="error"
+        <LoadErrorNote
           title={tOverview("loadError")}
-          onAction={() => {
+          onRetry={() => {
             void query.refetch();
             void metadata.refetch();
           }}
@@ -87,7 +85,7 @@ export function PersonPastRanks({
           ) : null}
         </>
       )}
-    </PersonSection>
+    </SettingGroup>
   );
 }
 
