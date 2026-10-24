@@ -60,6 +60,116 @@ function applyView(view: SavedView, extra?: SavedViewsExtra) {
   if (view.extra !== undefined) extra?.apply(view.extra);
 }
 
+/**
+ * Saved views as menu `items` plus the save `dialog`, for either host: the
+ * toolbar's "Views" button or the phone menu's "Views" submenu. The dialog is
+ * returned apart so the host renders it outside its menu: picking "Save
+ * current view…" closes the menu, which would unmount a dialog inside it.
+ *
+ * localStorage is client-only, so the host calls `reload` as its menu opens:
+ * an event, never the server render, and it picks up a view saved in another
+ * tab. Every reader of `views` sits behind that menu.
+ */
+export function useSavedViews(storageKey: string, extra?: SavedViewsExtra) {
+  const t = useTranslations("kitTable.dataTableExtra");
+  const [views, setViews] = useState<SavedView[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  function commit(next: SavedView[]) {
+    setViews(next);
+    saveViews(storageKey, next);
+  }
+
+  function save(name: string) {
+    const view: SavedView = {
+      name,
+      search: window.location.search,
+      ...(extra ? { extra: extra.get() } : {})
+    };
+    commit(
+      views.some((existing) => existing.name === name)
+        ? views.map((existing) => (existing.name === name ? view : existing))
+        : [...views, view]
+    );
+    setSaving(false);
+  }
+
+  const items = (
+    <>
+      {views.map((view) => (
+        <DropdownMenuItem
+          key={view.name}
+          className="justify-between gap-2"
+          onSelect={() => applyView(view, extra)}
+        >
+          <span className="truncate">{view.name}</span>
+          <Button
+            type="button"
+            variant="ghost-destructive"
+            size="icon-sm"
+            aria-label={t("deleteView", { name: view.name })}
+            className="-my-1 shrink-0"
+            // Only the click is stopped: swallowing pointerdown too would make
+            // Radix synthesize a select on pointerup.
+            onClick={(event) => {
+              event.stopPropagation();
+              commit(views.filter((existing) => existing.name !== view.name));
+            }}
+          >
+            <X aria-hidden />
+          </Button>
+        </DropdownMenuItem>
+      ))}
+      {views.length > 0 ? <DropdownMenuSeparator /> : null}
+      <DropdownMenuItem onSelect={() => setSaving(true)}>{t("saveViewPrompt")}</DropdownMenuItem>
+    </>
+  );
+
+  // Mounted only while open: `DialogContent` reads translations, which the
+  // table's hosts do not all provide.
+  const dialog = saving ? <SaveViewDialog onSave={save} onClose={() => setSaving(false)} /> : null;
+
+  return { reload: () => setViews(loadViews(storageKey)), items, dialog };
+}
+
+/**
+ * A Dialog rather than a Popover: the menu hands focus back to its trigger as
+ * it closes, which a Popover reads as "focus left" and shuts itself again
+ * before the name can be typed.
+ */
+function SaveViewDialog({ onSave, onClose }: Readonly<{ onSave: (name: string) => void; onClose: () => void }>) {
+  const t = useTranslations("kitTable.dataTableExtra");
+  const actionsT = useTranslations("kit.actions");
+  const [name, setName] = useState("");
+  const trimmed = name.trim();
+
+  return (
+    <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{t("saveView")}</DialogTitle>
+        </DialogHeader>
+        <Label htmlFor="admin-saved-view-name">{t("viewName")}</Label>
+        <Input
+          id="admin-saved-view-name"
+          value={name}
+          autoFocus
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              if (trimmed) onSave(trimmed);
+            }
+          }}
+        />
+        <Button size="sm" disabled={trimmed === ""} onClick={() => onSave(trimmed)}>
+          {actionsT("save")}
+        </Button>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function AdminSavedViews({
   storageKey,
   extra
@@ -68,46 +178,11 @@ export function AdminSavedViews({
   extra?: SavedViewsExtra;
 }) {
   const t = useTranslations("kitTable.dataTableExtra");
-  const actionsT = useTranslations("kit.actions");
-  const [views, setViews] = useState<SavedView[]>([]);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [name, setName] = useState("");
-
-  function commit(next: SavedView[]) {
-    setViews(next);
-    saveViews(storageKey, next);
-  }
-
-  function save() {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    const view: SavedView = {
-      name: trimmed,
-      search: window.location.search,
-      ...(extra ? { extra: extra.get() } : {})
-    };
-    commit(
-      views.some((existing) => existing.name === trimmed)
-        ? views.map((existing) => (existing.name === trimmed ? view : existing))
-        : [...views, view]
-    );
-    setName("");
-    setSaving(false);
-  }
+  const savedViews = useSavedViews(storageKey, extra);
 
   return (
     <>
-      {/* localStorage is client-only, so the list is read as the menu opens:
-          an event, never the server render, and it picks up a view saved in
-          another tab. Every reader of `views` sits behind this menu. */}
-      <DropdownMenu
-        open={menuOpen}
-        onOpenChange={(next) => {
-          if (next) setViews(loadViews(storageKey));
-          setMenuOpen(next);
-        }}
-      >
+      <DropdownMenu onOpenChange={(open) => (open ? savedViews.reload() : undefined)}>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm">
             <Bookmark aria-hidden />
@@ -115,64 +190,10 @@ export function AdminSavedViews({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
-          {views.map((view) => (
-            <DropdownMenuItem
-              key={view.name}
-              className="justify-between gap-2"
-              onSelect={() => applyView(view, extra)}
-            >
-              <span className="truncate">{view.name}</span>
-              <Button
-                type="button"
-                variant="ghost-destructive"
-                size="icon-sm"
-                aria-label={t("deleteView", { name: view.name })}
-                className="-my-1 shrink-0"
-                // Only the click is stopped: swallowing pointerdown too would make
-                // Radix synthesize a select on pointerup.
-                onClick={(event) => {
-                  event.stopPropagation();
-                  commit(views.filter((existing) => existing.name !== view.name));
-                }}
-              >
-                <X aria-hidden />
-              </Button>
-            </DropdownMenuItem>
-          ))}
-          {views.length > 0 ? <DropdownMenuSeparator /> : null}
-          <DropdownMenuItem onSelect={() => setSaving(true)}>{t("saveViewPrompt")}</DropdownMenuItem>
+          {savedViews.items}
         </DropdownMenuContent>
       </DropdownMenu>
-      {/* A Dialog rather than a Popover: the menu hands focus back to its
-          trigger as it closes, which a Popover reads as "focus left" and shuts
-          itself again before the name can be typed. Mounted only while open:
-          `DialogContent` reads translations, which the table's hosts do not
-          all provide. */}
-      {saving ? (
-      <Dialog open onOpenChange={setSaving}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{t("saveView")}</DialogTitle>
-          </DialogHeader>
-          <Label htmlFor="admin-saved-view-name">{t("viewName")}</Label>
-          <Input
-            id="admin-saved-view-name"
-            value={name}
-            autoFocus
-            onChange={(event) => setName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                save();
-              }
-            }}
-          />
-          <Button size="sm" disabled={name.trim() === ""} onClick={save}>
-              {actionsT("save")}
-          </Button>
-        </DialogContent>
-      </Dialog>
-      ) : null}
+      {savedViews.dialog}
     </>
   );
 }

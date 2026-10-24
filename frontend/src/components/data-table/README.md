@@ -34,6 +34,8 @@ project, satisfy `host.ts`, and it works.
 - **Toolbar.** Search, screen-owned filter bar slot (`toolbar`), CSV export (selection
   or current view), saved views (URL + column visibility, per screen), `actions` slot
   (pass a fragment, not a `flex` row: its items wrap with the table's own controls on a phone).
+  Below `md` the CSV, views and column controls fold into one `⋯` beside the search (no
+  density there — cards have none; no columns when `renderMobileCard` builds the cards).
 
 ## Public API
 

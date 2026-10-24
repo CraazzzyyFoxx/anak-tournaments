@@ -423,6 +423,7 @@ export function DataTable<TData>({
   return (
     <Card ref={cardRef} variant="flat" className="overflow-hidden border-border/50 bg-card/50">
       <AdminTableToolbar
+        compact={isMobile}
         showSearch={showSearch}
         searchInputId={searchInputId}
         searchLabel={searchLabel}
@@ -440,7 +441,9 @@ export function DataTable<TData>({
         prefsKey={prefsKey}
         visibility={visibility}
         onVisibilityChange={setVisibility}
-        pickerColumns={columnsStorageKey ? pickerColumns : undefined}
+        // A phone's cards are built from the first visible columns, so the picker stays there only
+        // while no `renderMobileCard` replaces them.
+        pickerColumns={columnsStorageKey && !(isMobile && renderMobileCard) ? pickerColumns : undefined}
         onToggleColumn={toggleColumn}
         onResetColumns={resetToDefaults}
         actions={actions}
