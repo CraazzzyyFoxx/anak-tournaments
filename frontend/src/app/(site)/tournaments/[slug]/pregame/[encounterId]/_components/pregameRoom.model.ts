@@ -172,8 +172,12 @@ export function derivePregameLoop(
         : [])
     ],
     // During the map phase that is the round being vetoed (one past the settled
-    // ones); afterwards it is the round whose map is waiting to be played.
-    round: pendingRound ?? freeplayRound ?? (mapApplies ? seriesMaps.length + 1 : null)
+    // ones); afterwards it is the round whose map is waiting to be played. A
+    // finished series has no next round: it stays on the last map played.
+    round:
+      pendingRound ??
+      freeplayRound ??
+      (mapApplies ? (phase === "done" ? seriesMaps.length || null : seriesMaps.length + 1) : null)
   };
 }
 
