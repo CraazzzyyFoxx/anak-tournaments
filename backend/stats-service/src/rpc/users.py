@@ -196,7 +196,7 @@ def register(broker: Any, logger: Any, *, channel: Any) -> None:
     @broker.subscriber("rpc.stats.users.tournament", channel=channel)
     async def _tournament(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            tournament_id = int(data["tournament_id"])
+            tournament_id = c.require_path_int(data, "tournament_id")
             await c.gate_tournament(session, data, tournament_id)
             stats = await UserService.for_tournament(session, tournament_id)
             grid = await get_division_grid(session, None, tournament_id)
@@ -207,7 +207,7 @@ def register(broker: Any, logger: Any, *, channel: Any) -> None:
     @broker.subscriber("rpc.stats.users.tournament_encounters", channel=channel)
     async def _tournament_encounters(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            tournament_id = int(data["tournament_id"])
+            tournament_id = c.require_path_int(data, "tournament_id")
             await c.gate_tournament(session, data, tournament_id)
             stats = await UserService.for_tournament(session, tournament_id)
             return await stats.get_tournament_encounters(session, c.require_id(data), tournament_id)
@@ -221,7 +221,7 @@ def register(broker: Any, logger: Any, *, channel: Any) -> None:
             # workspace and game), mirroring rpc.stats.users.tournament — no separate
             # workspace_id is needed. The route's user id (data["id"]) is only
             # the viewing context and is intentionally unused here.
-            tournament_id = int(data["tournament_id"])
+            tournament_id = c.require_path_int(data, "tournament_id")
             await c.gate_tournament(session, data, tournament_id)
             raw_stat = c.q1(data, "stat", str, None)
             if not raw_stat:
