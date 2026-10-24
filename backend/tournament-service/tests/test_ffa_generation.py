@@ -183,6 +183,7 @@ class FfaAsQualifyingSourceTests(IsolatedAsyncioTestCase):
             id=2,
             tournament_id=99,
             stage_type=enums.StageType.SINGLE_ELIMINATION,
+            bracket_template=None,
             items=[
                 SimpleNamespace(id=200, name="Playoffs", type=enums.StageItemType.BRACKET_UPPER, order=0, inputs=[])
             ],

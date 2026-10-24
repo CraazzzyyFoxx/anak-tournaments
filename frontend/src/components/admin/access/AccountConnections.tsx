@@ -6,10 +6,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AccountSection, invalidateAccount } from "@/components/admin/access/AccountCard";
 import { ProviderMark } from "@/components/admin/OAuthProviderMark";
+import { LoadErrorNote } from "@/components/kit/EmptyNote";
 import { UserSearchCombobox } from "@/components/kit/ServerSearchCombobox";
 import { StatusPill } from "@/components/kit/StatusPill";
 import { Button } from "@/components/ui/button";
-import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { accessQueryKeys } from "@/lib/access/query-keys";
 import { getSingleLinkedPlayer } from "@/lib/auth/profile-links";
@@ -136,7 +136,7 @@ export function AccountSignInMethods({ userId }: Readonly<{ userId: number }>) {
       {query.isLoading ? (
         <Skeleton className="h-12 w-full" />
       ) : query.isError ? (
-        <PageStateCard state="error" onAction={() => void query.refetch()} />
+        <LoadErrorNote onRetry={() => void query.refetch()} />
       ) : connections.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           {t("noOauth")}

@@ -105,42 +105,45 @@ export default function AchievementDetailPage() {
         onDelete={() => setDeletingRule(true)}
       />
 
-      <AchievementDetailsCard
-        rule={rule}
-        minTournamentName={tournaments.find((tournament) => tournament.id === rule.min_tournament_id)?.name}
-      />
-
-      <ConditionTreeCard
-        conditionTree={rule.condition_tree as Record<string, unknown>}
-        discipline={rule.discipline}
-        canUpdate={canUpdate}
-        editing={editingTree}
-        onEditingChange={setEditingTree}
-        onSave={(tree) => saveTreeMutation.mutate(tree)}
-        isSaving={saveTreeMutation.isPending}
-        saveError={
-          saveTreeMutation.error instanceof Error ? saveTreeMutation.error.message : undefined
-        }
-      />
-
-      <AchievementUsersTable
-        workspaceId={workspaceId}
-        ruleId={ruleId}
-        tournaments={tournaments}
-        onAddOverride={() => {
-          overrideMutation.reset();
-          setOverrideDialogOpen(true);
-        }}
-      />
-
-      {overrides && overrides.length > 0 && (
-        <AchievementOverridesCard
-          overrides={overrides}
-          tournaments={tournaments}
-          onDelete={(id) => deleteOverrideMutation.mutate(id)}
-          isDeleting={deleteOverrideMutation.isPending}
+      {/* Cards stack at the settings hub's spacing; the header keeps its own air. */}
+      <div className="space-y-4">
+        <AchievementDetailsCard
+          rule={rule}
+          minTournamentName={tournaments.find((tournament) => tournament.id === rule.min_tournament_id)?.name}
         />
-      )}
+
+        <ConditionTreeCard
+          conditionTree={rule.condition_tree as Record<string, unknown>}
+          discipline={rule.discipline}
+          canUpdate={canUpdate}
+          editing={editingTree}
+          onEditingChange={setEditingTree}
+          onSave={(tree) => saveTreeMutation.mutate(tree)}
+          isSaving={saveTreeMutation.isPending}
+          saveError={
+            saveTreeMutation.error instanceof Error ? saveTreeMutation.error.message : undefined
+          }
+        />
+
+        <AchievementUsersTable
+          workspaceId={workspaceId}
+          ruleId={ruleId}
+          tournaments={tournaments}
+          onAddOverride={() => {
+            overrideMutation.reset();
+            setOverrideDialogOpen(true);
+          }}
+        />
+
+        {overrides && overrides.length > 0 && (
+          <AchievementOverridesCard
+            overrides={overrides}
+            tournaments={tournaments}
+            onDelete={(id) => deleteOverrideMutation.mutate(id)}
+            isDeleting={deleteOverrideMutation.isPending}
+          />
+        )}
+      </div>
 
       <RuleOverrideDialog
         open={overrideDialogOpen}

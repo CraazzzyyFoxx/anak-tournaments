@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
 
+import { LoadErrorNote } from "@/components/kit/EmptyNote";
+import { SettingGroup } from "@/components/kit/SettingRow";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
@@ -63,12 +63,11 @@ export function ConditionTreeCard({
   const showStored = conditions === true || Object.keys(conditionTree).length > 0;
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle asChild>
-          <h2>{t("detail.conditionTree")}</h2>
-        </CardTitle>
-        {canUpdate && !editing && conditions === true && (
+    <SettingGroup
+      id="conditions"
+      title={t("detail.conditionTree")}
+      actions={
+        canUpdate && !editing && conditions === true ? (
           <Button
             variant="outline"
             size="sm"
@@ -79,9 +78,10 @@ export function ConditionTreeCard({
           >
             {t("detail.editTree")}
           </Button>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-3">
+        ) : null
+      }
+    >
+      <div className="space-y-3">
         {conditions === false ? (
           <p className="text-sm text-muted-foreground">{tCommon("discipline.widgetUnsupported")}</p>
         ) : null}
@@ -105,9 +105,9 @@ export function ConditionTreeCard({
           <ConditionFlowViewer value={conditionTree} readOnly discipline={discipline} />
         ) : metadata.isError ? (
           // Whether this game has conditions is unknown, and an empty tree would have to ask the registry.
-          <PageStateCard state="error" onAction={() => void metadata.refetch()} />
+          <LoadErrorNote onRetry={() => void metadata.refetch()} />
         ) : null}
-      </CardContent>
-    </Card>
+      </div>
+    </SettingGroup>
   );
 }

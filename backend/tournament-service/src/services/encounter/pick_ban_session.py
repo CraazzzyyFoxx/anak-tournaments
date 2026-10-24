@@ -1102,7 +1102,7 @@ class PickBanSessionService:
         if any(entry.round == next_round for entry in entries):
             return pick_ban  # already appended (idempotent re-entry)
 
-        encounter = await session.get(Encounter, pick_ban.encounter_id)
+        encounter = await _encounters.get_any_owner(session, pick_ban.encounter_id)
         if encounter is None or next_round > encounter.best_of:
             return pick_ban
         candidate_item_ids = round_candidates(pool, next_round)

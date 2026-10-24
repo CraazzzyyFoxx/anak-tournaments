@@ -29,9 +29,12 @@ export function AdminPageHeader({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-        {/* `flex-1` keeps the shrink-0 actions on this row: a long title or a
-            wide meta line used to push them onto a row of their own. */}
-        <div className="min-w-0 flex-1">
+        {/* `grow basis-48`: the actions share the title's row while the title
+            keeps 12rem, and drop to their own row below that — `flex-1` let them
+            squeeze a phone's title down to one letter. `max-w-full` instead of
+            `shrink-0` caps the actions at the row, so they wrap (or scroll, like
+            the game tabs) inside it instead of spilling past the screen edge. */}
+        <div className="min-w-0 grow basis-48">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {titleHidden ? (
               <h1 className="sr-only">{title}</h1>
@@ -50,7 +53,7 @@ export function AdminPageHeader({
             <p className="mt-0.5 truncate text-sm text-muted-foreground">{description}</p>
           )}
         </div>
-        {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+        {actions && <div className="flex max-w-full flex-wrap items-center gap-2">{actions}</div>}
       </div>
       {footer}
     </div>

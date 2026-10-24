@@ -1,5 +1,6 @@
 import {
   SCHEDULABLE_PHASES,
+  isSchedulablePhase,
   phaseRank,
   type SchedulablePhase
 } from "@/lib/tournament/lifecycle";
@@ -22,8 +23,12 @@ export type PhaseSegment = {
    * running while the tournament sits in the previous one.
    */
   state: PhaseSegmentState;
-  /** Planned phase start, ISO-8601. */
-  startsAt: string;
+  /**
+   * Planned phase start, ISO-8601. `null` only for the phase the tournament is
+   * in when the organizer scheduled no window for it: it still belongs on the
+   * timeline, because "where are we now" is the first thing the timeline says.
+   */
+  startsAt: string | null;
   /**
    * When the phase's action window closes, ISO-8601, or null when it stays open
    * for the whole phase. This never advances the status (see
@@ -94,10 +99,6 @@ export function buildTournamentSchedule({
   const segments: PhaseSegment[] = [];
 
   for (const phase of SCHEDULABLE_PHASES) {
-    // A balancer tournament has no draft phase at all, even if a stale row says
-    // otherwise (the settings form offers all four regardless of formation).
-    if (phase === "draft" && tournament.team_formation !== "draft") continue;
-
     const row = schedule.find((entry) => entry.status === phase);
     // An unscheduled phase has no place on a timeline: it carries no time, and
     // for check-in its absence is exactly what "this tournament has no
@@ -110,6 +111,29 @@ export function buildTournamentSchedule({
       state: rank < currentRank ? "done" : rank === currentRank ? "current" : "upcoming",
       startsAt: row.starts_at,
       endsAt: row.ends_at,
+      countdownMs: null,
+      countdownTo: null,
+      progress: null,
+      windowClosed: false
+    });
+  }
+
+  // The phase the tournament is in, even when nobody scheduled it: a balancer
+  // tournament forming its teams sits in `draft` between check-in and the
+  // start, usually with no window of its own. Without this step the timeline
+  // had no "now" at all. A lone step is not a timeline, so only beside others.
+  const status = tournament.status;
+  if (
+    segments.length > 0 &&
+    isSchedulablePhase(status) &&
+    !segments.some((segment) => segment.state === "current")
+  ) {
+    const after = segments.findIndex((segment) => phaseRank(segment.status) > currentRank);
+    segments.splice(after < 0 ? segments.length : after, 0, {
+      status,
+      state: "current",
+      startsAt: null,
+      endsAt: null,
       countdownMs: null,
       countdownTo: null,
       progress: null,

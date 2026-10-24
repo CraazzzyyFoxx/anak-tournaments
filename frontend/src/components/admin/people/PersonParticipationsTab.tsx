@@ -21,11 +21,11 @@ import {
   type PlayerFormMode,
   type PlayerFormState
 } from "@/components/admin/people/PlayerForm";
-import { PersonSection } from "@/components/admin/people/PersonSection";
+import { LoadErrorNote } from "@/components/kit/EmptyNote";
+import { SettingGroup } from "@/components/kit/SettingRow";
 import DivisionIcon from "@/components/DivisionIcon";
 import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import { Button } from "@/components/ui/button";
-import { PageStateCard } from "@/components/ui/page-state-card";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useDisciplineMetadata, useDisciplines } from "@/hooks/useDisciplineMetadata";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
@@ -379,7 +379,9 @@ export function PersonParticipationsTab({
   );
 
   return (
-    <PersonSection
+    // Flush while the table shows: its own toolbar and rows run edge to edge.
+    <SettingGroup
+      id="participations"
       title={t("title")}
       actions={
         canCreate ? (
@@ -389,16 +391,13 @@ export function PersonParticipationsTab({
           </Button>
         ) : null
       }
+      flush={!participationsQuery.isError}
     >
       {participationsQuery.isError ? (
-        <PageStateCard
-          state="error"
-          title={t("loadError")}
-          onAction={() => void participationsQuery.refetch()}
-          actionLabel={t("retry")}
-        />
+        <LoadErrorNote title={t("loadError")} onRetry={() => void participationsQuery.refetch()} />
       ) : (
         <DataTable<ParticipationRow>
+          framed={false}
           rows={rows}
           isLoading={participationsQuery.isLoading}
           columns={columns}
@@ -503,6 +502,6 @@ export function PersonParticipationsTab({
           if (pendingDelete) deleteMutation.mutate(pendingDelete.id);
         }}
       />
-    </PersonSection>
+    </SettingGroup>
   );
 }

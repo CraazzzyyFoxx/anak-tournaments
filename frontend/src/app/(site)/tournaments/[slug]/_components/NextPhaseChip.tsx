@@ -4,36 +4,43 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
-import { HeroStamp } from "@/components/site/PageHero";
 import { useMinuteClock } from "@/hooks/useMinuteClock";
 import { cn } from "@/lib/utils";
 import type { Tournament } from "@/types/tournament.types";
 
 import { nextPhaseBoundary } from "../_views/tournamentSchedule.model";
 
-type NextPhaseChipProps = {
-  tournament: Pick<
-    Tournament,
-    "status" | "team_formation" | "phase_schedule" | "auto_transitions_enabled"
-  >;
-  /** Where the chip leads — the overview's phase timeline. */
-  href: string;
-  className?: string;
-  /** Pill in the collapsed rail; stamp in the page hero. */
-  variant?: "pill" | "stamp";
+type PhaseInput = Pick<
+  Tournament,
+  "status" | "team_formation" | "phase_schedule" | "auto_transitions_enabled"
+>;
+
+export type NextPhase = {
+  /** "Registration closes", "Check-in starts", "Start": what happens. */
+  label: string;
+  /** "in 12 hours": when, relative to the viewer's clock. */
+  relative: string;
+  /** "Sat, Oct 24, 16:00": when, on the viewer's calendar. */
+  stamp: string;
+  /** The boundary itself, ISO-8601, for `<time dateTime>`. */
+  at: string;
 };
 
+const STAMP = {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit"
+} as const;
+
 /**
- * "→ Check-in · Sat 14:00 · in 1d 6h": the one question a viewer has during
- * registration, answered in the header of every section. Renders nothing when
- * no boundary lies ahead, so a finished tournament carries no stale promise.
+ * The one boundary ahead of the tournament, worded once for both places that
+ * quote it: the overview hero and the collapsed rail's pill. Null until
+ * hydration (the minute clock), and null when nothing lies ahead, so a finished
+ * tournament carries no stale promise.
  */
-export function NextPhaseChip({
-  tournament,
-  href,
-  className,
-  variant = "pill",
-}: Readonly<NextPhaseChipProps>) {
+export function useNextPhase(tournament: PhaseInput): NextPhase | null {
   const t = useTranslations();
   const format = useFormatter();
   const now = useMinuteClock();
@@ -43,50 +50,51 @@ export function NextPhaseChip({
   if (!next) return null;
 
   const at = new Date(next.at);
-  const stamp = format.dateTime(at, { weekday: "short", hour: "2-digit", minute: "2-digit" });
-  const relative = format.relativeTime(at, now);
   const phase = t(`common.statusBadge.${next.status}`);
+  // The live phase is the tournament itself: its start is "the start", its
+  // close the end — "Live starts" would read as a status, not as an event.
   const label =
-    next.kind === "close"
-      ? t("tournamentDetail.nextPhase.closes", { phase })
-      : t("tournamentDetail.nextPhase.starts", { phase });
-  const when = (
-    <>
-      <time dateTime={next.at}>{stamp}</time>
-      <span className="opacity-60"> · {relative}</span>
-    </>
-  );
+    next.status === "live"
+      ? t(next.kind === "close" ? "tournamentDetail.phaseFact.ends" : "tournamentDetail.phaseFact.kickoff")
+      : t(next.kind === "close" ? "tournamentDetail.phaseFact.closes" : "tournamentDetail.phaseFact.starts", {
+          phase
+        });
 
-  if (variant === "stamp") {
-    return (
-      <Link
-        href={href}
-        className={cn(
-          "no-underline outline-none transition-colors hover:text-[color:var(--aqt-teal)] focus-visible:text-[color:var(--aqt-teal)]",
-          className
-        )}
-      >
-        <HeroStamp label={label} value={when} />
-      </Link>
-    );
-  }
+  return {
+    label,
+    relative: format.relativeTime(at, now),
+    stamp: format.dateTime(at, STAMP),
+    at: next.at
+  };
+}
 
-  // The pill stands in the collapsed rail, beside the title and the register
-  // button — the widest thing in a row that has none to spare. It keeps the
-  // answer ("in 13 hours") and drops the restatement: the absolute stamp is
-  // already in the hero above and in the phase timeline the chip links to, so
-  // here it rides in `title` rather than 120px of header.
+/**
+ * The next boundary as a pill in the collapsed rail, beside the title and the
+ * register button — the widest thing in a row that has none to spare. It keeps
+ * the answer ("in 13 hours") and the event; the absolute stamp rides in
+ * `title`, since the hero and the timeline it links to both print it.
+ */
+export function NextPhaseChip({
+  tournament,
+  href,
+  className
+}: Readonly<{
+  tournament: PhaseInput;
+  /** Where the chip leads — the overview's phase timeline. */
+  href: string;
+  className?: string;
+}>) {
+  const next = useNextPhase(tournament);
+  if (!next) return null;
+
   return (
     <Link
       href={href}
-      title={`${label} · ${stamp}`}
-      className={cn(
-        "meta-pill transition-colors hover:border-[color:var(--aqt-teal)]",
-        className
-      )}
+      title={`${next.label} · ${next.stamp}`}
+      className={cn("meta-pill transition-colors hover:border-[color:var(--aqt-teal)]", className)}
     >
-      <span className="k">{label}</span>
-      <span className="v aqt-tnum">{relative}</span>
+      <span className="k">{next.label}</span>
+      <span className="v aqt-tnum">{next.relative}</span>
     </Link>
   );
 }

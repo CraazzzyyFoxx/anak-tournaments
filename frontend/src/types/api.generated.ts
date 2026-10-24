@@ -1984,6 +1984,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/encounters/insights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get encounters insights
+         * @description Permission: public; no authentication required — an explicit tournament_id is visibility-gated against the caller, and an unfiltered read covers publicly visible tournaments only. Takes the encounter list's filters with the status forced to `completed` and returns their analytics: the count, average closeness (0..1) and its histogram in tenths, final score lines, the split by stage kind, the 6 most played maps, the 4 closest encounters, average series length, and — over the duels of more than one map (`multi_map`) — sweeps and series that went the distance.
+         *
+         *     RPC subject: `rpc.tournament.encounters_insights`
+         */
+        get: operations["get__api_v1_encounters_insights"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/encounters/overview": {
         parameters: {
             query?: never;
@@ -1993,7 +2015,7 @@ export interface paths {
         };
         /**
          * Get encounters overview
-         * @description Permission: public; no authentication required. Returns an aggregated encounters overview for the search filters, with viewer-scoped fields resolved from the optional identity.
+         * @description Permission: public; no authentication required — an explicit tournament_id is visibility-gated against the caller, and an unfiltered overview counts publicly visible tournaments only. Takes the encounter list's filters and returns the browse's counts: the status segments (`all`, `live`, `upcoming`, `completed`; the status filter ignored, the toggles applied) and the toggles (`finals`, `upsets`, `with_logs`, `my_team`; every other filter applied, that toggle forced on — `my_team` is 0 without an identity), plus `completed_with_logs`, `recent_completed` (played in the last 7 days) and up to 4 encounters in play.
          *
          *     RPC subject: `rpc.tournament.encounters_overview`
          */
@@ -2023,7 +2045,7 @@ export interface paths {
         put?: never;
         /**
          * Save encounter view
-         * @description Permission: authenticated member of the workspace named by `workspace_id` (403 otherwise); self-service — the view belongs to the caller. Creates or upserts the calling user's saved encounter filter view in a workspace.
+         * @description Permission: authenticated member of the workspace named by `workspace_id` (403 otherwise); self-service — the view belongs to the caller. Creates the calling user's saved encounter filter view in a workspace; 409 `saved_view_exists` when the caller already has a view of that name, 409 `saved_view_limit` when the caller already keeps 20 views there.
          *
          *     RPC subject: `rpc.tournament.saved_view_create`
          */
@@ -18454,16 +18476,36 @@ export interface components {
             /** First Team Id */
             first_team_id: number;
         };
-        /** EncounterFeaturedRead */
-        "tournament.EncounterFeaturedRead": {
-            /** Closest */
-            closest: components["schemas"]["tournament.EncounterRead"][];
+        /**
+         * EncounterCountsRead
+         * @description The toolbar's numbers under the current filters.
+         *
+         *     The segments (``all``/``live``/``upcoming``/``completed``) ignore the status filter and apply every active
+         *     toggle; each toggle (``finals``/``upsets``/``with_logs``/``my_team``) applies every other filter, the status
+         *     included, with itself forced on. ``my_team`` is 0 for an anonymous viewer.
+         */
+        "tournament.EncounterCountsRead": {
+            /** All */
+            all: number;
+            /** Completed */
+            completed: number;
+            /** Finals */
+            finals: number;
             /** Live */
-            live: components["schemas"]["tournament.EncounterRead"][];
+            live: number;
+            /** My Team */
+            my_team: number;
             /** Upcoming */
-            upcoming: components["schemas"]["tournament.EncounterRead"][];
+            upcoming: number;
+            /** Upsets */
+            upsets: number;
+            /** With Logs */
+            with_logs: number;
         };
-        /** EncounterFiltersRead */
+        /**
+         * EncounterFiltersRead
+         * @description A saved view's whole filter state; applying one replaces the page's filters.
+         */
         "tournament.EncounterFiltersRead": {
             /**
              * Best Of
@@ -18486,6 +18528,16 @@ export interface components {
              */
             has_logs: boolean | null;
             /**
+             * Is Final
+             * @default null
+             */
+            is_final: boolean | null;
+            /**
+             * Is Upset
+             * @default null
+             */
+            is_upset: boolean | null;
+            /**
              * Query
              * @default
              */
@@ -18499,8 +18551,9 @@ export interface components {
             /**
              * Sort
              * @default date
+             * @enum {string}
              */
-            sort: string;
+            sort: TournamentEncounterFiltersReadSort;
             /**
              * Stage Id
              * @default null
@@ -18516,6 +18569,11 @@ export interface components {
              * @default null
              */
             status: string | null;
+            /**
+             * Tournament Id
+             * @default null
+             */
+            tournament_id: number | null;
         };
         /**
          * EncounterGameRead
@@ -18614,27 +18672,37 @@ export interface components {
             count: number;
             /** End */
             end: number;
-            /** Label */
-            label: string;
             /** Start */
             start: number;
         };
-        /** EncounterKpiRead */
-        "tournament.EncounterKpiRead": {
+        /**
+         * EncounterInsightsRead
+         * @description ``GET /encounters/insights``: the analytics of the completed encounters under the browse's filters (the status
+         *     filter is forced to ``completed``). Rates are fractions, 0..1.
+         */
+        "tournament.EncounterInsightsRead": {
             /** Avg Closeness */
             avg_closeness: number | null;
-            /** Live Now Count */
-            live_now_count: number;
-            /** Recent Count */
-            recent_count: number;
-            /** Total Encounters */
-            total_encounters: number;
-            /** Upcoming Count */
-            upcoming_count: number;
-            /** With Logs Count */
-            with_logs_count: number;
-            /** With Logs Pct */
-            with_logs_pct: number;
+            /** Avg Series Seconds */
+            avg_series_seconds: number | null;
+            /** Closeness Histogram */
+            closeness_histogram: components["schemas"]["tournament.EncounterHistogramBucketRead"][];
+            /** Closest */
+            closest: components["schemas"]["tournament.EncounterRead"][];
+            /** Completed */
+            completed: number;
+            /** Hot Maps */
+            hot_maps: components["schemas"]["tournament.EncounterMapMetricRead"][];
+            /** Multi Map */
+            multi_map: number;
+            /** Score Lines */
+            score_lines: components["schemas"]["tournament.EncounterScoreLineRead"][];
+            /** Stage Kinds */
+            stage_kinds: components["schemas"]["tournament.EncounterStageKindRead"][];
+            /** Sweeps */
+            sweeps: number;
+            /** Went Distance */
+            went_distance: number;
         };
         /** EncounterMapMetricRead */
         "tournament.EncounterMapMetricRead": {
@@ -18643,41 +18711,18 @@ export interface components {
             /** Name */
             name: string;
         };
-        /** EncounterOverviewRead */
+        /**
+         * EncounterOverviewRead
+         * @description ``GET /encounters/overview``: the cheap summary; asked with no filters it is the platform's own numbers.
+         */
         "tournament.EncounterOverviewRead": {
-            /** Closeness Histogram */
-            closeness_histogram: components["schemas"]["tournament.EncounterHistogramBucketRead"][];
-            featured: components["schemas"]["tournament.EncounterFeaturedRead"];
-            /** Hot Maps */
-            hot_maps: components["schemas"]["tournament.EncounterMapMetricRead"][];
-            kpis: components["schemas"]["tournament.EncounterKpiRead"];
-            /** Preset Counts */
-            preset_counts: {
-                [key: string]: number;
-            };
-            pulse: components["schemas"]["tournament.EncounterPulseRead"];
-            /** Score Heatmap */
-            score_heatmap: components["schemas"]["tournament.EncounterScoreHeatmapCellRead"][];
-            slot_balance: components["schemas"]["tournament.EncounterSlotBalanceRead"];
-            /** Stage Split */
-            stage_split: components["schemas"]["tournament.EncounterStageSplitRead"][];
-        };
-        /** EncounterPulseRead */
-        "tournament.EncounterPulseRead": {
-            /** Avg Series Seconds */
-            avg_series_seconds: number | null;
-            /** Completed Series Count */
-            completed_series_count: number;
-            /** Most Decisive Map */
-            most_decisive_map: string | null;
-            /** Reverse Sweep Rate */
-            reverse_sweep_rate: number;
-            /** Sweep Count */
-            sweep_count: number;
-            /** Sweep Rate */
-            sweep_rate: number;
-            /** Went Distance Count */
-            went_distance_count: number;
+            /** Completed With Logs */
+            completed_with_logs: number;
+            counts: components["schemas"]["tournament.EncounterCountsRead"];
+            /** Live */
+            live: components["schemas"]["tournament.EncounterRead"][];
+            /** Recent Completed */
+            recent_completed: number;
         };
         /** EncounterRead */
         "tournament.EncounterRead": {
@@ -18716,10 +18761,25 @@ export interface components {
             has_logs: boolean;
             /** Id */
             id: number;
+            /**
+             * Is Final
+             * @default false
+             */
+            is_final: boolean;
+            /**
+             * Is Live
+             * @default false
+             */
+            is_live: boolean;
             /** Matches */
             matches: components["schemas"]["tournament.MatchRead"][];
             /** Name */
             name: string;
+            /**
+             * Played At
+             * @default null
+             */
+            played_at: string | null;
             /**
              * Result Source
              * @default null
@@ -18812,31 +18872,16 @@ export interface components {
             workspace_id: number;
         };
         /**
-         * EncounterScoreHeatmapCellRead
-         * @description One scoreline of a two-seat encounter, slot 1 against slot 2.
+         * EncounterScoreLineRead
+         * @description One final score of a completed duel, the winner's side first; ``winner == loser`` is a draw.
          */
-        "tournament.EncounterScoreHeatmapCellRead": {
+        "tournament.EncounterScoreLineRead": {
             /** Count */
             count: number;
-            /** Slot One */
-            slot_one: number;
-            /** Slot Two */
-            slot_two: number;
-        };
-        /**
-         * EncounterSlotBalanceRead
-         * @description How often each seat of a duel wins — the seeding bias a bracket's slot 1
-         *     carries, which is all "side" ever meant here.
-         */
-        "tournament.EncounterSlotBalanceRead": {
-            /** Slot One Win Pct */
-            slot_one_win_pct: number;
-            /** Slot One Wins */
-            slot_one_wins: number;
-            /** Slot Two Win Pct */
-            slot_two_win_pct: number;
-            /** Slot Two Wins */
-            slot_two_wins: number;
+            /** Loser */
+            loser: number;
+            /** Winner */
+            winner: number;
         };
         /**
          * EncounterSlotSourceRead
@@ -18857,14 +18902,15 @@ export interface components {
             /** Source Position */
             source_position: number;
         };
-        /** EncounterStageSplitRead */
-        "tournament.EncounterStageSplitRead": {
+        /** EncounterStageKindRead */
+        "tournament.EncounterStageKindRead": {
             /** Count */
             count: number;
-            /** Name */
-            name: string;
-            /** Pct */
-            pct: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: TournamentEncounterStageKindReadKind;
         };
         /**
          * EncounterStatus
@@ -27650,6 +27696,8 @@ export interface components {
         };
         /** DashboardTournamentCard */
         "tournament.DashboardTournamentCard": {
+            /** Cover Image Url */
+            cover_image_url: string | null;
             /** Discipline */
             discipline: string;
             /** End Date */
@@ -27662,6 +27710,8 @@ export interface components {
             id: number;
             /** Is Hidden */
             is_hidden: boolean;
+            /** Logo Url */
+            logo_url: string | null;
             /** Name */
             name: string;
             /** Next Deadline At */
@@ -38622,7 +38672,7 @@ export interface operations {
                 per_page?: number;
                 entities?: string[];
                 only_count?: boolean;
-                sort?: string;
+                sort?: PathsApiV1EncountersGetParametersQuerySort;
                 order?: components["schemas"]["tournament.SortOrder"];
                 query?: string;
                 fields?: string[];
@@ -38632,6 +38682,8 @@ export interface operations {
                 best_of?: number | null;
                 status?: string | null;
                 has_logs?: boolean | null;
+                is_final?: boolean | null;
+                is_upset?: boolean | null;
                 closeness_min?: number | null;
                 closeness_max?: number | null;
                 scope?: PathsApiV1EncountersGetParametersQueryScope;
@@ -38693,14 +38745,14 @@ export interface operations {
             };
         };
     };
-    get__api_v1_encounters_overview: {
+    get__api_v1_encounters_insights: {
         parameters: {
             query?: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
                 only_count?: boolean;
-                sort?: string;
+                sort?: PathsApiV1EncountersInsightsGetParametersQuerySort;
                 order?: components["schemas"]["tournament.SortOrder"];
                 query?: string;
                 fields?: string[];
@@ -38710,6 +38762,88 @@ export interface operations {
                 best_of?: number | null;
                 status?: string | null;
                 has_logs?: boolean | null;
+                is_final?: boolean | null;
+                is_upset?: boolean | null;
+                closeness_min?: number | null;
+                closeness_max?: number | null;
+                scope?: PathsApiV1EncountersInsightsGetParametersQueryScope;
+                slot_count?: number | null;
+                discipline?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["tournament.EncounterInsightsRead"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_encounters_overview: {
+        parameters: {
+            query?: {
+                page?: number;
+                per_page?: number;
+                entities?: string[];
+                only_count?: boolean;
+                sort?: PathsApiV1EncountersOverviewGetParametersQuerySort;
+                order?: components["schemas"]["tournament.SortOrder"];
+                query?: string;
+                fields?: string[];
+                tournament_id?: number | null;
+                stage_id?: number | null;
+                stage_item_id?: number | null;
+                best_of?: number | null;
+                status?: string | null;
+                has_logs?: boolean | null;
+                is_final?: boolean | null;
+                is_upset?: boolean | null;
                 closeness_min?: number | null;
                 closeness_max?: number | null;
                 scope?: PathsApiV1EncountersOverviewGetParametersQueryScope;
@@ -80552,9 +80686,46 @@ export enum PathsApiV1CatalogDisciplineKindGetParametersQuerySort {
     created_at = "created_at",
     updated_at = "updated_at"
 }
+export enum PathsApiV1EncountersGetParametersQuerySort {
+    id = "id",
+    name = "name",
+    best_of = "best_of",
+    status = "status",
+    scheduled_at = "scheduled_at",
+    closeness = "closeness",
+    has_logs = "has_logs",
+    discipline = "discipline",
+    played_at = "played_at"
+}
 export enum PathsApiV1EncountersGetParametersQueryScope {
     all = "all",
     my_team = "my_team"
+}
+export enum PathsApiV1EncountersInsightsGetParametersQuerySort {
+    id = "id",
+    name = "name",
+    best_of = "best_of",
+    status = "status",
+    scheduled_at = "scheduled_at",
+    closeness = "closeness",
+    has_logs = "has_logs",
+    discipline = "discipline",
+    played_at = "played_at"
+}
+export enum PathsApiV1EncountersInsightsGetParametersQueryScope {
+    all = "all",
+    my_team = "my_team"
+}
+export enum PathsApiV1EncountersOverviewGetParametersQuerySort {
+    id = "id",
+    name = "name",
+    best_of = "best_of",
+    status = "status",
+    scheduled_at = "scheduled_at",
+    closeness = "closeness",
+    has_logs = "has_logs",
+    discipline = "discipline",
+    played_at = "played_at"
 }
 export enum PathsApiV1EncountersOverviewGetParametersQueryScope {
     all = "all",
@@ -81000,6 +81171,10 @@ export enum TournamentEncounterFiltersReadScope {
     all = "all",
     my_team = "my_team"
 }
+export enum TournamentEncounterFiltersReadSort {
+    date = "date",
+    closeness = "closeness"
+}
 export enum TournamentEncounterGameState {
     planned = "planned",
     awaiting_result = "awaiting_result",
@@ -81016,6 +81191,12 @@ export enum TournamentEncounterResultStatus {
     pending_confirmation = "pending_confirmation",
     confirmed = "confirmed",
     disputed = "disputed"
+}
+export enum TournamentEncounterStageKindReadKind {
+    groups = "groups",
+    playoffs = "playoffs",
+    swiss = "swiss",
+    unassigned = "unassigned"
 }
 export enum TournamentEncounterStatus {
     completed = "completed",

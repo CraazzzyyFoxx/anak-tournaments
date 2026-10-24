@@ -7,6 +7,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 
 import { TournamentCombobox } from "@/components/tournaments/TournamentCombobox";
 import { DataTable } from "@/components/data-table";
+import { SettingGroup } from "@/components/kit/SettingRow";
 import { Button } from "@/components/ui/button";
 import { useFormatter } from "@/lib/datetime/client";
 import { achievementQueryKeys } from "@/lib/achievements/query-keys";
@@ -79,16 +80,18 @@ export function AchievementUsersTable({
   ];
 
   return (
-    <section aria-labelledby="rule-users-title" className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="rule-users-title" className="text-base font-semibold">
-          {t("common.users")}
-        </h2>
+    <SettingGroup
+      id="users"
+      title={t("common.users")}
+      actions={
         <Button variant="outline" size="sm" onClick={onAddOverride}>
           {t("detail.manualOverride")}
         </Button>
-      </div>
+      }
+      flush
+    >
       <DataTable<RuleUserRow>
+        framed={false}
         queryKey={(page, _search, pageSize, sortField, sortDir) => [
           ...achievementQueryKeys.ruleUsersPage(workspaceId, ruleId, tournamentId, sortField, sortDir),
           page,
@@ -122,6 +125,6 @@ export function AchievementUsersTable({
           ) : undefined
         }
       />
-    </section>
+    </SettingGroup>
   );
 }

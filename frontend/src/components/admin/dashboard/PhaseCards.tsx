@@ -2,19 +2,23 @@
 
 import { useState } from "react";
 import { useNow, useTranslations } from "next-intl";
-import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Circle, Lock } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Circle, Clock, Lock } from "lucide-react";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { buildChecklist, type ChecklistItem } from "@/components/admin/tournament-checklist";
-import { formatRelative } from "@/components/kit/format-time";
+import { formatDate, formatRelative } from "@/components/kit/format-time";
 import { FactList } from "@/components/kit/FactList";
+import { PhaseStrip, type Phase } from "@/components/kit/PhaseStrip";
 import { StatusPill } from "@/components/kit/StatusPill";
 import { TONE_TEXT, type Tone } from "@/components/ui/tone";
 import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import Image from "@/components/ui/image";
+import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusDot } from "@/components/ui/status-dot";
 import { GameIcon } from "@/components/workspace/GameIcon";
 import { useFormatter } from "@/lib/datetime/client";
 import { cn } from "@/lib/utils";
@@ -25,8 +29,11 @@ import type { TournamentStatus } from "@/types/tournament.types";
 const VISIBLE_CARDS = 3;
 /** Open checklist items a card lists before pointing at the hub's full checklist. */
 const MAX_CHECKLIST_ITEMS = 3;
+/** The card phases in lifecycle order: the strip under a card's title marks where it stands. */
+const PHASES = ["preparation", "registration", "formation", "live", "wrap_up"] as const;
 
-const GRID_CLASS = "grid gap-4 md:grid-cols-2 xl:grid-cols-3";
+/** As many columns as fit at 20rem: a lone card takes the whole column, three share it. */
+const GRID_CLASS = "grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] gap-4";
 
 export function PhaseCards({ cards }: Readonly<{ cards: DashboardTournamentCard[] }>) {
   const t = useTranslations("adminShell.dashboard");
@@ -62,27 +69,30 @@ export function PhaseCards({ cards }: Readonly<{ cards: DashboardTournamentCard[
   );
 }
 
+/** One placeholder: a workspace mostly runs one tournament at a time, and a lone card takes the whole column. */
 export function PhaseCardsSkeleton() {
-  return (
-    <div className={GRID_CLASS}>
-      {Array.from({ length: VISIBLE_CARDS }, (_, index) => (
-        <Skeleton key={index} className="h-60 rounded-xl" />
-      ))}
-    </div>
-  );
+  return <Skeleton className="h-56 rounded-xl" />;
 }
 
+/**
+ * One tournament in work. Wide enough (a lone card), it splits into its
+ * identity (cover, logo, phase, title, lifecycle, deadline, the way in) and
+ * the phase's own body; narrower, the two stack. The split follows the card's
+ * width, not the page's: the grid decides how wide a card is.
+ */
 function PhaseCard({ card }: Readonly<{ card: DashboardTournamentCard }>) {
   const t = useTranslations("adminShell.dashboard");
   const tStatus = useTranslations("common.statusBadge");
   const format = useFormatter();
   const base = `/admin/tournaments/${card.id}`;
   const status = tStatus(card.status as TournamentStatus);
-  // Formation and live each span two statuses; the status says which one.
+  const phaseName = t(`phase.${card.phase}`);
+  // Formation and live each span two statuses; the status says which one,
+  // unless its label already is the phase's own name.
   const phaseLine =
-    card.phase === "formation" || card.phase === "live"
-      ? `${t(`phase.${card.phase}`)} · ${status}`
-      : t(`phase.${card.phase}`);
+    (card.phase === "formation" || card.phase === "live") && status !== phaseName
+      ? `${phaseName} · ${status}`
+      : phaseName;
   // The one way in: the existing screen where this phase's work is done.
   const actionHref = {
     preparation: `${base}/settings/general`,
@@ -91,51 +101,99 @@ function PhaseCard({ card }: Readonly<{ card: DashboardTournamentCard }>) {
     live: `${base}/matches/encounters`,
     wrap_up: `${base}/overview`
   }[card.phase];
+  const current = PHASES.findIndex((phase) => phase === card.phase);
 
   return (
-    <Card className="flex flex-col">
-      <CardHeader className="gap-1.5 space-y-0 pb-4">
-        <p className={eyebrowClass("muted")}>{phaseLine}</p>
-        <div className="flex min-w-0 items-center gap-2">
-          <GameIcon slug={card.discipline} size={16} />
-          <CardTitle asChild className="min-w-0 truncate text-base">
-            <h3>
-              <HoverPrefetchLink href={base} className="hover:underline focus-visible:underline">
-                {card.name}
-              </HoverPrefetchLink>
-            </h3>
-          </CardTitle>
-          {card.is_hidden ? (
-            <StatusPill tone="neutral" className="shrink-0">
-              {t("hidden")}
-            </StatusPill>
-          ) : null}
+    <Card className="@container flex flex-col overflow-hidden">
+      {card.cover_image_url ? (
+        <div className="relative h-24 shrink-0 bg-[color:var(--aqt-bg-2)]">
+          <Image
+            src={card.cover_image_url}
+            alt=""
+            aria-hidden
+            fill
+            sizes="(max-width: 1280px) 100vw, 70vw"
+            className="object-cover"
+          />
         </div>
-        {card.next_deadline_at ? (
-          <p className="text-xs text-muted-foreground">
-            {t("nextDeadline", { when: formatRelative(format, card.next_deadline_at) })}
-          </p>
-        ) : null}
-      </CardHeader>
-      <CardContent className="flex-1">
-        {card.phase === "registration" ? (
-          <RegistrationBody card={card} />
-        ) : card.phase === "live" ? (
-          <PlayBody card={card} />
-        ) : card.phase === "wrap_up" ? (
-          <WrapUpBody card={card} />
-        ) : (
-          <ChecklistBody card={card} />
-        )}
-      </CardContent>
-      <CardFooter>
-        <Button asChild variant="outline" size="sm">
-          <HoverPrefetchLink href={actionHref}>
-            {t(`action.${card.phase}`)}
-            <ArrowRight className="size-3.5" aria-hidden />
-          </HoverPrefetchLink>
-        </Button>
-      </CardFooter>
+      ) : null}
+      {/* Stacked, a taller neighbour's slack goes under the body, not between the action and the body. */}
+      <div className="grid flex-1 grid-rows-[auto_1fr] @3xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] @3xl:grid-rows-1">
+        <div className="flex min-w-0 flex-col gap-4 p-6">
+          <div className="flex min-w-0 items-start gap-3">
+            {card.logo_url ? (
+              <Image
+                src={card.logo_url}
+                alt=""
+                aria-hidden
+                width={48}
+                height={48}
+                // Rides the cover's lower edge; `relative` paints it over the positioned cover.
+                className={cn(
+                  "relative size-12 shrink-0 rounded-lg border border-border bg-background object-cover",
+                  card.cover_image_url && "-mt-12"
+                )}
+              />
+            ) : null}
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className={eyebrowClass("muted")}>{phaseLine}</p>
+              {/* `items-start`: a two-line title keeps its game mark and pill on its first line. */}
+              <div className="flex min-w-0 items-start gap-2">
+                <span className="mt-1 flex shrink-0">
+                  <GameIcon slug={card.discipline} size={16} />
+                </span>
+                <h3 title={card.name} className="line-clamp-2 min-w-0 break-words font-display text-title font-semibold">
+                  <HoverPrefetchLink href={base} className="hover:underline focus-visible:underline">
+                    {card.name}
+                  </HoverPrefetchLink>
+                </h3>
+                {card.is_hidden ? (
+                  <StatusPill tone="neutral" className="mt-0.5 shrink-0">
+                    {t("hidden")}
+                  </StatusPill>
+                ) : null}
+              </div>
+            </div>
+          </div>
+          <PhaseStrip
+            variant="compact"
+            phases={PHASES.map(
+              (phase, index): Phase => ({
+                key: phase,
+                label: t(`phase.${phase}`),
+                state: index < current ? "done" : index === current ? "current" : "todo"
+              })
+            )}
+          />
+          {card.next_deadline_at ? (
+            <p
+              className="flex items-center gap-1.5 text-sm text-foreground"
+              title={formatDate(format, card.next_deadline_at)}
+            >
+              <Clock className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              {t("nextDeadline", { when: formatRelative(format, card.next_deadline_at) })}
+            </p>
+          ) : null}
+          <Button asChild variant="outline" size="sm" className="mt-auto w-fit">
+            <HoverPrefetchLink href={actionHref}>
+              {t(`action.${card.phase}`)}
+              <ArrowRight className="size-3.5" aria-hidden />
+            </HoverPrefetchLink>
+          </Button>
+        </div>
+        {/* Its own container: the facts inside fit their columns to this zone, not to the card. */}
+        <div className="@container min-w-0 border-t border-border/50 p-6 @3xl:border-l @3xl:border-t-0">
+          {card.phase === "registration" ? (
+            <RegistrationBody card={card} />
+          ) : card.phase === "live" ? (
+            <PlayBody card={card} />
+          ) : card.phase === "wrap_up" ? (
+            <WrapUpBody card={card} />
+          ) : (
+            <ChecklistBody card={card} />
+          )}
+        </div>
+      </div>
     </Card>
   );
 }
@@ -182,7 +240,7 @@ function ChecklistBody({ card }: Readonly<{ card: DashboardTournamentCard }>) {
     <ul className="divide-y divide-border/50">
       {open.slice(0, MAX_CHECKLIST_ITEMS).map((item) => (
         <li key={item.key}>
-          <ChecklistRow item={item} />
+          <ChecklistRow item={item} progress={rowProgress(item.key, card.readiness)} />
         </li>
       ))}
       {open.length > MAX_CHECKLIST_ITEMS ? (
@@ -194,20 +252,37 @@ function ChecklistBody({ card }: Readonly<{ card: DashboardTournamentCard }>) {
   );
 }
 
-function ChecklistRow({ item }: Readonly<{ item: ChecklistItem }>) {
+/** How far a row that counts toward a whole has got, in percent; `null` for a plain step. */
+function rowProgress(key: string, readiness: DashboardTournamentCard["readiness"]): number | null {
+  const [done, total] =
+    key === "ranks"
+      ? [readiness.registrations_ranked, readiness.registrations_approved]
+      : key === "pool_ready"
+        ? [readiness.pool_ready, (readiness.pool_ready ?? 0) + (readiness.pool_need_fix ?? 0)]
+        : [null, null];
+  return done == null || !total ? null : Math.min(100, (done / total) * 100);
+}
+
+function ChecklistRow({ item, progress }: Readonly<{ item: ChecklistItem; progress: number | null }>) {
   const warn = item.state === "warn";
   const Icon = warn ? AlertTriangle : Circle;
   const body = (
     <>
-      <Icon className={cn("size-3.5 shrink-0", TONE_TEXT[warn ? "warning" : "neutral"])} aria-hidden />
-      <span className="min-w-0 flex-1 truncate text-sm text-foreground">{item.label}</span>
-      {item.detail ? (
-        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{item.detail}</span>
-      ) : null}
+      <Icon className={cn("mt-0.5 size-3.5 shrink-0", TONE_TEXT[warn ? "warning" : "neutral"])} aria-hidden />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <span className="min-w-0 flex-1 truncate text-sm text-foreground">{item.label}</span>
+          {item.detail ? (
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{item.detail}</span>
+          ) : null}
+        </div>
+        {/* The detail prints the count; the bar only shows how far along it is. */}
+        {progress == null ? null : <Progress value={progress} aria-hidden className="mt-2 h-1" />}
+      </div>
     </>
   );
   // Bleeds to the card edge so the hover fill spans the card.
-  const shared = "-mx-6 flex items-center gap-2 px-6 py-2";
+  const shared = "-mx-6 flex items-start gap-2 px-6 py-2";
   if (!item.href) return <div className={shared}>{body}</div>;
   return (
     <HoverPrefetchLink
@@ -222,33 +297,56 @@ function ChecklistRow({ item }: Readonly<{ item: ChecklistItem }>) {
   );
 }
 
-/** The funnel pending, approved, ranked, checked in; then the pace and the deadline. */
+/** A count toward a whole: label and exact value over a bar (DESIGN §8, leader-scaled bar). */
+function Meter({ label, value, total }: Readonly<{ label: string; value: number; total: number }>) {
+  const t = useTranslations("adminShell.dashboard");
+  const text = t("playProgress", { completed: value, total });
+  return (
+    <div className="flex flex-col gap-1.5">
+      {/* Read once, as the bar's own name and value. */}
+      <div aria-hidden className="flex items-baseline justify-between gap-3 text-sm">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="tabular-nums text-foreground">{text}</span>
+      </div>
+      <Progress
+        value={total > 0 ? Math.min(100, (value / total) * 100) : 0}
+        aria-label={label}
+        getValueLabel={() => text}
+        className="h-1.5"
+      />
+    </div>
+  );
+}
+
+/** The funnel: pending and approved, then how much of the approved is ranked and checked in; the pace and the deadline. */
 function RegistrationBody({ card }: Readonly<{ card: DashboardTournamentCard }>) {
   const t = useTranslations("adminShell.dashboard");
   const format = useFormatter();
   const readiness = card.readiness;
+  const approved = readiness.registrations_approved;
   const closesAt = card.registration_closes_at;
   const now = useNow();
   const closed = closesAt != null && new Date(closesAt).getTime() < now.getTime();
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       {/* `registrations_approved` is the team.read sentinel: null masks the whole group. */}
-      {readiness.registrations_approved == null ? (
+      {approved == null ? (
         <NoAccess />
       ) : (
-        <FactList
-          className="grid grid-cols-4 gap-2"
-          facts={[
-            {
-              label: t("pending"),
-              value: readiness.registrations_pending,
-              tone: readiness.registrations_pending ? "warning" : undefined
-            },
-            { label: t("approved"), value: readiness.registrations_approved },
-            { label: t("ranked"), value: readiness.registrations_ranked },
-            { label: t("checkedIn"), value: readiness.registrations_checked_in }
-          ]}
-        />
+        <>
+          <FactList
+            facts={[
+              {
+                label: t("pending"),
+                value: readiness.registrations_pending,
+                tone: readiness.registrations_pending ? "warning" : undefined
+              },
+              { label: t("approved"), value: approved }
+            ]}
+          />
+          <Meter label={t("ranked")} value={readiness.registrations_ranked ?? 0} total={approved} />
+          <Meter label={t("checkedIn")} value={readiness.registrations_checked_in ?? 0} total={approved} />
+        </>
       )}
       <ul className="space-y-1 text-xs text-muted-foreground">
         {card.registrations_last_24h != null ? (
@@ -264,39 +362,48 @@ function RegistrationBody({ card }: Readonly<{ card: DashboardTournamentCard }>)
   );
 }
 
+/** Played against scheduled, then what is running, late or contested. */
 function PlayBody({ card }: Readonly<{ card: DashboardTournamentCard }>) {
   const t = useTranslations("adminShell.dashboard");
   const play = card.play;
   if (!play) return <NoAccess />;
   return (
-    <FactList
-      className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3"
-      facts={[
-        {
-          label: t("play.completed"),
-          value: t("playProgress", {
-            completed: play.encounters_completed,
-            total: play.encounters_total
-          })
-        },
-        { label: t("play.live"), value: play.encounters_live },
-        {
-          label: t("play.overdue"),
-          value: play.encounters_overdue,
-          tone: play.encounters_overdue ? "danger" : undefined
-        },
-        {
-          label: t("play.pendingConfirmation"),
-          value: play.encounters_pending_confirmation,
-          tone: play.encounters_pending_confirmation ? "warning" : undefined
-        },
-        {
-          label: t("play.disputed"),
-          value: play.encounters_disputed,
-          tone: play.encounters_disputed ? "danger" : undefined
-        }
-      ]}
-    />
+    <div className="flex flex-col gap-4">
+      <Meter label={t("play.completed")} value={play.encounters_completed} total={play.encounters_total} />
+      <FactList
+        className="grid grid-cols-2 gap-x-4 gap-y-3 @md:grid-cols-4"
+        facts={[
+          {
+            label: t("play.live"),
+            // The one loop DESIGN §10 allows: something is being played right now.
+            value:
+              play.encounters_live > 0 ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <StatusDot tone="danger" pulse className="size-2" />
+                  {play.encounters_live}
+                </span>
+              ) : (
+                play.encounters_live
+              )
+          },
+          {
+            label: t("play.overdue"),
+            value: play.encounters_overdue,
+            tone: play.encounters_overdue ? "danger" : undefined
+          },
+          {
+            label: t("play.pendingConfirmation"),
+            value: play.encounters_pending_confirmation,
+            tone: play.encounters_pending_confirmation ? "warning" : undefined
+          },
+          {
+            label: t("play.disputed"),
+            value: play.encounters_disputed,
+            tone: play.encounters_disputed ? "danger" : undefined
+          }
+        ]}
+      />
+    </div>
   );
 }
 

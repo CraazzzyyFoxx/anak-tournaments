@@ -154,16 +154,18 @@ export function Dock({
     return createPortal(
       // A floating pill over arbitrary page content: the `subtle` border, but an
       // opaque card fill (also on hover) so the page never shows through it.
+      // Below `md` it is the icon alone, a 44px target: the labelled pill
+      // covered a third of a phone's width over whatever sat in that corner.
       <Button
         ref={restoreRef}
         type="button"
         variant="outline"
         size="sm"
         onClick={() => toggle(true)}
-        className="h-10 rounded-full bg-[color:var(--aqt-card)]/95 px-3.5 shadow-xl backdrop-blur hover:border-[color:var(--aqt-teal)] hover:bg-[color:var(--aqt-card)]/95 hover:text-[color:var(--aqt-teal)]"
+        className="h-10 rounded-full bg-[color:var(--aqt-card)]/95 px-3.5 shadow-xl backdrop-blur hover:border-[color:var(--aqt-teal)] hover:bg-[color:var(--aqt-card)]/95 hover:text-[color:var(--aqt-teal)] max-md:size-11 max-md:px-0"
       >
         <span className="text-[color:var(--aqt-teal)]">{icon}</span>
-        {showLabel ?? title}
+        <span className="max-md:sr-only">{showLabel ?? title}</span>
         {badge}
       </Button>,
       stack

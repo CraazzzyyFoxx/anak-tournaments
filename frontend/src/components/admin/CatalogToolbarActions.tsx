@@ -44,7 +44,10 @@ export function CatalogToolbarActions({
   }
 
   return (
-    <div className="flex gap-2">
+    // A fragment, not a row: the table toolbar's control group wraps its own
+    // children, so the buttons drop to a new line on a phone instead of
+    // pushing off the left edge as one unbreakable block.
+    <>
       <Button variant="outline" onClick={onSync}>
         {isSyncing ? <Spinner /> : null}
         {isSyncing ? t("running") : syncLabel}
@@ -53,7 +56,7 @@ export function CatalogToolbarActions({
         <Plus aria-hidden className="mr-2 h-4 w-4" />
         {createLabel}
       </Button>
-    </div>
+    </>
   );
 }
 

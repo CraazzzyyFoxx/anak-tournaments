@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/dialog";
 
 import { SocialAccountsEditor } from "@/components/admin/SocialAccountsEditor";
-import { PersonSection } from "@/components/admin/people/PersonSection";
 import { usePersonEdit } from "@/components/admin/people/usePersonEdit";
 import { InlineEditText } from "@/components/kit/InlineEditText";
 import { notify } from "@/lib/notify";
@@ -52,6 +51,7 @@ function PlayerProfileBody({
   const t = useTranslations("adminPeople.profile");
   const [user, setUser] = useState(initialUser);
   const { uploadAvatar, deleteAvatar, rename, applyUser, avatarBusy } = usePersonEdit(user.id, setUser);
+  const socialHeadingId = useId();
 
   return (
     <>
@@ -82,7 +82,11 @@ function PlayerProfileBody({
         ) : null}
       </div>
 
-      <PersonSection title={t("socialIdentities")}>
+      {/* Open under the dialog's own (screen-reader) title: the dialog is the surface. */}
+      <section aria-labelledby={socialHeadingId} className="space-y-3">
+        <h3 id={socialHeadingId} className="text-ui font-semibold text-foreground">
+          {t("socialIdentities")}
+        </h3>
         <SocialAccountsEditor
           userId={user.id}
           accounts={user.social_accounts ?? []}
@@ -91,7 +95,7 @@ function PlayerProfileBody({
           workspaceId={workspaceId}
           onUserUpdated={applyUser}
         />
-      </PersonSection>
+      </section>
     </>
   );
 }

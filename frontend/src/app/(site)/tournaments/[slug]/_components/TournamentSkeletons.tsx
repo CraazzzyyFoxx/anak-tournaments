@@ -90,13 +90,13 @@ export function TournamentShellSkeleton() {
             align="start"
             eyebrow={<Skeleton style={{ width: "14rem", height: "0.65rem" }} />}
             title={<Skeleton style={{ width: "min(28rem, 70vw)", height: "2.4rem" }} />}
-            meta={
-              <>
-                <Skeleton style={{ width: "5rem", height: "1.75rem" }} />
-                <Skeleton style={{ width: "9rem", height: "1.75rem" }} />
-                <Skeleton style={{ width: "7rem", height: "1.75rem" }} />
-                <Skeleton style={{ width: "6rem", height: "1.75rem" }} />
-              </>
+            meta={<Skeleton style={{ width: "6.5rem", height: "1.5rem" }} />}
+            stamp={
+              <span className="grid gap-1.5">
+                <Skeleton style={{ width: "4rem", height: "0.65rem" }} />
+                <Skeleton style={{ width: "11rem", height: "1.9rem" }} />
+                <Skeleton style={{ width: "15rem", height: "0.8rem" }} />
+              </span>
             }
           />
         ) : (
@@ -137,61 +137,47 @@ export function TournamentShellSkeleton() {
 }
 
 /**
- * The overview's 7/3 shape (wireframes §3): one full-width block on top — the
- * phase timeline in registration, the live/podium card afterwards — then the
- * "now" column beside the reference column. Reserving both columns matters more
- * here than on any other section: the overview is the landing page, so this is
- * the first paint of the whole tournament.
+ * The overview's shape: one full-width lead (the phase timeline before the
+ * start, the matches or the podium afterwards), then the phase's own column
+ * beside the reference column, 2:1. Reserving both columns matters more here
+ * than on any other section: the overview is the landing page, so this is the
+ * first paint of the whole tournament.
  */
 export function TournamentOverviewSkeleton() {
   const t = useTranslations();
 
   return (
     <SkeletonRegion variant="overview" message={t("tournamentDetail.overview.loading")}>
-      <TournamentPageSkeletonLayout>
-        <div className={styles.skeletonSurface}>
-          <div className={styles.skeletonHeader} style={{ padding: "1rem" }}>
-            <Skeleton style={{ width: "9rem", height: "1.25rem" }} />
-          </div>
-          <div className="grid gap-2 p-4 sm:grid-cols-4">
-            {Array.from({ length: 4 }, (_, cell) => (
-              <div className="grid gap-1.5" key={cell}>
-                <Skeleton style={{ width: "70%", height: "0.85rem" }} />
-                <Skeleton style={{ width: "90%", height: "0.7rem" }} />
+      <div className="grid gap-10">
+        <div className="grid gap-3">
+          <Skeleton style={{ width: "9rem", height: "1.4rem" }} />
+          <div className="grid gap-1 sm:grid-cols-4">
+            {Array.from({ length: 4 }, (_, step) => (
+              <div className="grid gap-1.5 border-t-[3px] border-[color:var(--aqt-border)] px-3 pt-2.5" key={step}>
+                <Skeleton style={{ width: "60%", height: "0.95rem" }} />
+                <Skeleton style={{ width: "85%", height: "0.7rem" }} />
               </div>
             ))}
           </div>
         </div>
-        <div className="grid gap-4 lg:grid-cols-[7fr_3fr]">
-          <div className="grid content-start gap-4">
-            {[0, 1].map((card) => (
-              <div className={styles.skeletonSurface} key={card}>
-                <div className={styles.skeletonHeader} style={{ padding: "1rem" }}>
-                  <Skeleton style={{ width: "8rem", height: "1rem" }} />
-                </div>
-                <div className="grid gap-2 p-4 sm:grid-cols-2">
-                  {Array.from({ length: 2 }, (_, tile) => (
-                    <Skeleton key={tile} style={{ width: "100%", height: "5rem" }} />
-                  ))}
-                </div>
-              </div>
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:gap-10">
+          <div className="grid content-start gap-3">
+            <Skeleton style={{ width: "8rem", height: "1.4rem" }} />
+            {Array.from({ length: 4 }, (_, row) => (
+              <Skeleton key={row} style={{ width: "100%", height: "3.75rem" }} />
             ))}
           </div>
-          <div className="grid content-start gap-4">
-            {[0, 1, 2].map((card) => (
-              <div className={styles.skeletonSurface} key={card}>
-                <div className={styles.skeletonHeader} style={{ padding: "1rem" }}>
-                  <Skeleton style={{ width: "6.5rem", height: "1rem" }} />
-                </div>
-                <div className="grid gap-2 p-4">
-                  <Skeleton style={{ width: "100%", height: "0.7rem" }} />
-                  <Skeleton style={{ width: "80%", height: "0.7rem" }} />
-                </div>
+          <div className="grid content-start divide-y divide-[color:var(--aqt-border)]">
+            {[0, 1].map((block) => (
+              <div className="grid gap-2 py-5 first:pt-0" key={block}>
+                <Skeleton style={{ width: "7rem", height: "1.15rem" }} />
+                <Skeleton style={{ width: "100%", height: "0.7rem" }} />
+                <Skeleton style={{ width: "80%", height: "0.7rem" }} />
               </div>
             ))}
           </div>
         </div>
-      </TournamentPageSkeletonLayout>
+      </div>
     </SkeletonRegion>
   );
 }

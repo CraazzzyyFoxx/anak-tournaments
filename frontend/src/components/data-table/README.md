@@ -27,12 +27,16 @@ project, satisfy `host.ts`, and it works.
 - **Sorting.** Click to sort; Shift+click stacks a second sort in client mode.
 - **Rendering.** Sticky header in its own scroll box, virtualised body past 100 rows,
   grouped rows (`groupRows`), expandable details (`renderExpanded`), density toggle,
-  cards below `md` (`renderMobileCard`), search-match highlighting.
+  cards below `md` (`renderMobileCard`), search-match highlighting. The table is its own
+  card; `framed={false}` drops that frame when a card around it already has one.
 - **Row actions.** `createKebabColumn` gives an always-present `⋯` menu that fades in on
   hover/focus; the same actions appear in the right-click / long-press menu, together
   with "Copy “cell”" and "Copy row" (tab-separated).
 - **Toolbar.** Search, screen-owned filter bar slot (`toolbar`), CSV export (selection
-  or current view), saved views (URL + column visibility, per screen), `actions` slot.
+  or current view), saved views (URL + column visibility, per screen), `actions` slot
+  (pass a fragment, not a `flex` row: its items wrap with the table's own controls on a phone).
+  Below `md` the CSV, views and column controls fold into one `⋯` beside the search (no
+  density there — cards have none; no columns when `renderMobileCard` builds the cards).
 
 ## Public API
 

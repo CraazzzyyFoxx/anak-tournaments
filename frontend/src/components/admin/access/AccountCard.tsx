@@ -1,24 +1,35 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { createContext, useContext, useId, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import type { QueryClient } from "@tanstack/react-query";
-import { ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
+import { SettingGroup } from "@/components/kit/SettingRow";
 import { StatusPill } from "@/components/kit/StatusPill";
+import { Button } from "@/components/ui/button";
 import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { accessQueryKeys } from "@/lib/access/query-keys";
 import { getSingleLinkedPlayer } from "@/lib/auth/profile-links";
+import { cn } from "@/lib/utils";
 import type { AuthAdminUser } from "@/types/rbac.types";
 
 /**
  * The parts every account block shares, so the Access inspector and the
  * People › Account tab are one surface laid out twice, not two surfaces.
  *
- * Blocks are frameless: the inspector stacks them on hairlines in one column,
- * the person hub in two, so the frame (if any) belongs to the container.
+ * The container decides the frame: the inspector stacks the blocks open, on
+ * hairlines in one column; the person hub wraps them in `AccountBlocksAsCards`,
+ * where each block is a `SettingGroup` card like every other hub section.
  */
+
+const AsCards = createContext(false);
+
+/** Every account block below renders as its own card. */
+export function AccountBlocksAsCards({ children }: Readonly<{ children: ReactNode }>) {
+  return <AsCards.Provider value>{children}</AsCards.Provider>;
+}
 
 /** Right of a block title: a count or a verdict, in body case. */
 const SUMMARY_CLASS = "text-xs font-normal normal-case tracking-normal text-muted-foreground";
@@ -29,6 +40,16 @@ export function AccountSection({
   action,
   children
 }: Readonly<{ title: string; summary?: ReactNode; action?: ReactNode; children: ReactNode }>) {
+  const asCard = useContext(AsCards);
+  // No anchor links to a block; the card needs an id all the same.
+  const id = useId();
+  if (asCard) {
+    return (
+      <SettingGroup id={id} title={title} summary={summary} actions={action}>
+        <div className="space-y-2.5">{children}</div>
+      </SettingGroup>
+    );
+  }
   return (
     <section className="space-y-2.5">
       <div className="flex min-h-7 items-center justify-between gap-2">
@@ -46,7 +67,9 @@ export function AccountSection({
 /**
  * A block read far more rarely than it is scrolled past. Collapsed it is one
  * line with its verdict; `preview` renders either way, so what matters (an
- * active restriction) is never hidden behind the chevron.
+ * active restriction) is never hidden behind the chevron. As a card, the
+ * chevron sits at the end of the card's title line and a collapsed card is
+ * that line alone.
  */
 export function AccountDisclosure({
   title,
@@ -63,6 +86,46 @@ export function AccountDisclosure({
   onOpenChange?: (open: boolean) => void;
   children: ReactNode;
 }>) {
+  const asCard = useContext(AsCards);
+  const id = useId();
+  // The card's own state while the block leaves `open` uncontrolled.
+  const [ownOpen, setOwnOpen] = useState(false);
+  if (asCard) {
+    const isOpen = open ?? ownOpen;
+    const contentId = `${id}-content`;
+    return (
+      <SettingGroup
+        id={id}
+        title={title}
+        summary={summary}
+        actions={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={title}
+            aria-expanded={isOpen}
+            aria-controls={isOpen ? contentId : undefined}
+            onClick={() => {
+              setOwnOpen(!isOpen);
+              onOpenChange?.(!isOpen);
+            }}
+          >
+            <ChevronDown
+              aria-hidden
+              className={cn("transition-transform motion-reduce:transition-none", isOpen && "rotate-180")}
+            />
+          </Button>
+        }
+      >
+        {preview}
+        {isOpen ? (
+          <div id={contentId} className="space-y-2.5">
+            {children}
+          </div>
+        ) : null}
+      </SettingGroup>
+    );
+  }
   return (
     <Collapsible open={open} onOpenChange={onOpenChange} asChild>
       <section className="space-y-2.5">

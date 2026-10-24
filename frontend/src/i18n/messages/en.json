@@ -284,7 +284,7 @@
     "league": "League",
     "statusBadge": {
       "announcement": "Announced",
-      "draft": "Draft",
+      "draft": "Team formation",
       "registration": "Registration",
       "check_in": "Check-in",
       "live": "Live",
@@ -2858,33 +2858,54 @@
       "players": "{players, plural, one {# player} other {# players}}",
       "teamsAndPlayers": "{teams, plural, one {# team} other {# teams}} · {players, plural, one {# player} other {# players}}"
     },
-    "nextPhase": {
-      "starts": "→ {phase}",
-      "closes": "{phase} closes"
+    "phaseFact": {
+      "starts": "{phase} starts",
+      "closes": "{phase} closes",
+      "kickoff": "Start",
+      "ends": "Ends",
+      "stage": "Stage",
+      "played": "{played} of {total, plural, one {# match} other {# matches}} played"
     },
+    "watchStream": "Watch the broadcast",
     "overview": {
-      "links": "Links",
       "loading": "Loading the tournament overview",
       "empty": {
         "title": "Nothing published yet",
         "description": "As soon as the bracket is drawn, the matches show up here."
       },
       "registration": {
-        "title": "Registration",
-        "all": "all participants →",
+        "title": "Registrations",
+        "all": "All participants",
         "total": "Registered",
         "teams": "Teams",
         "latest": "Latest"
       },
+      "teams": {
+        "title": "Teams",
+        "all": "All {count, plural, one {# team} other {# teams}}"
+      },
+      "maps": {
+        "firstRound": "First round maps",
+        "pool": "Map pool",
+        "all": "All {count, plural, one {# map} other {# maps}}"
+      },
       "format": {
-        "title": "Format"
+        "title": "How it's played",
+        "rounds": "{count, plural, one {# round} other {# rounds}}",
+        "final": "final Bo{n}",
+        "advance": "top {count} advance",
+        "qualify": "through at {count, plural, one {# win} other {# wins}}",
+        "eliminate": "out at {count, plural, one {# loss} other {# losses}}",
+        "grandFinalReset": "grand final with bracket reset",
+        "grandFinalNoReset": "grand final without bracket reset",
+        "team": "Team"
       },
       "about": {
         "title": "About"
       },
       "live": {
         "title": "Now playing",
-        "all": "all matches →"
+        "all": "All matches"
       },
       "upcoming": {
         "title": "Upcoming"
@@ -2894,35 +2915,27 @@
       },
       "bracketMini": {
         "title": "Bracket · {stage}",
-        "open": "open →"
+        "open": "Open bracket"
       },
       "groupTable": {
         "title": "Standings · {stage}",
-        "open": "standings →",
+        "open": "Standings",
         "pos": "#",
         "posLabel": "Position",
         "team": "Team",
         "points": "Pts"
       },
       "phases": {
-        "title": "Phases"
-      },
-      "stream": {
-        "title": "Stream",
-        "open": "official broadcast →",
-        "viewers": "{count} watching",
-        "participants": "+{count} participants on air →"
+        "title": "Schedule"
       },
       "heroes": {
         "title": "Most played heroes",
-        "all": "stats →"
+        "all": "All stats"
       },
       "numbers": {
         "title": "Numbers",
-        "teams": "Teams",
         "matches": "Matches",
-        "days": "Days",
-        "played": "Played"
+        "days": "Days"
       },
       "result": {
         "title": "Result",
@@ -10592,6 +10605,7 @@
       "enableAchievement": "Enable achievement",
       "editAchievement": "Edit achievement",
       "deleteAchievement": "Delete achievement",
+      "details": "Details",
       "conditionTree": "Condition tree",
       "editTree": "Edit tree",
       "cancelEdit": "Cancel",
@@ -12196,7 +12210,6 @@
       "title": "Earned achievements",
       "times": "×{count}",
       "loadError": "Could not load achievements",
-      "retry": "Try again",
       "search": "Search achievements",
       "empty": "This person has not earned an achievement yet."
     },
@@ -12231,7 +12244,6 @@
       "edit": "Edit participation",
       "remove": "Remove participation",
       "loadError": "Could not load participations",
-      "retry": "Try again",
       "search": "Search tournaments and teams…",
       "empty": "This person has not played a tournament in this workspace yet.",
       "add": "Add participation",
@@ -12992,6 +13004,10 @@
       },
       "timeline": "Next 7 days",
       "timelineEmpty": "No deadlines in the next 7 days.",
+      "timelineOverdue": "Overdue",
+      "dayToday": "Today",
+      "dayTomorrow": "Tomorrow",
+      "dayYesterday": "Yesterday",
       "edgeStart": "{phase} starts",
       "edgeEnd": "{phase} ends",
       "edgeOverdue": "{phase} start is overdue",
@@ -13385,6 +13401,7 @@
       "columns": "Columns",
       "resetColumns": "Reset to defaults",
       "views": "Views",
+      "tableMenu": "More table actions",
       "deleteView": "Delete view {name}",
       "saveViewPrompt": "Save current view…",
       "saveView": "Save current view",

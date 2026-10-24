@@ -5,8 +5,8 @@ import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AccountSection } from "@/components/admin/access/AccountCard";
+import { LoadErrorNote } from "@/components/kit/EmptyNote";
 import { formatDate, formatRelative } from "@/components/kit/format-time";
-import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { accessQueryKeys } from "@/lib/access/query-keys";
@@ -107,11 +107,7 @@ export function AccountNotifications({
       {query.isLoading ? (
         <Skeleton className="h-24 w-full" />
       ) : !data ? (
-        <PageStateCard
-          state="error"
-          title={t("loadError")}
-          onAction={() => void query.refetch()}
-        />
+        <LoadErrorNote title={t("loadError")} onRetry={() => void query.refetch()} />
       ) : (
         <div className="space-y-3">
           {!data.discord_linked ? (

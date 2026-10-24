@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { auditEntityHref, groupAuditActivity, issueHref } from "@/components/admin/dashboard/model";
+import {
+  auditEntityHref,
+  dayLabel,
+  groupAuditActivity,
+  groupByDay,
+  issueHref
+} from "@/components/admin/dashboard/model";
+import { formatterFor } from "@/lib/datetime/formatter";
 import type { AuditLogRead } from "@/types/admin.types";
 import type { DashboardIssue } from "@/types/admin-dashboard.types";
 
@@ -96,5 +103,31 @@ describe("issueHref", () => {
     expect(issueHref(issue("results_disputed"))).toBe("/admin/tournaments/9/matches/reports?result_status=disputed");
     expect(issueHref(issue("pool_need_fix"))).toBe("/admin/tournaments/9/teams/roster");
     expect(issueHref(issue("achievements_pending"))).toBe("/admin/achievements");
+  });
+});
+
+describe("groupByDay and dayLabel", () => {
+  // Moscow is UTC+3 all year: 21:00Z is the viewer's midnight, not UTC's.
+  const format = formatterFor("en", "Europe/Moscow");
+  const words = { today: "Today", tomorrow: "Tomorrow", yesterday: "Yesterday" };
+
+  it("splits runs on the viewer's midnight", () => {
+    const at = ["2026-10-24T20:30:00Z", "2026-10-24T21:30:00Z", "2026-10-24T22:30:00Z", "2026-10-26T09:00:00Z"];
+
+    expect(groupByDay(at, (value) => value, format).map((day) => day.items)).toEqual([
+      [at[0]],
+      [at[1], at[2]],
+      [at[3]]
+    ]);
+  });
+
+  it("names the days around now in the viewer's zone and dates the rest", () => {
+    const now = new Date("2026-10-24T09:00:00Z");
+    const label = (iso: string) => dayLabel(format, new Date(iso), now, words);
+
+    expect(label("2026-10-24T20:59:00Z")).toBe("Today");
+    expect(label("2026-10-24T21:00:00Z")).toBe("Tomorrow");
+    expect(label("2026-10-23T08:00:00Z")).toBe("Yesterday");
+    expect(label("2026-10-27T10:00:00Z")).toBe("Tue, Oct 27");
   });
 });

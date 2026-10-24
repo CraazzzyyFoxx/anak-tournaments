@@ -9,15 +9,15 @@ The current phase is shown as a badge on the tournament card and on the tourname
 | **Announced** | The tournament is public, applications are not open yet | Read the description, format and rules |
 | **Registration** | Applications are being accepted | Submit your application, edit it or withdraw |
 | **Check-in** | The organizer collects everyone who will actually play | Confirm that you are in |
-| **Draft** | Captains take turns picking players | Watch the draft and wait for your pick |
+| **Team formation** | Teams are being put together: by the balancer, or by captains picking players live | Wait for the rosters; in a draft, watch it and wait for your pick |
 | **Live** | Teams play their matches | Play, run the pick-ban, report results |
 | **Playoffs** | The elimination bracket is played | The same, except a loss now costs a lot |
 | **Completed** | Every match is played | Look at the results, statistics and achievements |
 | **Archived** | The tournament is out of the active list | The page stays readable |
 
-Not every tournament goes through every phase. **Check-in** is optional, and **Draft** only exists where teams are built by drafting. The organizer can skip a phase forward or move the tournament back to an earlier one — to reopen registration, for example.
+Not every tournament goes through every phase: **Check-in**, for one, is optional. The organizer can skip a phase forward or move the tournament back to an earlier one — to reopen registration, for example.
 
-Phase times live on the tournament page in the **Phase schedule** block: each row shows when it starts and when it closes. A row whose time has passed is marked **Closed**.
+The **Schedule** at the top of the **Overview** lists the phases with their times. The phase the tournament is in is highlighted, and when it has no time of its own it is marked **Now**. A phase whose window has closed is marked **Closed**. The next boundary — the start, or the close of registration — is counted down in the tournament header.
 
 Two windows follow different rules, and the difference matters:
 
@@ -36,7 +36,7 @@ Tournament sections sit in one rail of tabs. Some of them show up later than oth
 
 | Section | What is inside | When it is available |
 | --- | --- | --- |
-| **Overview** | Format, stages, how teams are built, the phase schedule, tournament numbers, upcoming and recent matches, organizer links | Always |
+| **Overview** | The schedule; before the start the sign-ups by role, then the strongest teams and the first round's maps; during play the matches and the bracket; after it the podium; always how it's played (stages and their rules), the description and the organizer's links | Always |
 | **Rules** | The tournament regulations with a table of contents | If the organizer published rules |
 | **Participants** | Every application, by role or as a table, with search and a division filter | Always, though the organizer may hide the list itself and publish only the counts |
 | **Maps** | The tournament map pool, per stage and per round | Always |
@@ -50,7 +50,7 @@ The order of the tabs follows the phase: before play starts **Participants** sit
 
 ## How teams are built
 
-The method is printed on the **Overview** in the **Team Formation** row, and it decides what is expected from you after registration.
+The method is printed on the **Overview** under **How it's played**, next to the role slots of a team, and it decides what is expected from you after registration.
 
 - **Balancer** — the site builds the teams. It spreads strong players evenly across rosters and tries to give everyone a role they asked for. All you provide is an application with your roles and ranks.
 - **Draft** — captains pick players live, one at a time. See [Draft](/docs/players/draft).
@@ -58,7 +58,7 @@ The method is printed on the **Overview** in the **Team Formation** row, and it 
 
 ## Stage formats
 
-A tournament is made of stages. Usually that is a group stage followed by playoffs, but there can be more stages or fewer. Each format is printed on the **Overview** next to the stage name.
+A tournament is made of stages. Usually that is a group stage followed by playoffs, but there can be more stages or fewer. Each format is printed on the **Overview** under **How it's played**, next to the stage name, with what the stage's rules say: the number of rounds, the length of a series, how a team goes through.
 
 - **Round-robin** — every team plays every other team. Placement comes from the standings.
 - **Swiss** — a fixed number of rounds, and in each one opponents are matched by current score, so leaders meet leaders. The system avoids putting the same two teams together twice. With an odd number of teams somebody sits a round out, and the organizer sets how many points that is worth. The organizer may also end a team's Swiss early: after a set number of wins it is through, after a set number of losses it is out, and either way it plays no more rounds of the stage.
@@ -112,7 +112,7 @@ The lobby code and the organizer's instructions arrive in the **lobby room** cha
 
 ## Streams
 
-If participants stream on Twitch, their broadcasts are collected in the **Streams** section: the live channels, how many people are watching and how long each has been on air. The tournament's official broadcast, when the organizer set one, is shown right on the **Overview** in the **Stream** block.
+If participants stream on Twitch, their broadcasts are collected in the **Streams** section: the live channels, how many people are watching and how long each has been on air. While the tournament is played, the header of the **Overview** offers **Watch the broadcast**, and the organizer's official broadcast also docks in a corner of the page.
 
 Your own stream is only surfaced there if you allowed it. The **Show my live stream on tournament pages** switch lives in your account settings and overrides everything else. See [Account and sign-in](/docs/players/account).
 

@@ -6,6 +6,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MoreHorizontal } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { CHARACTER_PICK_BAN_KIND } from "@/components/pick-ban/pick-ban-model";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -63,13 +64,16 @@ export function RoomHostMenu({
   const refreshHeroes = () => void queryClient.invalidateQueries({ queryKey: heroQueryKey });
   const heroPause = useMutation({
     mutationFn: (paused: boolean) =>
-      adminService.adminPickBanPause(heroEncounterId as number, { kind: "hero", paused }),
+      adminService.adminPickBanPause(heroEncounterId as number, { kind: CHARACTER_PICK_BAN_KIND, paused }),
     onError: (error) => notify.apiError(error),
     onSettled: refreshHeroes
   });
   const heroExtend = useMutation({
     mutationFn: () =>
-      adminService.adminPickBanExtend(heroEncounterId as number, { kind: "hero", seconds: EXTEND_SECONDS }),
+      adminService.adminPickBanExtend(heroEncounterId as number, {
+        kind: CHARACTER_PICK_BAN_KIND,
+        seconds: EXTEND_SECONDS
+      }),
     onError: (error) => notify.apiError(error),
     onSettled: refreshHeroes
   });

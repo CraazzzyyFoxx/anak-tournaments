@@ -50,6 +50,7 @@ from shared.models.encounter.pick_ban import PickBanEntry, PickBanSession, PickB
 from shared.models.encounter.team import EncounterTeam
 from shared.models.tournament.team import Player
 from shared.repository import (
+    EncounterRepository,
     PickBanEntryRepository,
     PickBanSubmissionRepository,
 )
@@ -78,6 +79,8 @@ from src.services.encounter.veto_session import side_codes
 #: must get the neutral, privacy-free view) from the captain acting as
 #: themselves.
 ACTING_VIEWER = -1
+
+_encounters = EncounterRepository()
 
 GameSnapshot = tuple[list[EncounterGame], dict[int, list[Any]]]
 
@@ -1229,7 +1232,7 @@ class PickBanActionService:
 
         Lock order is the room's everywhere: encounter, then session.
         """
-        encounter = await session.get(Encounter, encounter_id)
+        encounter = await _encounters.get_any_owner(session, encounter_id)
         # A finished match's room is history: a session abandoned mid-veto must
         # not be random-filled to completion (and grow games) months later.
         if encounter is None or encounter.status == EncounterStatus.COMPLETED:
@@ -1347,7 +1350,7 @@ class PickBanActionService:
         every room write and on a one-second sweep, and which signals the room
         when it lands.
         """
-        encounter = await session.get(Encounter, encounter_id)
+        encounter = await _encounters.get_any_owner(session, encounter_id)
         if encounter is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
 

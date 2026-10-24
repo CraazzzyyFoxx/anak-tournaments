@@ -22,6 +22,18 @@ import { declaredHeroes, MARK_CLASS, type TeamRecord } from "../tournamentTeams.
 import { overviewVariant } from "../tournamentOverview.model";
 
 /**
+ * The header row's grid for each set of drawn columns — placement (`p`) and
+ * record (`r`) — spelled out whole, because Tailwind only ships classes it
+ * can read in the source.
+ */
+const ROW_COLUMNS = {
+  pr: "grid-cols-[2.75rem_minmax(0,1fr)_auto_1rem] sm:grid-cols-[2.75rem_minmax(0,1fr)_auto_auto_1rem]",
+  p: "grid-cols-[2.75rem_minmax(0,1fr)_1rem] sm:grid-cols-[2.75rem_minmax(0,1fr)_auto_1rem]",
+  r: "grid-cols-[minmax(0,1fr)_auto_1rem] sm:grid-cols-[minmax(0,1fr)_auto_auto_1rem]",
+  none: "grid-cols-[minmax(0,1fr)_1rem] sm:grid-cols-[minmax(0,1fr)_auto_1rem]"
+} as const;
+
+/**
  * One team as a collapsed team card that unfolds the card's own roster table.
  * `<details>` and not per-row state, so several teams stay open at once and the
  * browser keeps them open across a re-render.
@@ -53,8 +65,16 @@ export const TeamListRow = ({
 }) => {
   const t = useTranslations();
   const format = useFormatter();
+  const variant = overviewVariant(tournament.status);
   // A live leader is not on the podium yet: `placement` moves with every result.
-  const medal = overviewVariant(tournament.status) === "completed";
+  const medal = variant === "completed";
+  // Columns with nothing to say are not drawn. Before the first match no team
+  // has a record or a placement, and an empty gutter plus a dash in every row
+  // said nothing a dozen times over.
+  const hasPlacement = team.placement != null;
+  const showsRecord = variant !== "registration";
+  const columns =
+    ROW_COLUMNS[hasPlacement ? (showsRecord ? "pr" : "p") : showsRecord ? "r" : "none"];
   const players = sortTeamPlayers(team.players, ontology);
   const roster = team.players.map((player) => ({
     ...player,
@@ -64,12 +84,12 @@ export const TeamListRow = ({
   return (
     <details className="team-card group">
       <summary className="cursor-pointer list-none rounded-[12px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--aqt-teal)] [&::-webkit-details-marker]:hidden">
-        <div className="tc-header grid grid-cols-[2.75rem_minmax(0,1fr)_auto_1rem] items-center gap-2.5 sm:grid-cols-[2.75rem_minmax(0,1fr)_auto_auto_1rem] sm:gap-5">
-          <span>
-            {team.placement != null ? (
-              <TeamPlacement placement={team.placement} medal={medal} />
-            ) : null}
-          </span>
+        <div className={cn("tc-header grid items-center gap-2.5 sm:gap-5", columns)}>
+          {hasPlacement ? (
+            <span>
+              <TeamPlacement placement={team.placement as number} medal={medal} />
+            </span>
+          ) : null}
           <span className="flex min-w-0 flex-col gap-1">
             <span className="flex min-w-0 items-center gap-2">
               <span className="tc-name">
@@ -127,10 +147,12 @@ export const TeamListRow = ({
               {format.number(team.avg_sr, { maximumFractionDigits: 0 })}
             </span>
           </span>
-          <span className="tc-sr min-w-[2.5rem]">
-            <span className="l block">{t("tournamentDetail.teams.record")}</span>
-            <span className="v block">{record ? `${record.won}–${record.lost}` : "—"}</span>
-          </span>
+          {showsRecord ? (
+            <span className="tc-sr min-w-[2.5rem]">
+              <span className="l block">{t("tournamentDetail.teams.record")}</span>
+              <span className="v block">{record ? `${record.won}–${record.lost}` : "—"}</span>
+            </span>
+          ) : null}
           <ChevronDown
             className="size-4 text-[color:var(--aqt-fg-faint)] transition-transform group-open:rotate-180"
             aria-hidden

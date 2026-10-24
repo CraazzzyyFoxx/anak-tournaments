@@ -12,6 +12,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import en from "@/i18n/messages/en.json";
 import type { Tournament } from "@/types/tournament.types";
 import { TournamentStatusControl } from "./TournamentStatusControl";
 
@@ -116,7 +117,9 @@ describe("TournamentStatusControl", () => {
   it("never leads into a phase the tournament does not have", async () => {
     // check_in -> [draft, live, registration]: Draft is only a phase of a drafted tournament.
     await mount(false, { id: 7, status: "check_in", team_formation: "balancer", is_finished: false } as Tournament);
-    expect(document.querySelector("button[aria-label='Move to Draft']")).toBeNull();
+    // The `draft` status is labelled by the catalogue ("Team formation").
+    const moveToDraft = `button[aria-label='Move to ${en.common.statusBadge.draft}']`;
+    expect(document.querySelector(moveToDraft)).toBeNull();
     await press(document.querySelector("button[aria-label='Move to Live']"));
     await press(button("Set Live"));
     expect(transitionTournamentStatus).toHaveBeenCalledWith(7, { status: "live", force: false });
@@ -124,7 +127,7 @@ describe("TournamentStatusControl", () => {
     await unmountAll();
 
     await mount(false, { id: 7, status: "check_in", team_formation: "draft", is_finished: false } as Tournament);
-    expect(document.querySelector("button[aria-label='Move to Draft']")).not.toBeNull();
+    expect(document.querySelector(moveToDraft)).not.toBeNull();
   });
 
   it("groups allowed transitions apart from forced ones, forced for a superuser only", async () => {

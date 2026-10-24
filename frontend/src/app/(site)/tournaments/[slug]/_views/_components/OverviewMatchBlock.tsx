@@ -9,11 +9,11 @@ import { MatchRow } from "../../_components/MatchRow";
 import { TournamentPageState } from "../../_components/TournamentPageState";
 import { selectOverviewMatchLists } from "../tournamentOverview.model";
 import type { OverviewMatchPresenter } from "../useOverviewMatchPresenter";
-import { CardLink, OverviewCard } from "./OverviewCards";
+import { OverviewSection, SectionLink } from "./OverviewCards";
 
 /**
- * ⑤ Live first and framed; nothing live falls back to the schedule, and
- * without a schedule to the last results.
+ * ⑤ Live first, as cards; nothing live falls back to the schedule, and
+ * without a schedule to the last results, as framed rows.
  */
 export function OverviewMatchBlock({
   encounters,
@@ -47,70 +47,57 @@ export function OverviewMatchBlock({
     </div>
   );
 
+  const section = (title: string, href: string, body: React.ReactNode, framed: boolean) => (
+    <OverviewSection
+      title={title}
+      action={<SectionLink href={href}>{t("tournamentDetail.overview.live.all")}</SectionLink>}
+      framed={framed}
+    >
+      {body}
+    </OverviewSection>
+  );
+
   if (live.length > 0) {
-    return (
-      <OverviewCard
-        title={t("tournamentDetail.overview.live.title")}
-        action={
-          <CardLink href={`${overviewHref}/matches`}>
-            {t("tournamentDetail.overview.live.all")}
-          </CardLink>
-        }
-      >
-        <div className="grid gap-2 sm:grid-cols-2">
-          {live.map((encounter) => (
-            <MatchCard
-              key={encounter.id}
-              encounter={encounter}
-              eyebrow={presenter.eyebrowOf(encounter)}
-              href={presenter.bracketHref(encounter)}
-              streamsCount={presenter.streamsCountOf(encounter)}
-            />
-          ))}
-        </div>
-      </OverviewCard>
+    // Match cards are boxes of their own: no frame around them (DESIGN §5).
+    return section(
+      t("tournamentDetail.overview.live.title"),
+      `${overviewHref}/matches`,
+      <div className="grid gap-2 sm:grid-cols-2">
+        {live.map((encounter) => (
+          <MatchCard
+            key={encounter.id}
+            encounter={encounter}
+            eyebrow={presenter.eyebrowOf(encounter)}
+            href={presenter.bracketHref(encounter)}
+            streamsCount={presenter.streamsCountOf(encounter)}
+          />
+        ))}
+      </div>,
+      false
     );
   }
   if (upcoming.length > 0) {
-    return (
-      <OverviewCard
-        title={t("tournamentDetail.overview.upcoming.title")}
-        action={
-          <CardLink href={`${overviewHref}/matches?view=time`}>
-            {t("tournamentDetail.overview.live.all")}
-          </CardLink>
-        }
-      >
-        {matchRows(upcoming, true)}
-      </OverviewCard>
+    return section(
+      t("tournamentDetail.overview.upcoming.title"),
+      `${overviewHref}/matches?view=time`,
+      matchRows(upcoming, true),
+      true
     );
   }
   if (recent.length > 0) {
-    return (
-      <OverviewCard
-        title={t("tournamentDetail.overview.recent.title")}
-        action={
-          <CardLink href={`${overviewHref}/matches`}>
-            {t("tournamentDetail.overview.live.all")}
-          </CardLink>
-        }
-      >
-        {matchRows(recent, false)}
-      </OverviewCard>
+    return section(
+      t("tournamentDetail.overview.recent.title"),
+      `${overviewHref}/matches`,
+      matchRows(recent, false),
+      true
     );
   }
   if (pending.length > 0) {
-    return (
-      <OverviewCard
-        title={t("tournamentDetail.overview.upcoming.title")}
-        action={
-          <CardLink href={`${overviewHref}/matches`}>
-            {t("tournamentDetail.overview.live.all")}
-          </CardLink>
-        }
-      >
-        {matchRows(pending, false)}
-      </OverviewCard>
+    return section(
+      t("tournamentDetail.overview.upcoming.title"),
+      `${overviewHref}/matches`,
+      matchRows(pending, false),
+      true
     );
   }
   return (

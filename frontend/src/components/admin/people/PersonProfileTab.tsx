@@ -4,8 +4,8 @@ import { useTranslations } from "next-intl";
 
 import { SocialAccountsEditor } from "@/components/admin/SocialAccountsEditor";
 import { PersonGlance } from "@/components/admin/people/PersonGlance";
-import { PersonSection } from "@/components/admin/people/PersonSection";
 import { usePersonEdit } from "@/components/admin/people/usePersonEdit";
+import { SettingGroup } from "@/components/kit/SettingRow";
 import type { User } from "@/types/user.types";
 
 /**
@@ -32,8 +32,8 @@ export function PersonProfileTab({
 
   return (
     // Capped columns: a switch 900px from its account's name is a row the eye loses.
-    <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,44rem)_minmax(0,24rem)] lg:gap-x-12">
-      <PersonSection title={t("profile.socialIdentities")}>
+    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,44rem)_minmax(0,24rem)]">
+      <SettingGroup id="social" title={t("profile.socialIdentities")}>
         <SocialAccountsEditor
           userId={person.id}
           accounts={person.social_accounts ?? []}
@@ -42,11 +42,11 @@ export function PersonProfileTab({
           workspaceId={workspaceId}
           onUserUpdated={applyUser}
         />
-      </PersonSection>
+      </SettingGroup>
 
-      <PersonSection title={t("person.overview")}>
+      <SettingGroup id="summary" title={t("person.overview")}>
         <PersonGlance personId={person.id} canReadAuth={canReadAuth} />
-      </PersonSection>
+      </SettingGroup>
     </div>
   );
 }

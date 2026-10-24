@@ -4,7 +4,7 @@
 // only consumer.
 import "./data-table.css";
 
-import React, { useEffect, useId, useMemo, useRef, useState } from "react";
+import React, { useEffect, useEffectEvent, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import type { Row } from "@tanstack/react-table";
 
@@ -38,8 +38,34 @@ import { useAdminTable } from "@/components/data-table/useAdminTable";
 import { useTablePreferences } from "@/components/data-table/useTablePreferences";
 import { useTableScrollBox } from "@/components/data-table/useTableScrollBox";
 import { useVirtualBody } from "@/components/data-table/useVirtualBody";
+import { cn } from "@/lib/utils";
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 15, 25, 50, 100];
+
+/**
+ * `remembered` with this page's selected rows added (or their data refreshed)
+ * and every deselected id dropped; the same map when nothing changed.
+ */
+function rememberSelection<TData>(
+  remembered: ReadonlyMap<string, TData>,
+  pageRows: Row<TData>[],
+  rowSelection: Record<string, boolean>
+): ReadonlyMap<string, TData> {
+  let next: Map<string, TData> | null = null;
+  for (const row of pageRows) {
+    if (row.getIsSelected() && remembered.get(row.id) !== row.original) {
+      next ??= new Map(remembered);
+      next.set(row.id, row.original);
+    }
+  }
+  for (const id of remembered.keys()) {
+    if (!rowSelection[id]) {
+      next ??= new Map(remembered);
+      next.delete(id);
+    }
+  }
+  return next ?? remembered;
+}
 
 /**
  * The admin list table: toolbar, sticky header, virtualised body, footer.
@@ -80,6 +106,7 @@ export function DataTable<TData>({
   inspectorId,
   onPageRowsChange,
   renderMobileCard,
+  framed = true,
 }: Readonly<DataTableProps<TData>>) {
   const t = useTranslations("kitTable.dataTableExtra");
   const tTable = useTranslations("kitTable.table");
@@ -144,10 +171,9 @@ export function DataTable<TData>({
   // Reported from the query's result, not from inside `queryFn`: a page served
   // from the cache never runs the fetch, and the screen's inspector would be
   // left holding the rows of whatever page was fetched last.
-  const onPageRowsChangeRef = useRef(onPageRowsChange);
-  onPageRowsChangeRef.current = onPageRowsChange;
+  const reportPageRows = useEffectEvent((page: typeof data) => onPageRowsChange?.(page.results, page));
   useEffect(() => {
-    if (!isClientMode) onPageRowsChangeRef.current?.(data.results, data);
+    if (!isClientMode) reportPageRows(data);
   }, [isClientMode, data]);
 
   const pickerColumns = columns
@@ -208,10 +234,12 @@ export function DataTable<TData>({
   // Server mode only holds the current page, so a row selected two pages back
   // would vanish from `bulkActions` while its checkbox state lived on. Remember
   // every selected row's data as it passes through; forget it when deselected.
-  const selectedDataRef = useRef(new Map<string, TData>());
-  for (const row of pageRows) if (row.getIsSelected()) selectedDataRef.current.set(row.id, row.original);
-  for (const id of selectedDataRef.current.keys()) if (!rowSelection[id]) selectedDataRef.current.delete(id);
-  const selectedData = [...selectedDataRef.current.values()];
+  // Adjusted during render: the map only changes when the selection or a
+  // selected row's data does, so the re-render it triggers settles at once.
+  const [rememberedSelection, setRememberedSelection] = useState<ReadonlyMap<string, TData>>(() => new Map());
+  const selection = rememberSelection(rememberedSelection, pageRows, rowSelection);
+  if (selection !== rememberedSelection) setRememberedSelection(selection);
+  const selectedData = [...selection.values()];
   const selectedOnPage = pageRows.filter((row) => row.getIsSelected()).length;
   const gestures = useRowSelectionGestures(table, Boolean(enableRowSelection));
   const selectableRows = enableRowSelection ? pageRows.filter((row) => row.getCanSelect()) : [];
@@ -289,7 +317,10 @@ export function DataTable<TData>({
   // The memoised rows all hold this one object for the table's lifetime; it
   // forwards to whichever handlers the latest render made.
   const latestRef = useRef({ handleRowClick, handleRowDoubleClick, gestures });
-  latestRef.current = { handleRowClick, handleRowDoubleClick, gestures };
+  // Refreshed after commit, before any event can reach a row.
+  useLayoutEffect(() => {
+    latestRef.current = { handleRowClick, handleRowDoubleClick, gestures };
+  });
   const [rowHandlers] = useState<RowHandlers<TData>>(() => ({
     click: (event, row) => latestRef.current.handleRowClick(event, row),
     doubleClick: (event, row) => latestRef.current.handleRowDoubleClick(event, row),
@@ -392,8 +423,16 @@ export function DataTable<TData>({
   const offPageSelected = selectedData.length - selectedOnPage;
 
   return (
-    <Card ref={cardRef} variant="flat" className="overflow-hidden border-border/50 bg-card/50">
+    <Card
+      ref={cardRef}
+      variant="flat"
+      className={cn(
+        "overflow-hidden",
+        framed ? "border-border/50 bg-card/50" : "admin-table-unframed rounded-none border-0 bg-transparent"
+      )}
+    >
       <AdminTableToolbar
+        compact={isMobile}
         showSearch={showSearch}
         searchInputId={searchInputId}
         searchLabel={searchLabel}
@@ -411,7 +450,9 @@ export function DataTable<TData>({
         prefsKey={prefsKey}
         visibility={visibility}
         onVisibilityChange={setVisibility}
-        pickerColumns={columnsStorageKey ? pickerColumns : undefined}
+        // A phone's cards are built from the first visible columns, so the picker stays there only
+        // while no `renderMobileCard` replaces them.
+        pickerColumns={columnsStorageKey && !(isMobile && renderMobileCard) ? pickerColumns : undefined}
         onToggleColumn={toggleColumn}
         onResetColumns={resetToDefaults}
         actions={actions}

@@ -66,7 +66,8 @@ export function EntityHubHeader({
       ) : null}
       {leading ? <div className="shrink-0">{leading}</div> : null}
 
-      <div className="min-w-0 flex-1">
+      {/* `min-w-48`: past that the actions wrap under the title instead of squeezing it to nothing. */}
+      <div className="min-w-48 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <Heading
             className={cn(

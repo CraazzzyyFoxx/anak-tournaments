@@ -10,11 +10,11 @@ import {
   getAdminDetailTableStyles
 } from "@/components/admin/AdminDetailTable";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { EmptyNote } from "@/components/kit/EmptyNote";
 import { UserSearchCombobox } from "@/components/kit/ServerSearchCombobox";
 import DivisionIcon from "@/components/DivisionIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PageStateCard } from "@/components/ui/page-state-card";
 import {
   Table,
   TableBody,
@@ -52,7 +52,8 @@ interface TeamRosterEditorProps {
 }
 
 /**
- * The roster, editable in place.
+ * The roster, editable in place: the flush body of the team hub's roster card,
+ * so its count and Add sit on a toolbar line and the rows run edge to edge.
  *
  * Every control persists on its own: role, rank, sub-role and the newcomer flags
  * PATCH the player as soon as they change, so there is no draft to lose and no
@@ -256,13 +257,17 @@ export function TeamRosterEditor({
   ) : null;
 
   if (!discipline || workspaceId === null) {
-    return <PageStateCard state="error" title={roleT("ownerScopeError")} />;
+    return (
+      <div className="px-5 py-3">
+        <EmptyNote tone="danger">{roleT("ownerScopeError")}</EmptyNote>
+      </div>
+    );
   }
   return (
-    <div className="space-y-3">
-      {subRolesQuery.isError && <p id={subRoleErrorId} role="status" className="text-sm text-muted-foreground">{roleT("roleLoadError")}</p>}
-      {metadataFailed && <p role="status" className="text-sm text-muted-foreground">{roleT("metadataError")}</p>}
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div>
+      {subRolesQuery.isError && <p id={subRoleErrorId} role="status" className="px-5 pt-3 text-sm text-muted-foreground">{roleT("roleLoadError")}</p>}
+      {metadataFailed && <p role="status" className="px-5 pt-3 text-sm text-muted-foreground">{roleT("metadataError")}</p>}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-5 py-2.5">
         <p className="text-sm tabular-nums text-muted-foreground">
           {players.length
             ? t("rosterCount", { starters: players.length - substituteCount, substitutes: substituteCount })
@@ -282,7 +287,8 @@ export function TeamRosterEditor({
         ) : null}
       </div>
 
-      <AdminDetailTableShell>
+      {/* Edge cells take the card's own inset, so the columns line up with its title. */}
+      <AdminDetailTableShell className="rounded-none border-0 [&_tr>*:first-child]:pl-5 [&_tr>*:last-child]:pr-5">
         <Table>
           <TableHeader>
             <TableRow className={tableStyles.headerRow}>

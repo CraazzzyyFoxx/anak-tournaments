@@ -1,9 +1,10 @@
 import type { RoundGroup } from "@/lib/bracket/view";
 import { isEncounterCompleted, isEncounterLive } from "@/lib/encounter/status";
 import { splitHandle } from "@/lib/player";
+import { reachedAtLeast } from "@/lib/tournament/lifecycle";
 import type { Encounter } from "@/types/encounter.types";
 import type { Team } from "@/types/team.types";
-import type { Standings, TournamentStatus } from "@/types/tournament.types";
+import type { StageSummary, Standings, Tournament, TournamentStatus } from "@/types/tournament.types";
 
 // ---------------------------------------------------------------------------
 // Which of the three compositions a tournament gets
@@ -30,6 +31,17 @@ export function overviewVariant(status: TournamentStatus): OverviewVariant {
   return VARIANT_BY_STATUS[status];
 }
 
+/**
+ * Whether the field is set: teams exist and sign-ups are behind them. Until
+ * then the overview's registration block owns the numbers (who signed up, how
+ * the roles split); from then on the hero quotes "14 teams · 70 players" once
+ * and the overview shows the teams themselves. A team-registration tournament
+ * has teams during registration, and they are still sign-ups then.
+ */
+export function hasTeamLineup(tournament: Pick<Tournament, "status" | "teams_count">): boolean {
+  return (tournament.teams_count ?? 0) > 0 && reachedAtLeast(tournament.status, "check_in");
+}
+
 /** Stage types with a bracket to draw, and with a standings table instead. */
 export const ELIMINATION_TYPES: Record<string, true> = {
   single_elimination: true,
@@ -51,6 +63,51 @@ export const STAGE_TYPE_LABEL: Record<string, "common.roundRobin" | "common.swis
   single_elimination: "bracket.singleElimination",
   double_elimination: "bracket.doubleElimination"
 };
+
+/** One regulation fact of a stage, as the overview's "How it's played" words it. */
+export type StageFact =
+  | { kind: "rounds"; count: number }
+  | { kind: "bestOf"; n: number }
+  | { kind: "finalBestOf"; n: number }
+  | { kind: "qualify"; count: number }
+  | { kind: "eliminate"; count: number }
+  | { kind: "advance"; count: number }
+  | { kind: "grandFinal"; reset: boolean };
+
+/**
+ * What a reader needs to follow a stage, read off its regulation: how long it
+ * runs, how long a series is, how a team gets through. Only what applies — an
+ * FFA lobby plays no series, and the last wave advances nobody, whatever its
+ * `advance_count` says.
+ */
+export function stageFacts(stage: StageSummary, hasNextWave: boolean): StageFact[] {
+  const facts: StageFact[] = [];
+  const isFfa = stage.stage_type === "ffa_league";
+  if ((stage.stage_type === "swiss" || isFfa) && stage.max_rounds > 0) {
+    facts.push({ kind: "rounds", count: stage.max_rounds });
+  }
+  if (!isFfa && stage.best_of.default > 0) facts.push({ kind: "bestOf", n: stage.best_of.default });
+  if (
+    ELIMINATION_TYPES[stage.stage_type] === true &&
+    stage.best_of.final != null &&
+    stage.best_of.final !== stage.best_of.default
+  ) {
+    facts.push({ kind: "finalBestOf", n: stage.best_of.final });
+  }
+  if (stage.stage_type === "swiss") {
+    if (stage.swiss_qualify_wins != null) facts.push({ kind: "qualify", count: stage.swiss_qualify_wins });
+    if (stage.swiss_eliminate_losses != null) {
+      facts.push({ kind: "eliminate", count: stage.swiss_eliminate_losses });
+    }
+  }
+  if (hasNextWave && stage.advance_count != null && stage.advance_count > 0) {
+    facts.push({ kind: "advance", count: stage.advance_count });
+  }
+  if (stage.stage_type === "double_elimination") {
+    facts.push({ kind: "grandFinal", reset: stage.de_grand_final_type === "with_reset" });
+  }
+  return facts;
+}
 
 /** The round the stage is on: the first with anything unfinished, else its last. */
 export function currentRoundOf(groups: readonly RoundGroup[]): number | null {

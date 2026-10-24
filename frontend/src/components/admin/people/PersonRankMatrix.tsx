@@ -6,7 +6,6 @@ import { useQuery } from "@tanstack/react-query";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { PersonSection } from "@/components/admin/people/PersonSection";
 import {
   pivotCurrentRanks,
   signed,
@@ -14,10 +13,10 @@ import {
   type MatrixLine,
   type RankMatrix
 } from "@/components/admin/people/personRanks.model";
-import { EmptyNote } from "@/components/kit/EmptyNote";
+import { EmptyNote, LoadErrorNote } from "@/components/kit/EmptyNote";
+import { SettingGroup } from "@/components/kit/SettingRow";
 import { formatDate } from "@/components/kit/format-time";
 import { Eyebrow } from "@/components/ui/eyebrow";
-import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
@@ -32,8 +31,8 @@ import { workspacePlayerService } from "@/services/workspace-player.service";
 import type { DisciplineMetadata } from "@/types/discipline.types";
 import type { DivisionGrid } from "@/types/workspace.types";
 
-/** The row label stays put while the role columns scroll under it on a phone. */
-const STICKY = "sticky left-0 z-[1] bg-background";
+/** The row label stays put while the role columns scroll under it on a phone; the card's fill hides them. */
+const STICKY = "sticky left-0 z-[1] bg-card";
 
 /**
  * «Текущие ранги»: what the person is rated at now in one game, layer × role — the tournament number first, then
@@ -60,12 +59,11 @@ export function PersonRankMatrix({
   );
 
   return (
-    <PersonSection title={t("current")}>
+    <SettingGroup id="current-ranks" title={t("current")}>
       {query.isError || metadata.isError ? (
-        <PageStateCard
-          state="error"
+        <LoadErrorNote
           title={tOverview("loadError")}
-          onAction={() => {
+          onRetry={() => {
             void query.refetch();
             void metadata.refetch();
           }}
@@ -81,7 +79,7 @@ export function PersonRankMatrix({
       ) : (
         <MatrixTable matrix={matrix} ontology={ontology} game={game} />
       )}
-    </PersonSection>
+    </SettingGroup>
   );
 }
 

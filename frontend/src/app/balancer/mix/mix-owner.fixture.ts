@@ -32,7 +32,10 @@ export const LOL_SHAPE: RosterShape = {
 };
 
 /** Deadlock's 6v6: no open slot, so all six seats are the game's one role. */
-const DEADLOCK_SHAPE: RosterShape = { ...shapeOf({ agent: 6 }), dimension: "agent" };
+const DEADLOCK_SHAPE: RosterShape = {
+  ...shapeOf({ agent: 6 }),
+  dimension: ratedDimension(DEADLOCK_METADATA)?.code ?? null,
+};
 
 /** Test grids carry no tiers: the lineup only needs *a* grid object, crests are the grid tests' business. */
 const EMPTY_GRID = { tiers: [] };

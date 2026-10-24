@@ -2,7 +2,7 @@
 
 import { useId, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
+import { useNow, useTranslations } from "next-intl";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import {
@@ -14,6 +14,7 @@ import {
   useAuditTranslator
 } from "@/components/kit/audit-log";
 import { formatRelative } from "@/components/kit/format-time";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -22,7 +23,7 @@ import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { useFormatter } from "@/lib/datetime/client";
 import adminService from "@/services/admin.service";
 import { Block, BlockError } from "./Block";
-import { auditEntityHref, groupAuditActivity } from "./model";
+import { auditEntityHref, dayLabel, groupAuditActivity, groupByDay } from "./model";
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 /** Staff actions only: scheduler and system rows are the platform talking to itself. */
@@ -42,6 +43,8 @@ export function ActivityFeed({ workspaceId, className }: Readonly<{ workspaceId:
   const [includeMine, setIncludeMine] = useState(false);
   const excludeActorId = includeMine ? null : userId;
   const title = t("activity");
+  const now = useNow();
+  const words = { today: t("dayToday"), tomorrow: t("dayTomorrow"), yesterday: t("dayYesterday") };
 
   const query = useQuery({
     queryKey: adminQueryKeys.dashboardActivity(workspaceId, excludeActorId),
@@ -83,53 +86,64 @@ export function ActivityFeed({ workspaceId, className }: Readonly<{ workspaceId:
       ) : groups.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("activityEmpty")}</p>
       ) : (
-        <ul className="divide-y divide-border/50">
-          {groups.map((group) => {
-            const { head } = group;
-            const href = group.sameEntity ? auditEntityHref(head) : null;
-            const subject = [
-              group.sameEntity ? formatAuditTarget(head, tAudit) : auditEntityLabel(head.entity_type, tAudit),
-              group.count > 1 ? t("activityCount", { count: group.count }) : null
-            ]
-              .filter(Boolean)
-              .join(" · ");
-            const body = (
-              <>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm text-foreground">
-                    <span className="font-medium">{formatAuditActor(head, tAudit)}</span>
-                    {" · "}
-                    {describeAuditAction(head.action, tAudit).label}
-                  </span>
-                  {subject ? <span className="block truncate text-xs text-muted-foreground">{subject}</span> : null}
-                </span>
-                <time
-                  dateTime={head.created_at}
-                  title={formatAuditTimestamp(format, head.created_at)}
-                  className="shrink-0 text-xs tabular-nums text-muted-foreground"
-                >
-                  {formatRelative(format, head.created_at)}
-                </time>
-              </>
-            );
-            // Rows bleed to the card edge so the hover fill spans the card.
-            const shared = "-mx-6 flex items-start gap-3 px-6 py-2.5";
-            return (
-              <li key={head.id}>
-                {href ? (
-                  <HoverPrefetchLink
-                    href={href}
-                    className={`${shared} transition-colors hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring`}
-                  >
-                    {body}
-                  </HoverPrefetchLink>
-                ) : (
-                  <div className={shared}>{body}</div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        <div className="flex flex-col gap-4">
+          {groupByDay(groups, (group) => group.head.created_at, format).map((day) => (
+            <div key={day.key}>
+              <Eyebrow as="h3" tone="muted">
+                {dayLabel(format, day.date, now, words)}
+              </Eyebrow>
+              <ul className="mt-1 divide-y divide-border/50">
+                {day.items.map((group) => {
+                  const { head } = group;
+                  const href = group.sameEntity ? auditEntityHref(head) : null;
+                  const subject = [
+                    group.sameEntity ? formatAuditTarget(head, tAudit) : auditEntityLabel(head.entity_type, tAudit),
+                    group.count > 1 ? t("activityCount", { count: group.count }) : null
+                  ]
+                    .filter(Boolean)
+                    .join(" · ");
+                  const body = (
+                    <>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm text-foreground">
+                          <span className="font-medium">{formatAuditActor(head, tAudit)}</span>
+                          {" · "}
+                          {describeAuditAction(head.action, tAudit).label}
+                        </span>
+                        {subject ? (
+                          <span className="block truncate text-xs text-muted-foreground">{subject}</span>
+                        ) : null}
+                      </span>
+                      <time
+                        dateTime={head.created_at}
+                        title={formatAuditTimestamp(format, head.created_at)}
+                        className="shrink-0 text-xs tabular-nums text-muted-foreground"
+                      >
+                        {formatRelative(format, head.created_at)}
+                      </time>
+                    </>
+                  );
+                  // Rows bleed to the card edge so the hover fill spans the card.
+                  const shared = "-mx-6 flex items-start gap-3 px-6 py-2.5";
+                  return (
+                    <li key={head.id}>
+                      {href ? (
+                        <HoverPrefetchLink
+                          href={href}
+                          className={`${shared} transition-colors hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring`}
+                        >
+                          {body}
+                        </HoverPrefetchLink>
+                      ) : (
+                        <div className={shared}>{body}</div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </div>
       )}
     </Block>
   );

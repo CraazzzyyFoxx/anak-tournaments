@@ -3,13 +3,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
+import { StatTile } from "@/components/admin/StatTile";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useGameDescriptors } from "@/hooks/useGameDescriptors";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { useFormatter } from "@/lib/datetime/client";
 import adminService from "@/services/admin.service";
 import { Block, BlockError } from "./Block";
+
+/** As many tiles across as fit at 10rem: one row in the dashboard's column, two by two on a phone. */
+const TILE_GRID = "grid grid-cols-[repeat(auto-fit,minmax(min(100%,10rem),1fr))] gap-3";
 
 /**
  * A trend line drawn over the tile; the numbers beside it carry the meaning.
@@ -48,9 +51,10 @@ function Sparkline({ values, labels }: Readonly<{ values: (number | null)[]; lab
 
 /**
  * Four tiles over the workspace's last ten finished, public, non-league
- * tournaments. No realtime: they move when a tournament finishes.
+ * tournaments, open on the page: the tiles are the frames. No realtime: they
+ * move when a tournament finishes.
  */
-export function Trends({ workspaceId }: Readonly<{ workspaceId: number }>) {
+export function Trends({ workspaceId, className }: Readonly<{ workspaceId: number; className?: string }>) {
   const t = useTranslations("adminShell.dashboard");
   const format = useFormatter();
   const games = useGameDescriptors();
@@ -62,19 +66,19 @@ export function Trends({ workspaceId }: Readonly<{ workspaceId: number }>) {
 
   if (query.isError) {
     return (
-      <Block title={title}>
+      <Block title={title} framed={false} className={className}>
         <BlockError title={title} onRetry={() => void query.refetch()} />
       </Block>
     );
   }
   if (!query.data) {
     return (
-      <Block title={title}>
-        <StatTileGrid>
+      <Block title={title} framed={false} className={className}>
+        <div className={TILE_GRID}>
           {Array.from({ length: 4 }, (_, index) => (
             <Skeleton key={index} className="h-32 rounded-xl" />
           ))}
-        </StatTileGrid>
+        </div>
       </Block>
     );
   }
@@ -82,7 +86,7 @@ export function Trends({ workspaceId }: Readonly<{ workspaceId: number }>) {
   const points = query.data.points;
   if (points.length === 0) {
     return (
-      <Block title={title}>
+      <Block title={title} framed={false} className={className}>
         <p className="text-sm text-muted-foreground">{t("trendsEmpty")}</p>
       </Block>
     );
@@ -123,8 +127,13 @@ export function Trends({ workspaceId }: Readonly<{ workspaceId: number }>) {
   ];
 
   return (
-    <Block title={title} description={t("trendsDescription", { count: points.length })}>
-      <StatTileGrid>
+    <Block
+      title={title}
+      framed={false}
+      className={className}
+      description={t("trendsDescription", { count: points.length })}
+    >
+      <div className={TILE_GRID}>
         {tiles.map((tile) => {
           const latest = tile.series.at(-1);
           const known = tile.series.filter((value): value is number => value != null);
@@ -153,7 +162,7 @@ export function Trends({ workspaceId }: Readonly<{ workspaceId: number }>) {
             />
           );
         })}
-      </StatTileGrid>
+      </div>
     </Block>
   );
 }

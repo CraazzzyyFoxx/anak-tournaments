@@ -15,6 +15,8 @@ from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import urlparse
 
+import httpx
+from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
@@ -94,8 +96,10 @@ async def fetch_json(http: ResilientHttpClient, path: str) -> Any:
 class CatalogImageMirror:
     """Copies source images into our S3 bucket, so the site never renders them from a host visitors may not reach.
 
-    A row already on the bucket keeps its image (an image an admin replaced by hand survives the sync). Any failure
-    raises and fails the sync: a half-mirrored catalog is a catalog of broken images.
+    A row already on the bucket keeps its image (an image an admin replaced by hand survives the sync). An image the
+    source lists but does not have (404) leaves its row without one: the site paints initials, and a later sync mirrors
+    it once the source has it. Any other failure raises and fails the sync: a half-mirrored catalog is a catalog of
+    broken images.
     """
 
     def __init__(self, s3: S3Client) -> None:
@@ -124,16 +128,22 @@ class CatalogImageMirror:
         discipline: str,
         kind: str,
         images: Mapping[str, tuple[str | None, str]],
-    ) -> dict[str, str]:
+    ) -> dict[str, str | None]:
         """``{slug: (current, source)}`` -> ``{slug: url to store}``; counts the downloads on ``kind``'s stage."""
         semaphore = asyncio.Semaphore(_IMAGE_FETCH_CONCURRENCY)
         await progress.images(kind, sum(not self.is_mirrored(current) for current, _source in images.values()))
 
-        async def _resolve(slug: str, current: str | None, source: str) -> str:
+        async def _resolve(slug: str, current: str | None, source: str) -> str | None:
             if current and self.is_mirrored(current):
                 return current
             async with semaphore:
-                url = await self.mirror(http, discipline=discipline, kind=kind, slug=slug, source_url=source)
+                try:
+                    url = await self.mirror(http, discipline=discipline, kind=kind, slug=slug, source_url=source)
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code != httpx.codes.NOT_FOUND:
+                        raise
+                    logger.warning("Catalog image {} is missing at the source; {} {} has no image", source, kind, slug)
+                    return None
             await progress.image_mirrored(kind)
             return url
 

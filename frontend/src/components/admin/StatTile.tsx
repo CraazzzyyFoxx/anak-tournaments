@@ -48,7 +48,7 @@ export function StatTile({
     >
       <div className="min-w-0 flex-1">
         <p className={eyebrowClass("muted")}>{label}</p>
-        <p className={cn("mt-2 truncate text-2xl font-semibold tabular-nums", attention && TONE_TEXT[tone])}>
+        <p className={cn("mt-2 truncate font-display text-title font-semibold tabular-nums", attention && TONE_TEXT[tone])}>
           {value}
         </p>
         {detail ? <p className="mt-1 text-xs text-muted-foreground">{detail}</p> : null}

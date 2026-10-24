@@ -18,11 +18,10 @@ import {
   useSubscriptionLabels
 } from "@/components/admin/collectors/subscription-shared";
 import { collapseCheckRuns } from "@/components/admin/people/check-runs";
-import { PersonSection } from "@/components/admin/people/PersonSection";
-import { EmptyNote } from "@/components/kit/EmptyNote";
+import { EmptyNote, LoadErrorNote } from "@/components/kit/EmptyNote";
+import { SettingGroup } from "@/components/kit/SettingRow";
 import { formatDate, formatRelative } from "@/components/kit/format-time";
 import { Button } from "@/components/ui/button";
-import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
@@ -153,11 +152,11 @@ function PlayerCheckTimeline({ userId }: Readonly<{ userId: number }>) {
   const runs = collapseCheckRuns(query.data ?? []);
 
   return (
-    <PersonSection title={t("history")}>
+    <SettingGroup id="check-history" title={t("history")}>
       {query.isLoading ? (
         <RowsSkeleton rows={4} />
       ) : query.isError ? (
-        <PageStateCard state="error" onAction={() => void query.refetch()} />
+        <LoadErrorNote onRetry={() => void query.refetch()} />
       ) : runs.length === 0 ? (
         <EmptyNote>{t("emptyHistory")}</EmptyNote>
       ) : (
@@ -167,7 +166,7 @@ function PlayerCheckTimeline({ userId }: Readonly<{ userId: number }>) {
           ))}
         </ol>
       )}
-    </PersonSection>
+    </SettingGroup>
   );
 }
 
@@ -213,8 +212,9 @@ export function SubscriptionPlayerPanel({
 
   return (
     // One provider per workspace: a full-width row put «Проверить» a screen away from what it checks.
-    <div className="max-w-3xl space-y-8">
-      <PersonSection
+    <div className="max-w-3xl space-y-4">
+      <SettingGroup
+        id="entitlements"
         title={t("entitlements")}
         actions={
           <Button
@@ -230,7 +230,7 @@ export function SubscriptionPlayerPanel({
         {statusQuery.isLoading ? (
           <RowsSkeleton rows={1} />
         ) : statusQuery.isError ? (
-          <PageStateCard state="error" onAction={() => void statusQuery.refetch()} />
+          <LoadErrorNote onRetry={() => void statusQuery.refetch()} />
         ) : rows.length === 0 ? (
           <EmptyNote>{t("empty")}</EmptyNote>
         ) : (
@@ -278,7 +278,7 @@ export function SubscriptionPlayerPanel({
             })}
           </ul>
         )}
-      </PersonSection>
+      </SettingGroup>
 
       <PlayerCheckTimeline userId={userId} />
     </div>

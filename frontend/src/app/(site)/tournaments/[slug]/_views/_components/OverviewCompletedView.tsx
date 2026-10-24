@@ -22,7 +22,7 @@ import {
   rosterBattletags,
   tournamentDaySpan
 } from "../tournamentOverview.model";
-import { CardLink, OverviewCard } from "./OverviewCards";
+import { OverviewColumns, OverviewSection, SectionLink } from "./OverviewCards";
 
 /** The five characters the tournament was actually played on, by share of playtime. */
 function TopHeroesCard({
@@ -33,12 +33,13 @@ function TopHeroesCard({
   const format = useFormatter();
 
   return (
-    <OverviewCard
+    <OverviewSection
       title={t("tournamentDetail.overview.heroes.title")}
+      size="heading"
       action={
-        <CardLink href={`${overviewHref}/stats?tab=heroes`}>
+        <SectionLink href={`${overviewHref}/stats?tab=heroes`}>
           {t("tournamentDetail.overview.heroes.all")}
-        </CardLink>
+        </SectionLink>
       }
     >
       <ol className="grid gap-1.5">
@@ -76,7 +77,7 @@ function TopHeroesCard({
           );
         })}
       </ol>
-    </OverviewCard>
+    </OverviewSection>
   );
 }
 
@@ -212,40 +213,46 @@ export function OverviewCompletedView({
   const days = tournamentDaySpan(tournament.start_date, tournament.end_date);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[7fr_3fr]">
-      <div className="grid content-start gap-4">
-        {/* ⑧ A finished tournament opens on its result, not on the bracket
-            corner the final happens to sit in. */}
-        {podium ? (
-          <OverviewCard title={t("tournamentDetail.overview.result.title")}>
-            <Podium first={podium.first} second={podium.second} third={podium.third} />
-          </OverviewCard>
-        ) : null}
-        {miniBracket}
-        {groupTable}
-        {podium === null && miniBracket === null && groupTable === null ? nowBlock : null}
-        {aboutCard}
-      </div>
-      <div className="grid content-start gap-4">
-        {topHeroes.length > 0 ? (
-          <TopHeroesCard topHeroes={topHeroes} overviewHref={overviewHref} />
-        ) : null}
-        {/* Teams and players are the header's stamps — this card counts what
-            the header cannot: how much was played, and over how long. */}
-        <OverviewCard title={t("tournamentDetail.overview.numbers.title")}>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <ProfileStat
-              label={t("tournamentDetail.overview.numbers.matches")}
-              value={encounters.length}
-            />
-            {days !== null ? (
-              <ProfileStat label={t("tournamentDetail.overview.numbers.days")} value={days} />
+    <div className="grid min-w-0 gap-10">
+      {/* ⑧ A finished tournament opens on its result, full width — not on the
+          bracket corner the final happens to sit in. */}
+      {podium ? (
+        <OverviewSection title={t("tournamentDetail.overview.result.title")} framed>
+          <Podium first={podium.first} second={podium.second} third={podium.third} />
+        </OverviewSection>
+      ) : null}
+      <OverviewColumns
+        main={
+          <>
+            {miniBracket}
+            {groupTable}
+            {podium === null && miniBracket === null && groupTable === null ? nowBlock : null}
+            {aboutCard}
+          </>
+        }
+        aside={
+          <>
+            {topHeroes.length > 0 ? (
+              <TopHeroesCard topHeroes={topHeroes} overviewHref={overviewHref} />
             ) : null}
-          </div>
-        </OverviewCard>
-        {formatCard}
-        {linksCard}
-      </div>
+            {/* Teams and players are the hero's line — this counts what the
+                hero cannot: how much was played, and over how long. */}
+            <OverviewSection title={t("tournamentDetail.overview.numbers.title")} size="heading">
+              <div className="grid grid-cols-2 gap-4">
+                <ProfileStat
+                  label={t("tournamentDetail.overview.numbers.matches")}
+                  value={encounters.length}
+                />
+                {days !== null ? (
+                  <ProfileStat label={t("tournamentDetail.overview.numbers.days")} value={days} />
+                ) : null}
+              </div>
+            </OverviewSection>
+            {formatCard}
+            {linksCard}
+          </>
+        }
+      />
     </div>
   );
 }

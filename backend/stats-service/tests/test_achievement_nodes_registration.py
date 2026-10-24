@@ -95,6 +95,7 @@ class _RegistrationFixture(_scrim._Fixture):
             id=session_id,
             tournament_id=tournament_id,
             workspace_id=workspace_id,
+            discipline="overwatch",
             status=DraftStatus.COMPLETED,
         )
         return session_id

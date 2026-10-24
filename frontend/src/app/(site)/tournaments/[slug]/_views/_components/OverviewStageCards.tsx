@@ -17,7 +17,7 @@ import type { StageSummary, Standings } from "@/types/tournament.types";
 import { MatchCard } from "../../_components/MatchCard";
 import { currentRoundOf, pickRoundWindow, splitStandingsByGroup } from "../tournamentOverview.model";
 import type { OverviewMatchPresenter } from "../useOverviewMatchPresenter";
-import { CardLink, OverviewCard } from "./OverviewCards";
+import { OverviewSection, SectionLink } from "./OverviewCards";
 
 /**
  * The mini bracket (§3 ⑥): a window of rounds around the one being played,
@@ -43,12 +43,12 @@ export function OverviewMiniBracket({
   const roundLabel = useBracketRoundLabel();
 
   return (
-    <OverviewCard
+    <OverviewSection
       title={t("tournamentDetail.overview.bracketMini.title", { stage: stage.name })}
       action={
-        <CardLink href={`${overviewHref}/bracket?stage=${stage.id}`}>
+        <SectionLink href={`${overviewHref}/bracket?stage=${stage.id}`}>
           {t("tournamentDetail.overview.bracketMini.open")}
-        </CardLink>
+        </SectionLink>
       }
     >
       <div className="flex gap-2 overflow-x-auto pb-1">
@@ -72,7 +72,7 @@ export function OverviewMiniBracket({
           </div>
         ))}
       </div>
-    </OverviewCard>
+    </OverviewSection>
   );
 }
 
@@ -96,13 +96,14 @@ export function OverviewGroupTable({
     pointsHaveFraction ? points.toFixed(1) : String(points);
 
   return (
-    <OverviewCard
+    <OverviewSection
       title={t("tournamentDetail.overview.groupTable.title", { stage: stage.name })}
       action={
-        <CardLink href={`${overviewHref}/bracket?stage=${stage.id}&view=standings`}>
+        <SectionLink href={`${overviewHref}/bracket?stage=${stage.id}&view=standings`}>
           {t("tournamentDetail.overview.groupTable.open")}
-        </CardLink>
+        </SectionLink>
       }
+      framed
     >
       {/* Two groups sit side by side rather than stacking: it halves the card
           and pulls the record back next to the name instead of stranding it
@@ -183,7 +184,7 @@ export function OverviewGroupTable({
           </table>
         ))}
       </div>
-    </OverviewCard>
+    </OverviewSection>
   );
 }
 
@@ -212,13 +213,14 @@ export function OverviewFfaTable({
     pointsHaveFraction ? points.toFixed(1) : String(points);
 
   return (
-    <OverviewCard
+    <OverviewSection
       title={t("tournamentDetail.overview.groupTable.title", { stage: stage.name })}
       action={
-        <CardLink href={`${overviewHref}/bracket?stage=${stage.id}`}>
+        <SectionLink href={`${overviewHref}/bracket?stage=${stage.id}`}>
           {t("tournamentDetail.overview.groupTable.open")}
-        </CardLink>
+        </SectionLink>
       }
+      framed
     >
       <div className={cn("grid gap-x-8 gap-y-5", seated.length > 1 && "sm:grid-cols-2")}>
         {seated.map((lobby) => (
@@ -282,6 +284,6 @@ export function OverviewFfaTable({
           </table>
         ))}
       </div>
-    </OverviewCard>
+    </OverviewSection>
   );
 }

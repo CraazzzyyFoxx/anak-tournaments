@@ -9,8 +9,9 @@ every reader gets. Two things are pinned here:
    and emptied the list afterwards would pass a "no rows" assertion while still
    shipping every battletag to the cache on the way;
 2. the aggregate beside it counts the same rows the visible list would have
-   shown, one bucket per registration, so flipping the toggle never changes the
-   number a reader sees.
+   shown, minus withdrawn ones, one bucket per registration, so flipping the
+   toggle never changes the number a reader sees -- while the visible list still
+   ships the withdrawn rows its Withdrawn filter needs.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
@@ -34,8 +35,8 @@ def _role(role: str, *, is_primary: bool = True, priority: int = 0) -> SimpleNam
     return SimpleNamespace(role=role, is_primary=is_primary, priority=priority)
 
 
-def _registration(reg_id: int, *roles: SimpleNamespace) -> SimpleNamespace:
-    return SimpleNamespace(id=reg_id, roles=list(roles))
+def _registration(reg_id: int, *roles: SimpleNamespace, status: str = "approved") -> SimpleNamespace:
+    return SimpleNamespace(id=reg_id, status=status, roles=list(roles))
 
 
 def _form(**overrides) -> SimpleNamespace:
@@ -111,3 +112,56 @@ class HiddenListTests(IsolatedAsyncioTestCase):
         session, _ = await self._build(_form(hide_registrations=True), [_registration(1, _role("tank"))])
 
         session.execute.assert_not_awaited()
+
+    async def test_a_withdrawn_registration_is_not_counted(self):
+        _, response = await self._build(
+            _form(hide_registrations=True),
+            [_registration(1, _role("tank")), _registration(2, _role("damage"), status="withdrawn")],
+        )
+
+        self.assertEqual(response.total, 1)
+        self.assertEqual(response.role_counts, {"tank": 1})
+
+
+class VisibleListTests(IsolatedAsyncioTestCase):
+    async def test_a_withdrawn_row_is_listed_but_not_counted(self):
+        """The Withdrawn filter needs the row; "Registered N" must not count it."""
+        rows = [
+            _registration(1, _role("tank")),
+            _registration(2, _role("damage"), status="withdrawn"),
+            _registration(3, _role("damage")),
+        ]
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = rows
+        session = SimpleNamespace(execute=AsyncMock(return_value=result))
+        construct = service.RegistrationListRead.model_construct
+        # Everything past the row read is the per-row serializer, stubbed: this pins
+        # which rows ship and what the aggregate counts, nothing else.
+        with (
+            patch.object(
+                service.registration_service.tournament_repo,
+                "get",
+                AsyncMock(return_value=SimpleNamespace(workspace_id=7, discipline="overwatch")),
+            ),
+            patch.object(
+                service._common_service, "get_registration_form", AsyncMock(return_value=_form(current_version_id=None))
+            ),
+            patch.object(service.registration_service, "resolve_admission_list", AsyncMock(return_value={})),
+            patch.multiple(
+                service,
+                get_status_metas_map=AsyncMock(return_value={}),
+                _public_rosters=AsyncMock(return_value={}),
+                _build_tournament_history=AsyncMock(return_value=({}, {}, {})),
+                registration_public_keys=MagicMock(return_value=lambda _: frozenset()),
+                discipline_identity_provider=MagicMock(return_value="battlenet"),
+                submitted_late=MagicMock(return_value=False),
+                _reg_to_read=lambda r, **_: {"id": r.id, "status": r.status},
+                RegistrationListRead=construct,
+            ),
+        ):
+            response = await service.registration_service.build_public_registration_list(session, tournament_id=42)
+
+        self.assertFalse(response.hidden)
+        self.assertEqual([read.id for read in response.registrations], [1, 2, 3])
+        self.assertEqual(response.total, 2)
+        self.assertEqual(response.role_counts, {"tank": 1, "damage": 1})
