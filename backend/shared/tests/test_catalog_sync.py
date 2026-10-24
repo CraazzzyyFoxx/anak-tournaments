@@ -9,6 +9,7 @@ import os
 import sys
 from unittest import IsolatedAsyncioTestCase
 
+import httpx
 import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -159,6 +160,48 @@ def test_a_failed_download_stops_the_others_before_it_surfaces() -> None:
     asyncio.run(scenario())
     assert s3.keys == []
     assert [stages[2] for _source, stages in snapshots] == [_stage("map", "pending", done=0, total=2)]
+
+
+class _HttpWithStatus(_Http):
+    """Like ``_Http``, but an image URL listed in ``statuses`` answers with that status."""
+
+    def __init__(self, statuses: dict[str, int]) -> None:
+        super().__init__({})
+        self.statuses = statuses
+
+    async def get(self, path: str, **kwargs: object):
+        if path in self.statuses:
+            return httpx.Response(self.statuses[path], request=httpx.Request("GET", path))
+        return await super().get(path, **kwargs)
+
+
+def test_an_image_missing_at_the_source_leaves_its_row_without_one_and_the_rest_mirrored() -> None:
+    """OverFast lists a new map before it has its picture: one 404 must not fail the whole sync."""
+    s3 = _S3()
+    urls = asyncio.run(
+        CatalogImageMirror(s3).resolve_many(
+            _HttpWithStatus({"https://src/grimsvotn.jpg": 404}),
+            _progress(),
+            discipline="overwatch",
+            kind="map",
+            images={"grimsvotn": (None, "https://src/grimsvotn.jpg"), "ilios": (None, "https://src/ilios.jpg")},
+        )
+    )
+    assert urls == {"grimsvotn": None, "ilios": f"{BUCKET}assets/overwatch/map/ilios.jpg"}
+    assert s3.keys == ["assets/overwatch/map/ilios.jpg"]
+
+
+def test_a_source_error_other_than_a_missing_image_still_fails_the_sync() -> None:
+    with pytest.raises(httpx.HTTPStatusError):
+        asyncio.run(
+            CatalogImageMirror(_S3()).resolve_many(
+                _HttpWithStatus({"https://src/x.png": 503}),
+                _progress(),
+                discipline="overwatch",
+                kind="map",
+                images={"x": (None, "https://src/x.png")},
+            )
+        )
 
 
 def test_alias_merge_keeps_manual_names_and_sorts_a_deduplicated_union_without_the_canonical_name() -> None:

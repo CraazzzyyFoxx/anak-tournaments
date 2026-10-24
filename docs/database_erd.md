@@ -590,7 +590,9 @@ are admin-maintained because their endpoints have no locale parameter. The LoL m
 uses Data Dragon's latest published champion and map catalog. Both dispatch through
 `rpc.stats.catalog.sync`, preserve existing names and `attrs`, and fill a source parent only
 where the stored `parent_id` is null. Mirrored images live under
-`assets/<discipline>/<kind>/<slug>.<ext>` and existing bucket images survive a sync. Rows missing
+`assets/<discipline>/<kind>/<slug>.<ext>` and existing bucket images survive a sync. An image the
+source lists but answers 404 for leaves its row with no image (the site paints initials) instead
+of failing the sync; any other image failure still fails it. Rows missing
 from a later sync are not deleted or deactivated.
 
 Unresolved log names land in `catalog.alias_miss`, the admin alias worklist keyed by
