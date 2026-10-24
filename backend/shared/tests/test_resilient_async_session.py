@@ -17,6 +17,7 @@ from __future__ import annotations
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
+from asyncpg.exceptions import InternalClientError
 from sqlalchemy.exc import InterfaceError, ProgrammingError
 
 from shared.core.db import ResilientAsyncSession, _connection_already_gone
@@ -70,6 +71,21 @@ class ResilientCloseTests(IsolatedAsyncioTestCase):
         ):
             async with ResilientAsyncSession():
                 raise ZeroDivisionError("the real failure")
+
+    async def test_a_protocol_desync_on_rollback_does_not_mask_the_original_error(self) -> None:
+        """A statement cancelled by ``statement_timeout`` left asyncpg mid-operation; its raw error must not win."""
+        invalidate = AsyncMock()
+        desync = InternalClientError("cannot switch to state 15; another operation (2) is in progress")
+
+        with (
+            patch("sqlalchemy.ext.asyncio.AsyncSession.close", side_effect=desync),
+            patch.object(ResilientAsyncSession, "invalidate", invalidate),
+            self.assertRaises(ZeroDivisionError),
+        ):
+            async with ResilientAsyncSession():
+                raise ZeroDivisionError("the real failure")
+
+        invalidate.assert_awaited_once()
 
     async def test_reraises_a_teardown_failure_that_is_not_a_dead_connection(self) -> None:
         boom = ProgrammingError("ROLLBACK", None, _AsyncpgInterfaceError("syntax error"))

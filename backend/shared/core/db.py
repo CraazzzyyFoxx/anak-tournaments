@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
 
+from asyncpg.exceptions import InternalClientError
 from sqlalchemy import BigInteger, ColumnCollection, DateTime, Uuid, event, func
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
@@ -120,6 +121,12 @@ class ResilientAsyncSession(AsyncSession):
     connection is closed`` -- from ``__aexit__``, so it *replaces* the real
     exception with a generic one and reports the caller's frame as the culprit.
 
+    A cancelled statement can also leave asyncpg's protocol out of step with the
+    server: the ``ROLLBACK`` then raises a raw ``InternalClientError: cannot
+    switch to state 15; another operation (2) is in progress`` (no SQLAlchemy
+    wrapper), and the half-closed session leaves its connection for the garbage
+    collector. That connection is as unusable as a closed one.
+
     Nothing is recoverable at that point: the transaction died with the
     connection, so there is no work left to roll back. Discard the session
     state instead and let the original failure (or success) stand.
@@ -128,11 +135,12 @@ class ResilientAsyncSession(AsyncSession):
     async def close(self) -> None:
         try:
             await super().close()
-        except DBAPIError as exc:
-            if not _connection_already_gone(exc):
+        except (DBAPIError, InternalClientError) as exc:
+            if isinstance(exc, DBAPIError) and not _connection_already_gone(exc):
                 raise
             # Drop identity map + the half-torn-down transaction without
-            # touching the socket again.
+            # touching the socket again: invalidation terminates the connection
+            # instead of pooling it.
             with contextlib.suppress(Exception):
                 await self.invalidate()
 
