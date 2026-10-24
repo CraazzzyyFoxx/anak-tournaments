@@ -8,7 +8,7 @@ import { ArrowRight, Plus } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ActivityFeed } from "@/components/admin/dashboard/ActivityFeed";
 import { Backlog } from "@/components/admin/dashboard/Backlog";
-import { BlockError } from "@/components/admin/dashboard/Block";
+import { BLOCK_TITLE, BlockError } from "@/components/admin/dashboard/Block";
 import { DashboardRealtime } from "@/components/admin/dashboard/DashboardRealtime";
 import { PhaseCards, PhaseCardsSkeleton } from "@/components/admin/dashboard/PhaseCards";
 import { PlatformHealth } from "@/components/admin/dashboard/PlatformHealth";
@@ -68,12 +68,16 @@ export default function AdminDashboard() {
     </Button>
   );
   // The breadcrumb already names the page, so the h1 stays in the outline only
-  // and the visible line is the greeting.
+  // and the visible line is the greeting, set in the display face.
   const header = (
     <AdminPageHeader
       title={t("dashboardTitle")}
       titleHidden
-      description={t("greeting", { period: greetingPeriod, username: user?.username ?? t("defaultAdmin") })}
+      meta={
+        <p className="min-w-0 font-display text-title font-semibold text-foreground sm:text-headline">
+          {t("greeting", { period: greetingPeriod, username: user?.username ?? t("defaultAdmin") })}
+        </p>
+      }
       actions={workspaceId != null && canCreateTournaments ? createButton : null}
     />
   );
@@ -114,58 +118,59 @@ export default function AdminDashboard() {
         <DashboardRealtime workspaceId={workspaceId} tournamentIds={data?.tournaments.map((card) => card.id) ?? []} />
       ) : null}
 
-      {/* At `xl`: cards across, then a main column and a right rail. Below `xl`
-          both column wrappers are `contents`, so every block is a sibling in one
-          column and `order` sorts them: cards, queue, timeline, trends, activity,
-          backlog, health; on phones the queue leads in the live phase.
-          `minmax(0, …)`: a bare `fr` track grows to its widest child's min-content
-          (the timeline strip), pushing the rail off-screen. */}
+      {/* At `xl`: a main column ("work", the tournament cards first) and a
+          right rail ("attention": to do, activity), both from the top. Below
+          `xl` both column wrappers are `contents`, so every block is a sibling
+          in one column and `order` sorts them: cards, queue, timeline, trends,
+          activity, backlog, health; on phones the queue leads in the live phase.
+          `minmax(0, …)`: a bare `fr` track grows to its widest child's
+          min-content, pushing the rail off-screen. */}
       <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)] xl:items-start">
-        {canReadDashboard ? (
-          <div className="xl:col-span-2">
-            {failed ? (
-              <BlockError title={t("cardsTitle")} onRetry={retry} />
-            ) : !cards ? (
-              <PhaseCardsSkeleton />
-            ) : betweenTournaments ? (
-              // "Create tournament" lives in the header: one CTA per intent.
-              <NoCards />
-            ) : (
-              <PhaseCards cards={cards} />
-            )}
-          </div>
-        ) : null}
+        <div className={cn("contents xl:flex xl:flex-col xl:gap-4", !hasRail && "xl:col-span-2")}>
+          {canReadDashboard ? (
+            <div className="max-xl:order-1">
+              {failed ? (
+                <BlockError title={t("cardsTitle")} onRetry={retry} />
+              ) : !cards ? (
+                <PhaseCardsSkeleton />
+              ) : betweenTournaments ? (
+                // "Create tournament" lives in the header: one CTA per intent.
+                <NoCards />
+              ) : (
+                <PhaseCards cards={cards} />
+              )}
+            </div>
+          ) : null}
+          {canReadTournaments && !timelineHidden && !betweenTournaments ? (
+            <Timeline
+              events={data?.timeline ?? undefined}
+              cardOf={cardOf}
+              failed={failed}
+              onRetry={retry}
+              className="max-xl:order-3"
+            />
+          ) : null}
+          {canReadTournaments ? <Trends workspaceId={workspaceId} className="max-xl:order-4" /> : null}
+          {canReadDashboard ? (
+            <Backlog backlog={data?.backlog} failed={failed} onRetry={retry} className="max-xl:order-6" />
+          ) : null}
+          {isSuperuser ? <PlatformHealth workspaceId={workspaceId} className="max-xl:order-7" /> : null}
+        </div>
 
         {hasRail ? (
-          <div className="contents xl:col-start-2 xl:row-start-2 xl:flex xl:flex-col xl:gap-4">
+          <div className="contents xl:flex xl:flex-col xl:gap-4">
             {showQueue ? (
               <WorkQueue
                 issues={data?.issues}
                 cardOf={cardOf}
                 failed={failed}
                 onRetry={retry}
-                className={cn(liveFirst && "max-md:order-first")}
+                className={cn("max-xl:order-2", liveFirst && "max-md:order-first")}
               />
             ) : null}
-            {canReadAudit ? <ActivityFeed workspaceId={workspaceId} className="max-xl:order-1" /> : null}
+            {canReadAudit ? <ActivityFeed workspaceId={workspaceId} className="max-xl:order-5" /> : null}
           </div>
         ) : null}
-
-        <div
-          className={cn(
-            "contents xl:col-start-1 xl:row-start-2 xl:flex xl:flex-col xl:gap-4",
-            !hasRail && "xl:col-span-2"
-          )}
-        >
-          {canReadTournaments && !timelineHidden && !betweenTournaments ? (
-            <Timeline events={data?.timeline ?? undefined} cardOf={cardOf} failed={failed} onRetry={retry} />
-          ) : null}
-          {canReadTournaments ? <Trends workspaceId={workspaceId} /> : null}
-          {canReadDashboard ? (
-            <Backlog backlog={data?.backlog} failed={failed} onRetry={retry} className="max-xl:order-2" />
-          ) : null}
-          {isSuperuser ? <PlatformHealth workspaceId={workspaceId} className="max-xl:order-2" /> : null}
-        </div>
       </div>
     </div>
   );
@@ -177,7 +182,7 @@ function NoCards() {
   return (
     <Card className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-6 py-4">
       <div className="min-w-0">
-        <h2 className="font-semibold leading-tight">{t("betweenTitle")}</h2>
+        <h2 className={BLOCK_TITLE}>{t("betweenTitle")}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{t("betweenBody")}</p>
       </div>
       <Button asChild variant="outline" size="sm">

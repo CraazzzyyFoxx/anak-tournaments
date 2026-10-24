@@ -69,6 +69,9 @@ class DashboardTournamentCard(BaseModel):
     status: str
     phase: DashboardPhase
     is_hidden: bool
+    # Organizer branding (public URLs), unmasked like the name; None when not uploaded
+    logo_url: str | None
+    cover_image_url: str | None
     team_formation: str
     start_date: datetime | None
     end_date: datetime | None

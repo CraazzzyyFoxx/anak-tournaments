@@ -10,7 +10,6 @@ import { collectsRanks, rankHealthDot } from "@/components/admin/collectors/rank
 import { diagnoseStreamHealth } from "@/components/admin/collectors/stream-shared";
 import { TONE_TEXT, type Tone } from "@/components/ui/tone";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/ui/status-dot";
 import { GameIcon } from "@/components/workspace/GameIcon";
@@ -183,33 +182,45 @@ export function PlatformHealth({ workspaceId, className }: Readonly<{ workspaceI
   );
   if (allGreen) {
     return (
-      <Card asChild className={className}>
-        <section aria-label={title} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-6 py-4">
-          <h2 className="font-semibold leading-none tracking-tight">{title}</h2>
-          <p className={cn("flex items-center gap-1.5 text-sm", TONE_TEXT.success)}>
+      <Block
+        title={title}
+        framed={false}
+        className={className}
+        description={
+          <span className={cn("inline-flex items-center gap-1.5", TONE_TEXT.success)}>
             <CheckCircle2 className="size-4 shrink-0" aria-hidden />
             {t("healthAllGood")}
-          </p>
-        </section>
-      </Card>
+          </span>
+        }
+      />
     );
   }
 
   // Tiles, not label-to-status rows: across a wide column the status sat a
-  // screen away from the thing it describes.
+  // screen away from the thing it describes. Open on the page, so the tiles
+  // are the only frames, and as many across as fit.
   return (
-    <Block title={title} className={className}>
-      <ul className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
+    <Block title={title} framed={false} className={className}>
+      <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,14rem),1fr))] gap-3">
         {rows.map((row) => (
-          <li key={row.key} className="flex min-w-0 flex-col gap-1 rounded-lg border border-border/60 px-3 py-2.5">
+          <li
+            key={row.key}
+            className="flex min-w-0 flex-col gap-1 rounded-xl border border-border/60 bg-card/70 px-4 py-3"
+          >
             <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
               {row.game ? <GameIcon slug={row.game} /> : null}
               {row.href ? (
-                <HoverPrefetchLink href={row.href} className="truncate hover:text-foreground hover:underline">
+                <HoverPrefetchLink
+                  href={row.href}
+                  title={row.label}
+                  className="truncate hover:text-foreground hover:underline"
+                >
                   {row.label}
                 </HoverPrefetchLink>
               ) : (
-                <span className="truncate">{row.label}</span>
+                <span className="truncate" title={row.label}>
+                  {row.label}
+                </span>
               )}
             </span>
             {row.failed ? (

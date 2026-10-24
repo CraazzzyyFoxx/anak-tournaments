@@ -43656,6 +43656,17 @@
     },
     "tournament.DashboardTournamentCard": {
       "properties": {
+        "cover_image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cover Image Url"
+        },
         "discipline": {
           "title": "Discipline",
           "type": "string"
@@ -43695,6 +43706,17 @@
         "is_hidden": {
           "title": "Is Hidden",
           "type": "boolean"
+        },
+        "logo_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Logo Url"
         },
         "name": {
           "title": "Name",
@@ -43804,6 +43826,8 @@
         "status",
         "phase",
         "is_hidden",
+        "logo_url",
+        "cover_image_url",
         "team_formation",
         "start_date",
         "end_date",

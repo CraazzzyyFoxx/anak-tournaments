@@ -1,3 +1,4 @@
+import type { Formatter } from "@/lib/datetime";
 import type { AuditLogRead } from "@/types/admin.types";
 import type { DashboardIssue } from "@/types/admin-dashboard.types";
 
@@ -84,4 +85,47 @@ const ISSUE_ROUTES: Record<DashboardIssue["key"], string> = {
 export function issueHref(issue: Pick<DashboardIssue, "key" | "tournament_id">): string {
   const route = ISSUE_ROUTES[issue.key];
   return route.startsWith("/") ? route : `/admin/tournaments/${issue.tournament_id}/${route}`;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+type DayFormatter = Pick<Formatter, "dateTime">;
+
+/** A calendar day in the formatter's zone (the viewer's), comparable as a string. */
+function dayKey(format: DayFormatter, date: Date): string {
+  return format.dateTime(date, { year: "numeric", month: "2-digit", day: "2-digit" });
+}
+
+export interface DayGroup<T> {
+  key: string;
+  /** The first item's moment; every moment of the day names the same day. */
+  date: Date;
+  items: T[];
+}
+
+/** Runs of consecutive items on one calendar day of the viewer's zone, in the order given. */
+export function groupByDay<T>(items: readonly T[], at: (item: T) => string, format: DayFormatter): DayGroup<T>[] {
+  const groups: DayGroup<T>[] = [];
+  for (const item of items) {
+    const date = new Date(at(item));
+    const key = dayKey(format, date);
+    const last = groups.at(-1);
+    if (last?.key === key) last.items.push(item);
+    else groups.push({ key, date, items: [item] });
+  }
+  return groups;
+}
+
+/** "Today", "Tomorrow" or "Yesterday" around `now`, else the weekday and date; all in the viewer's zone. */
+export function dayLabel(
+  format: DayFormatter,
+  date: Date,
+  now: Date,
+  words: Readonly<{ today: string; tomorrow: string; yesterday: string }>
+): string {
+  const key = dayKey(format, date);
+  if (key === dayKey(format, now)) return words.today;
+  if (key === dayKey(format, new Date(now.getTime() + DAY_MS))) return words.tomorrow;
+  if (key === dayKey(format, new Date(now.getTime() - DAY_MS))) return words.yesterday;
+  return format.dateTime(date, { weekday: "short", day: "numeric", month: "short" });
 }

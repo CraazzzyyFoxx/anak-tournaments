@@ -6,13 +6,22 @@ import { AlertTriangle } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
-/** One dashboard section: a titled card that loads, fails and hides on its own. */
+/** A dashboard section's title: the display face, the same size framed or open. */
+export const BLOCK_TITLE = "font-display text-heading font-semibold";
+
+/**
+ * One dashboard section that loads, fails and hides on its own. Framed: a
+ * titled card around rows. Open (`framed={false}`): the heading over content
+ * that frames itself (tiles), so a card never holds cards (DESIGN §5).
+ */
 export function Block({
   title,
   description,
   action,
+  framed = true,
   className,
   children
 }: Readonly<{
@@ -20,22 +29,33 @@ export function Block({
   description?: ReactNode;
   /** One control in the header (a toggle, a link). */
   action?: ReactNode;
+  framed?: boolean;
   className?: string;
-  children: ReactNode;
+  children?: ReactNode;
 }>) {
+  if (!framed) {
+    return (
+      <section aria-label={title} className={cn("flex flex-col gap-3", className)}>
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h2 className={BLOCK_TITLE}>{title}</h2>
+          {description ? <p className="text-body text-muted-foreground">{description}</p> : null}
+          {action ? <div className="ml-auto">{action}</div> : null}
+        </div>
+        {children}
+      </section>
+    );
+  }
   return (
     <Card asChild className={className}>
       <section aria-label={title}>
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
-            <CardTitle asChild>
-              <h2>{title}</h2>
-            </CardTitle>
+            <h2 className={BLOCK_TITLE}>{title}</h2>
             {action}
           </div>
           {description ? <CardDescription>{description}</CardDescription> : null}
         </CardHeader>
-        <CardContent>{children}</CardContent>
+        {children ? <CardContent>{children}</CardContent> : null}
       </section>
     </Card>
   );

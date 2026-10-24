@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { GameIcon } from "@/components/workspace/GameIcon";
 import { cn } from "@/lib/utils";
 import type { DashboardBacklog } from "@/types/admin-dashboard.types";
-import { Block, BlockError } from "./Block";
+import { BLOCK_TITLE, Block, BlockError } from "./Block";
 
 type Fact = { key: string; label: string; href: string };
 
@@ -82,15 +82,15 @@ export function Backlog({
       <Card asChild className={className}>
         <section aria-label={title}>
           <h2>
-            <CollapsibleTrigger className="flex w-full items-center gap-3 rounded-xl p-6 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
-              <span className="font-semibold leading-none tracking-tight">{title}</span>
+            <CollapsibleTrigger className="flex w-full items-baseline gap-3 rounded-xl p-6 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+              <span className={BLOCK_TITLE}>{title}</span>
               {backlog.tournaments_total > 0 ? (
                 <span className="text-sm text-muted-foreground">
                   {t("backlogSummary", { count: backlog.tournaments_total })}
                 </span>
               ) : null}
               <ChevronDown
-                className={cn("ml-auto size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
+                className={cn("ml-auto size-4 shrink-0 self-center text-muted-foreground transition-transform", open && "rotate-180")}
                 aria-hidden
               />
             </CollapsibleTrigger>

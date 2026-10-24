@@ -15,6 +15,11 @@ export interface Phase {
 
 export interface PhaseStripProps {
   phases: Phase[];
+  /**
+   * `compact`: unlabelled segments, for a card whose heading already names the
+   * current phase. Each name stays in `title` and for screen readers.
+   */
+  variant?: "labelled" | "compact";
 }
 
 /**
@@ -25,8 +30,33 @@ export interface PhaseStripProps {
  * with consequences and lives in the header or the phase's own screen, so a
  * misclick on a progress bar cannot start a draft.
  */
-export function PhaseStrip({ phases }: Readonly<PhaseStripProps>) {
+export function PhaseStrip({ phases, variant = "labelled" }: Readonly<PhaseStripProps>) {
   const t = useTranslations("kit.actions");
+  if (variant === "compact") {
+    return (
+      <ol aria-label={t("phases")} className="flex w-full max-w-60 items-center gap-1">
+        {phases.map((phase) => (
+          <li
+            key={phase.key}
+            title={phase.label}
+            aria-current={phase.state === "current" ? "step" : undefined}
+            className="min-w-0 flex-1"
+          >
+            <span
+              aria-hidden
+              className={cn(
+                "block h-1.5 rounded-full",
+                phase.state === "done" && "bg-primary/45",
+                phase.state === "current" && "bg-primary",
+                phase.state === "todo" && "bg-border"
+              )}
+            />
+            <span className="sr-only">{phase.label}</span>
+          </li>
+        ))}
+      </ol>
+    );
+  }
   return (
     <ol aria-label={t("phases")} className="flex flex-wrap items-center gap-x-2 gap-y-1">
       {phases.map((phase, index) => (

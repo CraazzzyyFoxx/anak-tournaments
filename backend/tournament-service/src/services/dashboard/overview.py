@@ -235,6 +235,8 @@ class AdminDashboardService:
                 status=tournament.status.value,
                 phase=phase,
                 is_hidden=tournament.is_hidden,
+                logo_url=tournament.logo_url,
+                cover_image_url=tournament.cover_image_url,
                 team_formation=tournament.team_formation,
                 start_date=tournament.start_date,
                 end_date=tournament.end_date,
