@@ -326,9 +326,11 @@ export function PageHero({
             </div>
           ) : null}
           {stamp ? (
+            /* `empty:hidden` for the same reason as the actions row: a stamp is
+               often a fragment of parts that each decide whether they render. */
             <div
               className={cn(
-                "flex flex-wrap items-end gap-x-8 gap-y-3",
+                "flex flex-wrap items-end gap-x-8 gap-y-3 empty:hidden",
                 meta || lede || actions ? "mt-7" : "mt-3"
               )}
             >

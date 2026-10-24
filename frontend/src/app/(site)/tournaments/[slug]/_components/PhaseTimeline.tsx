@@ -69,9 +69,8 @@ export function PhaseTimeline({
   const { segments } = buildTournamentSchedule({ tournament, now });
   if (segments.length === 0) return null;
 
-  const zoneLabel = format.dateTime(new Date(now), { timeZoneName: "short" }).split(" ").pop();
-
-  const stamp = (iso: string) => {
+  const stamp = (iso: string | null) => {
+    if (iso === null) return null;
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return null;
     return format.dateTime(date, STAMP);
@@ -80,6 +79,7 @@ export function PhaseTimeline({
   // week of registration) must say so. `formatRange` drops the repeated day
   // itself when both ends share it.
   const span = (segment: PhaseSegment) => {
+    if (segment.startsAt === null) return null;
     const start = new Date(segment.startsAt);
     if (Number.isNaN(start.getTime())) return null;
     const end = segment.endsAt === null ? null : new Date(segment.endsAt);
@@ -87,6 +87,8 @@ export function PhaseTimeline({
       ? format.dateTime(start, STAMP)
       : format.dateTimeRange(start, end, STAMP);
   };
+  // A current phase nobody scheduled has no time to print: "now" is its time.
+  const nowText = <span className="text-[color:var(--aqt-teal)]">{t("common.now")}</span>;
 
   const countdown = (segment: PhaseSegment) => {
     if (segment.countdownMs === null || segment.countdownTo === null) return null;
@@ -114,7 +116,9 @@ export function PhaseTimeline({
         const now = isNow(segment);
         const isLast = index === segments.length - 1;
         const startText = stamp(segment.startsAt);
-        const countdownText = countdown(segment);
+        // The horizontal band's phone fallback sits under the hero, which
+        // already counts down to this boundary; the side-column list does not.
+        const countdownText = orientation === "vertical" ? countdown(segment) : null;
         return (
           <li
             key={segment.status}
@@ -151,7 +155,12 @@ export function PhaseTimeline({
                 {label(segment)}
               </span>
               <span className="aqt-tnum text-label text-[color:var(--aqt-fg-faint)]">
-                {countdownText ?? (startText ? <time dateTime={segment.startsAt}>{startText}</time> : null)}
+                {countdownText ??
+                  (segment.startsAt === null ? (
+                    nowText
+                  ) : startText ? (
+                    <time dateTime={segment.startsAt}>{startText}</time>
+                  ) : null)}
               </span>
             </div>
           </li>
@@ -170,12 +179,6 @@ export function PhaseTimeline({
 
   return (
     <div id={id} className={cn("scroll-mt-28", className)}>
-      <div className="mb-2 flex items-baseline justify-between gap-3">
-        <Eyebrow as="h2" className="aqt-tnum">
-          {t("tournamentDetail.publicPages.schedule.title")}
-        </Eyebrow>
-        <Eyebrow>{zoneLabel}</Eyebrow>
-      </div>
       <div className="sm:hidden">{verticalList}</div>
       {/* `overflow-x-auto` also clips vertically, so the 7px the "now" dot
           rises above the step bar is padding inside the scroll box. */}
@@ -186,7 +189,6 @@ export function PhaseTimeline({
         {segments.map((segment) => {
           const now = isNow(segment);
           const spanText = span(segment);
-          const countdownText = countdown(segment);
           // How far through its own window the phase is — set by the model
           // only for a current phase whose window has an end. The step bar
           // then fills to it and the marker rides it, so "closes in 46
@@ -236,16 +238,30 @@ export function PhaseTimeline({
               <div className={cn("text-ui font-semibold", now && "text-[color:var(--aqt-teal)]")}>
                 {label(segment)}
               </div>
+              {/* No countdown here: the hero right above already says "in 12
+                  hours" for this very boundary; the step keeps its window. */}
               <div className="aqt-tnum mt-0.5 text-label text-[color:var(--aqt-fg-muted)]">
-                {spanText}
+                {segment.startsAt === null ? nowText : spanText}
               </div>
-              {countdownText ? (
-                <div className="aqt-tnum mt-1 text-caption text-[color:var(--aqt-teal)]">{countdownText}</div>
-              ) : null}
             </li>
           );
         })}
       </ol>
     </div>
+  );
+}
+
+/**
+ * The viewer's zone, named beside the timeline's heading so nobody has to guess
+ * whose clock the times are on. Null until hydration, like the timeline itself.
+ */
+export function ViewerTimeZone() {
+  const format = useFormatter();
+  const now = useMinuteClock();
+  if (now === null) return null;
+  return (
+    <span className="aqt-tnum text-caption text-[color:var(--aqt-fg-faint)]">
+      {format.dateTime(new Date(now), { timeZoneName: "short" }).split(" ").pop()}
+    </span>
   );
 }

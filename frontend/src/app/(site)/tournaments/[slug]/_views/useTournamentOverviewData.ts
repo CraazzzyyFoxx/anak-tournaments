@@ -97,8 +97,9 @@ export function useTournamentOverviewData(tournamentId: number, slug: string) {
     enabled: tournament !== undefined && variant === "completed"
   });
 
-  // Every FFA stage, not only the current one: the live "played" tile counts
-  // lobbies across the tournament, and the encounter list never answers one.
+  // Every FFA stage's lobbies (the stage reads are per stage): the current
+  // stage's tables are cut from them below, and the encounter list never
+  // answers a lobby.
   const ffa = useFfaStageLobbies(tournament, variant !== null && variant !== "registration");
 
   // Same key and read as the statistics section (`tournamentCharacterPlaytimeQueryOptions`).
@@ -170,9 +171,6 @@ export function useTournamentOverviewData(tournamentId: number, slug: string) {
   const hasGroupTable = showsGroupTable && stage !== null && stageStandings.length > 0;
   const hasFfaTable = ffaLobbies.some((lobby) => lobby.rows.length > 0);
 
-  const officialStream = (streamsQuery.data?.official ?? [])[0];
-  const participantsOnAir = streamsQuery.data?.participants.length ?? 0;
-
   const topHeroes = heroesQuery.data
     ? [...heroesQuery.data.results]
         .sort((left, right) => right.playtime - left.playtime)
@@ -215,7 +213,6 @@ export function useTournamentOverviewData(tournamentId: number, slug: string) {
     stageEncounters,
     stageStandings,
     ffaLobbies,
-    allFfaLobbies,
     roundGroups,
     roundShapeByStage,
     roundShape,
@@ -223,8 +220,6 @@ export function useTournamentOverviewData(tournamentId: number, slug: string) {
     hasMiniBracket,
     hasGroupTable,
     hasFfaTable,
-    officialStream,
-    participantsOnAir,
     primary,
     presentation
   };

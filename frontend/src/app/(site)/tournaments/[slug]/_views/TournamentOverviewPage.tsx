@@ -83,7 +83,11 @@ export default function TournamentOverviewPage({
   const overviewHref = `/tournaments/${slug}`;
 
   // ---- shared blocks -------------------------------------------------------
-  const phasesCard = <OverviewPhasesCard tournament={tournament} />;
+  // No schedule, no timeline: and no heading over an empty block either.
+  const phasesCard =
+    (tournament.phase_schedule ?? []).length > 0 ? (
+      <OverviewPhasesCard tournament={tournament} />
+    ) : null;
   const formatCard = <OverviewFormatCard tournament={tournament} />;
   /* The description belongs to the WIDE column, not to the aside the format
      card sits in: it is prose, and prose in a 22rem column wraps every three
@@ -93,8 +97,7 @@ export default function TournamentOverviewPage({
   ) : null;
   /* `null` when nothing renders: `visibleTournamentLinks` owns that judgement,
      so a tournament whose only link is the official stream does not get a
-     heading over an empty row — and the registration branch reads this very
-     `null` to decide whether it has an aside column at all. */
+     heading over an empty row. */
   const linksCard =
     visibleTournamentLinks(tournament.links).length > 0 ? (
       <OverviewLinksCard tournament={tournament} />
@@ -152,11 +155,6 @@ export default function TournamentOverviewPage({
       />
     ) : variant === "live" ? (
       <OverviewLiveView
-        encounters={data.encounters}
-        lobbies={data.allFfaLobbies}
-        overviewHref={overviewHref}
-        officialStream={data.officialStream}
-        participantsOnAir={data.participantsOnAir}
         nowBlock={nowBlock}
         miniBracket={miniBracket}
         groupTable={groupTable}

@@ -14,6 +14,7 @@ import {
 import { getCurrentPathForAuthRedirect } from "@/lib/auth/redirect";
 import { cn } from "@/lib/utils";
 import { isRegistrationOpen } from "@/lib/tournament/status";
+import { reachedAtLeast } from "@/lib/tournament/lifecycle";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useAuthModalStore } from "@/stores/auth-modal.store";
 import registrationService from "@/services/registration.service";
@@ -63,26 +64,17 @@ export default function TournamentRegisterButton({ tournament }: Readonly<Props>
 
   if (formQuery.isLoading) return null;
   if (!form) return null;
-  if (isAuthenticated && myRegQuery.isLoading) return null;
-
-  // The form must exist (checked above) but no longer decides openness — the
-  // tournament's REGISTRATION schedule window does.
-  if (!isRegistrationOpen(tournament)) {
-    return (
-      // A STATE, not a control: the subtle button's box and palette, without the hover a click would need.
-      <div className="inline-flex h-9 items-center gap-2 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-4 text-sm font-medium text-[color:var(--aqt-fg-dim)]">
-        <Clock className="size-4" aria-hidden />
-        {t("registration.button.closed")}
-      </div>
-    );
-  }
-
   // Who is asking is unknown until the profile resolves, and the server render
   // and hydration always see "idle" — with the form seeded server-side, a
-  // signed-in viewer would otherwise be offered "Login to register" first.
+  // signed-in viewer would otherwise be offered "Login to register" first, and
+  // a registered one "Registration closed" before their own status.
   if (authStatus === "idle" || authStatus === "loading") return null;
+  if (isAuthenticated && myRegQuery.isLoading) return null;
 
-  if (myReg) {
+  // The viewer's own registration, for as long as it is news: through check-in
+  // and the forming of the teams, open window or not. Once the matches are on,
+  // the slot belongs to what the tournament is doing.
+  if (myReg && !reachedAtLeast(tournament.status, "live")) {
     const statusMap: Record<string, { icon: typeof Clock; label: string; className: string }> = {
       pending: {
         icon: Clock,
@@ -122,6 +114,22 @@ export default function TournamentRegisterButton({ tournament }: Readonly<Props>
         <StatusIcon className="size-4" aria-hidden />
         {config.label}
       </HoverPrefetchLink>
+    );
+  }
+
+  // The form must exist (checked above) but no longer decides openness — the
+  // tournament's REGISTRATION schedule window does.
+  if (!isRegistrationOpen(tournament)) {
+    // Someone may still come to sign up while the tournament registers or
+    // checks in. From the forming of the teams on nobody asks, and a dead box
+    // would be the loudest thing in the hero.
+    if (reachedAtLeast(tournament.status, "draft")) return null;
+    return (
+      // A STATE, not a control: the subtle button's box and palette, without the hover a click would need.
+      <div className="inline-flex h-9 items-center gap-2 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-4 text-sm font-medium text-[color:var(--aqt-fg-dim)]">
+        <Clock className="size-4" aria-hidden />
+        {t("registration.button.closed")}
+      </div>
     );
   }
 

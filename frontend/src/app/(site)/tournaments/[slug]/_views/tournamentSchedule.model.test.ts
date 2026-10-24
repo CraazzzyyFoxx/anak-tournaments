@@ -42,19 +42,42 @@ describe("buildTournamentSchedule", () => {
     expect(segments.map((segment) => segment.status)).toEqual(["registration", "live"]);
   });
 
-  it("omits draft unless the tournament forms teams by draft", () => {
+  it("puts the phase the tournament is in on the timeline even when nobody scheduled it", () => {
+    // A balancer tournament forming its teams: registration and check-in are
+    // behind it, the start ahead, and `draft` has no row of its own.
+    const { segments } = buildTournamentSchedule({
+      tournament: tournament({ status: "draft" }),
+      now: at(19, 50)
+    });
+
+    expect(segments.map((segment) => [segment.status, segment.state])).toEqual([
+      ["registration", "done"],
+      ["check_in", "done"],
+      ["draft", "current"],
+      ["live", "upcoming"]
+    ]);
+    // No time of its own to print or count down from: the countdown belongs to
+    // the start, which is the next thing that happens.
+    const current = segments[2];
+    expect(current.startsAt).toBeNull();
+    expect(current.countdownMs).toBeNull();
+    expect(segments[3].countdownTo).toBe("start");
+
+    // A lone "now" is not a timeline: with nothing scheduled there is none.
+    expect(
+      buildTournamentSchedule({
+        tournament: tournament({ status: "draft", phase_schedule: [] }),
+        now: at(19, 50)
+      }).segments
+    ).toEqual([]);
+  });
+
+  it("shows a scheduled team-formation window whatever the formation", () => {
     const phase_schedule = [row("registration", T(10)), row("draft", T(19)), row("live", T(20))];
 
     expect(
       buildTournamentSchedule({
-        tournament: tournament({ phase_schedule }),
-        now: at(9)
-      }).segments.map((segment) => segment.status)
-    ).toEqual(["registration", "live"]);
-
-    expect(
-      buildTournamentSchedule({
-        tournament: tournament({ phase_schedule, team_formation: "draft" }),
+        tournament: tournament({ phase_schedule, team_formation: "balancer" }),
         now: at(9)
       }).segments.map((segment) => segment.status)
     ).toEqual(["registration", "draft", "live"]);

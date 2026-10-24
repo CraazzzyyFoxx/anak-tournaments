@@ -500,9 +500,16 @@ describe("before the tournament starts (§3A)", () => {
     expect(phases?.textContent).toContain(en.common.statusBadge.check_in);
   });
 
-  it("breaks registration down by role and shows the format in full", async () => {
+  it("breaks the sign-ups down by role while the field forms, and shows the format in full", async () => {
+    // Registration still open and no teams yet: the sign-ups are the story.
+    tournament = makeTournament("registration", {
+      teams_count: 0,
+      phase_schedule: [
+        { ...PHASE_SCHEDULE[0], ends_at: new Date("2099-01-01T00:00:00Z").toISOString() },
+        ...PHASE_SCHEDULE.slice(1)
+      ]
+    });
     await mount();
-
     const registration = Array.from(container.querySelectorAll("section")).find((node) =>
       node.querySelector("h2")?.textContent?.includes(COPY.registration.title)
     );
@@ -534,15 +541,47 @@ describe("before the tournament starts (§3A)", () => {
     expect(container.textContent).not.toContain(`× ${en.rosterShape.slotCodes.tank}`);
   });
 
-  it("does not tease the map pool — that lives on the Maps section", async () => {
+  it("shows the strongest teams instead of the sign-ups once the field is set", async () => {
+    // Check-in with four teams formed: the default fixture.
     await mount();
 
-    expect(container.querySelector("#map-pool")).toBeNull();
-    expect(
-      Array.from(container.querySelectorAll("a")).some(
-        (node) => node.getAttribute("href") === `/tournaments/${SLUG}/maps`
-      )
-    ).toBe(false);
+    expect(headings()).not.toContain(COPY.registration.title);
+    const teams = Array.from(container.querySelectorAll("section")).find(
+      (node) => node.querySelector("h2")?.textContent === COPY.teams.title
+    );
+    expect(teams).toBeDefined();
+    for (const name of ["Alpha", "Beta", "Gamma", "Delta"]) {
+      expect(teams?.textContent).toContain(name);
+    }
+    const all = Array.from(teams?.querySelectorAll("a") ?? []).find(
+      (node) => node.getAttribute("href") === `/tournaments/${SLUG}/teams`
+    );
+    expect(all?.textContent).toContain("All 4 teams");
+  });
+
+  it("previews the maps before the start and leads on to the Maps section", async () => {
+    // A tournament-wide pool (no rounds to lay out) shows as one row of maps.
+    await mount();
+
+    const maps = Array.from(container.querySelectorAll("section")).find(
+      (node) => node.querySelector("h2")?.textContent === COPY.maps.pool
+    );
+    expect(maps).toBeDefined();
+    for (const name of ["Ilios", "Busan", "King's Row"]) {
+      expect(maps?.textContent).toContain(name);
+    }
+    const all = Array.from(maps?.querySelectorAll("a") ?? []).find(
+      (node) => node.getAttribute("href") === `/tournaments/${SLUG}/maps`
+    );
+    expect(all?.textContent).toContain("All 3 maps");
+  });
+
+  it("has no maps block for a tournament without a map pool", async () => {
+    listPublicConfigs.mockResolvedValue({ configs: [] });
+    await mount();
+
+    expect(headings()).not.toContain(COPY.maps.pool);
+    expect(headings()).not.toContain(COPY.maps.firstRound);
   });
 
   it("counts teams instead of roles when the tournament registers teams", async () => {
@@ -754,7 +793,6 @@ describe("while it is being played (§3B)", () => {
     expect(link?.getAttribute("href")).toBe(`/tournaments/${SLUG}/bracket?stage=7`);
     // No duels is not "nothing published": the lobbies are the matches.
     expect(text).not.toContain(COPY.empty.title);
-    expect(text).toContain("0/1");
   });
 
   it("keeps the two groups of one stage apart instead of interleaving their ranks", async () => {
@@ -842,36 +880,6 @@ describe("while it is being played (§3B)", () => {
       )
     ).toEqual(["4.0", "2.5", "4.0", "2.0"]);
   });
-
-  it("renders the official broadcast as a still that opens the stream page", async () => {
-    getTournamentStreams.mockResolvedValue({
-      official: [
-        {
-          platform: "twitch",
-          channel: "owtesports",
-          url: "https://twitch.tv/owtesports",
-          live: true,
-          title: "Grand final",
-          game_name: "Overwatch 2",
-          viewer_count: 1200,
-          thumbnail_url: "https://example.test/thumb.jpg",
-          started_at: null,
-          player: null
-        }
-      ],
-      participants: []
-    });
-    await mount();
-
-    expect(headings()).toContain(COPY.stream.title);
-    const still = Array.from(container.querySelectorAll("a")).find(
-      (node) =>
-        node.getAttribute("href") === `/tournaments/${SLUG}/stream` && node.querySelector("img")
-    );
-    expect(still?.querySelector("img")?.getAttribute("src")).toBe("https://example.test/thumb.jpg");
-    expect(still?.textContent).toContain("owtesports");
-    expect(still?.textContent).toContain(en.stream.status.live);
-  });
 });
 
 describe("once it is over (§3C)", () => {
@@ -925,7 +933,6 @@ describe("once it is over (§3C)", () => {
     );
     expect(numbers?.textContent).toContain(COPY.numbers.matches);
     expect(numbers?.textContent).toContain(COPY.numbers.days);
-    expect(numbers?.textContent).not.toContain(COPY.numbers.teams);
     expect(numbers?.textContent).toContain("4");
     expect(numbers?.textContent).toContain("2");
   });
@@ -1020,11 +1027,11 @@ describe("the reference tail", () => {
     });
   }
 
-  it("names the stages once, with each stage's type — not the card's own heading twice", async () => {
+  it("names each stage once with its type, in play order, numbered by phase", async () => {
     tournament = makeTournament("live", {
       stages: [
-        makeStage({ id: 6, name: "Groups", stage_type: "round_robin", order: 0 }),
-        makeStage({ id: 7, name: "Playoffs", stage_type: "double_elimination", order: 1 })
+        makeStage({ id: 7, name: "Playoffs", stage_type: "double_elimination", order: 1 }),
+        makeStage({ id: 6, name: "Groups", stage_type: "round_robin", order: 0 })
       ]
     });
     await mount();
@@ -1032,26 +1039,51 @@ describe("the reference tail", () => {
     const card = Array.from(container.querySelectorAll("section")).find((node) =>
       node.querySelector("h2")?.textContent?.includes(COPY.format.title)
     );
-    const text = card?.textContent ?? "";
+    const steps = Array.from(card?.querySelectorAll("ol > li") ?? []).map(
+      (node) => node.textContent ?? ""
+    );
+    expect(steps).toHaveLength(2);
+    expect(steps[0]).toContain(`Groups · ${en.common.roundRobin}`);
+    expect(steps[1]).toContain(`Playoffs · ${en.bracket.doubleElimination.toLowerCase()}`);
+    // Each name once: the stage list is not repeated under a second label.
+    expect((card?.textContent ?? "").split("Playoffs").length - 1).toBe(1);
+  });
 
-    // The first row is "Stages", not a second "Format" under the heading.
-    const terms = Array.from(card?.querySelectorAll("dt") ?? []).map((node) =>
-      node.textContent?.trim()
-    );
-    expect(terms[0]).toBe(en.common.stages);
-    expect(terms).not.toContain(COPY.format.title);
-    expect(text).toContain(`Groups (${en.common.roundRobin})`);
-    expect(text).toContain(`Playoffs (${en.bracket.doubleElimination.toLowerCase()})`);
-    // The derived label used to restate them: "Groups → Playoff — Groups → Playoffs".
-    expect(text).not.toContain("Groups → Playoff —");
-    expect(text).toContain(
-      `Groups (${en.common.roundRobin}) → Playoffs (${en.bracket.doubleElimination.toLowerCase()})`
-    );
+  it("states what each stage's regulation says a reader needs to follow it", async () => {
+    tournament = makeTournament("live", {
+      stages: [
+        makeStage({
+          id: 6,
+          name: "Groups",
+          stage_type: "swiss",
+          order: 0,
+          max_rounds: 5,
+          advance_count: 8,
+          swiss_qualify_wins: 3,
+          swiss_eliminate_losses: 3
+        }),
+        makeStage({ id: 7, name: "Playoffs", stage_type: "double_elimination", order: 1, advance_count: 2 })
+      ]
+    });
+    await mount();
+
+    const steps = Array.from(
+      Array.from(container.querySelectorAll("section"))
+        .find((node) => node.querySelector("h2")?.textContent?.includes(COPY.format.title))
+        ?.querySelectorAll("ol > li") ?? []
+    ).map((node) => node.textContent ?? "");
+    expect(steps[0]).toContain("5 rounds");
+    expect(steps[0]).toContain("through at 3 wins");
+    expect(steps[0]).toContain("out at 3 losses");
+    expect(steps[0]).toContain("top 8 advance");
+    // The last stage advances nobody, whatever its `advance_count` says.
+    expect(steps[1]).not.toContain("advance");
+    expect(steps[1]).toContain(COPY.format.grandFinalNoReset);
   });
 
   it("drops the type suffix when the organizer named the stage after it", async () => {
-    // "Swiss (swiss) → Double Elimination (double elimination)" is the same
-    // word twice; the suffix exists for names that do NOT state the format.
+    // "Swiss · swiss" is the same word twice; the qualifier exists for names
+    // that do NOT state the format.
     tournament = makeTournament("live", {
       stages: [
         makeStage({ id: 6, name: "Swiss", stage_type: "swiss", order: 0 }),
@@ -1066,34 +1098,11 @@ describe("the reference tail", () => {
     const text = card?.textContent ?? "";
 
     expect(text).toContain("Swiss");
-    expect(text).not.toContain(`(${en.common.swiss})`);
-    expect(text).not.toContain(`(${en.bracket.doubleElimination.toLowerCase()})`);
+    expect(text).not.toContain(`· ${en.common.swiss}`);
+    expect(text).not.toContain(`· ${en.bracket.doubleElimination.toLowerCase()}`);
   });
 
-  it("joins stages that share a phase order as parallel brackets", async () => {
-    tournament = makeTournament("live", {
-      stages: [
-        makeStage({ id: 6, name: "PlayOff Low division", stage_type: "double_elimination", order: 1 }),
-        makeStage({
-          id: 7,
-          name: "PlayOff High division",
-          stage_type: "double_elimination",
-          order: 1
-        })
-      ]
-    });
-    await mount();
-
-    const card = Array.from(container.querySelectorAll("section")).find((node) =>
-      node.querySelector("h2")?.textContent?.includes(COPY.format.title)
-    );
-    const text = card?.textContent ?? "";
-    const type = en.bracket.doubleElimination.toLowerCase();
-    expect(text).toContain(`PlayOff Low division (${type}) / PlayOff High division (${type})`);
-    expect(text).not.toContain("→");
-  });
-
-  it("renders parallel stages per phase, then an arrow to the next wave", async () => {
+  it("keeps stages that share a phase order in one step, and the next phase in the next", async () => {
     tournament = makeTournament("live", {
       stages: [
         makeStage({ id: 1, name: "Groups Low", stage_type: "round_robin", order: 1 }),
@@ -1107,11 +1116,14 @@ describe("the reference tail", () => {
     const card = Array.from(container.querySelectorAll("section")).find((node) =>
       node.querySelector("h2")?.textContent?.includes(COPY.format.title)
     );
-    const rr = en.common.roundRobin;
-    const de = en.bracket.doubleElimination.toLowerCase();
-    expect(card?.textContent ?? "").toContain(
-      `Groups Low (${rr}) / Groups High (${rr}) → Playoff Low (${de}) / Playoff High (${de})`
+    const steps = Array.from(card?.querySelectorAll("ol > li") ?? []).map(
+      (node) => node.textContent ?? ""
     );
+    expect(steps).toHaveLength(2);
+    expect(steps[0]).toContain("Groups Low");
+    expect(steps[0]).toContain("Groups High");
+    expect(steps[1]).toContain("Playoff Low");
+    expect(steps[1]).toContain("Playoff High");
   });
 
   it("gives the links their own aside before the start, with no map pool to share it", async () => {

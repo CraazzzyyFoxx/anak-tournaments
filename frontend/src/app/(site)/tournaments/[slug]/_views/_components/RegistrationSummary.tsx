@@ -60,7 +60,9 @@ export function RegistrationSummary({
 
   return (
     <>
-      <div className="grid gap-2 sm:grid-cols-4">
+      {/* Two abreast on a phone: four headline figures stacked one per row
+          cost ~300px of a 390px screen for four numbers. */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
         <ProfileStat
           label={t("tournamentDetail.overview.registration.total")}
           value={<CapacityValue value={total} max={maxParticipants} />}
@@ -82,7 +84,7 @@ export function RegistrationSummary({
         })}
       </div>
       {shares.length > 1 && shareTotal > 0 ? (
-        <div aria-hidden className="mt-3 flex h-1.5 gap-px overflow-hidden rounded-sm">
+        <div aria-hidden className="mt-4 flex h-1.5 gap-px overflow-hidden rounded-sm">
           {shares.map((code) => (
             <span
               key={code}

@@ -284,7 +284,7 @@
     "league": "Лига",
     "statusBadge": {
       "announcement": "Анонс",
-      "draft": "Драфт",
+      "draft": "Формирование команд",
       "registration": "Регистрация",
       "check_in": "Чек-ин",
       "live": "Идёт",
@@ -2858,33 +2858,54 @@
       "players": "{players, plural, one {# игрок} few {# игрока} many {# игроков} other {# игроков}}",
       "teamsAndPlayers": "{teams, plural, one {# команда} few {# команды} many {# команд} other {# команд}} · {players, plural, one {# игрок} few {# игрока} many {# игроков} other {# игроков}}"
     },
-    "nextPhase": {
-      "starts": "→ {phase}",
-      "closes": "{phase} закрывается"
+    "phaseFact": {
+      "starts": "{phase} начнётся",
+      "closes": "{phase} закроется",
+      "kickoff": "Старт",
+      "ends": "Завершение",
+      "stage": "Стадия",
+      "played": "сыграно {played} из {total, plural, one {# матча} few {# матчей} many {# матчей} other {# матча}}"
     },
+    "watchStream": "Смотреть трансляцию",
     "overview": {
-      "links": "Ссылки",
       "loading": "Загружаем обзор турнира",
       "empty": {
         "title": "Пока нечего показать",
         "description": "Как только сетка будет разыграна, матчи появятся здесь."
       },
       "registration": {
-        "title": "Регистрация",
-        "all": "все участники →",
+        "title": "Заявки",
+        "all": "Все участники",
         "total": "Зарегистрировано",
         "teams": "Команд",
         "latest": "Последние"
       },
+      "teams": {
+        "title": "Команды",
+        "all": "Все {count, plural, one {# команда} few {# команды} many {# команд} other {# команды}}"
+      },
+      "maps": {
+        "firstRound": "Карты первого раунда",
+        "pool": "Пул карт",
+        "all": "Все {count, plural, one {# карта} few {# карты} many {# карт} other {# карты}}"
+      },
       "format": {
-        "title": "Формат"
+        "title": "Как играем",
+        "rounds": "{count, plural, one {# раунд} few {# раунда} many {# раундов} other {# раунда}}",
+        "final": "финал Bo{n}",
+        "advance": "дальше {count, plural, one {проходит #} few {проходят #} many {проходят #} other {проходят #}}",
+        "qualify": "выход после {count, plural, one {# победы} few {# побед} many {# побед} other {# победы}}",
+        "eliminate": "вылет после {count, plural, one {# поражения} few {# поражений} many {# поражений} other {# поражения}}",
+        "grandFinalReset": "гранд-финал с перезапуском сетки",
+        "grandFinalNoReset": "гранд-финал без перезапуска сетки",
+        "team": "Состав команды"
       },
       "about": {
         "title": "Описание"
       },
       "live": {
         "title": "Сейчас играют",
-        "all": "все матчи →"
+        "all": "Все матчи"
       },
       "upcoming": {
         "title": "Ближайшие"
@@ -2894,35 +2915,27 @@
       },
       "bracketMini": {
         "title": "Сетка · {stage}",
-        "open": "открыть →"
+        "open": "Открыть сетку"
       },
       "groupTable": {
         "title": "Таблица · {stage}",
-        "open": "таблица →",
+        "open": "Таблица",
         "pos": "#",
         "posLabel": "Место",
         "team": "Команда",
         "points": "Очки"
       },
       "phases": {
-        "title": "Фазы"
-      },
-      "stream": {
-        "title": "Трансляция",
-        "open": "официальная трансляция →",
-        "viewers": "{count, plural, one {# смотрит} few {# смотрят} many {# смотрят} other {# смотрят}}",
-        "participants": "{count, plural, one {+# участник в эфире →} few {+# участника в эфире →} many {+# участников в эфире →} other {+# участников в эфире →}}"
+        "title": "Расписание"
       },
       "heroes": {
         "title": "Самые сыгранные герои",
-        "all": "стат →"
+        "all": "Вся статистика"
       },
       "numbers": {
         "title": "Цифры",
-        "teams": "Команд",
         "matches": "Матчей",
-        "days": "Дней",
-        "played": "Сыграно"
+        "days": "Дней"
       },
       "result": {
         "title": "Итог",

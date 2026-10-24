@@ -3,6 +3,7 @@ import { useTranslations } from "next-intl";
 
 import { TeamLogo } from "@/components/TeamName";
 import { eyebrowClass } from "@/components/ui/eyebrow";
+import { PlaceBadge } from "@/components/ui/place-badge";
 import { cn } from "@/lib/utils";
 import type { TeamNameInput } from "@/components/TeamName";
 
@@ -22,10 +23,11 @@ export type PodiumProps = {
 };
 
 /**
- * The finished tournament's answer to "who won", first on the overview. Three
- * columns over one hairline, the champion centre and taller; teal — the page's
- * one accent, meaning "the winner" here — marks only the champion. No medal
- * hues, no boxes: the place label and the size difference carry the order.
+ * The finished tournament's answer to "who won", leading the overview at full
+ * width. Three columns stepped like a podium: the champion in the centre,
+ * larger and a step higher; second and third a step down on either side. Each
+ * place carries its medal (DESIGN §2: medals mark places 1–3 of a finished
+ * competition) beside the word, so the order reads by colour, size and text.
  */
 export function Podium({ first, second, third, className }: Readonly<PodiumProps>) {
   const t = useTranslations();
@@ -33,14 +35,17 @@ export function Podium({ first, second, third, className }: Readonly<PodiumProps
     const champion = place === 1;
     const body = (
       <>
-        <span className={cn(eyebrowClass(), champion && "text-[color:var(--aqt-teal)]")}>
-          {t(`tournamentDetail.podium.place${place}`)}
+        <span className="inline-flex items-center gap-2">
+          <PlaceBadge place={place} size={champion ? "md" : "sm"} />
+          <span className={cn(eyebrowClass(), champion && "text-[color:var(--aqt-fg)]")}>
+            {t(`tournamentDetail.podium.place${place}`)}
+          </span>
         </span>
-        <TeamLogo team={team} size={champion ? "xl" : "md"} className="mx-auto mt-3" />
+        <TeamLogo team={team} size={champion ? "xl" : "lg"} className="mx-auto mt-4" />
         <span
           className={cn(
-            "mt-2 block truncate font-onest font-bold leading-tight",
-            champion ? "text-[26px]" : "text-base"
+            "mt-3 block truncate font-onest font-bold",
+            champion ? "text-headline" : "text-heading"
           )}
           title={team.name}
         >
@@ -53,10 +58,9 @@ export function Podium({ first, second, third, className }: Readonly<PodiumProps
         ) : null}
       </>
     );
-    const classes = cn(
-      "block border-t-2 px-3 pb-2 text-center",
-      champion ? "border-[color:var(--aqt-teal)] pt-4" : "border-[color:var(--aqt-border)] pt-3"
-    );
+    // The step: the runners-up start lower, from `sm` where the three stand
+    // side by side.
+    const classes = cn("block px-2 py-1 text-center", !champion && "sm:mt-8");
     return team.href ? (
       <HoverPrefetchLink href={team.href} className={cn(classes, "transition-colors hover:text-[color:var(--aqt-teal)]")}>
         {body}
@@ -66,18 +70,26 @@ export function Podium({ first, second, third, className }: Readonly<PodiumProps
     );
   };
 
+  // Below `sm` the champion takes a row of its own and the runners-up share
+  // the next: three columns of a 390px screen truncated every name.
   return (
     <div
       className={cn(
-        "grid items-start gap-2",
-        third ? "grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]",
+        "grid grid-cols-2 items-start gap-x-2 gap-y-5",
+        third
+          ? "sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)]"
+          : "sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]",
         className
       )}
       role="list"
       aria-label={t("tournamentDetail.podium.label")}
     >
-      <div role="listitem">{tile(second, 2)}</div>
-      <div role="listitem">{tile(first, 1)}</div>
+      <div role="listitem" className={third ? undefined : "col-span-2 sm:col-span-1"}>
+        {tile(second, 2)}
+      </div>
+      <div role="listitem" className="order-first col-span-2 sm:order-none sm:col-span-1">
+        {tile(first, 1)}
+      </div>
       {third ? <div role="listitem">{tile(third, 3)}</div> : null}
     </div>
   );

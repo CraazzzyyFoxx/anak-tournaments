@@ -4,17 +4,22 @@ import { useTranslations } from "next-intl";
 
 import { ProfileStat } from "@/components/profile/atoms";
 import { useFormatter } from "@/lib/datetime/client";
-import { cn } from "@/lib/utils";
+import { isRegistrationOpen } from "@/lib/tournament/status";
 import type { Registration, RegistrationListResponse } from "@/types/registration.types";
 import type { Tournament } from "@/types/tournament.types";
 
-import { PhaseTimeline } from "../../_components/PhaseTimeline";
-import { CardLink, OverviewCard } from "./OverviewCards";
+import { PhaseTimeline, ViewerTimeZone } from "../../_components/PhaseTimeline";
+import { hasTeamLineup } from "../tournamentOverview.model";
+import { OverviewColumns, OverviewSection, SectionLink } from "./OverviewCards";
+import { OverviewMapsSection } from "./OverviewMapsSection";
+import { OverviewTeamsSection } from "./OverviewTeamsSection";
 import { CapacityValue, RegistrationSummary } from "./RegistrationSummary";
 
 /**
- * A: before the first whistle (§3A). The phase timeline IS the page, with the
- * registration figures and the format card under it.
+ * A: before the first whistle (§3A). The phase timeline leads, full width:
+ * before the start, where the tournament stands IS the news. Under it the
+ * phase's own story — who signed up while the field forms, the teams once it
+ * is set — beside the reference column, and the first round's maps last.
  */
 export function OverviewRegistrationView({
   tournament,
@@ -39,6 +44,10 @@ export function OverviewRegistrationView({
   const format = useFormatter();
 
   const teamsCount = tournament.teams_count ?? 0;
+  const isTeamRegistration = tournament.team_formation === "registration";
+  // Who signed up last is news only while someone still can: after the window
+  // closes, "1 day ago" under a closed registration reads as stale.
+  const registrationOpen = clockNow !== null && isRegistrationOpen(tournament, clockNow);
   const submitted = [...registrations]
     .filter((registration) => registration.submitted_at !== null)
     .sort((left, right) => String(right.submitted_at).localeCompare(String(left.submitted_at)));
@@ -51,81 +60,86 @@ export function OverviewRegistrationView({
     latestAt !== null && clockNow !== null
       ? format.relativeTime(new Date(latestAt), clockNow)
       : null;
-  const isTeamRegistration = tournament.team_formation === "registration";
-  // Both aside cards are optional, and an aside column holding nothing reads
-  // as a broken layout rather than as restraint.
-  const hasAside = linksCard !== null;
+
+  const registrationSection = (
+    <OverviewSection
+      title={t("tournamentDetail.overview.registration.title")}
+      action={
+        <SectionLink href={`${overviewHref}/participants`}>
+          {t("tournamentDetail.overview.registration.all")}
+        </SectionLink>
+      }
+    >
+      {isTeamRegistration ? (
+        <div className="grid grid-cols-2 gap-4 sm:max-w-md">
+          <ProfileStat label={t("tournamentDetail.overview.registration.teams")} value={teamsCount} />
+          <ProfileStat
+            label={t("tournamentDetail.overview.registration.total")}
+            value={
+              <CapacityValue
+                value={registrationList?.total ?? tournament.registrations_count ?? 0}
+                max={registrationList?.max_participants}
+              />
+            }
+          />
+        </div>
+      ) : (
+        <>
+          {/* "Tanks are short" — the same figures the participants page
+              falls back to when the roster itself is hidden. */}
+          <RegistrationSummary
+            workspaceId={tournament.workspace_id}
+            discipline={tournament.discipline}
+            total={registrationList?.total ?? registrations.length}
+            roleCounts={registrationList?.role_counts ?? {}}
+            maxParticipants={registrationList?.max_participants}
+          />
+          {registrationOpen && latest.length > 0 ? (
+            <p className="mt-3 truncate text-caption text-[color:var(--aqt-fg-faint)]">
+              {t("tournamentDetail.overview.registration.latest")}: {latest.join(" · ")}
+              {latestAgo ? ` · ${latestAgo}` : null}
+            </p>
+          ) : null}
+        </>
+      )}
+    </OverviewSection>
+  );
 
   return (
-    <>
-      {/* ① The phase timeline IS the page before the tournament starts. */}
-      <OverviewCard id="phases">
-        <PhaseTimeline tournament={tournament} orientation="horizontal" />
-      </OverviewCard>
+    <div className="grid min-w-0 gap-10">
+      {/* ① Where the tournament stands. A tournament with no schedule has no
+          timeline to lead with, and no heading over an empty band either. */}
+      {(tournament.phase_schedule ?? []).length > 0 ? (
+        <OverviewSection
+          id="phases"
+          title={t("tournamentDetail.overview.phases.title")}
+          action={<ViewerTimeZone />}
+        >
+          <PhaseTimeline tournament={tournament} orientation="horizontal" />
+        </OverviewSection>
+      ) : null}
 
-      <div className={cn("grid gap-4", hasAside && "lg:grid-cols-[6fr_4fr]")}>
-        <div className={cn("grid content-start gap-4", !hasAside && "lg:grid-cols-2")}>
-          {/* ② "Tanks are short" is what a draft/balancer tournament is read
-              for; a team-registration one counts teams instead. */}
-          <OverviewCard
-            title={t("tournamentDetail.overview.registration.title")}
-            action={
-              <CardLink href={`${overviewHref}/participants`}>
-                {t("tournamentDetail.overview.registration.all")}
-              </CardLink>
-            }
-          >
-            {isTeamRegistration ? (
-              <div className="grid gap-2 sm:grid-cols-2">
-                <ProfileStat
-                  label={t("tournamentDetail.overview.registration.teams")}
-                  value={teamsCount}
-                />
-                <ProfileStat
-                  label={t("tournamentDetail.overview.registration.total")}
-                  value={
-                    <CapacityValue
-                      value={registrationList?.total ?? tournament.registrations_count ?? 0}
-                      max={registrationList?.max_participants}
-                    />
-                  }
-                />
-              </div>
+      <OverviewColumns
+        main={
+          <>
+            {/* ② The field: sign-ups while it forms, the teams once it is set. */}
+            {hasTeamLineup(tournament) ? (
+              <OverviewTeamsSection tournament={tournament} overviewHref={overviewHref} />
             ) : (
-              <>
-                {/* "Tanks are short" — the same figures the participants page
-                    falls back to when the roster itself is hidden. */}
-                <RegistrationSummary
-                  workspaceId={tournament.workspace_id}
-                  discipline={tournament.discipline}
-                  total={registrationList?.total ?? registrations.length}
-                  roleCounts={registrationList?.role_counts ?? {}}
-                  maxParticipants={registrationList?.max_participants}
-                />
-                {latest.length > 0 ? (
-                  <p className="mt-2 truncate text-caption text-[color:var(--aqt-fg-faint)]">
-                    {t("tournamentDetail.overview.registration.latest")}: {latest.join(" · ")}
-                    {latestAgo ? ` · ${latestAgo}` : null}
-                  </p>
-                ) : null}
-              </>
+              registrationSection
             )}
-          </OverviewCard>
-
-          {formatCard}
-        </div>
-
-        {/* Organizer links — the same tail the other two branches end on. */}
-        {hasAside ? (
-          <div className="grid content-start gap-4">
+            {aboutCard}
+          </>
+        }
+        aside={
+          <>
+            {formatCard}
             {linksCard}
-          </div>
-        ) : null}
-      </div>
+          </>
+        }
+      />
 
-      {/* Full width, under the columns: the description is prose, and prose in
-          the aside wrapped every three words. */}
-      {aboutCard}
-    </>
+      <OverviewMapsSection tournament={tournament} overviewHref={overviewHref} />
+    </div>
   );
 }

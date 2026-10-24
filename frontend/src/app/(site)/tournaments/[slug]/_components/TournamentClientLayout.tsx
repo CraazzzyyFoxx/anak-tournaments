@@ -5,10 +5,11 @@ import Image from "@/components/ui/image";
 import { Button } from "@/components/ui/button";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { usePathname } from "next/navigation";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Radio } from "lucide-react";
 
 import { TournamentBroadcastDock } from "./TournamentBroadcastDock";
 import TournamentRegisterButton from "./TournamentRegisterButton";
+import { HeroPhaseFact } from "./HeroPhaseFact";
 import { NextPhaseChip } from "./NextPhaseChip";
 import {
   areStreamsVisible,
@@ -30,9 +31,10 @@ import TournamentSectionNav from "./TournamentSectionNav";
 import { collapsedRailTitle, isTournamentOverviewPath } from "./tournament-section-nav";
 import { TournamentShellSkeleton } from "./TournamentSkeletons";
 import TournamentShellError from "../TournamentShellError";
-import { PageHero, HeroCoord, HeroStamp } from "@/components/site/PageHero";
+import { PageHero, HeroCoord } from "@/components/site/PageHero";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import { hasTeamLineup } from "../_views/tournamentOverview.model";
 
 type TournamentClientLayoutProps = {
   slug: string;
@@ -198,6 +200,31 @@ export default function TournamentClientLayout({
   const registerButton = !isEnded ? <TournamentRegisterButton tournament={tournament} /> : null;
   const nextPhaseChip = <NextPhaseChip tournament={tournament} href={`${overviewHref}#phases`} />;
 
+  // While the tournament is played, the overview's main action is the
+  // broadcast. The hero only: every other section has the Stream tab under it.
+  const watchButton =
+    isOverviewSection && statusVariant === "live" && (streams?.official?.length ?? 0) > 0 ? (
+      <Button asChild>
+        <HoverPrefetchLink href={`${overviewHref}/stream`}>
+          <Radio aria-hidden />
+          {t("tournamentDetail.watchStream")}
+        </HoverPrefetchLink>
+      </Button>
+    ) : null;
+  const heroActions =
+    watchButton || registerButton || draftButton ? (
+      <>
+        {watchButton}
+        {registerButton}
+        {draftButton}
+      </>
+    ) : null;
+  // "14 teams · 70 players" once the field is set; before that the overview's
+  // registration block owns the numbers.
+  const counts = hasTeamLineup(tournament)
+    ? t("tournamentDetail.header.teamsAndPlayers", { teams: teamsCount, players })
+    : null;
+
   return (
     <div className="aqt-tn space-y-4">
       {tournament.is_hidden && (
@@ -240,7 +267,7 @@ export default function TournamentClientLayout({
               </HeroCoord>
             }
             title={
-              <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <span className="flex items-center gap-x-3">
                 {tournament.logo_url ? (
                   /* Decorative — the h1 beside it is the name. */
                   <Image
@@ -255,40 +282,29 @@ export default function TournamentClientLayout({
                   />
                 ) : null}
                 <span className="min-w-0">{tournament.name}</span>
-                <TournamentStatusPill status={statusVariant} className="shrink-0">
-                  {t(`common.statusBadge.${tournament.status}`)}
-                </TournamentStatusPill>
               </span>
+            }
+            /* Under the name, not beside it: after a long name the pill landed
+               on the cover art, where it could not be read. */
+            meta={
+              <TournamentStatusPill status={statusVariant}>
+                {t(`common.statusBadge.${tournament.status}`)}
+              </TournamentStatusPill>
             }
             stamp={
-              <span className="flex w-full flex-col items-start gap-5">
-                <span className="flex flex-wrap items-end gap-x-8 gap-y-3">
-                  <NextPhaseChip
-                    variant="stamp"
-                    tournament={tournament}
-                    href={`${overviewHref}#phases`}
-                  />
-                  {teamsCount > 0 || tournament.team_formation === "registration" ? (
-                    <HeroStamp
-                      label={t(tournament.team_formation === "registration" ? "registrationTeams.list.inTournament" : "tournamentDetail.overview.numbers.teams")}
-                      value={teamsCount}
-                    />
-                  ) : null}
-                  <HeroStamp label={t("common.playersLabel")} value={players} />
-                </span>
-                {tournament.cover_image_url && (registerButton || draftButton) ? (
-                  <span className="flex flex-wrap items-center gap-2.5">
-                    {registerButton}
-                    {draftButton}
+              <>
+                <HeroPhaseFact tournament={tournament} counts={counts} />
+                {tournament.cover_image_url && heroActions ? (
+                  <span className="flex basis-full flex-wrap items-center gap-2.5">
+                    {heroActions}
                   </span>
                 ) : null}
-              </span>
+              </>
             }
             aside={
-              tournament.cover_image_url || !(registerButton || draftButton) ? undefined : (
+              tournament.cover_image_url || !heroActions ? undefined : (
                 <div className="flex flex-wrap items-center gap-2.5 lg:justify-end">
-                  {registerButton}
-                  {draftButton}
+                  {heroActions}
                 </div>
               )
             }

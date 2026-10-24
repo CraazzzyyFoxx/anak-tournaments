@@ -1,118 +1,105 @@
 "use client";
 
-import { useTranslations } from "next-intl";
+import { ArrowRight } from "lucide-react";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { Card } from "@/components/ui/card";
-import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
-import Image from "@/components/ui/image";
-import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
-import { getStreamStatus, STREAM_STATUS_META } from "@/lib/social/stream-platform";
 import { cn } from "@/lib/utils";
-import type { StreamEntry } from "@/types/stream.types";
 
 /**
- * One block of the overview: a flat card with a mono eyebrow (wireframes §11).
+ * One section of the overview: a heading, then its content. Open by default,
+ * per DESIGN §5 — a page section is a heading and what it heads; only a dense
+ * data block (a table, match rows, the podium) is `framed`, and then only the
+ * block, never the heading with it.
+ *
+ * `size`: `title` in the main column and the full-width bands; `heading` in
+ * the narrow reference column, where a 22px heading would outweigh the 15px
+ * facts under it.
+ *
  * Deliberately no `overflow: hidden`: the mini-bracket scrolls horizontally
  * inside its own block, and `#phases` must stay scrollable-to.
  */
-export function OverviewCard({
+export function OverviewSection({
   title,
   action,
   id,
+  size = "title",
+  framed = false,
+  className,
   children
 }: Readonly<{
   title?: string;
   action?: React.ReactNode;
   id?: string;
+  size?: "title" | "heading";
+  framed?: boolean;
+  className?: string;
   children: React.ReactNode;
 }>) {
   return (
-    <Card asChild variant="flat">
-      <section className="min-w-0 scroll-mt-28 px-4 pb-4 pt-3.5" id={id}>
-        {title || action ? (
-          <div className="mb-3 flex items-baseline justify-between gap-3">
-            {title ? <Eyebrow as="h2">{title}</Eyebrow> : <span />}
-            {action}
-          </div>
-        ) : null}
-        {children}
-      </section>
-    </Card>
+    <section className={cn("min-w-0 scroll-mt-28", className)} id={id}>
+      {title || action ? (
+        <div
+          className={cn(
+            "flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1",
+            size === "title" ? "mb-3" : "mb-2.5"
+          )}
+        >
+          {title ? (
+            <h2
+              className={cn(
+                "font-onest font-semibold text-[color:var(--aqt-fg)]",
+                size === "title" ? "text-title" : "text-heading"
+              )}
+            >
+              {title}
+            </h2>
+          ) : (
+            <span />
+          )}
+          {action}
+        </div>
+      ) : null}
+      {framed ? (
+        <Card variant="flat" className="min-w-0 p-4">
+          {children}
+        </Card>
+      ) : (
+        children
+      )}
+    </section>
   );
 }
 
-export function CardLink({ href, children }: Readonly<{ href: string; children: React.ReactNode }>) {
+/** "All matches →": where a section continues, beside its heading. */
+export function SectionLink({ href, children }: Readonly<{ href: string; children: React.ReactNode }>) {
   return (
     <HoverPrefetchLink
       href={href}
-      className={cn(eyebrowClass("muted"), "transition-colors hover:text-[color:var(--aqt-teal)]")}
+      className="inline-flex items-center gap-1 text-caption font-medium text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-teal)]"
     >
       {children}
+      <ArrowRight aria-hidden className="size-3.5" />
     </HoverPrefetchLink>
   );
 }
 
-export function OverviewStreamCard({
-  official,
-  href,
-  action,
-  viewers
-}: Readonly<{
-  official: StreamEntry;
-  href: string;
-  action: React.ReactNode;
-  viewers: string | null;
-}>) {
-  const t = useTranslations();
-  const status = getStreamStatus(official.live);
-  const meta = STREAM_STATUS_META[status];
-
+/**
+ * The two columns under the overview's full-width lead: the phase's own story
+ * on the left, the reference that stays the same all tournament long on the
+ * right (format, links). The reference column is one quiet stack split by
+ * hairlines, not a pile of cards. Below `lg` the story comes first.
+ */
+export function OverviewColumns({
+  main,
+  aside
+}: Readonly<{ main: React.ReactNode; aside: React.ReactNode }>) {
   return (
-    <OverviewCard title={t("tournamentDetail.overview.stream.title")} action={action}>
-      <HoverPrefetchLink
-        href={href}
-        className="group relative block overflow-hidden rounded-lg bg-[color:var(--aqt-overlay-2)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
-      >
-        {official.thumbnail_url ? (
-          // `ui/image` serves a poster from an unconfigured streaming host as is.
-          <Image
-            src={official.thumbnail_url}
-            alt=""
-            width={640}
-            height={360}
-            className="aspect-video w-full object-cover transition-[filter] duration-300 group-hover:brightness-110 motion-reduce:transition-none"
-          />
-        ) : (
-          <span aria-hidden className="block aspect-video w-full bg-[color:var(--aqt-overlay-3)]" />
-        )}
-        {meta.labelKey && meta.pillStatus ? (
-          <TournamentStatusPill status={meta.pillStatus} className="absolute left-3 top-3 z-[1]">
-            {t(meta.labelKey)}
-          </TournamentStatusPill>
-        ) : null}
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,transparent_42%,hsl(220_22%_4%/0.88))]"
-        />
-        <span className="absolute inset-x-0 bottom-0 flex flex-col gap-0.5 p-3">
-          <span className="text-sm font-semibold text-[color:var(--aqt-fg)]">{official.channel}</span>
-          {viewers ? (
-            <span className="aqt-tnum text-label text-[color:var(--aqt-fg-muted)]">{viewers}</span>
-          ) : null}
-        </span>
-      </HoverPrefetchLink>
-    </OverviewCard>
-  );
-}
-
-export function KeyValue({ term, children }: Readonly<{ term: string; children: React.ReactNode }>) {
-  return (
-    <div className="grid gap-0.5 sm:grid-cols-[9rem_minmax(0,1fr)] sm:gap-3">
-      <Eyebrow as="dt" className="sm:pt-0.5">
-        {term}
-      </Eyebrow>
-      <dd className="min-w-0 text-ui text-[color:var(--aqt-fg-muted)]">{children}</dd>
+    <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:gap-10">
+      <div className="grid min-w-0 content-start gap-8">{main}</div>
+      <div className="grid min-w-0 content-start divide-y divide-[color:var(--aqt-border)] [&>*:first-child]:pt-0 [&>*:last-child]:pb-0 [&>*]:py-5">
+        {aside}
+      </div>
     </div>
   );
 }
