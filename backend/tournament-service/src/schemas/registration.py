@@ -402,8 +402,9 @@ class RegistrationListResponse(BaseModel):
     ``hidden`` is the organizer's ``hide_registrations``, answered by the server:
     when it is set, ``registrations`` is EMPTY and ``total``/``role_counts`` are the
     whole payload. They are filled on both paths so a consumer reads one field
-    regardless, and so the number can never disagree with the rows beside it —
-    ``Tournament.registrations_count`` is a separately cached read and would.
+    regardless. Both aggregates EXCLUDE withdrawn registrations -- the same rule as
+    ``Tournament.registrations_count`` -- while the visible ``registrations`` still
+    include them, so ``total`` may be smaller than ``len(registrations)``.
     """
 
     registrations: list[RegistrationListRead] = Field(default_factory=list)
@@ -411,11 +412,11 @@ class RegistrationListResponse(BaseModel):
     # always strings); ``TournamentHistoryEntry.division_grid_version_id`` references these.
     division_grids: dict[str, DivisionGridVersionRead] = Field(default_factory=dict)
     hidden: bool = False
-    #: Live registrations (``deleted_at IS NULL``) — exactly the row set the visible
-    #: list would have shown, so flipping ``hidden`` never changes the number.
+    #: Live (``deleted_at IS NULL``), non-withdrawn registrations — the same count
+    #: on both paths, so flipping ``hidden`` never changes the number.
     total: int = 0
-    #: Primary role -> count, one bucket per registration; still filled when
-    #: ``hidden`` empties the rows.
+    #: Primary role -> count, one bucket per registration, withdrawn excluded; still
+    #: filled when ``hidden`` empties the rows.
     role_counts: dict[str, int] = Field(default_factory=dict)
     #: Advisory capacity from the form, echoed here so a consumer that already reads
     #: this envelope needs no second request for it.

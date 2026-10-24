@@ -390,8 +390,9 @@ export interface RegistrationListResponse {
   /** Server answer to `hide_registrations`: when true, `registrations` is empty
    *  and `total` + `role_counts` are the whole payload. */
   hidden: boolean;
-  /** Live registrations — the same set the visible list would have shown, so the
-   *  number does not move when the organizer flips the toggle. */
+  /** Live registrations, withdrawn excluded — the same count on both paths, so
+   *  the number does not move when the organizer flips the toggle. The visible
+   *  `registrations` still include withdrawn rows, so this can be smaller. */
   total: number;
   /** Primary role code -> count. Server-computed on both paths. */
   role_counts: Record<string, number>;

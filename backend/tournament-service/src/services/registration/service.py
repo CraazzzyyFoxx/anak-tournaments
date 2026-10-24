@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -142,6 +142,16 @@ def _role_counts(registrations: Sequence[models.Registration]) -> dict[str, int]
             continue
         counts[roles[0].role] = counts.get(roles[0].role, 0) + 1
     return counts
+
+
+def _in_field(registrations: Iterable[models.Registration]) -> list[models.Registration]:
+    """The rows the public aggregate counts: every live registration but a withdrawn one.
+
+    Same rule as ``get_registration_count_by_tournament``, so the list's ``total``
+    and ``Tournament.registrations_count`` agree. Only the aggregate is filtered:
+    the visible list still ships withdrawn rows for its Withdrawn filter.
+    """
+    return [registration for registration in registrations if registration.status != "withdrawn"]
 
 
 def _primary_role_select(tournament_id: int) -> sa.Subquery:
@@ -1148,7 +1158,7 @@ class RegistrationService:
         # branch would serve one reader's answer to the next. Organizers read the
         # full roster through the admin registrations table.
         if form is not None and form.hide_registrations:
-            hidden_rows = list(
+            hidden_rows = _in_field(
                 await session.scalars(
                     self.registration_repo.select()
                     .where(
@@ -1157,8 +1167,8 @@ class RegistrationService:
                     )
                     # Roles only: no identity, no team, no history, no admission.
                     # ponytail: counted in Python over two light queries rather than
-                    # one GROUP BY, so both paths share ``_role_counts`` and cannot
-                    # drift. Push it into SQL if a field ever gets big enough to care.
+                    # one GROUP BY, so both paths share ``_in_field`` + ``_role_counts``
+                    # and cannot drift. Push it into SQL if a field ever gets big enough to care.
                     .options(selectinload(models.Registration.roles))
                 )
             )
@@ -1237,11 +1247,12 @@ class RegistrationService:
                     tournament_history_count=history_count_map.get(r.id, 0),
                 )
             )
+        in_field = _in_field(registrations)
         return RegistrationListResponse(
             registrations=registrations_read,
             division_grids=division_grids,
-            total=len(registrations),
-            role_counts=_role_counts(registrations),
+            total=len(in_field),
+            role_counts=_role_counts(in_field),
             max_participants=max_participants,
         )
 
