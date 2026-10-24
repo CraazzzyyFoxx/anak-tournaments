@@ -94,12 +94,14 @@ export function EncounterRostersModal({
               <EncounterRosterPanel
                 team={seatAt(encounter.teams, 1)?.team ?? null}
                 slot={1}
+                workspaceId={encounter.workspace_id}
                 discipline={encounter.tournament.discipline}
                 tournamentGrid={encounter.tournament?.division_grid_version ?? null}
               />
               <EncounterRosterPanel
                 team={seatAt(encounter.teams, 2)?.team ?? null}
                 slot={2}
+                workspaceId={encounter.workspace_id}
                 discipline={encounter.tournament.discipline}
                 tournamentGrid={encounter.tournament?.division_grid_version ?? null}
               />

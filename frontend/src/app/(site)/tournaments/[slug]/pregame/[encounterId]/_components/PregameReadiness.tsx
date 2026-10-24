@@ -92,12 +92,14 @@ export function PregameReadiness({
         <EncounterRosterPanel
           team={seatAt(encounter.teams, 1)?.team ?? null}
           slot={1}
+          workspaceId={encounter.workspace_id}
           discipline={encounter.discipline}
           tournamentGrid={encounter.tournament?.division_grid_version ?? null}
         />
         <EncounterRosterPanel
           team={seatAt(encounter.teams, 2)?.team ?? null}
           slot={2}
+          workspaceId={encounter.workspace_id}
           discipline={encounter.discipline}
           tournamentGrid={encounter.tournament?.division_grid_version ?? null}
         />

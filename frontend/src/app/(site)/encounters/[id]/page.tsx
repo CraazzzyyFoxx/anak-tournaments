@@ -389,12 +389,14 @@ const EncounterPage = async (props: {
                 <EncounterRosterPanel
                   team={seatOne?.team ?? null}
                   slot={1}
+                  workspaceId={encounter.workspace_id}
                   discipline={encounter.tournament.discipline}
                   tournamentGrid={tournamentGrid}
                 />
                 <EncounterRosterPanel
                   team={seatTwo?.team ?? null}
                   slot={2}
+                  workspaceId={encounter.workspace_id}
                   discipline={encounter.tournament.discipline}
                   tournamentGrid={tournamentGrid}
                 />
